@@ -1,6 +1,7 @@
 import { AIRFIELD } from '@data/index';
 import { compassVector, type AirfieldPayload, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
 import { closestOnSegment } from '@shared/geom';
+import { terminalPolygon, type Terminal } from '@shared/business';
 import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
 
@@ -42,8 +43,8 @@ const overlaps = (w: Window, minX: number, minY: number, maxX: number, maxY: num
 const lineM = (w: Window, meters: number): number => Math.max(meters, 0.9 / w.scale);
 
 /** Paints the airfield pavement and markings of one chunk into its canvas context. */
-export function paintAirfield(ctx: Ctx, af: AirfieldPayload, band: number, cx: number, cy: number): void {
-  if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0) return;
+export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly Terminal[], band: number, cx: number, cy: number): void {
+  if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0 && terminals.length === 0) return;
   const scale = BAND_RASTER_SCALE[band];
   const ox = cx * CHUNK_SIZE_M;
   const oy = cy * CHUNK_SIZE_M;
@@ -80,6 +81,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, band: number, cx: n
     if (t) paintHoldingMark(ctx, t, h.x, h.y, win);
   }
   for (const r of af.runways) paintRunwayMarks(ctx, r, win);
+  for (const t of terminals) paintTerminal(ctx, t, win);
   for (const s of af.stands) {
     if (overlaps(win, s.x - 100, s.y - 100, s.x + 100, s.y + 100)) paintStand(ctx, s, win);
   }
@@ -350,6 +352,43 @@ function paintStand(ctx: Ctx, s: Stand, win: Window): void {
     ctx.textBaseline = 'middle';
     ctx.rotate(Math.PI / 2);
     ctx.fillText(s.number, 0, -(s.type === 'gaTieDown' ? 2 : 9));
+  }
+  ctx.restore();
+}
+
+function paintTerminal(ctx: Ctx, t: Terminal, win: Window): void {
+  const poly = terminalPolygon(t);
+  const r = Math.max(t.w, t.d) / 2 + 4;
+  if (!overlaps(win, t.cx - r, t.cy - r, t.cx + r, t.cy + r)) return;
+  // Soft shadow, roof, rim and a glazed strip along the long side.
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.moveTo(poly[0].x + 3, poly[0].y + 3);
+  for (let i = 1; i < 4; i++) ctx.lineTo(poly[i].x + 3, poly[i].y + 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#9aa7b3';
+  ctx.beginPath();
+  ctx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < 4; i++) ctx.lineTo(poly[i].x, poly[i].y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#5c6872';
+  ctx.lineWidth = lineM(win, 0.8);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(t.cx, t.cy);
+  ctx.rotate((t.headingDeg * Math.PI) / 180 - Math.PI / 2);
+  ctx.fillStyle = '#6f8fa8';
+  ctx.fillRect(-t.w / 2 + 2, -t.d / 2 + 1.5, t.w - 4, 3);
+  ctx.fillStyle = '#c4ccd3';
+  for (let x = -t.w / 2 + 8; x < t.w / 2 - 8; x += 14) ctx.fillRect(x, -t.d / 2 + 8, 8, t.d - 16);
+  if (win.scale >= 0.25) {
+    ctx.fillStyle = '#2a3844';
+    ctx.font = 'bold 8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`T${t.id}`, 0, 0);
   }
   ctx.restore();
 }

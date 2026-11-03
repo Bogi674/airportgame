@@ -12,6 +12,7 @@ const TOOLS: { tool: Tool; icon: string }[] = [
   { tool: 'apron', icon: '▭' },
   { tool: 'stands', icon: '✈' },
   { tool: 'gaBlock', icon: '▦' },
+  { tool: 'terminal', icon: '▣' },
   { tool: 'demolish', icon: '✕' },
 ];
 
@@ -29,7 +30,7 @@ export function ToolRail({ onUndo, onRedo }: Props) {
   return (
     <div
       data-testid="tool-rail"
-      style="position:absolute;left:8px;top:236px;display:flex;flex-direction:column;gap:3px;padding:5px;background:#10161ce6;border:1px solid #2c3a45;border-radius:6px"
+      style="position:absolute;left:8px;top:52px;display:flex;flex-direction:column;gap:3px;padding:5px;background:#10161ce6;border:1px solid #2c3a45;border-radius:6px"
     >
       {TOOLS.map((x) => (
         <button

@@ -1,6 +1,6 @@
 import type { Command } from '@sim/commands';
 import type { AirfieldPayload } from './airfield';
-import type { BusinessPayload } from './business';
+import type { BusinessPayload, Terminal } from './business';
 import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
@@ -26,7 +26,8 @@ export const PROTOCOL_VERSION = 1;
 
 /** Main thread to sim worker. */
 export type ToSimMessage =
-  | { type: 'init'; seed: string; options: GameOptions }
+  | { type: 'init'; seed: string; options: GameOptions; saveData?: unknown }
+  | { type: 'save'; id: number }
   | { type: 'commands'; list: Command[] }
   | { type: 'setSpeed'; multiplier: Speed }
   | { type: 'query'; id: number; kind: string; args: unknown }
@@ -41,6 +42,7 @@ export interface PerfReport {
 /** Sim worker to main thread. */
 export type FromSimMessage =
   | { type: 'ready' }
+  | { type: 'saved'; id: number; data: string; tick: number }
   | { type: 'snapshot'; tick: number; buffer: ArrayBuffer }
   | { type: 'staticDirty'; chunks: number[]; kinds: number[] }
   | { type: 'staticData'; kind: 'site'; payload: SitePayload }
@@ -56,6 +58,8 @@ export type FromSimMessage =
 export type ToBakeMessage =
   | { type: 'site'; site: BakeSite }
   | { type: 'airfield'; airfield: AirfieldPayload }
+  | { type: 'terminals'; terminals: Terminal[] }
+  | { type: 'owner'; owner: Uint8Array }
   | { type: 'bake'; key: number; band: number; cx: number; cy: number };
 
 /** The part of the site the terrain baker needs. */

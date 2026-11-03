@@ -4,6 +4,7 @@ import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
 import { foldF64, foldU32 } from '../hash';
+import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM } from './performance';
@@ -1231,6 +1232,60 @@ export class Traffic {
   private updateCongestion(): void {
     const c = this.net.congestion;
     for (let e = 0; e < c.length; e++) c[e] = this.blockCount[e] * 8;
+  }
+
+  // Saving ------------------------------------------------------------------
+
+  private arrays(): Record<string, Float64Array | Int32Array | Uint8Array | Int8Array> {
+    return {
+      active: this.active, state: this.state, type: this.type, livery: this.livery, flight: this.flight, x: this.x, y: this.y,
+      heading: this.heading, speed: this.speed, dist: this.dist, routeLen: this.routeLen, routeIdx: this.routeIdx,
+      routeEdge: this.routeEdge, routeDir: this.routeDir, heldNode: this.heldNode, curBlock: this.curBlock, prevBlock: this.prevBlock,
+      nextBlock: this.nextBlock, waitingFor: this.waitingFor, ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
+      standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwySlot: this.rwySlot,
+      entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
+      entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
+      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate,
+      nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
+      rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
+    };
+  }
+
+  saveState(): unknown {
+    const arrays: Record<string, string> = {};
+    const src = this.arrays();
+    for (const k of Object.keys(src)) arrays[k] = packTyped(src[k]);
+    return {
+      arrays,
+      completed: this.completedFlights, diverted: this.divertedFlights, deadlocks: this.deadlocks,
+      windFromDeg: this.windFromDeg, windKt: this.windKt, testPerHour: this.testPerHour, testTurnScale: this.testTurnScale,
+      tick: this.tick, weather: this.weather, rng: this.rng.getState(), weatherRng: this.weatherRng.getState(),
+    };
+  }
+
+  /** Restores state on a traffic object whose airfield has already been loaded. */
+  loadState(raw: unknown): void {
+    const o = raw as { arrays: Record<string, string>; completed: number; diverted: number; deadlocks: number; windFromDeg: number; windKt: number; testPerHour: number; testTurnScale: number; tick: number; weather: 'clear' | 'rain' | 'fog' | 'wind'; rng: number; weatherRng: number };
+    const dst = this.arrays();
+    const ctors: Record<string, new (b: ArrayBuffer) => never> = {};
+    for (const k of Object.keys(dst)) {
+      const a = dst[k];
+      const C = a.constructor as unknown as new (b: ArrayBuffer) => never;
+      ctors[k] = C;
+      if (o.arrays[k] !== undefined) unpackInto(o.arrays[k], a as never, C as never);
+    }
+    this.completedFlights = o.completed;
+    this.divertedFlights = o.diverted;
+    this.deadlocks = o.deadlocks;
+    this.windFromDeg = o.windFromDeg;
+    this.windKt = o.windKt;
+    this.testPerHour = o.testPerHour;
+    this.testTurnScale = o.testTurnScale;
+    this.tick = o.tick;
+    this.weather = o.weather;
+    this.rng.setState(o.rng);
+    this.weatherRng.setState(o.weatherRng);
+    this.rebuildActive();
   }
 
   // Snapshots and hashing --------------------------------------------------

@@ -1,17 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { startNewGame, watchErrors } from './helpers';
 
 test('generates a site, buys land, and navigates with the minimap tools', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text());
-  });
-
-  await page.goto('/');
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  await page.getByTestId('open-site').click();
   await expect(page.getByTestId('site-info')).toBeVisible();
   await expect(page.getByTestId('minimap')).toBeVisible();
-  const cashBefore = await page.getByTestId('site-info').textContent();
-  expect(cashBefore).toContain('$30,000,000');
+  expect(await page.getByTestId('site-info').textContent()).toContain('$30,000,000');
+  await page.getByTestId('sheet-close').click();
 
   // Terrain chunks bake and show real colours, not just the clear colour.
   await expect.poll(() => page.evaluate(() => window.__renderer?.chunkCount ?? 0)).toBeGreaterThan(0);
@@ -36,7 +33,7 @@ test('generates a site, buys land, and navigates with the minimap tools', async 
   if (await buy.isVisible()) {
     await buy.click();
     await expect(page.getByTestId('parcel')).toContainText('Owned');
-    await expect(page.getByTestId('site-info')).not.toContainText('$30,000,000');
+    expect(await page.evaluate(() => window.__store?.getState().cash)).toBeLessThan(30_000_000);
   }
 
   // Compass and align view.
@@ -53,11 +50,15 @@ test('generates a site, buys land, and navigates with the minimap tools', async 
   expect(zoom).toBeLessThan(0.15);
 
   // A new game with the other preset replaces the site.
-  const infoBefore = await page.getByTestId('site-info').textContent();
-  await page.getByTestId('preset').selectOption('riverValley');
-  await page.getByTestId('new-game').click();
-  await expect(page.getByTestId('site-info')).not.toHaveText(infoBefore ?? '');
-  await expect(page.getByTestId('site-info')).toContainText('$30,000,000');
+  const seedBefore = await page.evaluate(() => window.__store?.getState().site?.corridor.cx);
+  await page.getByTestId('open-pause').click();
+  await page.getByTestId('pause-exit').click();
+  await expect(page.getByTestId('menu')).toBeVisible();
+  await page.getByTestId('menu-new').click();
+  await page.getByTestId('preset-riverValley').click();
+  await page.getByTestId('menu-start').click();
+  await expect(page.getByTestId('top-bar')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__store?.getState().site?.corridor.cx)).not.toBe(seedBefore);
 
   expect(errors).toEqual([]);
 });

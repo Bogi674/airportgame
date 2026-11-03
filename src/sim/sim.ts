@@ -11,6 +11,8 @@ import type { LedgerCategory } from '@shared/business';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
+import { packTyped, unpackInto } from './save/pack';
+import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 
 /** Subsystems in execution order. The stress tool times each one separately. */
 const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'flights', 'aircraft'] as const;
@@ -275,6 +277,44 @@ export class Sim {
   drainEvents(out: string[]): void {
     for (let i = 0; i < this.eventQueue.length; i++) out.push(this.eventQueue[i]);
     this.eventQueue.length = 0;
+  }
+
+  /** The full game state as plain data. The site is not saved, the seed regenerates it. */
+  serialize(): SaveData {
+    return {
+      version: SAVE_VERSION,
+      seed: this.seed,
+      options: this.options,
+      tick: this.tick,
+      gameSeconds: this.gameSeconds,
+      cash: this.cash,
+      rng: this.rng.getState(),
+      parcelOwner: packTyped(this.parcelOwner),
+      airfield: this.airfield.saveState(),
+      traffic: this.traffic.saveState(),
+      business: this.business.saveState(),
+    };
+  }
+
+  /** Replaces the state of a fresh sim with saved state. The save is migrated to the current version first. */
+  restore(raw: unknown): void {
+    const save = migrate(raw);
+    if (save.seed !== this.seed) throw new Error('Save belongs to a different seed');
+    this.tick = save.tick;
+    this.gameSeconds = save.gameSeconds;
+    this.cash = save.cash;
+    this.rng.setState(save.rng);
+    unpackInto(save.parcelOwner, this.parcelOwner, Uint8Array);
+    this.airfield.loadState(save.airfield);
+    // Build the network for the loaded airfield, then put the traffic state on top of it.
+    this.networkVersion = this.airfield.version;
+    this.traffic.setAirfield(this.airfield.data);
+    this.traffic.loadState(save.traffic);
+    this.business.loadState(save.business);
+    this.ownershipDirty = true;
+    this.airfieldSent = -1;
+    this.businessSent = -1;
+    this.pending.length = 0;
   }
 
   /** 32 bit hash of the state that matters, for determinism tests. */

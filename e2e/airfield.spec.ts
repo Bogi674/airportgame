@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { startNewGame, watchErrors } from './helpers';
 
 async function screenOf(page: Page, wx: number, wy: number): Promise<{ x: number; y: number }> {
   return page.evaluate(
@@ -12,14 +13,9 @@ async function screenOf(page: Page, wx: number, wy: number): Promise<{ x: number
 }
 
 test('builds a runway, taxiway, apron and stands, and undoes them', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text());
-  });
-  await page.goto('/');
-  await expect(page.getByTestId('site-info')).toBeVisible();
-  await page.waitForTimeout(800);
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  await page.getByTestId('guide').waitFor();
   const box = await page.getByTestId('map').boundingBox();
   if (!box) throw new Error('no map');
   const counts = () => page.evaluate(() => {

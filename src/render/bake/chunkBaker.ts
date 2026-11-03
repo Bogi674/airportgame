@@ -1,14 +1,18 @@
+import BakeWorker from './bakeWorker.ts?worker&inline';
 import type { BakeSite, FromBakeMessage, ToBakeMessage } from '@shared/protocol';
 import { chunkPixelSize, type ChunkRequester } from '../chunks';
 import { TerrainBaker } from '../terrain';
 import { paintAirfield } from '../markings/airfieldPaint';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
+import type { Terminal } from '@shared/business';
 
 type Deliver = (key: number, image: CanvasImageSource) => void;
 
 export interface ChunkBaker extends ChunkRequester {
   setSite(site: BakeSite): void;
   setAirfield(airfield: AirfieldPayload): void;
+  setTerminals(terminals: Terminal[]): void;
+  setOwner(owner: Uint8Array): void;
   dispose(): void;
 }
 
@@ -19,7 +23,7 @@ export function createChunkBaker(deliver: Deliver): ChunkBaker {
 }
 
 class WorkerBaker implements ChunkBaker {
-  private readonly worker = new Worker(new URL('./bakeWorker.ts', import.meta.url), { type: 'module' });
+  private readonly worker = new BakeWorker();
 
   constructor(deliver: Deliver) {
     this.worker.onmessage = (event: MessageEvent<FromBakeMessage>) => {
@@ -38,6 +42,16 @@ class WorkerBaker implements ChunkBaker {
     this.worker.postMessage(msg);
   }
 
+  setTerminals(terminals: Terminal[]): void {
+    const msg: ToBakeMessage = { type: 'terminals', terminals };
+    this.worker.postMessage(msg);
+  }
+
+  setOwner(owner: Uint8Array): void {
+    const msg: ToBakeMessage = { type: 'owner', owner: owner.slice() };
+    this.worker.postMessage(msg);
+  }
+
   request(key: number, band: number, cx: number, cy: number): void {
     const msg: ToBakeMessage = { type: 'bake', key, band, cx, cy };
     this.worker.postMessage(msg);
@@ -53,8 +67,17 @@ class MainThreadBaker implements ChunkBaker {
   private scheduled = false;
   private terrain: TerrainBaker | null = null;
   private airfield: AirfieldPayload = EMPTY_AIRFIELD;
+  private terminals: Terminal[] = [];
 
   constructor(private readonly deliver: Deliver) {}
+
+  setTerminals(terminals: Terminal[]): void {
+    this.terminals = terminals;
+  }
+
+  setOwner(owner: Uint8Array): void {
+    this.terrain?.setOwner(owner);
+  }
 
   setAirfield(airfield: AirfieldPayload): void {
     this.airfield = airfield;
@@ -85,7 +108,7 @@ class MainThreadBaker implements ChunkBaker {
       const ctx = canvas.getContext('2d');
       if (!ctx) continue;
       ctx.putImageData(this.terrain.bake(job.band, job.cx, job.cy), 0, 0);
-      paintAirfield(ctx, this.airfield, job.band, job.cx, job.cy);
+      paintAirfield(ctx, this.airfield, this.terminals, job.band, job.cx, job.cy);
       this.deliver(job.key, canvas);
     }
     if (this.queue.length > 0) {

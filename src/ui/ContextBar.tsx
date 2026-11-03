@@ -58,7 +58,7 @@ export function ContextBar({ send }: Props) {
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = AIRFIELD.surfaces[s.surface].pcrTiers;
-  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock';
+  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal';
   const showCode = showPavement && s.tool !== 'apron';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
   return (

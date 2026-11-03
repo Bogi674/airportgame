@@ -33,12 +33,18 @@ const B = (c: number): number => c & 255;
 export class TerrainBaker {
   private readonly shade = new Float32Array(GRID_N * GRID_N);
   private readonly seed: number;
+  private owner: Uint8Array | null = null;
 
   constructor(private readonly site: BakeSite) {
     let h = 0;
     for (let i = 0; i < site.seed.length; i++) h = (Math.imul(h, 31) + site.seed.charCodeAt(i)) | 0;
     this.seed = h;
     this.computeShade();
+  }
+
+  /** Owned land is cleared of trees and buildings. */
+  setOwner(owner: Uint8Array): void {
+    this.owner = owner;
   }
 
   private computeShade(): void {
@@ -128,7 +134,8 @@ export class TerrainBaker {
           const ci = Math.floor(wx / CELL_M);
           const cj = Math.floor(wy / CELL_M);
           const co = (cj > maxIdx ? maxIdx : cj) * GRID_N + (ci > maxIdx ? maxIdx : ci);
-          const c = cls[co];
+          let c = cls[co];
+          if (this.owner !== null && this.owner[pid[co]] === 1 && (c === LandClass.Forest || c === LandClass.Village || c === LandClass.Industrial)) c = LandClass.Grass;
           if (c === LandClass.Farmland) {
             const tint = FIELD_TINTS[pid[co] & 3];
             r = r * 0.4 + R(tint) * 0.6;

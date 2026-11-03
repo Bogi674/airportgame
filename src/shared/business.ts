@@ -1,3 +1,6 @@
+import { compassVector } from './airfield';
+import type { Pt } from './geom';
+
 /** Business state shared with the UI: terminals, airlines, the ledger, the loan and the rating. */
 
 export type ModuleKind = 'checkIn' | 'security' | 'belt' | 'seating' | 'toilet';
@@ -54,7 +57,19 @@ export interface Airline {
 
 export type WeatherKind = 'clear' | 'rain' | 'fog' | 'wind';
 
+export interface BoardRow {
+  airline: string;
+  type: string;
+  /** Aircraft state name for flights in progress, or `scheduled`. */
+  status: string;
+  stand: string;
+  /** Scheduled arrival, minute of the day. */
+  eta: number;
+  delayMin: number;
+}
+
 export interface BusinessPayload {
+  board: BoardRow[];
   version: number;
   day: number;
   minuteOfDay: number;
@@ -74,4 +89,14 @@ export interface BusinessPayload {
   paxToday: number;
   flightsToday: number;
   lostPaxToday: number;
+}
+
+/** Corners of a terminal in world space. */
+export function terminalPolygon(t: Pick<Terminal, 'cx' | 'cy' | 'w' | 'd' | 'headingDeg'>): Pt[] {
+  const u = compassVector(t.headingDeg);
+  const v = { x: -u.y, y: u.x };
+  const hw = t.w / 2;
+  const hd = t.d / 2;
+  const c = (a: number, b: number): Pt => ({ x: t.cx + u.x * a + v.x * b, y: t.cy + u.y * a + v.y * b });
+  return [c(-hw, -hd), c(hw, -hd), c(hw, hd), c(-hw, hd)];
 }

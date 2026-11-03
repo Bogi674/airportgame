@@ -15,8 +15,8 @@ export default defineConfig({
       '@shared': alias('shared'),
     },
   },
-  worker: { format: 'es' },
-  build: { target: 'es2022', sourcemap: 'hidden' },
+  worker: { format: 'iife' },
+  build: { target: 'es2022', sourcemap: 'hidden', rollupOptions: { output: { inlineDynamicImports: true } } },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

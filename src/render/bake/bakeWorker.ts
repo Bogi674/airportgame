@@ -3,6 +3,7 @@ import { chunkPixelSize } from '../chunks';
 import { TerrainBaker } from '../terrain';
 import { paintAirfield } from '../markings/airfieldPaint';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
+import type { Terminal } from '@shared/business';
 
 interface BakeScope {
   postMessage(message: FromBakeMessage, transfer: Transferable[]): void;
@@ -12,6 +13,7 @@ interface BakeScope {
 const scope = self as unknown as BakeScope;
 let terrain: TerrainBaker | null = null;
 let airfield: AirfieldPayload = EMPTY_AIRFIELD;
+let terminals: Terminal[] = [];
 
 scope.onmessage = (event) => {
   const msg = event.data;
@@ -23,6 +25,14 @@ scope.onmessage = (event) => {
     airfield = msg.airfield;
     return;
   }
+  if (msg.type === 'terminals') {
+    terminals = msg.terminals;
+    return;
+  }
+  if (msg.type === 'owner') {
+    terrain?.setOwner(msg.owner);
+    return;
+  }
   try {
     if (!terrain) throw new Error('bake requested before the site arrived');
     const px = chunkPixelSize(msg.band);
@@ -30,7 +40,7 @@ scope.onmessage = (event) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2d context unavailable');
     ctx.putImageData(terrain.bake(msg.band, msg.cx, msg.cy), 0, 0);
-    paintAirfield(ctx, airfield, msg.band, msg.cx, msg.cy);
+    paintAirfield(ctx, airfield, terminals, msg.band, msg.cx, msg.cy);
     const bitmap = canvas.transferToImageBitmap();
     scope.postMessage({ type: 'baked', key: msg.key, bitmap }, [bitmap]);
   } catch (err) {

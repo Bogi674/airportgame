@@ -528,6 +528,28 @@ export class Airfield {
     return { cashDelta: op.cashDelta };
   }
 
+  /** Everything needed to rebuild the airfield. Undo history is not saved. */
+  saveState(): unknown {
+    const d = this.data;
+    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, version: d.version };
+  }
+
+  loadState(raw: unknown): void {
+    const o = raw as { runways: Runway[]; taxiways: Taxiway[]; aprons: Apron[]; stands: Stand[]; nextId: number; nameIndex: number; standNumber: number; version: number };
+    const d = this.data;
+    d.runways = o.runways;
+    d.taxiways = o.taxiways;
+    d.aprons = o.aprons;
+    d.stands = o.stands;
+    this.nextId = o.nextId;
+    this.nameIndex = o.nameIndex;
+    this.standNumber = o.standNumber;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.refresh();
+    d.version = o.version + 1;
+  }
+
   /** Folds the airfield into a state hash. */
   hash(h: number): number {
     let acc = foldU32(h, this.nextId);

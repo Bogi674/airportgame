@@ -157,6 +157,7 @@ scope.onmessage = (event) => {
     switch (msg.type) {
       case 'init':
         sim = new Sim(msg.seed, msg.options);
+        if (msg.saveData !== undefined) sim.restore(msg.saveData);
         lastLoop = performance.now();
         tickAccumulator = 0;
         {
@@ -173,6 +174,9 @@ scope.onmessage = (event) => {
         break;
       case 'setSpeed':
         speed = msg.multiplier;
+        break;
+      case 'save':
+        if (sim) scope.postMessage({ type: 'saved', id: msg.id, data: JSON.stringify(sim.serialize()), tick: sim.tick });
         break;
       case 'returnBuffer':
         pool.release(msg.buffer);

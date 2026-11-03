@@ -1,3 +1,4 @@
+import SimWorker from './sim.ts?worker&inline';
 import type { Command } from '@sim/commands';
 import type { BusinessPayload } from '@shared/business';
 import type { AirfieldMessage, FromSimMessage, GameOptions, OwnershipPayload, PerfReport, ToSimMessage } from '@shared/protocol';
@@ -19,6 +20,7 @@ export interface ClientEvents {
   onEvents?(list: string[]): void;
   onAirfield?(msg: AirfieldMessage): void;
   onBusiness?(b: BusinessPayload): void;
+  onSaved?(id: number, data: string, tick: number): void;
 }
 
 /** Main thread side of the sim protocol. Owns the worker, batches commands per frame, recycles buffers. */
@@ -30,7 +32,8 @@ export class SimClient {
   private flushScheduled = false;
 
   constructor(private readonly events: ClientEvents = {}) {
-    this.worker = new Worker(new URL('./sim.ts', import.meta.url), { type: 'module' });
+    // Inline workers run from a blob URL, so the built game also runs from a single file on disk.
+    this.worker = new SimWorker();
     this.worker.onmessage = (e: MessageEvent<FromSimMessage>) => this.handle(e.data);
     this.worker.onerror = (e) => this.events.onError?.(e.message);
   }
@@ -39,8 +42,13 @@ export class SimClient {
     this.worker.postMessage(msg, transfer);
   }
 
-  init(seed: string, options: GameOptions): void {
-    this.post({ type: 'init', seed, options });
+  init(seed: string, options: GameOptions, saveData?: unknown): void {
+    this.post({ type: 'init', seed, options, saveData });
+  }
+
+  /** Asks the worker for the full state. The answer arrives through `onSaved`. */
+  requestSave(id: number): void {
+    this.post({ type: 'save', id });
   }
 
   setSpeed(multiplier: Speed): void {
@@ -79,6 +87,9 @@ export class SimClient {
         break;
       case 'events':
         this.events.onEvents?.(msg.list);
+        break;
+      case 'saved':
+        this.events.onSaved?.(msg.id, msg.data, msg.tick);
         break;
       case 'perf':
         this.events.onPerf?.(msg.report);

@@ -2,10 +2,10 @@ import { create } from 'zustand';
 import type { Approach, CodeLetter, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
 
-export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'demolish';
+export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
 
 export interface Selection {
-  kind: 'runway' | 'taxiway' | 'apron' | 'stand';
+  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal';
   id: number;
 }
 

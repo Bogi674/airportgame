@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
+import { AcState, FlState } from '../ops/traffic';
 import { BUSINESS, AIRFIELD } from '@data/index';
-import { compassVector } from '@shared/airfield';
 import {
   LEDGER_CATEGORIES,
   LEDGER_DAYS,
@@ -8,7 +8,9 @@ import {
   TICKS_PER_MINUTE,
   dayIndex,
   minuteOfDay,
+  terminalPolygon,
   type Airline,
+  type BoardRow,
   type BusinessPayload,
   type FeeLevel,
   type LedgerCategory,
@@ -20,6 +22,7 @@ import {
 import { pointInPolygon, type Pt } from '@shared/geom';
 import { checkPolygon, type BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
+import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import type { SiteSpec } from '../world/site';
 import type { Airfield } from '../airfield/airfield';
@@ -148,12 +151,7 @@ export class Business {
   // Terminals ----------------------------------------------------------------
 
   private polygonOf(t: Pick<Terminal, 'cx' | 'cy' | 'w' | 'd' | 'headingDeg'>): Pt[] {
-    const u = compassVector(t.headingDeg);
-    const v = { x: -u.y, y: u.x };
-    const hw = t.w / 2;
-    const hd = t.d / 2;
-    const c = (a: number, b: number): Pt => ({ x: t.cx + u.x * a + v.x * b, y: t.cy + u.y * a + v.y * b });
-    return [c(-hw, -hd), c(hw, -hd), c(hw, hd), c(-hw, hd)];
+    return terminalPolygon(t);
   }
 
   terminalPolygon(t: Terminal): Pt[] {
@@ -529,9 +527,45 @@ export class Business {
     this.today[CAT_INDEX[category]] += amount;
   }
 
+  private board(tick: number): BoardRow[] {
+    const t = this.traffic;
+    const rows: BoardRow[] = [];
+    const names = ['', 'approach', 'landing', 'taxiIn', 'turnaround', 'pushback', 'taxiOut', 'holding', 'lineUp', 'takeoff'];
+    const stands = this.airfield.data.stands;
+    for (let i = 0; i < 256 && rows.length < 40; i++) {
+      if (t.active[i] === 0 || t.state[i] === AcState.Free) continue;
+      const f = t.flight[i];
+      const al = f >= 0 ? t.fAirline[f] : -1;
+      const stand = stands.find((s) => s.id === t.standId[i]);
+      rows.push({
+        airline: al >= 0 ? this.airlines[al].name : 'Test',
+        type: AIRCRAFT[t.type[i]].icaoType,
+        status: names[t.state[i]],
+        stand: stand ? stand.number : '',
+        eta: f >= 0 ? minuteOfDay(t.fEta[f]) : 0,
+        delayMin: f >= 0 ? Math.round(t.fDelay[f] / TICKS_PER_MINUTE) : 0,
+      });
+    }
+    for (let f = 0; f < 1024 && rows.length < 60; f++) {
+      if (t.fState[f] !== FlState.Scheduled) continue;
+      const al = t.fAirline[f];
+      rows.push({
+        airline: al >= 0 ? this.airlines[al].name : 'Test',
+        type: AIRCRAFT[t.fType[f]].icaoType,
+        status: 'scheduled',
+        stand: '',
+        eta: minuteOfDay(t.fEta[f]),
+        delayMin: Math.round(t.fDelay[f] / TICKS_PER_MINUTE),
+      });
+    }
+    void tick;
+    return rows;
+  }
+
   payload(tick: number): BusinessPayload {
     const dep = this.depCapacity();
     return {
+      board: this.board(tick),
       version: this.version,
       day: dayIndex(tick),
       minuteOfDay: minuteOfDay(tick),
@@ -551,6 +585,55 @@ export class Business {
       flightsToday: this.flightsToday,
       lostPaxToday: this.lostToday,
     };
+  }
+
+  saveState(): unknown {
+    return {
+      version: this.version, terminals: this.terminals, airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
+      onTime: this.onTime, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
+      weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
+      today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
+      flightsToday: this.flightsToday, lostToday: this.lostToday, depWindow: this.depWindow,
+      flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
+      rng: this.rng.getState(), marketRng: this.marketRng.getState(),
+    };
+  }
+
+  loadState(raw: unknown): void {
+    const o = raw as {
+      version: number; terminals: Terminal[]; airlines: Airline[]; rating: number; satisfaction: number; onTime: number; loan: number;
+      loanOriginal: number; weather: WeatherKind; weatherStart: number; weatherEnd: number; pendingKind: WeatherKind; nextTerminalId: number;
+      day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number; depWindow: number;
+      flightPax: string; flightDockedAt: string; rng: number; marketRng: number;
+    };
+    this.terminals.length = 0;
+    this.terminals.push(...o.terminals);
+    this.airlines.length = 0;
+    this.airlines.push(...o.airlines);
+    this.rating = o.rating;
+    this.satisfaction = o.satisfaction;
+    this.onTime = o.onTime;
+    this.loan = o.loan;
+    this.loanOriginal = o.loanOriginal;
+    this.weather = o.weather;
+    this.traffic.setWeather(o.weather);
+    this.weatherStart = o.weatherStart;
+    this.weatherEnd = o.weatherEnd;
+    this.pendingKind = o.pendingKind;
+    this.nextTerminalId = o.nextTerminalId;
+    this.day = o.day;
+    this.today.set(o.today);
+    this.history.length = 0;
+    for (const h of o.history) this.history.push(Float64Array.from(h));
+    this.paxToday = o.paxToday;
+    this.flightsToday = o.flightsToday;
+    this.lostToday = o.lostToday;
+    this.depWindow = o.depWindow;
+    unpackInto(o.flightPax, this.flightPax, Int32Array);
+    unpackInto(o.flightDockedAt, this.flightDockedAt, Int32Array);
+    this.rng.setState(o.rng);
+    this.marketRng.setState(o.marketRng);
+    this.version = o.version + 1;
   }
 
   hash(h: number): number {

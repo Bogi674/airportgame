@@ -12,6 +12,8 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { pointInPolygon, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
+import { terminalPolygon } from '@shared/business';
+import { BUSINESS } from '@data/index';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
 import { formatMoney } from '../format';
@@ -130,7 +132,8 @@ export class ToolController {
   down(p: Pt, mods: Mods): void {
     this.cursor = p;
     this.frozen = false;
-    if (useToolStore.getState().tool === 'runway') {
+    const tool = useToolStore.getState().tool;
+    if (tool === 'runway' || tool === 'terminal') {
       this.start = this.snap(p, null, mods, false);
       this.dragging = true;
     }
@@ -159,6 +162,9 @@ export class ToolController {
       case 'stands':
       case 'gaBlock':
         this.previewStands(p);
+        break;
+      case 'terminal':
+        this.previewTerminal(p);
         break;
       case 'demolish':
         this.previewDemolish(p);
@@ -200,6 +206,9 @@ export class ToolController {
       case 'gaBlock':
         this.commitStands(p);
         break;
+      case 'terminal':
+        this.finishTerminal(p);
+        break;
       case 'demolish': {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
         if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
@@ -207,7 +216,8 @@ export class ToolController {
       }
       case 'select': {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
-        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : null });
+        const term = hit ? null : this.terminalAt(p);
+        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : term ? { kind: 'terminal', id: term } : null });
         break;
       }
     }
@@ -237,7 +247,7 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
-    if ((e.key === 'r' || e.key === 'R') && (st.tool === 'stands' || st.tool === 'gaBlock')) {
+    if ((e.key === 'r' || e.key === 'R') && (st.tool === 'stands' || st.tool === 'gaBlock' || st.tool === 'terminal')) {
       st.set({ rowHeading: (st.rowHeading + (e.shiftKey ? 15 : 90)) % 360 });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
@@ -536,6 +546,64 @@ export class ToolController {
     const plan = this.standPlan(p);
     if (plan.ga) this.deps.send({ type: 'buildGaBlock', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count });
     else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, code: plan.code });
+  }
+
+  // Terminal ---------------------------------------------------------------
+
+  private terminalAt(p: Pt): number | null {
+    const b = useGameStore.getState().business;
+    if (!b) return null;
+    for (const t of b.terminals) if (pointInPolygon(p.x, p.y, terminalPolygon(t))) return t.id;
+    return null;
+  }
+
+  /** Terminal footprint from a drag, in the frame of the chosen heading. */
+  private terminalRect(a: Pt, b: Pt): { cx: number; cy: number; w: number; d: number; heading: number } {
+    const heading = useToolStore.getState().rowHeading;
+    const u = compassVector(heading);
+    const v = { x: -u.y, y: u.x };
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const w = Math.round(Math.abs(dx * u.x + dy * u.y) / 2) * 2;
+    const d = Math.round(Math.abs(dx * v.x + dy * v.y) / 2) * 2;
+    return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, w, d, heading };
+  }
+
+  private previewTerminal(p: Pt): void {
+    if (this.frozen && !this.dragging) return;
+    if (!this.start || !this.dragging) {
+      this.deps.setGhost({ valid: true, shapes: [{ k: 'ring', x: p.x, y: p.y, r: 12 }] });
+      useToolStore.getState().set({ hint: 'hint.terminal', problem: null, buy: null });
+      return;
+    }
+    const r = this.terminalRect(this.start, p);
+    const T = BUSINESS.terminal;
+    const poly = terminalPolygon({ cx: r.cx, cy: r.cy, w: Math.max(2, r.w), d: Math.max(2, r.d), headingDeg: r.heading });
+    let problem: Problem | null;
+    if (r.w < T.minSideM || r.d < T.minSideM || r.w > T.maxSideM || r.d > T.maxSideM) problem = { code: 'terminalSize', args: { min: T.minSideM, max: T.maxSideM } };
+    else problem = this.landProblem({ polygon: poly });
+    if (!problem && this.af.aprons.some((a) => poly.some((c) => pointInPolygon(c.x, c.y, a.polygon)))) problem = { code: 'terminalOnPavement' };
+    const cost = Math.round(r.w * r.d * T.buildCostPerM2);
+    this.show(
+      { valid: problem === null, shapes: [{ k: 'poly', pts: poly }], label: { x: p.x, y: p.y, text: tFormat('ghost.terminal', { w: r.w, d: r.d, cost: formatMoney(cost) }) } },
+      problem,
+      'hint.terminal',
+    );
+  }
+
+  private finishTerminal(p: Pt): void {
+    const start = this.start;
+    this.start = null;
+    this.dragging = false;
+    this.deps.setGhost(null);
+    if (!start) return;
+    const r = this.terminalRect(start, p);
+    if (r.w < 4 || r.d < 4) return;
+    if (useToolStore.getState().problem) {
+      this.frozen = true;
+      return;
+    }
+    this.deps.send({ type: 'buildTerminal', cx: r.cx, cy: r.cy, w: r.w, d: r.d, headingDeg: r.heading });
   }
 
   // Demolish -------------------------------------------------------------
