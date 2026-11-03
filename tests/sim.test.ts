@@ -114,3 +114,74 @@ describe('Paused command flush', () => {
     expect(rerun.stateHash()).toBe(live.stateHash());
   });
 });
+
+describe('Parcel purchase', () => {
+  const firstFor = (sim: Sim, pred: (type: number) => boolean): number => {
+    for (let p = 0; p < sim.site.parcelCount; p++) if (sim.parcelOwner[p] === 0 && pred(sim.site.parcelType[p])) return p;
+    return -1;
+  };
+
+  it('starts with three owned parcels and the starting cash', () => {
+    const sim = new Sim('GOLDEN-0001', OPTIONS);
+    let owned = 0;
+    for (let p = 0; p < sim.site.parcelCount; p++) owned += sim.parcelOwner[p];
+    expect(owned).toBe(3);
+    expect(sim.cash).toBe(30_000_000);
+  });
+
+  it('buying deducts the price and marks the parcel owned', () => {
+    const sim = new Sim('GOLDEN-0001', OPTIONS);
+    const p = firstFor(sim, (t) => t !== 6);
+    const price = sim.site.parcelPrice[p];
+    sim.enqueue({ type: 'buyParcel', parcelId: p });
+    sim.step();
+    expect(sim.parcelOwner[p]).toBe(1);
+    expect(sim.cash).toBe(30_000_000 - price);
+    expect(sim.takeOwnershipDirty()).toBe(true);
+    expect(sim.takeOwnershipDirty()).toBe(false);
+  });
+
+  it('refuses protected land and reports it', () => {
+    const sim = new Sim('GOLDEN-0001', OPTIONS);
+    const p = firstFor(sim, (t) => t === 6);
+    expect(p).toBeGreaterThanOrEqual(0);
+    sim.enqueue({ type: 'buyParcel', parcelId: p });
+    sim.step();
+    expect(sim.parcelOwner[p]).toBe(0);
+    const events: string[] = [];
+    sim.drainEvents(events);
+    expect(events).toEqual(['parcelNotForSale']);
+  });
+
+  it('refuses a purchase the player cannot afford', () => {
+    const sim = new Sim('GOLDEN-0001', OPTIONS);
+    sim.cash = 10;
+    const p = firstFor(sim, (t) => t !== 6);
+    sim.enqueue({ type: 'buyParcel', parcelId: p });
+    sim.step();
+    expect(sim.parcelOwner[p]).toBe(0);
+    expect(sim.cash).toBe(10);
+    const events: string[] = [];
+    sim.drainEvents(events);
+    expect(events).toEqual(['insufficientFunds']);
+  });
+
+  it('ignores invalid ids and repeat purchases', () => {
+    const sim = new Sim('GOLDEN-0001', OPTIONS);
+    sim.enqueue({ type: 'buyParcel', parcelId: -5 });
+    sim.enqueue({ type: 'buyParcel', parcelId: 1e9 });
+    sim.enqueue({ type: 'buyParcel', parcelId: sim.site.startParcels[0] });
+    sim.step();
+    expect(sim.cash).toBe(30_000_000);
+  });
+
+  it('purchases replay deterministically', () => {
+    const live = new Sim('GOLDEN-0001', OPTIONS);
+    const p = firstFor(live, (t) => t !== 6);
+    live.step();
+    live.enqueue({ type: 'buyParcel', parcelId: p });
+    for (let i = 0; i < 30; i++) live.step();
+    const rerun = runReplay(recordReplay(live), 31);
+    expect(rerun.stateHash()).toBe(live.stateHash());
+  });
+});

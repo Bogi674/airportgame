@@ -8,6 +8,7 @@ import {
   type Speed,
 } from '@shared/time';
 import { Sim } from '@sim/sim';
+import { toPayload } from '@sim/world/site';
 import type { WorkerScope } from './scope';
 
 const scope = self as unknown as WorkerScope<ToSimMessage, FromSimMessage>;
@@ -28,6 +29,7 @@ let lastPerf = 0;
 let tickAccumulator = 0;
 let msAccumulator = 0;
 let ticksMeasured = 0;
+const eventScratch: string[] = [];
 let loopHandle: ReturnType<typeof setTimeout> | null = null;
 
 function viewsFor(buffer: ArrayBuffer): SnapshotViews {
@@ -42,6 +44,38 @@ function viewsFor(buffer: ArrayBuffer): SnapshotViews {
 function effectiveSpeed(): number {
   // Over 50 ticks of backlog the speed caps automatically.
   return backlog > BACKLOG_SPEED_CAP_TICKS ? Math.min(speed, 1) : speed;
+}
+
+function postOwnershipIfDirty(): void {
+  if (!sim || !sim.takeOwnershipDirty()) return;
+  const owner = new Uint8Array(sim.parcelOwner);
+  scope.postMessage({ type: 'staticData', kind: 'ownership', payload: { owner, cash: sim.cash } }, [owner.buffer]);
+}
+
+function postEvents(): void {
+  if (!sim) return;
+  sim.drainEvents(eventScratch);
+  if (eventScratch.length > 0) {
+    scope.postMessage({ type: 'events', list: eventScratch.slice() });
+    eventScratch.length = 0;
+  }
+}
+
+function transferList(site: ReturnType<typeof toPayload>): ArrayBuffer[] {
+  return [
+    site.heights.buffer,
+    site.landClass.buffer,
+    site.parcelId.buffer,
+    site.parcelType.buffer,
+    site.parcelAreaHa.buffer,
+    site.parcelPrice.buffer,
+    site.parcelExtraCost.buffer,
+    site.parcelResettleDays.buffer,
+    site.parcelCx.buffer,
+    site.parcelCy.buffer,
+    site.windFreq.buffer,
+    site.windMeanKt.buffer,
+  ] as ArrayBuffer[];
 }
 
 function loop(): void {
@@ -70,6 +104,9 @@ function loop(): void {
     tickAccumulator = 0;
     backlog = 0;
   }
+
+  postOwnershipIfDirty();
+  postEvents();
 
   if (now - lastSnapshot >= SNAPSHOT_INTERVAL_MS) {
     const buffer = pool.acquire();
@@ -105,6 +142,11 @@ scope.onmessage = (event) => {
         sim = new Sim(msg.seed, msg.options);
         lastLoop = performance.now();
         tickAccumulator = 0;
+        {
+          const payload = toPayload(sim.site);
+          scope.postMessage({ type: 'staticData', kind: 'site', payload }, transferList(payload));
+        }
+        postOwnershipIfDirty();
         scope.postMessage({ type: 'ready' });
         if (loopHandle === null) loopHandle = setTimeout(loop, 0);
         break;

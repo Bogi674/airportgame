@@ -5,13 +5,16 @@ import type { SimClient } from '../worker/client';
 const ZOOM_STEP = 1.0015;
 const ROTATE_RATE = 0.004;
 
+const CLICK_SLOP_PX = 4;
+
 interface Props {
   client: SimClient;
   onRenderer(renderer: Renderer | null): void;
+  onPick(parcelId: number): void;
 }
 
 /** The map canvas: owns the renderer, the frame loop and pointer input. */
-export function MapView({ client, onRenderer }: Props) {
+export function MapView({ client, onRenderer, onPick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -25,12 +28,16 @@ export function MapView({ client, onRenderer }: Props) {
     let rotating = false;
     let lastX = 0;
     let lastY = 0;
+    let downX = 0;
+    let downY = 0;
 
     const onDown = (e: PointerEvent): void => {
       dragging = e.button === 0 || e.button === 1;
       rotating = e.button === 2;
       lastX = e.offsetX;
       lastY = e.offsetY;
+      downX = e.offsetX;
+      downY = e.offsetY;
       canvas.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent): void => {
@@ -40,6 +47,8 @@ export function MapView({ client, onRenderer }: Props) {
       lastY = e.offsetY;
     };
     const onUp = (e: PointerEvent): void => {
+      const wasClick = dragging && e.button === 0 && Math.hypot(e.offsetX - downX, e.offsetY - downY) < CLICK_SLOP_PX;
+      if (wasClick) onPick(renderer.parcelAt(e.offsetX, e.offsetY));
       dragging = false;
       rotating = false;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
@@ -87,7 +96,7 @@ export function MapView({ client, onRenderer }: Props) {
       renderer.dispose();
       onRenderer(null);
     };
-  }, [client, onRenderer]);
+  }, [client, onRenderer, onPick]);
 
   return <canvas ref={canvasRef} id="map" data-testid="map" style="display:block;width:100%;height:100%;touch-action:none" />;
 }

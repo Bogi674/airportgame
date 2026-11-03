@@ -1,4 +1,5 @@
 import { clamp } from '@shared/math';
+import { compassToWorldAngle } from '@shared/site';
 
 export const MIN_ZOOM = 0.05;
 export const MAX_ZOOM = 40;
@@ -87,5 +88,23 @@ export class Camera {
     out[1] = this.y - ey;
     out[2] = this.x + ex;
     out[3] = this.y + ey;
+  }
+
+  /** Fits a square of `sizeM` meters centred on the camera into the viewport with a small margin. */
+  zoomToFit(sizeM: number, cx: number, cy: number): void {
+    const spread = Math.abs(Math.cos(this.rotation)) + Math.abs(Math.sin(this.rotation));
+    this.x = cx;
+    this.y = cy;
+    this.setZoom((Math.min(this.width, this.height) * 0.96) / (sizeM * spread));
+  }
+
+  /** Rotates the view so a runway axis with this compass heading runs left to right. */
+  alignToAxis(headingDeg: number): void {
+    this.rotation = -compassToWorldAngle(headingDeg);
+  }
+
+  /** North up. */
+  faceNorth(): void {
+    this.rotation = 0;
   }
 }

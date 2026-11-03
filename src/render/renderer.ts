@@ -1,7 +1,10 @@
 import { CHUNK_SIZE_M } from '@shared/math';
+import { CELL_M, GRID_N } from '@shared/site';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
+import type { SitePayload } from '@shared/site';
 import { Camera } from './camera';
-import { createChunkBaker } from './bake/chunkBaker';
+import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
+import { ParcelOverlay } from './overlay';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
 
 const MAX_BACKING = 4096;
@@ -31,7 +34,12 @@ export class Renderer {
   readonly camera = new Camera();
   private readonly ctx: CanvasRenderingContext2D;
   private readonly chunks: ChunkCache;
-  private readonly baker: ReturnType<typeof createChunkBaker>;
+  private readonly baker: ChunkBaker;
+  private site: SitePayload | null = null;
+  private overlay: ParcelOverlay | null = null;
+  private pendingOwner: Uint8Array | null = null;
+  private pendingSelected = -1;
+  private showParcels = false;
   private readonly marker = bakeMarker();
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
@@ -56,6 +64,42 @@ export class Renderer {
   setQualityDprCap(cap: number): void {
     this.qualityDprCap = cap;
     this.resize();
+  }
+
+  /** Starts a new site: re-bakes terrain from scratch and rebuilds the parcel overlay. */
+  setSite(site: SitePayload): void {
+    this.site = site;
+    this.pendingOwner = null;
+    this.baker.setSite({ seed: site.seed, heights: site.heights, landClass: site.landClass, parcelId: site.parcelId });
+    this.chunks.clear();
+    this.overlay = new ParcelOverlay(site);
+    if (this.pendingOwner) this.overlay.setOwner(this.pendingOwner);
+    this.overlay.setSelected(this.pendingSelected);
+  }
+
+  setOwnership(owner: Uint8Array): void {
+    this.pendingOwner = owner;
+    this.overlay?.setOwner(owner);
+  }
+
+  setSelectedParcel(id: number): void {
+    this.pendingSelected = id;
+    this.overlay?.setSelected(id);
+  }
+
+  setParcelOverlayVisible(visible: boolean): void {
+    this.showParcels = visible;
+  }
+
+  /** Parcel id under a screen position, or -1 outside the site. */
+  parcelAt(sx: number, sy: number): number {
+    if (!this.site) return -1;
+    const p = { x: 0, y: 0 };
+    this.camera.screenToWorld(sx, sy, p);
+    const i = Math.floor(p.x / CELL_M);
+    const j = Math.floor(p.y / CELL_M);
+    if (i < 0 || j < 0 || i >= GRID_N || j >= GRID_N) return -1;
+    return this.site.parcelId[j * GRID_N + i];
   }
 
   /** Re-reads size and pixel ratio. Caps each backing dimension at 4096. */
@@ -87,7 +131,11 @@ export class Renderer {
     const e = (cam.width / 2) * this.dpr - z * (c * cam.x - s * cam.y);
     const f = (cam.height / 2) * this.dpr - z * (s * cam.x + c * cam.y);
 
+    if (!this.site) return;
     this.drawChunks(z * c, z * s, -z * s, z * c, e, f);
+    if (this.overlay) {
+      this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
+    }
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
   }
 

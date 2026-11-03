@@ -1,9 +1,16 @@
 import type { Command } from '@sim/commands';
+import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
 /** Options chosen in the new game wizard. Grows with later milestones. */
 export interface GameOptions {
-  preset: 'flatCoastal' | 'riverValley';
+  preset: Preset;
+}
+
+/** Parcel ownership and cash, sent whenever either changes. */
+export interface OwnershipPayload {
+  owner: Uint8Array;
+  cash: number;
 }
 
 export const PROTOCOL_VERSION = 1;
@@ -27,14 +34,25 @@ export type FromSimMessage =
   | { type: 'ready' }
   | { type: 'snapshot'; tick: number; buffer: ArrayBuffer }
   | { type: 'staticDirty'; chunks: number[]; kinds: number[] }
-  | { type: 'staticData'; kind: string; payload: ArrayBuffer }
+  | { type: 'staticData'; kind: 'site'; payload: SitePayload }
+  | { type: 'staticData'; kind: 'ownership'; payload: OwnershipPayload }
   | { type: 'queryResult'; id: number; data: unknown }
   | { type: 'events'; list: string[] }
   | { type: 'perf'; report: PerfReport }
   | { type: 'error'; tick: number; seed: string; message: string; commands: Command[] };
 
 /** Main thread to bake worker. */
-export type ToBakeMessage = { type: 'bake'; key: number; band: number; cx: number; cy: number };
+export type ToBakeMessage =
+  | { type: 'site'; site: BakeSite }
+  | { type: 'bake'; key: number; band: number; cx: number; cy: number };
+
+/** The part of the site the terrain baker needs. */
+export interface BakeSite {
+  seed: string;
+  heights: Float32Array;
+  landClass: Uint8Array;
+  parcelId: Uint16Array;
+}
 
 /** Bake worker to main thread. */
 export type FromBakeMessage =

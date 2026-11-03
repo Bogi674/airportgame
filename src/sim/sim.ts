@@ -1,9 +1,11 @@
 import { SITE_SIZE_M } from '@shared/math';
+import { ParcelType, START_CASH } from '@shared/site';
 import type { GameOptions } from '@shared/protocol';
 import { SnapHeader, SNAPSHOT_AIRCRAFT_CAPACITY, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
 import { cosLut, sinLut } from '@shared/trig';
 import { CommandLog, type Command } from './commands';
+import { generateSite, type SiteSpec } from './world/site';
 import { foldF64, foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
 
@@ -24,6 +26,13 @@ export class Sim {
   readonly options: GameOptions;
   readonly log = new CommandLog();
   readonly rng: Rng;
+  readonly site: SiteSpec;
+  /** Owner per parcel: 0 none, 1 the player. */
+  readonly parcelOwner: Uint8Array;
+  cash: number;
+  /** Set when ownership or cash changed since the last `takeOwnershipDirty`. */
+  private ownershipDirty = true;
+  private readonly eventQueue: string[] = [];
 
   tick = 0;
   /** Game seconds since start. Integer ticks times TICK_SECONDS, kept as a sum for exactness checks. */
@@ -51,6 +60,10 @@ export class Sim {
     this.seed = seed;
     this.options = options;
     this.rng = Rng.fromString(seed);
+    this.site = generateSite(seed, options.preset);
+    this.parcelOwner = new Uint8Array(this.site.parcelCount);
+    for (let i = 0; i < this.site.startParcels.length; i++) this.parcelOwner[this.site.startParcels[i]] = 1;
+    this.cash = START_CASH;
     this.aircraftRng = this.rng.fork('aircraft');
     for (let i = 0; i < AIRCRAFT_CAPACITY; i++) {
       this.aircraftFree[i] = AIRCRAFT_CAPACITY - 1 - i;
@@ -127,7 +140,41 @@ export class Sim {
       case 'clearTestAircraft':
         this.clearAircraft();
         break;
+      case 'buyParcel':
+        this.buyParcel(cmd.parcelId);
+        break;
     }
+  }
+
+  private buyParcel(id: number): void {
+    const site = this.site;
+    if (!Number.isInteger(id) || id < 0 || id >= site.parcelCount) return;
+    if (this.parcelOwner[id] === 1) return;
+    if (site.parcelType[id] === ParcelType.Protected) {
+      this.eventQueue.push('parcelNotForSale');
+      return;
+    }
+    const price = site.parcelPrice[id];
+    if (price > this.cash) {
+      this.eventQueue.push('insufficientFunds');
+      return;
+    }
+    this.cash -= price;
+    this.parcelOwner[id] = 1;
+    this.ownershipDirty = true;
+  }
+
+  /** Returns true once after ownership or cash changed. */
+  takeOwnershipDirty(): boolean {
+    const d = this.ownershipDirty;
+    this.ownershipDirty = false;
+    return d;
+  }
+
+  /** Event codes raised since the last call, for the alert system. */
+  drainEvents(out: string[]): void {
+    for (let i = 0; i < this.eventQueue.length; i++) out.push(this.eventQueue[i]);
+    this.eventQueue.length = 0;
   }
 
   private spawnAircraft(x: number, y: number, heading: number, speed: number): void {
@@ -187,6 +234,8 @@ export class Sim {
     h = foldU32(h, this.rng.getState());
     h = foldU32(h, this.aircraftRng.getState());
     h = foldInts(h, this.aircraftActive, AIRCRAFT_CAPACITY);
+    h = foldInts(h, this.parcelOwner, this.parcelOwner.length);
+    h = foldU32(h, Math.floor(this.cash));
     h = foldF64(h, this.bitsX, AIRCRAFT_CAPACITY);
     h = foldF64(h, this.bitsY, AIRCRAFT_CAPACITY);
     h = foldF64(h, this.bitsHeading, AIRCRAFT_CAPACITY);

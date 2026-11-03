@@ -120,9 +120,14 @@ export class ChunkCache {
     }
   }
 
-  dispose(): void {
+  /** Drops every chunk, for example when a new game starts. Late deliveries are ignored. */
+  clear(): void {
     for (const e of this.entries.values()) closeImage(e.image);
     this.entries.clear();
+  }
+
+  dispose(): void {
+    this.clear();
   }
 }
 

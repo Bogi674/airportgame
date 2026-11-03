@@ -1,16 +1,21 @@
-import type { FromBakeMessage, ToBakeMessage } from '@shared/protocol';
+import type { BakeSite, FromBakeMessage, ToBakeMessage } from '@shared/protocol';
 import { chunkPixelSize, type ChunkRequester } from '../chunks';
-import { bakeChunkPlaceholder } from './bakeChunk';
+import { TerrainBaker } from '../terrain';
 
 type Deliver = (key: number, image: CanvasImageSource) => void;
 
+export interface ChunkBaker extends ChunkRequester {
+  setSite(site: BakeSite): void;
+  dispose(): void;
+}
+
 /** Bakes in the bake worker when OffscreenCanvas exists, otherwise on the main thread in 4 ms slices. */
-export function createChunkBaker(deliver: Deliver): ChunkRequester & { dispose(): void } {
+export function createChunkBaker(deliver: Deliver): ChunkBaker {
   if (typeof OffscreenCanvas !== 'undefined') return new WorkerBaker(deliver);
   return new MainThreadBaker(deliver);
 }
 
-class WorkerBaker implements ChunkRequester {
+class WorkerBaker implements ChunkBaker {
   private readonly worker = new Worker(new URL('./bakeWorker.ts', import.meta.url), { type: 'module' });
 
   constructor(deliver: Deliver) {
@@ -18,6 +23,11 @@ class WorkerBaker implements ChunkRequester {
       const msg = event.data;
       if (msg.type === 'baked') deliver(msg.key, msg.bitmap);
     };
+  }
+
+  setSite(site: BakeSite): void {
+    const msg: ToBakeMessage = { type: 'site', site };
+    this.worker.postMessage(msg);
   }
 
   request(key: number, band: number, cx: number, cy: number): void {
@@ -30,11 +40,16 @@ class WorkerBaker implements ChunkRequester {
   }
 }
 
-class MainThreadBaker implements ChunkRequester {
+class MainThreadBaker implements ChunkBaker {
   private readonly queue: { key: number; band: number; cx: number; cy: number }[] = [];
   private scheduled = false;
+  private terrain: TerrainBaker | null = null;
 
   constructor(private readonly deliver: Deliver) {}
+
+  setSite(site: BakeSite): void {
+    this.terrain = new TerrainBaker(site);
+  }
 
   request(key: number, band: number, cx: number, cy: number): void {
     this.queue.push({ key, band, cx, cy });
@@ -47,7 +62,7 @@ class MainThreadBaker implements ChunkRequester {
   private drain(): void {
     this.scheduled = false;
     const start = performance.now();
-    while (this.queue.length > 0 && performance.now() - start < 4) {
+    while (this.queue.length > 0 && this.terrain && performance.now() - start < 4) {
       const job = this.queue.shift();
       if (!job) break;
       const px = chunkPixelSize(job.band);
@@ -56,7 +71,7 @@ class MainThreadBaker implements ChunkRequester {
       canvas.height = px;
       const ctx = canvas.getContext('2d');
       if (!ctx) continue;
-      bakeChunkPlaceholder(ctx, job.band, job.cx, job.cy);
+      ctx.putImageData(this.terrain.bake(job.band, job.cx, job.cy), 0, 0);
       this.deliver(job.key, canvas);
     }
     if (this.queue.length > 0) {

@@ -4,7 +4,8 @@
  */
 export type Command =
   | { type: 'spawnTestAircraft'; x: number; y: number; heading: number; speed: number }
-  | { type: 'clearTestAircraft' };
+  | { type: 'clearTestAircraft' }
+  | { type: 'buyParcel'; parcelId: number };
 
 export interface LoggedCommand {
   tick: number;
