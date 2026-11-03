@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Sim } from '../src/sim/sim';
+import { buildTestAirport } from '../tests/helpers';
 
 const TICKS = 20_000;
 const BASELINE_PATH = fileURLToPath(new URL('../perf-baseline.json', import.meta.url));
@@ -16,14 +17,15 @@ const NOISE_FLOOR_MS = 0.005;
 interface Scenario {
   name: string;
   seed: string;
-  aircraft: number;
+  stands: number;
+  perHour: number;
   budgetMsPerTick: number;
 }
 
 const SCENARIOS: Scenario[] = [
-  { name: 'small', seed: 'STRESS-SMALL', aircraft: 10, budgetMsPerTick: 1 },
-  { name: 'medium', seed: 'STRESS-MEDIUM', aircraft: 50, budgetMsPerTick: 4 },
-  { name: 'large', seed: 'STRESS-LARGE', aircraft: 150, budgetMsPerTick: 8 },
+  { name: 'small', seed: 'STRESS-SMALL', stands: 4, perHour: 40, budgetMsPerTick: 1 },
+  { name: 'medium', seed: 'STRESS-MEDIUM', stands: 12, perHour: 120, budgetMsPerTick: 4 },
+  { name: 'large', seed: 'STRESS-LARGE', stands: 20, perHour: 200, budgetMsPerTick: 8 },
 ];
 
 interface Stat {
@@ -38,15 +40,9 @@ function percentile(sorted: Float64Array, p: number): number {
 
 function runScenario(s: Scenario): Record<string, Stat> {
   const sim = new Sim(s.seed, { preset: 'flatCoastal' });
-  for (let i = 0; i < s.aircraft; i++) {
-    sim.enqueue({
-      type: 'spawnTestAircraft',
-      x: (i * 523) % 8000,
-      y: (i * 911) % 8000,
-      heading: (i * 0.77) % 6.28,
-      speed: 70,
-    });
-  }
+  sim.parcelOwner.fill(1);
+  buildTestAirport(sim, { standsPerRow: s.stands });
+  sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: 0.08 });
   const n = sim.subsystemCount;
   const samples: Float64Array[] = [];
   for (let i = 0; i < n; i++) samples.push(new Float64Array(TICKS));
@@ -96,7 +92,7 @@ function main(): void {
 
   for (const s of SCENARIOS) {
     const r = results[s.name];
-    console.log(`\nScenario ${s.name}: ${s.aircraft} aircraft, ${TICKS} ticks, budget ${s.budgetMsPerTick} ms/tick`);
+    console.log(`\nScenario ${s.name}: ${s.stands * 2} stands, ${s.perHour} flights per hour, ${TICKS} ticks, budget ${s.budgetMsPerTick} ms/tick`);
     console.log('  subsystem      mean ms     p99 ms');
     for (const [name, stat] of Object.entries(r)) {
       console.log(`  ${name.padEnd(12)} ${stat.mean.toFixed(5).padStart(9)} ${stat.p99.toFixed(5).padStart(10)}`);

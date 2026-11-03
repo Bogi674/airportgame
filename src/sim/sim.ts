@@ -1,27 +1,22 @@
-import { SITE_SIZE_M } from '@shared/math';
 import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
 import type { GameOptions } from '@shared/protocol';
-import { SnapHeader, SNAPSHOT_AIRCRAFT_CAPACITY, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
+import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
-import { cosLut, sinLut } from '@shared/trig';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
+import { Traffic } from './ops/traffic';
 import { generateSite, type SiteSpec } from './world/site';
-import { foldF64, foldInts, foldU32, HASH_INIT } from './hash';
+import { foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
 
-export const AIRCRAFT_CAPACITY = SNAPSHOT_AIRCRAFT_CAPACITY;
-
 /** Subsystems in execution order. The stress tool times each one separately. */
-const SUBSYSTEMS = ['commands', 'clock', 'aircraft'] as const;
+const SUBSYSTEMS = ['commands', 'clock', 'network', 'flights', 'aircraft'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
 
 /**
  * The simulation core. Pure TypeScript with no DOM and no wall clock, so the same seed
- * and the same commands always give the same result. In M0 the only entities are test
- * aircraft that fly straight and wrap around the site, which exercises the loop,
- * snapshots and replay before real systems exist.
+ * and the same commands always give the same result.
  */
 export class Sim {
   readonly seed: string;
@@ -30,7 +25,9 @@ export class Sim {
   readonly rng: Rng;
   readonly site: SiteSpec;
   readonly airfield = new Airfield();
+  readonly traffic: Traffic;
   private airfieldSent = -1;
+  private networkVersion = -1;
   /** Owner per parcel: 0 none, 1 the player. */
   readonly parcelOwner: Uint8Array;
   cash: number;
@@ -39,26 +36,10 @@ export class Sim {
   private readonly eventQueue: string[] = [];
 
   tick = 0;
-  /** Game seconds since start. Integer ticks times TICK_SECONDS, kept as a sum for exactness checks. */
+  /** Game seconds since start. */
   gameSeconds = 0;
 
-  // Aircraft struct of arrays with a free list and an active index list.
-  readonly aircraftActive = new Uint8Array(AIRCRAFT_CAPACITY);
-  readonly aircraftX = new Float64Array(AIRCRAFT_CAPACITY);
-  readonly aircraftY = new Float64Array(AIRCRAFT_CAPACITY);
-  readonly aircraftHeading = new Float64Array(AIRCRAFT_CAPACITY);
-  readonly aircraftSpeed = new Float64Array(AIRCRAFT_CAPACITY);
-  aircraftCount = 0;
-  private readonly aircraftFree = new Int32Array(AIRCRAFT_CAPACITY);
-  private aircraftFreeTop = 0;
-  private readonly aircraftIndexList = new Int32Array(AIRCRAFT_CAPACITY);
-
-  private readonly aircraftRng: Rng;
   private readonly pending: Command[] = [];
-  private readonly bitsX: Uint32Array;
-  private readonly bitsY: Uint32Array;
-  private readonly bitsHeading: Uint32Array;
-  private readonly bitsSpeed: Uint32Array;
 
   constructor(seed: string, options: GameOptions) {
     this.seed = seed;
@@ -68,15 +49,7 @@ export class Sim {
     this.parcelOwner = new Uint8Array(this.site.parcelCount);
     for (let i = 0; i < this.site.startParcels.length; i++) this.parcelOwner[this.site.startParcels[i]] = 1;
     this.cash = START_CASH;
-    this.aircraftRng = this.rng.fork('aircraft');
-    for (let i = 0; i < AIRCRAFT_CAPACITY; i++) {
-      this.aircraftFree[i] = AIRCRAFT_CAPACITY - 1 - i;
-    }
-    this.aircraftFreeTop = AIRCRAFT_CAPACITY;
-    this.bitsX = new Uint32Array(this.aircraftX.buffer);
-    this.bitsY = new Uint32Array(this.aircraftY.buffer);
-    this.bitsHeading = new Uint32Array(this.aircraftHeading.buffer);
-    this.bitsSpeed = new Uint32Array(this.aircraftSpeed.buffer);
+    this.traffic = new Traffic({ windFreq: this.site.wind.freq, windMeanKt: this.site.wind.meanKt, climate: this.site.climate }, this.rng, (code) => this.eventQueue.push(code));
   }
 
   get subsystemCount(): number {
@@ -85,6 +58,10 @@ export class Sim {
 
   subsystemName(index: number): SubsystemName {
     return SUBSYSTEMS[index];
+  }
+
+  get aircraftCount(): number {
+    return this.traffic.count;
   }
 
   /** Queues a command. It is applied and logged at the start of the next tick. */
@@ -108,7 +85,16 @@ export class Sim {
         this.gameSeconds += TICK_SECONDS;
         break;
       case 2:
-        this.updateAircraft();
+        if (this.networkVersion !== this.airfield.version) {
+          this.networkVersion = this.airfield.version;
+          this.traffic.setAirfield(this.airfield.data);
+        }
+        break;
+      case 3:
+        if (this.tick % 10 === 0) this.traffic.updateFlights(this.tick);
+        break;
+      case 4:
+        this.traffic.update(this.tick);
         break;
     }
   }
@@ -135,14 +121,14 @@ export class Sim {
     this.pending.length = 0;
   }
 
-  /** Applies a command to state. Also used by replay for commands logged at this tick. */
+  /** Applies a command to state. */
   apply(cmd: Command): void {
     switch (cmd.type) {
-      case 'spawnTestAircraft':
-        this.spawnAircraft(cmd.x, cmd.y, cmd.heading, cmd.speed);
+      case 'setTestTraffic':
+        this.traffic.setTestTraffic(cmd.perHour, cmd.turnScale);
         break;
-      case 'clearTestAircraft':
-        this.clearAircraft();
+      case 'testArrival':
+        this.traffic.scheduleArrival(cmd.typeIdx, this.tick + Math.max(0, cmd.inTicks), 0, cmd.turnTicks);
         break;
       case 'buyParcel':
         this.buyParcel(cmd.parcelId);
@@ -230,90 +216,23 @@ export class Sim {
     this.eventQueue.length = 0;
   }
 
-  private spawnAircraft(x: number, y: number, heading: number, speed: number): void {
-    if (this.aircraftFreeTop === 0) return;
-    const id = this.aircraftFree[--this.aircraftFreeTop];
-    this.aircraftActive[id] = 1;
-    this.aircraftX[id] = x;
-    this.aircraftY[id] = y;
-    this.aircraftHeading[id] = heading;
-    // A little per aircraft variation from the aircraft stream keeps the RNG in the hash.
-    this.aircraftSpeed[id] = speed * (0.9 + 0.2 * this.aircraftRng.next());
-    this.rebuildAircraftIndex();
-  }
-
-  private clearAircraft(): void {
-    this.aircraftActive.fill(0);
-    for (let i = 0; i < AIRCRAFT_CAPACITY; i++) this.aircraftFree[i] = AIRCRAFT_CAPACITY - 1 - i;
-    this.aircraftFreeTop = AIRCRAFT_CAPACITY;
-    this.rebuildAircraftIndex();
-  }
-
-  /** Active index list, rebuilt only when aircraft are added or removed. */
-  private rebuildAircraftIndex(): void {
-    let n = 0;
-    for (let i = 0; i < AIRCRAFT_CAPACITY; i++) {
-      if (this.aircraftActive[i] === 1) this.aircraftIndexList[n++] = i;
-    }
-    this.aircraftCount = n;
-  }
-
-  // hot
-  private updateAircraft(): void {
-    const n = this.aircraftCount;
-    const list = this.aircraftIndexList;
-    const x = this.aircraftX;
-    const y = this.aircraftY;
-    const speed = this.aircraftSpeed;
-    const heading = this.aircraftHeading;
-    for (let k = 0; k < n; k++) {
-      const i = list[k];
-      const step = speed[i] * TICK_SECONDS;
-      let nx = x[i] + cosLut(heading[i]) * step;
-      let ny = y[i] + sinLut(heading[i]) * step;
-      if (nx < 0) nx += SITE_SIZE_M;
-      else if (nx >= SITE_SIZE_M) nx -= SITE_SIZE_M;
-      if (ny < 0) ny += SITE_SIZE_M;
-      else if (ny >= SITE_SIZE_M) ny -= SITE_SIZE_M;
-      x[i] = nx;
-      y[i] = ny;
-    }
-  }
-
   /** 32 bit hash of the state that matters, for determinism tests. */
   stateHash(): number {
     let h = HASH_INIT;
     h = foldU32(h, this.tick);
     h = foldU32(h, this.rng.getState());
-    h = foldU32(h, this.aircraftRng.getState());
-    h = foldInts(h, this.aircraftActive, AIRCRAFT_CAPACITY);
     h = foldInts(h, this.parcelOwner, this.parcelOwner.length);
     h = foldU32(h, Math.floor(this.cash));
     h = this.airfield.hash(h);
-    h = foldF64(h, this.bitsX, AIRCRAFT_CAPACITY);
-    h = foldF64(h, this.bitsY, AIRCRAFT_CAPACITY);
-    h = foldF64(h, this.bitsHeading, AIRCRAFT_CAPACITY);
-    h = foldF64(h, this.bitsSpeed, AIRCRAFT_CAPACITY);
+    h = this.traffic.hash(h);
     return h;
   }
 
   /** Writes the current state into a snapshot buffer's views. */
   // hot
   writeSnapshot(views: SnapshotViews): void {
-    const n = this.aircraftCount;
-    const list = this.aircraftIndexList;
     views.header[SnapHeader.Version] = SNAPSHOT_VERSION;
     views.header[SnapHeader.Tick] = this.tick;
-    views.header[SnapHeader.AircraftCount] = n;
-    for (let k = 0; k < n; k++) {
-      const i = list[k];
-      views.aircraftId[k] = i;
-      views.aircraftX[k] = this.aircraftX[i];
-      views.aircraftY[k] = this.aircraftY[i];
-      views.aircraftHeading[k] = this.aircraftHeading[i];
-      views.aircraftType[k] = 0;
-      views.aircraftState[k] = 0;
-      views.aircraftLivery[k] = 0;
-    }
+    this.traffic.writeSnapshot(views);
   }
 }

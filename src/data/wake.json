@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "note": "Minimum seconds between the end of one runway use and the start of the next, by wake category of leader (row) and follower (column), order L M H J.",
+  "order": ["L", "M", "H", "J"],
+  "minSeparationSec": [
+    [0, 0, 0, 0],
+    [60, 0, 0, 0],
+    [120, 90, 0, 0],
+    [150, 120, 90, 60]
+  ],
+  "runwayOccupancySec": { "landingRollout": 60, "lineUp": 25, "crossing": 40 }
+}

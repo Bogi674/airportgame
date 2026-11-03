@@ -3,11 +3,11 @@ import type { Pt } from '@shared/geom';
 
 /**
  * Every player action is a serializable command applied at a tick boundary (hard rule 4).
- * M0 only has the scaffold test traffic commands. Gameplay commands arrive with their milestones.
+ * The test traffic commands are scaffolding until airlines schedule the real flights in M6.
  */
 export type Command =
-  | { type: 'spawnTestAircraft'; x: number; y: number; heading: number; speed: number }
-  | { type: 'clearTestAircraft' }
+  | { type: 'setTestTraffic'; perHour: number; turnScale: number }
+  | { type: 'testArrival'; typeIdx: number; inTicks: number; turnTicks: number }
   | { type: 'buyParcel'; parcelId: number }
   | { type: 'buyParcels'; ids: number[] }
   | { type: 'buildRunway'; x: number; y: number; headingDeg: number; lengthM: number; code: CodeLetter; approach: Approach; surface: Surface; tier: number }

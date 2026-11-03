@@ -295,6 +295,8 @@ export class Airfield {
       this.nameIndex--;
       return main;
     }
+    // A single lane parallel taxiway deadlocks head on, so the prefab makes it one way, from threshold A to B.
+    main.oneWay = true;
     const items: Item[] = [{ type: 'taxiway', obj: main }];
     const edge = r.widthM / 2 + r.shoulderM;
     const inset = Math.min(60, r.lengthM / 4);

@@ -101,17 +101,7 @@ export function App() {
     client.setSpeed(s);
   };
 
-  const spawn = (): void => {
-    for (let i = 0; i < 50; i++) {
-      client.send({
-        type: 'spawnTestAircraft',
-        x: 500 + ((i * 137) % 7000),
-        y: 500 + ((i * 251) % 7000),
-        heading: (i * 0.61) % 6.28,
-        speed: 70,
-      });
-    }
-  };
+  const setTraffic = (perHour: number): void => client.send({ type: 'setTestTraffic', perHour, turnScale: 0.2 });
 
   return (
     <div style="position:relative;width:100%;height:100%;font:13px system-ui,sans-serif;color:#dfe7ec">
@@ -141,10 +131,10 @@ export function App() {
           ))}
         </div>
         <div style="display:flex;gap:4px;margin-top:6px">
-          <button data-testid="spawn" onClick={spawn}>
+          <button data-testid="spawn" onClick={() => setTraffic(30)}>
             {t('hud.spawn')}
           </button>
-          <button onClick={() => client.send({ type: 'clearTestAircraft' })}>{t('hud.clear')}</button>
+          <button onClick={() => setTraffic(0)}>{t('hud.clear')}</button>
         </div>
         <div style="margin-top:6px">
           <button data-testid="parcel-toggle" aria-pressed={store.parcelOverlay} onClick={() => store.toggleParcelOverlay()}>
