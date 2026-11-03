@@ -148,4 +148,4 @@ describe('Wind', () => {
   });
 });
 
-const GOLDEN = { flatCoastal: 2631909501, riverValley: 291297451 };
+const GOLDEN = { flatCoastal: 2658454641, riverValley: 144527872 };

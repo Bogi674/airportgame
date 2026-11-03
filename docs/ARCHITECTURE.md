@@ -197,3 +197,10 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-03: M0 sim content is test aircraft flying straight lines, only to exercise the loop, snapshots, replay and stress tool. They are removed when real aircraft arrive in M3.
 * 2026-11-03: Zoom bands for chunk baking are below 0.4, 0.4 to 3.2 and above 3.2 px/m, at raster scales of 0.25, 1 and 4 px/m, so a 512 m chunk is at most 2048 px.
 * 2026-11-03: `worker/scope.ts` types the worker global by hand so the DOM lib and worker code share one tsconfig.
+* 2026-11-03: Parcels are an id raster at 10 m plus a table (type, area, price, centroid), not polygons. Picking is one array read, the fence and parcel boundaries are traced from the raster, and the tint is one texture. Parcels come from a warped Voronoi, split by water and by road segments, so a parcel can span both banks of a river.
+* 2026-11-03: Terrain and parcels are generated with value noise on a 40 m coarse grid and interpolated, so a site generates in about 150 ms.
+* 2026-11-03: The fairness guarantee is built in, not hoped for. The corridor is chosen on terrain first, carved flat and dry if no natural candidate exists, and parcels under it are forced to buyable types. `tests/site.test.ts` re-checks it independently over 500 seeds (about 3.5 minutes, so it is the slowest test).
+* 2026-11-03: Starting cash is a 30 million placeholder and the affordable land budget for the fairness check is 8 million, until the finance milestone defines difficulty.
+* 2026-11-03: The sim sends the site once as transferred typed arrays (`staticData` kind `site`) and ownership on change (kind `ownership`). The bake worker receives its own copy of heights, classes and parcel ids.
+* 2026-11-03: Chunk raster scale is 0.25, 1 and 4 px/m. Terrain colour is a bilinear blend of class colours with hillshade, and trees, field stripes and buildings are drawn procedurally from hashes only at 1 px/m and above.
+

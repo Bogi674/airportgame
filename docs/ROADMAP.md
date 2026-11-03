@@ -48,12 +48,12 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ### M1. Site, land and camera
 
-* [ ] `SiteSpec` generator: terrain, parcels with types and prices, wind rose, climate, city
-* [ ] Fairness guarantee: an affordable 3.5 km corridor in the Acceptable band, tested over 500 seeds
-* [ ] Presets Flat Coastal and River Valley, golden seed hash test
-* [ ] Terrain, water and vegetation rendering baked per chunk
-* [ ] Parcel overlay with buy flow and fence along owned land
-* [ ] Minimap, compass, align view to runway, zoom to fit
+* [x] `SiteSpec` generator: terrain, parcels with types and prices, wind rose, climate, city
+* [x] Fairness guarantee: an affordable 3.5 km corridor in the Acceptable band, tested over 500 seeds
+* [x] Presets Flat Coastal and River Valley, golden seed hash test
+* [x] Terrain, water and vegetation rendering baked per chunk
+* [x] Parcel overlay with buy flow and fence along owned land
+* [x] Minimap, compass, align view to runway, zoom to fit (until a runway exists, align uses the ideal heading, switch to the built runway in M2)
 
 ### M2. Airfield builder
 

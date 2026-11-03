@@ -1,4 +1,4 @@
-import { fbm, hash2 } from '@shared/noise';
+import { fbm } from '@shared/noise';
 import {
   CELL_M,
   CORRIDOR_LENGTH_M,
@@ -266,11 +266,6 @@ export function generateParcels(
       landClass[o] = c;
     }
   }
-  // Hash noise keeps some farmland cells as hedgerow grass so fields do not look uniform.
-  for (let o = 0; o < n; o++) {
-    if (landClass[o] === LandClass.Farmland && hash2(noiseSeed, o, 7) < 0.03) landClass[o] = LandClass.Grass;
-  }
-
   return {
     parcelId,
     parcelCount: count,
