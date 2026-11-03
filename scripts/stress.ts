@@ -23,9 +23,9 @@ interface Scenario {
 }
 
 const SCENARIOS: Scenario[] = [
-  { name: 'small', seed: 'STRESS-SMALL', stands: 4, perHour: 40, budgetMsPerTick: 1 },
-  { name: 'medium', seed: 'STRESS-MEDIUM', stands: 12, perHour: 120, budgetMsPerTick: 4 },
-  { name: 'large', seed: 'STRESS-LARGE', stands: 20, perHour: 200, budgetMsPerTick: 8 },
+  { name: 'small', seed: 'STRESS-SMALL', stands: 8, perHour: 40, budgetMsPerTick: 1 },
+  { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4 },
+  { name: 'large', seed: 'STRESS-LARGE', stands: 30, perHour: 240, budgetMsPerTick: 8 },
 ];
 
 interface Stat {
@@ -38,9 +38,13 @@ function percentile(sorted: Float64Array, p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
 }
 
+const peaks: Record<string, string> = {};
+
 function runScenario(s: Scenario): Record<string, Stat> {
   const sim = new Sim(s.seed, { preset: 'flatCoastal' });
   sim.parcelOwner.fill(1);
+  // Plenty of cash: the benchmark builds a big airport and is not about money.
+  sim.cash = 500_000_000;
   buildTestAirport(sim, { standsPerRow: s.stands });
   sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: 0.08 });
   const n = sim.subsystemCount;
@@ -52,7 +56,9 @@ function runScenario(s: Scenario): Record<string, Stat> {
   const warm = new Sim(s.seed, { preset: 'flatCoastal' });
   for (let i = 0; i < 2000; i++) warm.step();
 
+  let peak = 0;
   for (let t = 0; t < TICKS; t++) {
+    if (sim.traffic.count > peak) peak = sim.traffic.count;
     let tickNs = 0n;
     for (let i = 0; i < n; i++) {
       const t0 = process.hrtime.bigint();
@@ -65,6 +71,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     total[t] = Number(tickNs) / 1e6;
   }
 
+  peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.deadlocks} deadlocks`;
   const out: Record<string, Stat> = {};
   const addStat = (name: string, arr: Float64Array): void => {
     let sum = 0;
@@ -92,7 +99,8 @@ function main(): void {
 
   for (const s of SCENARIOS) {
     const r = results[s.name];
-    console.log(`\nScenario ${s.name}: ${s.stands * 2} stands, ${s.perHour} flights per hour, ${TICKS} ticks, budget ${s.budgetMsPerTick} ms/tick`);
+    console.log(`\nScenario ${s.name}: ${s.stands} stands, ${s.perHour} flights per hour, ${TICKS} ticks, budget ${s.budgetMsPerTick} ms/tick`);
+    console.log(`  ${peaks[s.name]}`);
     console.log('  subsystem      mean ms     p99 ms');
     for (const [name, stat] of Object.entries(r)) {
       console.log(`  ${name.padEnd(12)} ${stat.mean.toFixed(5).padStart(9)} ${stat.p99.toFixed(5).padStart(10)}`);

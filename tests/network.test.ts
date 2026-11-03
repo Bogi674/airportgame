@@ -21,19 +21,11 @@ function run(sim: Sim, ...cmds: Command[]): string[] {
 function layout(sim: Sim): void {
   run(sim, { type: 'buildRunway', x: 3500, y: 5000, headingDeg: 90, lengthM: 2200, code: 'C', approach: 'precision', surface: 'asphalt', tier: 1 });
   run(sim, { type: 'buildParallelTaxiway', runwayId: 1, side: 'right', offsetM: 190, code: 'C', connectors: 3, surface: 'asphalt', tier: 1 });
-  run(sim, { type: 'setTaxiwayProps', id: sim.airfield.data.taxiways[0].id, oneWay: false });
   run(sim, { type: 'buildApron', polygon: [{ x: 4200, y: 5240 }, { x: 4600, y: 5240 }, { x: 4600, y: 5400 }, { x: 4200, y: 5400 }], surface: 'concrete', tier: 1 });
   run(sim, { type: 'buildStands', x: 4240, y: 5330, headingDeg: 0, count: 2, spacingM: 45, standType: 'remotePushback', code: 'C' });
 }
 
 describe('TaxiNetwork', () => {
-  it('the parallel taxiway prefab is one way by default and routes follow it', () => {
-    const sim = ownedSim();
-    run(sim, { type: 'buildRunway', x: 3500, y: 5000, headingDeg: 90, lengthM: 2200, code: 'C', approach: 'precision', surface: 'asphalt', tier: 1 });
-    run(sim, { type: 'buildParallelTaxiway', runwayId: 1, side: 'right', offsetM: 190, code: 'C', connectors: 3, surface: 'asphalt', tier: 1 });
-    expect(sim.airfield.data.taxiways[0].oneWay).toBe(true);
-  });
-
   it('connects connectors to the parallel taxiway and the runway, and stands to the pavement', () => {
     const sim = ownedSim();
     layout(sim);

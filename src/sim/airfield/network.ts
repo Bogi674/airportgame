@@ -62,6 +62,9 @@ export class TaxiNetwork {
   edgeSurface = new Uint8Array(0);
   edgeStand = new Int32Array(0);
   edgeSource = new Int32Array(0);
+  /** Reservation block per edge, or -1 for one way edges. Two way taxiway edges share one block per taxiway, so opposing aircraft never meet on it. */
+  edgeBlock = new Int32Array(0);
+  blockTotal = 0;
   edgeSampleStart = new Int32Array(0);
   edgeSampleCount = new Int32Array(0);
   sampleX = new Float32Array(0);
@@ -358,6 +361,7 @@ export class TaxiNetwork {
     this.edgeSurface = new Uint8Array(E);
     this.edgeStand = new Int32Array(E).fill(-1);
     this.edgeSource = new Int32Array(E);
+    this.edgeBlock = new Int32Array(E).fill(-1);
     this.edgeSampleStart = new Int32Array(E);
     this.edgeSampleCount = new Int32Array(E);
 
@@ -405,6 +409,20 @@ export class TaxiNetwork {
         sh.push(atan2Det(b.y - a.y, b.x - a.x));
       }
     });
+    const blockOfKey = new Map<number, number>();
+    for (let e = 0; e < E; e++) {
+      const kind = this.edgeKind[e];
+      if (kind === EdgeKind.Runway || this.edgeOneWay[e] === 1) continue;
+      // Taxiway edges share their taxiway's block, stand lead ins have their own.
+      const key = kind === EdgeKind.StandLeadIn ? 1_000_000 + e : this.edgeSource[e];
+      let b = blockOfKey.get(key);
+      if (b === undefined) {
+        b = blockOfKey.size;
+        blockOfKey.set(key, b);
+      }
+      this.edgeBlock[e] = b;
+    }
+    this.blockTotal = blockOfKey.size;
     this.sampleX = Float32Array.from(sx);
     this.sampleY = Float32Array.from(sy);
     this.sampleH = Float32Array.from(sh);

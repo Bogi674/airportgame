@@ -33,6 +33,10 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 * Events: rain, fog, strong wind.
 * UI: main menu, new game wizard, HUD, build tools, inspector, Airlines, Finance and Flights sheets, alerts, settings, saves.
 
+## MVP 1 status
+
+A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, sign airlines, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. The checklists below record what is done and what is simplified or missing. The terminal interior, passengers on screen, ground vehicles and the full aircraft sprite port are not built, so MVP 1 is playable but not complete.
+
 ## MVP 1 milestones
 
 ### M0. Scaffold
@@ -72,63 +76,63 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ### M3. Aircraft and movement
 
-* [ ] Aircraft data loader with zod schema for the 10 MVP 1 types, derived code, wake and approach category tests
-* [ ] Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3
-* [ ] Calibration overlays saved for all 10 types within tolerance
-* [ ] Taxi network builder with samples, blocks and conflict sets, property tests
-* [ ] Routing with direction, closures, max code, congestion cost and preferred flows
-* [ ] Reservations, following gaps, junction priority, holding points, runway exclusivity with wake separation
-* [ ] Push back with direction per stand
-* [ ] Deadlock detection and resolution with debug overlay
-* [ ] Runway length, payload and range, ACR and PCR checks with the limiting factor shown
-* [ ] Test flight generator for arrivals and departures
-* [ ] Stress: 50 aircraft under the medium budget
+* [x] Aircraft data loader with zod schema for the 10 MVP 1 types, derived code, wake and approach category tests
+* [ ] Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3 (simplified: geometry based top down sprites with tiers 0 to 2 (silhouette, engines and livery, panel lines), not a full port of the prototype renderer)
+* [ ] Calibration overlays saved for all 10 types within tolerance (a test checks length and span of all 10 types against the data (2 and 4 percent), overlays against photos are not saved)
+* [ ] Taxi network builder with samples, blocks and conflict sets, property tests (built with 2 m samples and per taxiway blocks, conflict sets and property tests are missing)
+* [ ] Routing with direction, closures, max code, congestion cost and preferred flows (direction, closures, max code, strength and congestion cost are done, preferred flows are missing)
+* [ ] Reservations, following gaps, junction priority, holding points, runway exclusivity with wake separation (node and block reservations, following gaps, holding points, runway exclusivity and wake separation work, junction priority is first come)
+* [ ] Push back with direction per stand (straight push back only)
+* [ ] Deadlock detection and resolution with debug overlay (wait cycles are found and broken by a yield, no debug overlay)
+* [ ] Runway length, payload and range, ACR and PCR checks with the limiting factor shown (runway length, ACR and PCR checks name the limiting factor, payload and range are not modelled)
+* [x] Test flight generator for arrivals and departures
+* [ ] Stress: 50 aircraft under the medium budget (budgets hold with a peak of 14 aircraft on one runway, 50 simultaneous aircraft were not reached)
 
 ### M4. Terminal and departures
 
-* [ ] Building shell placement with local grid and rotation
-* [ ] Walls, doors, floors, rooms with types, room validation
-* [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block
-* [ ] Walking graph with cached distances and regional rebuild
-* [ ] Service nodes and queues
-* [ ] Cohorts and the departure journey from curb to aircraft
-* [ ] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap
-* [ ] Density, queue and walking distance overlays
-* [ ] Satisfaction and airport rating
-* [ ] Stress: 20 000 cohorts under the medium budget
+* [ ] Building shell placement with local grid and rotation (terminals are rectangles with a heading, not a gridded shell)
+* [ ] Walls, doors, floors, rooms with types, room validation (not built, the terminal has modules instead of rooms)
+* [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in, security, baggage belt, seating and toilets as counted modules, no kiosks, bag drop, passport or gate desks)
+* [ ] Walking graph with cached distances and regional rebuild (not built)
+* [ ] Service nodes and queues (a terminal load model replaces queues)
+* [ ] Cohorts and the departure journey from curb to aircraft (passengers are aggregated per flight and limited by terminal capacity, no cohorts)
+* [ ] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap (not built)
+* [ ] Density, queue and walking distance overlays (not built)
+* [ ] Satisfaction and airport rating (rating from on time share, satisfaction, facilities and infrastructure)
+* [ ] Stress: 20 000 cohorts under the medium budget (not applicable, no cohorts)
 
 ### M5. Arrivals, baggage and ground handling
 
-* [ ] Arrival journey with immigration, baggage claim and customs
-* [ ] Simple baggage network (belts with capacity and transit time) and carousels
-* [ ] GSE data and sprites for tug, tractor and carts, belt loader, refueller, hydrant dispenser, GPU, apron bus
-* [ ] Turnaround task lists for the 10 types with dependencies
-* [ ] Service points per type, docking poses, service roads and apron lanes with reservations
-* [ ] Trailer kinematics and free rotation
-* [ ] Hard footprints and overhead zones, collision test over all stand templates and types
-* [ ] Draw order rules (vehicles under wings, never over aircraft)
-* [ ] Staff sprites for check in, security, ground handler, marshaller, cleaner
+* [ ] Arrival journey with immigration, baggage claim and customs (not built)
+* [ ] Simple baggage network (belts with capacity and transit time) and carousels (belts add arrival capacity only)
+* [ ] GSE data and sprites for tug, tractor and carts, belt loader, refueller, hydrant dispenser, GPU, apron bus (not built)
+* [ ] Turnaround task lists for the 10 types with dependencies (a fixed turnaround time per role)
+* [ ] Service points per type, docking poses, service roads and apron lanes with reservations (not built)
+* [ ] Trailer kinematics and free rotation (not built)
+* [ ] Hard footprints and overhead zones, collision test over all stand templates and types (not built)
+* [ ] Draw order rules (vehicles under wings, never over aircraft) (not built)
+* [ ] Staff sprites for check in, security, ground handler, marshaller, cleaner (not built)
 
 ### M6. Airlines, shops, finance
 
-* [ ] Airline generator for regional and national scopes per `docs/AIRLINES.md`, limited to released aircraft
-* [ ] Route demand, seasonal slot requests, contracts with basic fees
-* [ ] Flights board sheet and airline sheet
-* [ ] Shop units with 6 categories, simple tenant fill by rating, sales and rent
-* [ ] Ledger with daily close, revenues and costs for MVP 1 scope, one term loan, Finance sheet
-* [ ] Automatic staffing with wages and a coverage overlay
-* [ ] Wind band effects, weather events (rain, fog, strong wind)
+* [ ] Airline generator for regional and national scopes per `docs/AIRLINES.md`, limited to released aircraft (simplified: 7 invented airlines with 1 to 2 aircraft types each, rating gates, not the full AIRLINES.md model)
+* [ ] Route demand, seasonal slot requests, contracts with basic fees (contracts set rotations per day and a fee level, there are no routes or seasons)
+* [x] Flights board sheet and airline sheet
+* [ ] Shop units with 6 categories, simple tenant fill by rating, sales and rent (rent only, sales are not tracked)
+* [x] Ledger with daily close, revenues and costs for MVP 1 scope, one term loan, Finance sheet
+* [ ] Automatic staffing with wages and a coverage overlay (wages follow a staff count, no coverage overlay)
+* [x] Wind band effects, weather events (rain, fog and strong wind)
 
 ### M7. UI shell, saves and MVP 1 release
 
-* [ ] Main menu, new game wizard, load screen, settings, pause menu per `docs/UI_DESIGN.md`
-* [ ] HUD: top bar, left rail with flyouts, context bar, inspector, alert center, toasts, overlays
-* [ ] Saves to IndexedDB with autosave, export and import, migrations scaffold
-* [ ] Page lifecycle, crash recovery and copy report per `docs/BROWSER.md`
-* [ ] Short guided start (build a strip, a stand, a terminal, sign the first airline)
-* [ ] Quality governor and quality presets
-* [ ] Playwright smoke tests in three engines
-* [ ] All MVP 1 criteria above checked, a 3 hour play session at 4x without errors or budget breaches
+* [ ] Main menu, new game wizard, load screen, settings, pause menu per `docs/UI_DESIGN.md` (simplified compared to UI_DESIGN.md)
+* [ ] HUD: top bar, left rail with flyouts, context bar, inspector, alert center, toasts, overlays (top bar, tool rail, context bar, inspectors, toasts and sheets exist, the left rail has no flyouts and there is no alert center)
+* [x] Saves to IndexedDB with autosave, export and import, migrations scaffold (gzip, three autosave slots, file export and import, version and migration scaffold, replay safe determinism test)
+* [ ] Page lifecycle, crash recovery and copy report per `docs/BROWSER.md` (pause and autosave on a hidden tab, no crash recovery panel or copy report)
+* [x] Short guided start (build a strip, a stand, a terminal, sign the first airline) (a checklist that ticks itself)
+* [ ] Quality governor and quality presets (not built)
+* [ ] Playwright smoke tests in three engines (configured for three engines, run in Chromium only so far)
+* [ ] All MVP 1 criteria above checked, a 3 hour play session at 4x without errors or budget breaches (not all criteria are met, see the notes above)
 
 ## MVP 2 milestones
 

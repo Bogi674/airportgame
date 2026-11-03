@@ -208,4 +208,12 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-03: Airfield edits send the whole airfield to the baker and mark every cached chunk dirty. Dirty chunks keep drawing their old image until the new bake arrives, so edits never flash.
 * 2026-11-03: Holding distance is measured from the runway centerline (75 m visual, 90 m instrument), per the design doc.
 * 2026-11-03: Undo and redo are sim commands with a history of add and remove operations including the cash change, so they replay deterministically. Property changes (one way, closed, max code, speed) are not part of undo.
+* 2026-11-03: Workers are built inline (`?worker&inline`, classic format), so the whole game is one HTML file that runs from `file://`. Module workers from a `blob:null` origin did not start in Chromium, classic ones do.
+* 2026-11-03: Two way taxiways share one reservation block per taxiway, so opposing aircraft never meet head on. Stand lead ins and one way edges need no block. Block counts are recounted from what aircraft hold every 20 ticks, so a missed release cannot lock a taxiway for good.
+* 2026-11-03: Runway use is a list of reservation windows per runway with wake separation from `src/data/wake.json`. A departure that waited more than 2 game minutes holds back new landings, which keeps departures from starving.
+* 2026-11-03: Each runway entry takes at most two queued departures, and arrivals avoid an exit connector with a departure queue. This keeps hold queues from spilling onto the parallel taxiway and gridlocking it.
+* 2026-11-03: Passengers are aggregated, not cohorts. A flight carries seats times a load factor from demand and rating, terminal capacity limits how many are processed, and fees follow. The terminal is a rectangle with counted modules (check in, security, belts, seating, toilets) and shop units instead of a gridded interior.
+* 2026-11-03: Every cash change goes through `Sim.book(category, amount)`, which keeps the daily ledger. The daily close runs at midnight and the game starts at 06:00.
+* 2026-11-03: Saves are the full dynamic state as JSON with base64 typed arrays, gzip in the browser. The site is regenerated from the seed. Determinism test: 5 000 ticks, save, load, 5 000 more equals 10 000 uninterrupted.
+* 2026-11-03: Test traffic commands (`setTestTraffic`, `testArrival`) stay as scaffolding for tests and the stress tool, real flights come from airline contracts.
 

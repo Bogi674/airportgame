@@ -82,6 +82,8 @@ export class Traffic {
   readonly curBlock = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly prevBlock = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly nextBlock = new Int32Array(MAX_AIRCRAFT).fill(-1);
+  /** Edge the junction and block were reserved for, or -1. */
+  readonly nextAcq = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly waitingFor = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly ignoreLocks = new Int32Array(MAX_AIRCRAFT);
   readonly yieldUntil = new Int32Array(MAX_AIRCRAFT);
@@ -208,17 +210,18 @@ export class Traffic {
   }
 
   private resetOwnership(): void {
-    const E = this.net.edgeCount;
     this.nodeOwner = new Int32Array(this.net.nodeCount).fill(-1);
-    this.blockCount = new Int32Array(E);
-    this.blockDir = new Int8Array(E);
-    this.blockLast = new Int32Array(E).fill(-1);
+    const B = this.net.blockTotal;
+    this.blockCount = new Int32Array(B);
+    this.blockDir = new Int8Array(B);
+    this.blockLast = new Int32Array(B).fill(-1);
     this.standOwner = new Int32Array(this.af.stands.length).fill(-1);
     for (let i = 0; i < MAX_AIRCRAFT; i++) {
       this.heldNode[i] = -1;
       this.curBlock[i] = -1;
       this.prevBlock[i] = -1;
       this.nextBlock[i] = -1;
+      this.nextAcq[i] = -1;
       this.waitingFor[i] = -1;
     }
     for (let i = 0; i < MAX_AIRCRAFT; i++) {
@@ -575,6 +578,11 @@ export class Traffic {
       this.delay(f, ordered.length === 0 ? 'noExit' : 'noStand');
       return;
     }
+    // A departure that has waited too long goes first: new landings wait their turn until it is away.
+    if (this.departureStarving(bestR)) {
+      this.delay(f, 'runwayBusy');
+      return;
+    }
     // Runway window for the landing.
     const approachTicks = Math.round(((APPROACH_START_M + TOUCHDOWN_M) / (a.performance.vrefKt * KT)) * 10);
     const sExit = ordered.find((e) => e.idx === chosen)?.s ?? rw.lengthM;
@@ -626,6 +634,14 @@ export class Traffic {
     this.placeOnRunway(ac);
   }
 
+  private departureStarving(r: number): boolean {
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (this.state[j] === AcState.Holding && this.rwyIdx[j] === r && this.tick - this.timer[j] > 1200) return true;
+    }
+    return false;
+  }
+
   /** True when a departing aircraft is waiting on the connector of this runway entry. */
   private exitQueued(entry: number): boolean {
     for (let k = 0; k < this.count; k++) {
@@ -647,6 +663,7 @@ export class Traffic {
         this.curBlock[i] = -1;
         this.prevBlock[i] = -1;
         this.nextBlock[i] = -1;
+        this.nextAcq[i] = -1;
         this.waitingFor[i] = -1;
         this.ignoreLocks[i] = 0;
         this.yieldUntil[i] = 0;
@@ -705,6 +722,7 @@ export class Traffic {
       if (e >= 0 && e < this.blockCount.length && this.blockCount[e] > 0) this.blockCount[e]--;
       arr[i] = -1;
     }
+    this.nextAcq[i] = -1;
     this.waitingFor[i] = -1;
   }
 
@@ -753,7 +771,10 @@ export class Traffic {
           break;
       }
     }
-    if (tick % 20 === 0) this.detectDeadlocks();
+    if (tick % 20 === 0) {
+      this.recountBlocks();
+      this.detectDeadlocks();
+    }
     if (tick % 50 === 0) this.updateCongestion();
   }
 
@@ -779,17 +800,38 @@ export class Traffic {
       this.speed[i] = Math.max(vExit, Math.min(this.speed[i], limit));
       this.rwyS[i] += this.speed[i] * DT;
       if (this.rwyS[i] >= sExit) {
-        this.beginTaxiIn(i);
-        return;
+        // Wait on the runway at the exit until the connector is clear of other aircraft.
+        if (this.connectorBusy(this.net.entryNode[this.entryIdx[i]], i)) {
+          this.rwyS[i] = sExit;
+          this.speed[i] = 0;
+          if (this.rwySlot[i] >= 0) this.rsvEnd[this.rwySlot[i]] = this.tick + 300;
+        } else {
+          this.beginTaxiIn(i);
+          return;
+        }
       }
     }
     this.placeOnRunway(i);
   }
 
+  private connectorBusy(node: number, self: number): boolean {
+    const nx = this.net.nodeX[node];
+    const ny = this.net.nodeY[node];
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === self) continue;
+      const s = this.state[j];
+      if (s !== AcState.TaxiIn && s !== AcState.TaxiOut && s !== AcState.Pushback && s !== AcState.Holding && s !== AcState.LineUp) continue;
+      if (Math.hypot(this.x[j] - nx, this.y[j] - ny) < 45) return true;
+    }
+    return false;
+  }
+
   private beginTaxiIn(i: number): void {
     const slot = this.rwySlot[i];
     if (slot >= 0) {
-      this.rsvEnd[slot] = this.tick + 20;
+      // Keep the runway reserved while the aircraft drives clear of the exit connector.
+      this.rsvEnd[slot] = this.tick + 250;
       this.rwySlot[i] = -1;
     }
     this.state[i] = AcState.TaxiIn;
@@ -800,13 +842,14 @@ export class Traffic {
     this.dist[i] = 0;
     this.speed[i] = Math.min(this.speed[i], 10);
     this.rwyIdx[i] = -1;
-    // Take the first edge so departures do not drive onto it from the other end.
+    // Take the first edge's block so departures do not drive onto it from the other end.
     const e0 = this.routeEdge[i * MAX_ROUTE];
-    if (this.net.edgeOneWay[e0] === 0) {
-      this.blockCount[e0]++;
-      this.blockDir[e0] = this.routeDir[i * MAX_ROUTE];
-      this.blockLast[e0] = i;
-      this.curBlock[i] = e0;
+    const b0 = this.net.edgeBlock[e0];
+    if (b0 >= 0) {
+      this.blockCount[b0]++;
+      this.blockDir[b0] = this.routeDir[i * MAX_ROUTE];
+      this.blockLast[b0] = i;
+      this.curBlock[i] = b0;
     }
     this.applyEdgePose(i);
   }
@@ -858,7 +901,7 @@ export class Traffic {
       const nextD = this.routeDir[base + idx + 1];
       const node = dir === 1 ? net.edgeTo[e] : net.edgeFrom[e];
       const lookahead = Math.max(60, this.speed[i] * 8);
-      if (len - this.dist[i] < lookahead && this.nextBlock[i] !== nextE) {
+      if (len - this.dist[i] < lookahead && this.nextAcq[i] !== nextE) {
         if (this.tick < this.yieldUntil[i] || !this.tryEnter(i, node, nextE, nextD)) goal = Math.max(0, len - (AIRCRAFT[t].dimensions.wingspanM * 0.5 + 12));
       }
     }
@@ -885,10 +928,20 @@ export class Traffic {
     if (!last && this.dist[i] >= len - 0.35) {
       // Cross into the next edge only once the junction is reserved.
       const nextE = this.routeEdge[base + idx + 1];
-      if (this.nextBlock[i] === nextE || this.ignoreLocks[i] > 0) {
-        this.prevBlock[i] = this.curBlock[i];
-        this.curBlock[i] = this.nextBlock[i];
-        this.nextBlock[i] = -1;
+      if (this.nextAcq[i] === nextE || this.ignoreLocks[i] > 0) {
+        // A new block replaces the current one, a block shared with the next edge is simply kept.
+        if (this.nextBlock[i] >= 0) {
+          if (this.prevBlock[i] >= 0 && this.blockCount[this.prevBlock[i]] > 0) this.blockCount[this.prevBlock[i]]--;
+          this.prevBlock[i] = this.curBlock[i];
+          this.curBlock[i] = this.nextBlock[i];
+          this.nextBlock[i] = -1;
+        } else if (this.net.edgeBlock[nextE] !== this.curBlock[i]) {
+          // Leaving a locked taxiway for an unlocked edge: the old block is released once the tail clears.
+          if (this.prevBlock[i] >= 0 && this.blockCount[this.prevBlock[i]] > 0) this.blockCount[this.prevBlock[i]]--;
+          this.prevBlock[i] = this.curBlock[i];
+          this.curBlock[i] = -1;
+        }
+        this.nextAcq[i] = -1;
         this.routeIdx[i] = idx + 1;
         if (st === AcState.TaxiIn && this.entryCounted[i] === 1) this.uncount(i);
         if (st === AcState.Pushback) {
@@ -934,6 +987,7 @@ export class Traffic {
       this.applyEdgePose(i);
     } else if (st === AcState.TaxiOut && this.dist[i] >= goal - 0.3 && this.speed[i] < 0.6) {
       this.state[i] = AcState.Holding;
+      this.timer[i] = this.tick;
       this.speed[i] = 0;
     } else if (st === AcState.LineUp && this.dist[i] >= len - 0.3) {
       this.beginTakeoff(i);
@@ -947,7 +1001,7 @@ export class Traffic {
       if (this.blockCount[this.prevBlock[i]] > 0) this.blockCount[this.prevBlock[i]]--;
       this.prevBlock[i] = -1;
     }
-    if (this.heldNode[i] >= 0 && this.nextBlock[i] < 0 && this.dist[i] >= a.dimensions.wingspanM * 0.5 + 8) {
+    if (this.heldNode[i] >= 0 && this.nextAcq[i] < 0 && this.dist[i] >= a.dimensions.wingspanM * 0.5 + 8) {
       if (this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
       this.heldNode[i] = -1;
     }
@@ -961,9 +1015,11 @@ export class Traffic {
       this.waitingFor[i] = owner;
       return false;
     }
-    const lock = net.edgeOneWay[nextE] === 0 && net.edgeKind[nextE] !== EdgeKind.Runway;
-    if (lock && this.blockCount[nextE] > 0 && this.blockDir[nextE] !== nextD && this.blockLast[nextE] !== i && !ignore) {
-      this.waitingFor[i] = this.blockLast[nextE];
+    const nb = net.edgeBlock[nextE];
+    // A block the aircraft already holds (the same taxiway) needs no new reservation.
+    const needsBlock = nb >= 0 && nb !== this.curBlock[i];
+    if (needsBlock && this.blockCount[nb] > 0 && this.blockDir[nb] !== nextD && this.blockLast[nb] !== i && !ignore) {
+      this.waitingFor[i] = this.blockLast[nb];
       return false;
     }
     // A stand lead in is only for the aircraft that owns the stand.
@@ -974,10 +1030,13 @@ export class Traffic {
     if (this.heldNode[i] >= 0 && this.heldNode[i] !== node && this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
     this.nodeOwner[node] = i;
     this.heldNode[i] = node;
-    this.blockCount[nextE]++;
-    this.blockDir[nextE] = nextD;
-    this.blockLast[nextE] = i;
-    this.nextBlock[i] = nextE;
+    if (needsBlock) {
+      this.blockCount[nb]++;
+      this.blockDir[nb] = nextD;
+      this.blockLast[nb] = i;
+      this.nextBlock[i] = nb;
+    }
+    this.nextAcq[i] = nextE;
     this.waitingFor[i] = -1;
     return true;
   }
@@ -1052,9 +1111,15 @@ export class Traffic {
     let bestHold = -1;
     let bestDir = 1;
     let firstFail = '';
+    let failAvail = -1;
     const f = this.flight[i];
+    let waitedOnly = false;
     for (const h of this.net.holds) {
-      if (this.entryInbound[h.entryIdx] > 0) continue;
+      // A queue of more than two departures per entry spills onto the taxiway and blocks arrivals.
+      if (this.entryInbound[h.entryIdx] > 0 || this.entryDeparting[h.entryIdx] >= 2) {
+        waitedOnly = true;
+        continue;
+      }
       const en = this.af.entries[h.entryIdx];
       const rIdx = this.af.runways.findIndex((r) => r.id === en.runwayId);
       if (rIdx < 0) continue;
@@ -1064,7 +1129,11 @@ export class Traffic {
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;
         const lim = checkTakeoff(a, rw, toda, this.site.climate, this.lengthFactor(rw, dir));
         if (!lim.ok) {
-          if (!firstFail) firstFail = `${lim.reason}|needed=${lim.needed}|available=${lim.available}`;
+          // Report the best an entry could offer, not the first entry that failed.
+          if (!firstFail || lim.available > failAvail) {
+            firstFail = `${lim.reason}|needed=${lim.needed}|available=${lim.available}`;
+            failAvail = lim.available;
+          }
           continue;
         }
         const limit = a.weights.mtowKg < 30000 ? 15 : 20;
@@ -1083,7 +1152,7 @@ export class Traffic {
       }
     }
     if (bestHold < 0) {
-      if (firstFail && this.stuckTicks[i] === 0) {
+      if (firstFail && !waitedOnly && this.stuckTicks[i] === 0) {
         const parts = firstFail.split('|');
         this.refuse(f, parts[0], `|${parts[1]}|${parts[2]}`);
         this.stuckTicks[i] = 1;
@@ -1180,6 +1249,18 @@ export class Traffic {
 
   // Deadlocks and congestion -----------------------------------------------
 
+  /** Rebuilds block counts from what aircraft actually hold, so a missed release can never lock a taxiway for good. */
+  private recountBlocks(): void {
+    this.blockCount.fill(0);
+    for (let k = 0; k < this.count; k++) {
+      const i = this.activeList[k];
+      if (this.curBlock[i] >= 0) this.blockCount[this.curBlock[i]]++;
+      if (this.prevBlock[i] >= 0) this.blockCount[this.prevBlock[i]]++;
+      if (this.nextBlock[i] >= 0) this.blockCount[this.nextBlock[i]]++;
+    }
+    for (let b = 0; b < this.blockCount.length; b++) if (this.blockCount[b] === 0) this.blockLast[b] = -1;
+  }
+
   private detectDeadlocks(): void {
     for (let k = 0; k < this.count; k++) {
       const i = this.activeList[k];
@@ -1231,7 +1312,7 @@ export class Traffic {
 
   private updateCongestion(): void {
     const c = this.net.congestion;
-    for (let e = 0; e < c.length; e++) c[e] = this.blockCount[e] * 8;
+    for (let e = 0; e < c.length; e++) c[e] = this.net.edgeBlock[e] >= 0 ? this.blockCount[this.net.edgeBlock[e]] * 8 : 0;
   }
 
   // Saving ------------------------------------------------------------------
@@ -1241,7 +1322,7 @@ export class Traffic {
       active: this.active, state: this.state, type: this.type, livery: this.livery, flight: this.flight, x: this.x, y: this.y,
       heading: this.heading, speed: this.speed, dist: this.dist, routeLen: this.routeLen, routeIdx: this.routeIdx,
       routeEdge: this.routeEdge, routeDir: this.routeDir, heldNode: this.heldNode, curBlock: this.curBlock, prevBlock: this.prevBlock,
-      nextBlock: this.nextBlock, waitingFor: this.waitingFor, ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
+      nextBlock: this.nextBlock, nextAcq: this.nextAcq, waitingFor: this.waitingFor, ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
       standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
