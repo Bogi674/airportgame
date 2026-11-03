@@ -1,4 +1,5 @@
 import type { Command } from '@sim/commands';
+import type { BusinessPayload } from '@shared/business';
 import type { AirfieldMessage, FromSimMessage, GameOptions, OwnershipPayload, PerfReport, ToSimMessage } from '@shared/protocol';
 import type { SitePayload } from '@shared/site';
 import { createSnapshotViews, SnapHeader, type SnapshotViews } from '@shared/snapshot';
@@ -17,6 +18,7 @@ export interface ClientEvents {
   onOwnership?(ownership: OwnershipPayload): void;
   onEvents?(list: string[]): void;
   onAirfield?(msg: AirfieldMessage): void;
+  onBusiness?(b: BusinessPayload): void;
 }
 
 /** Main thread side of the sim protocol. Owns the worker, batches commands per frame, recycles buffers. */
@@ -72,7 +74,8 @@ export class SimClient {
       case 'staticData':
         if (msg.kind === 'site') this.events.onSite?.(msg.payload);
         else if (msg.kind === 'ownership') this.events.onOwnership?.(msg.payload);
-        else this.events.onAirfield?.(msg.payload);
+        else if (msg.kind === 'airfield') this.events.onAirfield?.(msg.payload);
+        else this.events.onBusiness?.(msg.payload);
         break;
       case 'events':
         this.events.onEvents?.(msg.list);

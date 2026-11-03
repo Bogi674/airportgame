@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "note": "Fees, terminal modules, shop categories and airline naming. Money in the game currency.",
+  "fees": {
+    "landingPerTonne": 7.5,
+    "passengerDeparting": 22,
+    "passengerArriving": 9,
+    "parkingPerStandHour": 18,
+    "wageStaffPerDay": 170,
+    "interestAnnualPct": 8,
+    "loanMax": 12000000,
+    "loanTermDays": 360
+  },
+  "terminal": {
+    "buildCostPerM2": 1500,
+    "minSideM": 20,
+    "maxSideM": 240,
+    "contactReachM": 90
+  },
+  "modules": {
+    "checkIn": { "cost": 9000, "areaM2": 8, "capacityPerHour": 30, "staff": 1.5 },
+    "security": { "cost": 70000, "areaM2": 45, "capacityPerHour": 150, "staff": 4 },
+    "belt": { "cost": 55000, "areaM2": 70, "capacityPerHour": 260, "staff": 2 },
+    "seating": { "cost": 6000, "areaM2": 12, "capacityPerHour": 0, "staff": 0 },
+    "toilet": { "cost": 20000, "areaM2": 20, "capacityPerHour": 0, "staff": 0.5 }
+  },
+  "shops": {
+    "convenience": { "cost": 40000, "areaM2": 40, "rentPerDay": 260, "spendPerPax": 2.2, "minRating": 0 },
+    "quickFood": { "cost": 60000, "areaM2": 55, "rentPerDay": 380, "spendPerPax": 3.8, "minRating": 10 },
+    "cafe": { "cost": 55000, "areaM2": 50, "rentPerDay": 340, "spendPerPax": 3.2, "minRating": 15 },
+    "dutyFree": { "cost": 150000, "areaM2": 90, "rentPerDay": 900, "spendPerPax": 8.5, "minRating": 40 },
+    "booksGifts": { "cost": 45000, "areaM2": 45, "rentPerDay": 300, "spendPerPax": 2.6, "minRating": 20 },
+    "pharmacy": { "cost": 50000, "areaM2": 40, "rentPerDay": 310, "spendPerPax": 2.4, "minRating": 25 }
+  },
+  "airlines": {
+    "regionalNames": ["Coastal", "Valley", "Harbor", "Prairie", "Summit", "Island", "Meadow", "Ridge"],
+    "nationalNames": ["Meridian", "Aurora", "Zenith", "Horizon", "Pioneer", "Atlas", "Lumen", "Vanguard"],
+    "suffixes": ["Air", "Airways", "Express", "Jet", "Link"]
+  }
+}

@@ -7,29 +7,10 @@ import type { Ghost } from '@shared/ghost';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
+import { SpriteCache, tierForZoom } from './sprites/aircraftSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
 
 const MAX_BACKING = 4096;
-const MARKER_LENGTH_M = 40;
-
-/** Pre-baked stand in for the aircraft sprites that arrive with the sprite baker in M3. */
-function bakeMarker(): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 64;
-  const g = c.getContext('2d');
-  if (g) {
-    g.fillStyle = '#e8eef2';
-    g.beginPath();
-    g.moveTo(62, 32);
-    g.lineTo(6, 8);
-    g.lineTo(18, 32);
-    g.lineTo(6, 56);
-    g.closePath();
-    g.fill();
-  }
-  return c;
-}
 
 /** Canvas 2D renderer. Static layer from baked chunks, dynamic layer from interpolated snapshots. */
 export class Renderer {
@@ -43,7 +24,7 @@ export class Renderer {
   private pendingSelected = -1;
   private showParcels = false;
   private ghost: Ghost | null = null;
-  private readonly marker = bakeMarker();
+  private readonly sprites = new SpriteCache();
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
   private dpr = 1;
@@ -256,33 +237,41 @@ export class Renderer {
     const ctx = this.ctx;
     const n = curr.header[SnapHeader.AircraftCount];
     const pn = prev ? prev.header[SnapHeader.AircraftCount] : 0;
-    const k = MARKER_LENGTH_M / 64;
+    const tier = tierForZoom(this.camera.zoom);
+    let pi = 0;
     for (let i = 0; i < n; i++) {
+      const sprite = this.sprites.get(curr.aircraftType[i], curr.aircraftLivery[i], tier);
       let x = curr.aircraftX[i];
       let y = curr.aircraftY[i];
       let h = curr.aircraftHeading[i];
-      // Match the previous snapshot by aircraft id, assuming the same index order.
-      if (prev && i < pn && prev.aircraftId[i] === curr.aircraftId[i]) {
-        const px = prev.aircraftX[i];
-        const py = prev.aircraftY[i];
-        // Skip interpolation across a site wrap.
-        if (Math.abs(x - px) < 1000 && Math.abs(y - py) < 1000) {
-          x = px + (x - px) * alpha;
-          y = py + (y - py) * alpha;
+      // Both snapshots list aircraft by ascending id, so a moving pointer finds the previous entry.
+      if (prev) {
+        const id = curr.aircraftId[i];
+        while (pi < pn && prev.aircraftId[pi] < id) pi++;
+        if (pi < pn && prev.aircraftId[pi] === id) {
+          const px = prev.aircraftX[pi];
+          const py = prev.aircraftY[pi];
+          if (Math.abs(x - px) < 400 && Math.abs(y - py) < 400) {
+            x = px + (x - px) * alpha;
+            y = py + (y - py) * alpha;
+            let dh = h - prev.aircraftHeading[pi];
+            while (dh > Math.PI) dh -= 2 * Math.PI;
+            while (dh < -Math.PI) dh += 2 * Math.PI;
+            h = prev.aircraftHeading[pi] + dh * alpha;
+          }
         }
-        h = curr.aircraftHeading[i];
       }
       const ch = Math.cos(h);
       const sh = Math.sin(h);
-      // World matrix times sprite rotation, sprite centered, 40 m long.
+      const k = 1 / sprite.ppm;
       const ma = (a * ch + cc * sh) * k;
       const mb = (b * ch + d * sh) * k;
       const mc = (-a * sh + cc * ch) * k;
       const md = (-b * sh + d * ch) * k;
       const wx = a * x + cc * y + e;
       const wy = b * x + d * y + f;
-      ctx.setTransform(ma, mb, mc, md, wx - (ma + mc) * 32, wy - (mb + md) * 32);
-      ctx.drawImage(this.marker, 0, 0);
+      ctx.setTransform(ma, mb, mc, md, wx - (ma + mc) * (sprite.width / 2), wy - (mb + md) * (sprite.height / 2));
+      ctx.drawImage(sprite.canvas, 0, 0);
     }
   }
 

@@ -1,5 +1,6 @@
 import type { Command } from '@sim/commands';
 import type { AirfieldPayload } from './airfield';
+import type { BusinessPayload } from './business';
 import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
@@ -45,6 +46,7 @@ export type FromSimMessage =
   | { type: 'staticData'; kind: 'site'; payload: SitePayload }
   | { type: 'staticData'; kind: 'ownership'; payload: OwnershipPayload }
   | { type: 'staticData'; kind: 'airfield'; payload: AirfieldMessage }
+  | { type: 'staticData'; kind: 'business'; payload: BusinessPayload }
   | { type: 'queryResult'; id: number; data: unknown }
   | { type: 'events'; list: string[] }
   | { type: 'perf'; report: PerfReport }

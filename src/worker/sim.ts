@@ -61,6 +61,12 @@ function postAirfieldIfDirty(): void {
   });
 }
 
+function postBusinessIfDirty(): void {
+  if (!sim) return;
+  const payload = sim.takeBusiness();
+  if (payload) scope.postMessage({ type: 'staticData', kind: 'business', payload });
+}
+
 function postEvents(): void {
   if (!sim) return;
   sim.drainEvents(eventScratch);
@@ -116,6 +122,7 @@ function loop(): void {
 
   postOwnershipIfDirty();
   postAirfieldIfDirty();
+  postBusinessIfDirty();
   postEvents();
 
   if (now - lastSnapshot >= SNAPSHOT_INTERVAL_MS) {

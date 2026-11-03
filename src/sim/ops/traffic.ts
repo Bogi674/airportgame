@@ -1,7 +1,7 @@
 import { AIRCRAFT, RUNWAY_OCCUPANCY, wakeSeparationSec, WAKE_ORDER, type AircraftSpec } from '@data/aircraft';
 import { codeIndex, compassVector, type AirfieldPayload, type CodeLetter, type Runway } from '@shared/airfield';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
-import { SEASONS, WIND_BINS, type Climate } from '@shared/site';
+import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
 import { foldF64, foldU32 } from '../hash';
 import type { Rng } from '../rng';
@@ -57,6 +57,7 @@ export interface TrafficSite {
   windFreq: Float32Array;
   windMeanKt: Float32Array;
   climate: Climate;
+  idealHeadingDeg: number;
 }
 
 /** Flights, aircraft, air traffic control and ground movement. All typed arrays, no allocation per tick. */
@@ -107,6 +108,9 @@ export class Traffic {
   readonly fAc = new Int32Array(MAX_FLIGHTS).fill(-1);
   readonly fDelay = new Int32Array(MAX_FLIGHTS);
   readonly fRetryAt = new Int32Array(MAX_FLIGHTS);
+  readonly fAirline = new Int8Array(MAX_FLIGHTS).fill(-1);
+  /** How late the arrival touched down against its schedule, in ticks. */
+  readonly fLate = new Int32Array(MAX_FLIGHTS);
   /** Arrival delay in ticks, kept for statistics when the flight completes. */
   completedFlights = 0;
   divertedFlights = 0;
@@ -131,6 +135,10 @@ export class Traffic {
   private readonly tmpDir = new Int8Array(MAX_ROUTE);
   private readonly pos: Scratch = { x: 0, y: 0, h: 0 };
   private readonly bits = [new Uint32Array(0)];
+
+  /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
+  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean } | null = null;
+  weather: 'clear' | 'rain' | 'fog' | 'wind' = 'clear';
 
   // Weather and settings
   windFromDeg = 0;
@@ -157,6 +165,25 @@ export class Traffic {
   setTestTraffic(perHour: number, turnScale: number): void {
     this.testPerHour = Math.max(0, Math.min(240, perHour));
     this.testTurnScale = Math.max(0.05, Math.min(2, turnScale));
+  }
+
+  get nowTick(): number {
+    return this.tick;
+  }
+
+  setWeather(kind: 'clear' | 'rain' | 'fog' | 'wind'): void {
+    this.weather = kind;
+  }
+
+  usableTypesPublic(out: number[]): void {
+    this.usableTypes(out);
+  }
+
+  /** Runway length factor: wet surface, and the 5 percent bonus on an Optimal wind band. */
+  private lengthFactor(r: Runway, dir: number): number {
+    const hdg = dir === 1 ? r.headingDeg : (r.headingDeg + 180) % 360;
+    const band = windBand(hdg % 180, this.site.idealHeadingDeg) === 'optimal' ? 0.95 : 1;
+    return band * (this.weather === 'rain' ? 1.15 : 1);
   }
 
   get network(): TaxiNetwork {
@@ -309,19 +336,23 @@ export class Traffic {
     this.windKt = this.site.windMeanKt[season * WIND_BINS + bin] * (0.4 + this.weatherRng.next() * 1.2);
   }
 
+  private effectiveWind(): number {
+    return this.weather === 'wind' ? this.windKt * 1.8 : this.windKt;
+  }
+
   /** Wind component along a heading (positive is headwind). */
   private headwind(headingDeg: number): number {
-    return this.windKt * cosLut(((this.windFromDeg - headingDeg) * PI) / 180);
+    return this.effectiveWind() * cosLut(((this.windFromDeg - headingDeg) * PI) / 180);
   }
 
   private crosswind(headingDeg: number): number {
-    return Math.abs(this.windKt * sinLut(((this.windFromDeg - headingDeg) * PI) / 180));
+    return Math.abs(this.effectiveWind() * sinLut(((this.windFromDeg - headingDeg) * PI) / 180));
   }
 
   // Flights ----------------------------------------------------------------
 
   /** Schedules an arriving flight. Its turnaround and departure follow automatically. */
-  scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number): number {
+  scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number, airline = -1): number {
     let f = -1;
     for (let k = 0; k < MAX_FLIGHTS; k++) {
       if (this.fState[k] === FlState.Free || this.fState[k] === FlState.Done) {
@@ -338,6 +369,8 @@ export class Traffic {
     this.fAc[f] = -1;
     this.fDelay[f] = 0;
     this.fRetryAt[f] = 0;
+    this.fAirline[f] = airline;
+    this.fLate[f] = 0;
     return f;
   }
 
@@ -352,7 +385,7 @@ export class Traffic {
       const a = AIRCRAFT[t];
       let ok = false;
       for (const r of this.af.runways) {
-        if (!checkLanding(a, r, 1).ok) continue;
+        if (!checkLanding(a, r, 0.95).ok) continue;
         for (let s = 0; s < this.af.stands.length; s++) {
           const st = this.af.stands[s];
           if (this.standFits(t, s)) {
@@ -401,8 +434,9 @@ export class Traffic {
         this.rsvCat[o] = -1;
         continue;
       }
-      const sepAfter = wakeSeparationSec(WAKE_ORDER[this.rsvCat[o]], WAKE_ORDER[cat]) * 10;
-      const sepBefore = wakeSeparationSec(WAKE_ORDER[cat], WAKE_ORDER[this.rsvCat[o]]) * 10;
+      const fog = this.weather === 'fog' ? 2 : 1;
+      const sepAfter = (wakeSeparationSec(WAKE_ORDER[this.rsvCat[o]], WAKE_ORDER[cat]) * 10 + (fog === 2 ? 300 : 0)) * 1;
+      const sepBefore = (wakeSeparationSec(WAKE_ORDER[cat], WAKE_ORDER[this.rsvCat[o]]) * 10 + (fog === 2 ? 300 : 0)) * 1;
       if (start < this.rsvEnd[o] + sepAfter && end + sepBefore > this.rsvStart[o]) return false;
     }
     return true;
@@ -429,6 +463,7 @@ export class Traffic {
     if (!AIRCRAFT[t].surfaces.includes(st.surface)) return false;
     const light = CODES_OF[t] === 'A' || CODES_OF[t] === 'B';
     if (st.type === 'gaTieDown' && !light) return false;
+    if (st.type === 'contact' && this.hooks?.contactOk && !this.hooks.contactOk(st.x, st.y)) return false;
     return true;
   }
 
@@ -476,7 +511,11 @@ export class Traffic {
     let firstFail = '';
     for (let r = 0; r < af.runways.length; r++) {
       const rw = af.runways[r];
-      const lim = checkLanding(a, rw, 1);
+      if (this.weather === 'fog' && rw.approach === 'visual') {
+        firstFail = firstFail || 'fog|needed=0|available=0';
+        continue;
+      }
+      const lim = checkLanding(a, rw, this.lengthFactor(rw, 1));
       if (!lim.ok) {
         if (!firstFail) firstFail = `${lim.reason}|needed=${lim.needed}|available=${lim.available}`;
         continue;
@@ -545,6 +584,7 @@ export class Traffic {
       this.delay(f, 'runwayBusy');
       return;
     }
+    this.fLate[f] = Math.max(0, this.tick + approachTicks - this.fEta[f]);
     const slot = this.reserve(bestR, start, end, WAKE_OF[t]);
     if (slot < 0) {
       this.delay(f, 'runwayBusy');
@@ -631,7 +671,10 @@ export class Traffic {
     if (f >= 0) {
       this.fState[f] = FlState.Done;
       this.fAc[f] = -1;
-      if (why === 'departed') this.completedFlights++;
+      if (why === 'departed') {
+        this.completedFlights++;
+        this.hooks?.departed(f);
+      }
       else this.emit(`flightLost|type=${AIRCRAFT[this.type[i]].id}`);
     }
     const s = this.af.stands.findIndex((st) => st.id === this.standId[i]);
@@ -883,7 +926,10 @@ export class Traffic {
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
       this.timer[i] = f >= 0 ? this.fTurn[f] : 6000;
-      if (f >= 0) this.fState[f] = FlState.OnGround;
+      if (f >= 0) {
+        this.fState[f] = FlState.OnGround;
+        this.hooks?.docked(f);
+      }
       this.applyEdgePose(i);
     } else if (st === AcState.TaxiOut && this.dist[i] >= goal - 0.3 && this.speed[i] < 0.6) {
       this.state[i] = AcState.Holding;
@@ -1015,7 +1061,7 @@ export class Traffic {
       for (const dir of [1, -1] as const) {
         const toda = dir === 1 ? en.todaTowardB : en.todaTowardA;
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;
-        const lim = checkTakeoff(a, rw, toda, this.site.climate, 1);
+        const lim = checkTakeoff(a, rw, toda, this.site.climate, this.lengthFactor(rw, dir));
         if (!lim.ok) {
           if (!firstFail) firstFail = `${lim.reason}|needed=${lim.needed}|available=${lim.available}`;
           continue;
@@ -1068,7 +1114,10 @@ export class Traffic {
     this.stuckTicks[i] = 0;
     // The first edge is the stand lead in, driven backward as the push back.
     if (this.net.edgeKind[this.tmpEdge[0]] !== EdgeKind.StandLeadIn) this.state[i] = AcState.TaxiOut;
-    if (f >= 0) this.fState[f] = FlState.Departing;
+    if (f >= 0) {
+      this.fState[f] = FlState.Departing;
+      this.hooks?.pushback(f);
+    }
     // Leave the stand free for the next arrival once the aircraft is out of the way.
     this.standOwner[s] = i;
   }
@@ -1079,7 +1128,7 @@ export class Traffic {
     const t = this.type[i];
     const a = AIRCRAFT[t];
     const rw = this.af.runways[r];
-    const roll = requiredTakeoffM(a, this.site.climate, 1) * 0.8;
+    const roll = requiredTakeoffM(a, this.site.climate, rw ? this.lengthFactor(rw, this.rwyDir[i]) : 1) * 0.8;
     const vLof = a.performance.vrefKt * KT * 1.05;
     const rollTicks = Math.round(((2 * roll) / vLof) * 10);
     const start = this.tick;
@@ -1115,7 +1164,7 @@ export class Traffic {
       this.removeAircraft(i, 'departed');
       return;
     }
-    const roll = requiredTakeoffM(a, this.site.climate, 1) * 0.8;
+    const roll = requiredTakeoffM(a, this.site.climate, this.lengthFactor(rw, this.rwyDir[i])) * 0.8;
     const vLof = a.performance.vrefKt * KT * 1.05;
     const acc = (vLof * vLof) / (2 * roll);
     this.speed[i] += acc * DT;

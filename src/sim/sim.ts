@@ -6,12 +6,14 @@ import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { Traffic } from './ops/traffic';
+import { Business } from './business/business';
+import type { LedgerCategory } from '@shared/business';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
 
 /** Subsystems in execution order. The stress tool times each one separately. */
-const SUBSYSTEMS = ['commands', 'clock', 'network', 'flights', 'aircraft'] as const;
+const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'flights', 'aircraft'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
 
 /**
@@ -26,6 +28,9 @@ export class Sim {
   readonly site: SiteSpec;
   readonly airfield = new Airfield();
   readonly traffic: Traffic;
+  readonly business: Business;
+  private businessSent = -1;
+  private businessSentTick = -1000000;
   private airfieldSent = -1;
   private networkVersion = -1;
   /** Owner per parcel: 0 none, 1 the player. */
@@ -49,7 +54,24 @@ export class Sim {
     this.parcelOwner = new Uint8Array(this.site.parcelCount);
     for (let i = 0; i < this.site.startParcels.length; i++) this.parcelOwner[this.site.startParcels[i]] = 1;
     this.cash = START_CASH;
-    this.traffic = new Traffic({ windFreq: this.site.wind.freq, windMeanKt: this.site.wind.meanKt, climate: this.site.climate }, this.rng, (code) => this.eventQueue.push(code));
+    // The business keeps the ledger, so every cash change goes through `book`.
+    this.traffic = new Traffic({ windFreq: this.site.wind.freq, windMeanKt: this.site.wind.meanKt, climate: this.site.climate, idealHeadingDeg: this.site.idealHeadingDeg }, this.rng, (code) => this.eventQueue.push(code));
+    const host = {
+      getCash: (): number => this.cash,
+      book: (category: LedgerCategory, amount: number): void => this.book(category, amount),
+      emit: (code: string): void => {
+        this.eventQueue.push(code);
+      },
+    };
+    this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
+    this.traffic.hooks = { ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }), contactOk: (x, y) => this.business.hasTerminalNear(x, y) };
+  }
+
+  /** Changes cash and records it in today's ledger. */
+  book(category: LedgerCategory, amount: number): void {
+    this.cash += amount;
+    this.business.record(category, amount);
+    this.ownershipDirty = true;
   }
 
   get subsystemCount(): number {
@@ -91,9 +113,12 @@ export class Sim {
         }
         break;
       case 3:
-        if (this.tick % 10 === 0) this.traffic.updateFlights(this.tick);
+        this.business.update(this.tick);
         break;
       case 4:
+        if (this.tick % 10 === 0) this.traffic.updateFlights(this.tick);
+        break;
+      case 5:
         this.traffic.update(this.tick);
         break;
     }
@@ -136,6 +161,33 @@ export class Sim {
       case 'buyParcels':
         this.buyParcels(cmd.ids);
         break;
+      case 'buildTerminal':
+        this.report(this.business.buildTerminal(cmd.cx, cmd.cy, cmd.w, cmd.d, cmd.headingDeg, this.buildContext()));
+        break;
+      case 'addModule':
+        this.report(this.business.addModule(cmd.terminalId, cmd.kind, cmd.count));
+        break;
+      case 'addShop':
+        this.report(this.business.addShop(cmd.terminalId, cmd.kind));
+        break;
+      case 'removeShop':
+        this.business.removeShop(cmd.terminalId, cmd.index);
+        break;
+      case 'demolishTerminal':
+        this.report(this.business.demolishTerminal(cmd.id));
+        break;
+      case 'signAirline':
+        this.report(this.business.signAirline(cmd.airlineId, cmd.rotations));
+        break;
+      case 'setAirlineFee':
+        this.business.setFee(cmd.airlineId, cmd.level);
+        break;
+      case 'takeLoan':
+        this.report(this.business.takeLoan(cmd.amount));
+        break;
+      case 'repayLoan':
+        this.report(this.business.repayLoan(cmd.amount));
+        break;
       default: {
         const r = this.airfield.execute(cmd, this.buildContext(), this.cash);
         if (r === null) break;
@@ -144,11 +196,14 @@ export class Sim {
           if (r.args) for (const k of Object.keys(r.args).sort()) e += `|${k}=${r.args[k]}`;
           this.eventQueue.push(e);
         } else if (r.cashDelta !== 0) {
-          this.cash += r.cashDelta;
-          this.ownershipDirty = true;
+          this.book('construction', r.cashDelta);
         }
       }
     }
+  }
+
+  private report(problem: string | null): void {
+    if (problem) this.eventQueue.push(problem);
   }
 
   private buildContext(): BuildContext {
@@ -174,8 +229,15 @@ export class Sim {
       return;
     }
     for (let i = 0; i < todo.length; i++) this.parcelOwner[todo[i]] = 1;
-    this.cash -= total;
-    this.ownershipDirty = true;
+    this.book('land', -total);
+  }
+
+  /** The business payload when it changed or ten game minutes passed, otherwise null. */
+  takeBusiness(): ReturnType<Business['payload']> | null {
+    if (this.business.version === this.businessSent && this.tick - this.businessSentTick < 6000) return null;
+    this.businessSent = this.business.version;
+    this.businessSentTick = this.tick;
+    return this.business.payload(this.tick);
   }
 
   /** True once per airfield change. */
@@ -198,9 +260,8 @@ export class Sim {
       this.eventQueue.push('insufficientFunds');
       return;
     }
-    this.cash -= price;
+    this.book('land', -price);
     this.parcelOwner[id] = 1;
-    this.ownershipDirty = true;
   }
 
   /** Returns true once after ownership or cash changed. */
@@ -225,6 +286,7 @@ export class Sim {
     h = foldU32(h, Math.floor(this.cash));
     h = this.airfield.hash(h);
     h = this.traffic.hash(h);
+    h = this.business.hash(h);
     return h;
   }
 
