@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { PRESETS, PARCEL_TYPE_COUNT, ParcelType, type Preset } from '@shared/site';
 import { useGameStore } from './stores/gameStore';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
-import { t, tDynamic, tFormat } from './strings';
+import { noticeText, t, tDynamic, tFormat } from './strings';
 
 interface Props {
   onNewGame(seed: string, preset: Preset): void;
@@ -109,7 +109,7 @@ export function SitePanel({ onNewGame, onBuy }: Props) {
       {parcel}
       {notice && (
         <div role="alert" data-testid="notice" style="margin-top:6px;color:#ff8f8f">
-          {tDynamic(`notice.${notice}`)}
+          {noticeText(notice.code, notice.args)}
         </div>
       )}
     </div>

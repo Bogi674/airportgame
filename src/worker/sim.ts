@@ -52,6 +52,15 @@ function postOwnershipIfDirty(): void {
   scope.postMessage({ type: 'staticData', kind: 'ownership', payload: { owner, cash: sim.cash } }, [owner.buffer]);
 }
 
+function postAirfieldIfDirty(): void {
+  if (!sim || !sim.takeAirfieldDirty()) return;
+  scope.postMessage({
+    type: 'staticData',
+    kind: 'airfield',
+    payload: { airfield: sim.airfield.data, canUndo: sim.airfield.canUndo, canRedo: sim.airfield.canRedo },
+  });
+}
+
 function postEvents(): void {
   if (!sim) return;
   sim.drainEvents(eventScratch);
@@ -106,6 +115,7 @@ function loop(): void {
   }
 
   postOwnershipIfDirty();
+  postAirfieldIfDirty();
   postEvents();
 
   if (now - lastSnapshot >= SNAPSHOT_INTERVAL_MS) {
@@ -147,6 +157,7 @@ scope.onmessage = (event) => {
           scope.postMessage({ type: 'staticData', kind: 'site', payload }, transferList(payload));
         }
         postOwnershipIfDirty();
+        postAirfieldIfDirty();
         scope.postMessage({ type: 'ready' });
         if (loopHandle === null) loopHandle = setTimeout(loop, 0);
         break;

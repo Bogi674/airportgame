@@ -1,10 +1,12 @@
 import { SITE_SIZE_M } from '@shared/math';
 import { ParcelType, START_CASH } from '@shared/site';
+import type { BuildContext } from '@shared/validate';
 import type { GameOptions } from '@shared/protocol';
 import { SnapHeader, SNAPSHOT_AIRCRAFT_CAPACITY, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
 import { cosLut, sinLut } from '@shared/trig';
 import { CommandLog, type Command } from './commands';
+import { Airfield, isProblem } from './airfield/airfield';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldF64, foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
@@ -27,6 +29,8 @@ export class Sim {
   readonly log = new CommandLog();
   readonly rng: Rng;
   readonly site: SiteSpec;
+  readonly airfield = new Airfield();
+  private airfieldSent = -1;
   /** Owner per parcel: 0 none, 1 the player. */
   readonly parcelOwner: Uint8Array;
   cash: number;
@@ -143,7 +147,56 @@ export class Sim {
       case 'buyParcel':
         this.buyParcel(cmd.parcelId);
         break;
+      case 'buyParcels':
+        this.buyParcels(cmd.ids);
+        break;
+      default: {
+        const r = this.airfield.execute(cmd, this.buildContext(), this.cash);
+        if (r === null) break;
+        if (isProblem(r)) {
+          let e = r.code;
+          if (r.args) for (const k of Object.keys(r.args).sort()) e += `|${k}=${r.args[k]}`;
+          this.eventQueue.push(e);
+        } else if (r.cashDelta !== 0) {
+          this.cash += r.cashDelta;
+          this.ownershipDirty = true;
+        }
+      }
     }
+  }
+
+  private buildContext(): BuildContext {
+    return { heights: this.site.heights, parcelId: this.site.parcelId, parcelOwner: this.parcelOwner };
+  }
+
+  /** Buys every listed parcel that is for sale, or none when the player cannot afford them all. */
+  private buyParcels(ids: number[]): void {
+    const site = this.site;
+    let total = 0;
+    const todo: number[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (!Number.isInteger(id) || id < 0 || id >= site.parcelCount) continue;
+      if (this.parcelOwner[id] === 1 || site.parcelType[id] === ParcelType.Protected) continue;
+      if (todo.indexOf(id) >= 0) continue;
+      todo.push(id);
+      total += site.parcelPrice[id];
+    }
+    if (todo.length === 0) return;
+    if (total > this.cash) {
+      this.eventQueue.push('insufficientFunds');
+      return;
+    }
+    for (let i = 0; i < todo.length; i++) this.parcelOwner[todo[i]] = 1;
+    this.cash -= total;
+    this.ownershipDirty = true;
+  }
+
+  /** True once per airfield change. */
+  takeAirfieldDirty(): boolean {
+    if (this.airfield.version === this.airfieldSent) return false;
+    this.airfieldSent = this.airfield.version;
+    return true;
   }
 
   private buyParcel(id: number): void {
@@ -236,6 +289,7 @@ export class Sim {
     h = foldInts(h, this.aircraftActive, AIRCRAFT_CAPACITY);
     h = foldInts(h, this.parcelOwner, this.parcelOwner.length);
     h = foldU32(h, Math.floor(this.cash));
+    h = this.airfield.hash(h);
     h = foldF64(h, this.bitsX, AIRCRAFT_CAPACITY);
     h = foldF64(h, this.bitsY, AIRCRAFT_CAPACITY);
     h = foldF64(h, this.bitsHeading, AIRCRAFT_CAPACITY);

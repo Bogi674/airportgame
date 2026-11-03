@@ -2,6 +2,8 @@ import { CHUNK_SIZE_M } from '@shared/math';
 import { CELL_M, GRID_N } from '@shared/site';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
+import type { AirfieldPayload } from '@shared/airfield';
+import type { Ghost } from '@shared/ghost';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
@@ -40,6 +42,7 @@ export class Renderer {
   private pendingOwner: Uint8Array | null = null;
   private pendingSelected = -1;
   private showParcels = false;
+  private ghost: Ghost | null = null;
   private readonly marker = bakeMarker();
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
@@ -77,6 +80,12 @@ export class Renderer {
     this.overlay.setSelected(this.pendingSelected);
   }
 
+  /** New airfield geometry: send it to the baker and re-bake visible chunks. */
+  setAirfield(airfield: AirfieldPayload): void {
+    this.baker.setAirfield(airfield);
+    this.chunks.markAllDirty();
+  }
+
   setOwnership(owner: Uint8Array): void {
     this.pendingOwner = owner;
     this.overlay?.setOwner(owner);
@@ -85,6 +94,10 @@ export class Renderer {
   setSelectedParcel(id: number): void {
     this.pendingSelected = id;
     this.overlay?.setSelected(id);
+  }
+
+  setGhost(ghost: Ghost | null): void {
+    this.ghost = ghost;
   }
 
   setParcelOverlayVisible(visible: boolean): void {
@@ -136,7 +149,66 @@ export class Renderer {
     if (this.overlay) {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
+    if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
+  }
+
+  /** Build tool preview. A handful of shapes per frame, so plain path drawing is fine here. */
+  private drawGhost(g: Ghost, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const fill = g.valid ? 'rgba(120,210,255,0.35)' : 'rgba(255,90,80,0.40)';
+    const stroke = g.valid ? 'rgba(160,230,255,0.95)' : 'rgba(255,120,110,0.95)';
+    const zoom = this.camera.zoom;
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineJoin = 'round';
+    for (const sh of g.shapes) {
+      ctx.setTransform(a, b, cc, d, e, f);
+      ctx.lineWidth = Math.max(1.2 / zoom, 0.3);
+      if (sh.k === 'strip') {
+        if (sh.pts.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(sh.pts[0].x, sh.pts[0].y);
+        for (let i = 1; i < sh.pts.length; i++) ctx.lineTo(sh.pts[i].x, sh.pts[i].y);
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = sh.w;
+        ctx.stroke();
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = Math.max(1.2 / zoom, 0.3);
+        ctx.setLineDash([6 / zoom, 6 / zoom]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (sh.k === 'poly') {
+        if (sh.pts.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(sh.pts[0].x, sh.pts[0].y);
+        for (let i = 1; i < sh.pts.length; i++) ctx.lineTo(sh.pts[i].x, sh.pts[i].y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (sh.k === 'box') {
+        ctx.translate(sh.x, sh.y);
+        ctx.rotate((sh.headingDeg * Math.PI) / 180 - Math.PI / 2);
+        ctx.fillRect(0, -sh.w / 2, sh.len, sh.w);
+        ctx.strokeRect(0, -sh.w / 2, sh.len, sh.w);
+      } else {
+        ctx.beginPath();
+        ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    if (g.label) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const sx = a * g.label.x + cc * g.label.y + e;
+      const sy = b * g.label.x + d * g.label.y + f;
+      ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
+      const w = ctx.measureText(g.label.text).width + 12 * this.dpr;
+      ctx.fillStyle = 'rgba(16,22,28,0.88)';
+      ctx.fillRect(sx + 14 * this.dpr, sy - 10 * this.dpr, w, 20 * this.dpr);
+      ctx.fillStyle = g.valid ? '#e6f7ff' : '#ffb4ad';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(g.label.text, sx + 20 * this.dpr, sy);
+    }
   }
 
   private drawChunks(a: number, b: number, cc: number, d: number, e: number, f: number): void {

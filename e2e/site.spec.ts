@@ -1,17 +1,5 @@
 import { expect, test } from '@playwright/test';
 
-interface Cam {
-  rotation: number;
-  zoom: number;
-  x: number;
-  y: number;
-}
-declare global {
-  interface Window {
-    __renderer?: { camera: Cam; chunkCount: number } | null;
-  }
-}
-
 test('generates a site, buys land, and navigates with the minimap tools', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

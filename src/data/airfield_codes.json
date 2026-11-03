@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "note": "ICAO based values. Widths and separations in meters, costs per m2 in the game currency.",
+  "codes": {
+    "A": { "spanM": 15, "standLengthM": 12, "runwayWidthM": 18, "runwayShoulderM": 0, "taxiwayWidthM": 7.5, "filletRadiusM": 25, "taxiSepM": 23, "taxiObjectM": 15.5 },
+    "B": { "spanM": 24, "standLengthM": 20, "runwayWidthM": 18, "runwayShoulderM": 0, "taxiwayWidthM": 10.5, "filletRadiusM": 30, "taxiSepM": 32, "taxiObjectM": 20 },
+    "C": { "spanM": 36, "standLengthM": 45, "runwayWidthM": 30, "runwayShoulderM": 7.5, "taxiwayWidthM": 15, "filletRadiusM": 40, "taxiSepM": 44, "taxiObjectM": 26 },
+    "D": { "spanM": 52, "standLengthM": 60, "runwayWidthM": 45, "runwayShoulderM": 7.5, "taxiwayWidthM": 18, "filletRadiusM": 45, "taxiSepM": 63, "taxiObjectM": 37 },
+    "E": { "spanM": 65, "standLengthM": 78, "runwayWidthM": 45, "runwayShoulderM": 7.5, "taxiwayWidthM": 23, "filletRadiusM": 50, "taxiSepM": 76, "taxiObjectM": 43.5 },
+    "F": { "spanM": 80, "standLengthM": 85, "runwayWidthM": 60, "runwayShoulderM": 7.5, "taxiwayWidthM": 25, "filletRadiusM": 55, "taxiSepM": 91, "taxiObjectM": 51 }
+  },
+  "runwayToTaxiwaySepM": {
+    "visual": { "A": 37.5, "B": 42, "C": 93, "D": 101, "E": 101, "F": 101 },
+    "nonPrecision": { "A": 47.5, "B": 52, "C": 101, "D": 107, "E": 107, "F": 107 },
+    "precision": { "A": 77.5, "B": 82, "C": 168, "D": 176, "E": 176, "F": 176 }
+  },
+  "holdingDistanceM": { "visual": 75, "nonPrecision": 90, "precision": 90 },
+  "stripWidthM": { "visual": 150, "nonPrecision": 280, "precision": 280 },
+  "surfaces": {
+    "dirt": { "costPerM2": 3, "pcrTiers": [5], "upkeepPct": 4 },
+    "gravel": { "costPerM2": 8, "pcrTiers": [10], "upkeepPct": 5 },
+    "grass": { "costPerM2": 5, "pcrTiers": [6], "upkeepPct": 6 },
+    "asphalt": { "costPerM2": 45, "pcrTiers": [30, 50, 70, 90], "upkeepPct": 2 },
+    "concrete": { "costPerM2": 90, "pcrTiers": [40, 60, 80, 100, 120], "upkeepPct": 1 }
+  },
+  "tierCostFactor": [1, 1.25, 1.55, 1.9, 2.3],
+  "gradingCostPerM3": 6,
+  "standCost": { "contact": 120000, "remotePushback": 40000, "remoteThrough": 30000, "gaTieDown": 5000 }
+}

@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Renderer } from '@render/renderer';
 import type { SimClient } from '../worker/client';
+import { useToolStore } from './stores/toolStore';
+import { ToolController } from './tools/controller';
 
 const ZOOM_STEP = 1.0015;
 const ROTATE_RATE = 0.004;
-
 const CLICK_SLOP_PX = 4;
 
 interface Props {
@@ -13,7 +14,7 @@ interface Props {
   onPick(parcelId: number): void;
 }
 
-/** The map canvas: owns the renderer, the frame loop and pointer input. */
+/** The map canvas: owns the renderer, the frame loop, pointer input and the build tool controller. */
 export function MapView({ client, onRenderer, onPick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -23,33 +24,61 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     const renderer = new Renderer(canvas);
     onRenderer(renderer);
     const cam = renderer.camera;
+    const controller = new ToolController({
+      send: (cmd) => client.send(cmd),
+      setGhost: (g) => renderer.setGhost(g),
+      zoom: () => cam.zoom,
+    });
 
-    let dragging = false;
+    const world = { x: 0, y: 0 };
+    const toWorld = (e: PointerEvent | MouseEvent): { x: number; y: number } => {
+      cam.screenToWorld(e.offsetX, e.offsetY, world);
+      return { x: world.x, y: world.y };
+    };
+
+    let panning = false;
     let rotating = false;
+    let toolDown = false;
+    let spaceHeld = false;
     let lastX = 0;
     let lastY = 0;
     let downX = 0;
     let downY = 0;
 
     const onDown = (e: PointerEvent): void => {
-      dragging = e.button === 0 || e.button === 1;
-      rotating = e.button === 2;
+      const tool = useToolStore.getState().tool;
       lastX = e.offsetX;
       lastY = e.offsetY;
       downX = e.offsetX;
       downY = e.offsetY;
       canvas.setPointerCapture(e.pointerId);
+      if (e.button === 0 && tool !== 'select' && !spaceHeld) {
+        toolDown = true;
+        controller.down(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
+      } else if (e.button === 0 || e.button === 1) {
+        panning = true;
+      } else if (e.button === 2) {
+        rotating = true;
+      }
     };
     const onMove = (e: PointerEvent): void => {
-      if (dragging) cam.panByScreen(e.offsetX - lastX, e.offsetY - lastY);
+      if (panning) cam.panByScreen(e.offsetX - lastX, e.offsetY - lastY);
       else if (rotating) cam.rotateAt(canvas.clientWidth / 2, canvas.clientHeight / 2, (e.offsetX - lastX) * ROTATE_RATE);
+      else if (useToolStore.getState().tool !== 'select') controller.move(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
       lastX = e.offsetX;
       lastY = e.offsetY;
     };
     const onUp = (e: PointerEvent): void => {
-      const wasClick = dragging && e.button === 0 && Math.hypot(e.offsetX - downX, e.offsetY - downY) < CLICK_SLOP_PX;
-      if (wasClick) onPick(renderer.parcelAt(e.offsetX, e.offsetY));
-      dragging = false;
+      const click = Math.hypot(e.offsetX - downX, e.offsetY - downY) < CLICK_SLOP_PX;
+      if (toolDown && e.button === 0) {
+        controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
+      } else if (panning && e.button === 0 && click && useToolStore.getState().tool === 'select') {
+        controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
+        if (useToolStore.getState().selection === null) onPick(renderer.parcelAt(e.offsetX, e.offsetY));
+        else onPick(-1);
+      }
+      toolDown = false;
+      panning = false;
       rotating = false;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     };
@@ -57,14 +86,36 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       e.preventDefault();
       cam.zoomAt(e.offsetX, e.offsetY, Math.pow(ZOOM_STEP, -e.deltaY));
     };
+    const onDouble = (): void => controller.finish();
     const onContext = (e: Event): void => e.preventDefault();
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return;
+      if (e.code === 'Space') spaceHeld = true;
+      if (controller.key(e)) e.preventDefault();
+    };
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (e.code === 'Space') spaceHeld = false;
+    };
 
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('dblclick', onDouble);
     canvas.addEventListener('contextmenu', onContext);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
+    // Switching tools drops any gesture in progress.
+    let lastTool = useToolStore.getState().tool;
+    const unsubscribe = useToolStore.subscribe((s) => {
+      if (s.tool !== lastTool) {
+        lastTool = s.tool;
+        controller.reset();
+      }
+    });
 
     // Moving between screens with a different pixel ratio re-sizes the backing store.
     let dprQuery = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
@@ -86,13 +137,17 @@ export function MapView({ client, onRenderer, onPick }: Props) {
 
     return () => {
       cancelAnimationFrame(raf);
+      unsubscribe();
       dprQuery.removeEventListener('change', onDpr);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('dblclick', onDouble);
       canvas.removeEventListener('contextmenu', onContext);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       renderer.dispose();
       onRenderer(null);
     };

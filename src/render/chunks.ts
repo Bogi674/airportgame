@@ -65,6 +65,11 @@ export class ChunkCache {
     }
   }
 
+  /** Marks every cached chunk dirty. Dirty chunks keep their old image until the new bake arrives. */
+  markAllDirty(): void {
+    for (const e of this.entries.values()) e.dirty = true;
+  }
+
   /** Called with a baked image. Releases ImageBitmaps that were replaced. */
   deliver(key: number, image: CanvasImageSource): void {
     const e = this.entries.get(key);

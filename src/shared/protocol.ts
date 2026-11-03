@@ -1,10 +1,18 @@
 import type { Command } from '@sim/commands';
+import type { AirfieldPayload } from './airfield';
 import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
 /** Options chosen in the new game wizard. Grows with later milestones. */
 export interface GameOptions {
   preset: Preset;
+}
+
+/** The built airfield plus the undo state. */
+export interface AirfieldMessage {
+  airfield: AirfieldPayload;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 /** Parcel ownership and cash, sent whenever either changes. */
@@ -36,6 +44,7 @@ export type FromSimMessage =
   | { type: 'staticDirty'; chunks: number[]; kinds: number[] }
   | { type: 'staticData'; kind: 'site'; payload: SitePayload }
   | { type: 'staticData'; kind: 'ownership'; payload: OwnershipPayload }
+  | { type: 'staticData'; kind: 'airfield'; payload: AirfieldMessage }
   | { type: 'queryResult'; id: number; data: unknown }
   | { type: 'events'; list: string[] }
   | { type: 'perf'; report: PerfReport }
@@ -44,6 +53,7 @@ export type FromSimMessage =
 /** Main thread to bake worker. */
 export type ToBakeMessage =
   | { type: 'site'; site: BakeSite }
+  | { type: 'airfield'; airfield: AirfieldPayload }
   | { type: 'bake'; key: number; band: number; cx: number; cy: number };
 
 /** The part of the site the terrain baker needs. */

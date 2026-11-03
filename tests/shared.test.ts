@@ -52,3 +52,31 @@ describe('SnapshotPool', () => {
     expect(pool.available).toBe(0);
   });
 });
+
+import { atan2Det } from '@shared/trig';
+import { distToSegment, pointInPolygon, polylineLength, segmentIntersection } from '@shared/geom';
+
+describe('atan2Det', () => {
+  it('matches Math.atan2 in every quadrant', () => {
+    for (let a = -3.1; a < 3.1; a += 0.0173) {
+      const y = Math.sin(a) * 7;
+      const x = Math.cos(a) * 7;
+      expect(Math.abs(atan2Det(y, x) - Math.atan2(y, x))).toBeLessThan(1e-7);
+    }
+    expect(atan2Det(0, 0)).toBe(0);
+    expect(atan2Det(0, -1)).toBeCloseTo(Math.PI, 9);
+  });
+});
+
+describe('geom', () => {
+  it('measures segments and polygons', () => {
+    expect(distToSegment(5, 3, 0, 0, 10, 0)).toBe(3);
+    expect(distToSegment(-4, 3, 0, 0, 10, 0)).toBe(5);
+    expect(segmentIntersection(0, 0, 10, 0, 5, -5, 5, 5)).toBeCloseTo(0.5);
+    expect(segmentIntersection(0, 0, 10, 0, 5, 1, 5, 5)).toBe(-1);
+    expect(polylineLength([{ x: 0, y: 0 }, { x: 3, y: 4 }, { x: 3, y: 10 }])).toBe(11);
+    const sq = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    expect(pointInPolygon(5, 5, sq)).toBe(true);
+    expect(pointInPolygon(15, 5, sq)).toBe(false);
+  });
+});

@@ -1,11 +1,14 @@
 import type { BakeSite, FromBakeMessage, ToBakeMessage } from '@shared/protocol';
 import { chunkPixelSize, type ChunkRequester } from '../chunks';
 import { TerrainBaker } from '../terrain';
+import { paintAirfield } from '../markings/airfieldPaint';
+import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
 
 type Deliver = (key: number, image: CanvasImageSource) => void;
 
 export interface ChunkBaker extends ChunkRequester {
   setSite(site: BakeSite): void;
+  setAirfield(airfield: AirfieldPayload): void;
   dispose(): void;
 }
 
@@ -30,6 +33,11 @@ class WorkerBaker implements ChunkBaker {
     this.worker.postMessage(msg);
   }
 
+  setAirfield(airfield: AirfieldPayload): void {
+    const msg: ToBakeMessage = { type: 'airfield', airfield };
+    this.worker.postMessage(msg);
+  }
+
   request(key: number, band: number, cx: number, cy: number): void {
     const msg: ToBakeMessage = { type: 'bake', key, band, cx, cy };
     this.worker.postMessage(msg);
@@ -44,8 +52,13 @@ class MainThreadBaker implements ChunkBaker {
   private readonly queue: { key: number; band: number; cx: number; cy: number }[] = [];
   private scheduled = false;
   private terrain: TerrainBaker | null = null;
+  private airfield: AirfieldPayload = EMPTY_AIRFIELD;
 
   constructor(private readonly deliver: Deliver) {}
+
+  setAirfield(airfield: AirfieldPayload): void {
+    this.airfield = airfield;
+  }
 
   setSite(site: BakeSite): void {
     this.terrain = new TerrainBaker(site);
@@ -72,6 +85,7 @@ class MainThreadBaker implements ChunkBaker {
       const ctx = canvas.getContext('2d');
       if (!ctx) continue;
       ctx.putImageData(this.terrain.bake(job.band, job.cx, job.cy), 0, 0);
+      paintAirfield(ctx, this.airfield, job.band, job.cx, job.cy);
       this.deliver(job.key, canvas);
     }
     if (this.queue.length > 0) {

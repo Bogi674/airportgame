@@ -50,4 +50,26 @@ export function cosLut(angle: number): number {
   return sinLut(angle + PI / 2);
 }
 
+function atanSmall(x: number): number {
+  // |x| <= tan(pi/8) after two halvings, so a short Taylor series is exact to ~1e-12.
+  const x2 = x * x;
+  return x * (1 - x2 / 3 + (x2 * x2) / 5 - (x2 * x2 * x2) / 7 + (x2 * x2 * x2 * x2) / 9);
+}
+
+/** Arctangent of y / x in radians using only + - * / and sqrt, so it is identical everywhere. */
+export function atan2Det(y: number, x: number): number {
+  if (x === 0 && y === 0) return 0;
+  const ax = x < 0 ? -x : x;
+  const ay = y < 0 ? -y : y;
+  const swap = ay > ax;
+  let t = swap ? ax / ay : ay / ax;
+  // Two argument halvings: atan(t) = 2 atan(t / (1 + sqrt(1 + t^2))).
+  t = t / (1 + Math.sqrt(1 + t * t));
+  t = t / (1 + Math.sqrt(1 + t * t));
+  let a = 4 * atanSmall(t);
+  if (swap) a = PI / 2 - a;
+  if (x < 0) a = PI - a;
+  return y < 0 ? -a : a;
+}
+
 export { TWO_PI, PI };

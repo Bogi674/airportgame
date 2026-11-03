@@ -6,6 +6,9 @@ import { SimClient } from '../worker/client';
 import { MapView } from './MapView';
 import { Minimap } from './Minimap';
 import { SitePanel } from './SitePanel';
+import { ContextBar } from './ContextBar';
+import { ObjectPanel } from './ObjectPanel';
+import { ToolRail } from './ToolRail';
 import { useGameStore } from './stores/gameStore';
 import { t } from './strings';
 
@@ -15,6 +18,7 @@ const NOTICE_MS = 4000;
 
 export function App() {
   const store = useGameStore();
+  (window as unknown as { __store?: typeof useGameStore }).__store = useGameStore;
   const [renderer, setRenderer] = useState<Renderer | null>(null);
   const client = useMemo(
     () =>
@@ -23,12 +27,13 @@ export function App() {
         onError: (message) => useGameStore.getState().setError(message),
         onSite: (site) => useGameStore.getState().setSite(site),
         onOwnership: (o) => useGameStore.getState().setOwnership(o.owner, o.cash),
+        onAirfield: (m) => useGameStore.getState().setAirfield(m.airfield, m.canUndo, m.canRedo),
         onEvents: (list) => {
           const code = list[list.length - 1];
           if (!code) return;
           useGameStore.getState().setNotice(code);
           setTimeout(() => {
-            if (useGameStore.getState().notice === code) useGameStore.getState().setNotice(null);
+            if (useGameStore.getState().notice?.code === code.split('|')[0]) useGameStore.getState().setNotice(null);
           }, NOTICE_MS);
         },
       }),
@@ -63,6 +68,10 @@ export function App() {
   }, [renderer, store.site, store.owner]);
 
   useEffect(() => {
+    renderer?.setAirfield(store.airfield);
+  }, [renderer, store.airfield]);
+
+  useEffect(() => {
     renderer?.setSelectedParcel(store.selectedParcel);
   }, [renderer, store.site, store.selectedParcel]);
 
@@ -74,12 +83,18 @@ export function App() {
     const onKey = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return;
-      if (e.key === 'p' || e.key === 'P') useGameStore.getState().toggleParcelOverlay();
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        client.send({ type: e.shiftKey ? 'redo' : 'undo' });
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        client.send({ type: 'redo' });
+      } else if (e.key === 'p' || e.key === 'P') useGameStore.getState().toggleParcelOverlay();
       else if (e.key === 'Escape') useGameStore.getState().selectParcel(-1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [client]);
 
   const setSpeed = (s: Speed): void => {
     store.setSpeed(s);
@@ -149,6 +164,9 @@ export function App() {
         }}
         onBuy={(id) => client.send({ type: 'buyParcel', parcelId: id })}
       />
+      <ToolRail onUndo={() => client.send({ type: 'undo' })} onRedo={() => client.send({ type: 'redo' })} />
+      <ObjectPanel send={(c) => client.send(c)} />
+      <ContextBar send={(c) => client.send(c)} />
       {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
     </div>
   );

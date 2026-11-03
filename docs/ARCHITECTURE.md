@@ -203,4 +203,9 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-03: Starting cash is a 30 million placeholder and the affordable land budget for the fairness check is 8 million, until the finance milestone defines difficulty.
 * 2026-11-03: The sim sends the site once as transferred typed arrays (`staticData` kind `site`) and ownership on change (kind `ownership`). The bake worker receives its own copy of heights, classes and parcel ids.
 * 2026-11-03: Chunk raster scale is 0.25, 1 and 4 px/m. Terrain colour is a bilinear blend of class colours with hillshade, and trees, field stripes and buildings are drawn procedurally from hashes only at 1 px/m and above.
+* 2026-11-03: Airfield objects (runways, taxiways, aprons, stands) are plain objects in `Airfield`, with typed arrays reserved for hot entities. Holding points, entries and effective max codes are derived after every change by `deriveNetwork`.
+* 2026-11-03: Build validation lives in `shared/validate.ts` and is used by both the sim (authoritative) and the UI previews, so a preview turns red exactly when the sim would refuse. Problems are `code|key=value` events that the UI turns into explained messages.
+* 2026-11-03: Airfield edits send the whole airfield to the baker and mark every cached chunk dirty. Dirty chunks keep drawing their old image until the new bake arrives, so edits never flash.
+* 2026-11-03: Holding distance is measured from the runway centerline (75 m visual, 90 m instrument), per the design doc.
+* 2026-11-03: Undo and redo are sim commands with a history of add and remove operations including the cash change, so they replay deterministically. Property changes (one way, closed, max code, speed) are not part of undo.
 

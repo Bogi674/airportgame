@@ -57,18 +57,18 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ### M2. Airfield builder
 
-* [ ] Runway tool with profile (code, approach type, surface, strength), widths by code, wind band ring, length and heading readouts
-* [ ] Taxiway tool with code widths, fillets, segment properties (one way, closed, max code, speed), automatic names
-* [ ] Ghost envelopes: runway strip, wingtip envelope, separations with automatic max code downgrade, obstacle surfaces
-* [ ] Automatic holding points at correct distances, entries with takeoff distance available
-* [ ] Rapid exit tool with 30, 45 and 90 degree presets and suggested distance
-* [ ] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down
-* [ ] Surfaces with PCR tiers, condition and resurfacing
-* [ ] Alignment frames and snapping rules (`GAME_DESIGN.md` section 6)
-* [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block
-* [ ] Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes
-* [ ] Grading tool with cut and fill cost
-* [ ] Undo and redo for all build actions, validation messages with explanations
+* [x] Runway tool with profile (code, approach type, surface, strength), widths by code, length and heading readouts, wind band readout (shown as text, no ring yet)
+* [ ] Taxiway tool with code widths, fillets, segment properties (one way, closed, max code, speed), automatic names (done, except real fillets: corners use round joins)
+* [ ] Ghost envelopes: runway strip, wingtip envelope, separations with automatic max code downgrade, obstacle surfaces (done except obstacle surfaces, and the wingtip envelope is a static ring)
+* [ ] Automatic holding points at correct distances, entries with takeoff distance available (done, the player cannot drag holding points out yet)
+* [x] Rapid exit tool with 30, 45 and 90 degree presets and suggested distance
+* [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down
+* [ ] Surfaces with PCR tiers, condition and resurfacing (done, the runway does not yet close during works)
+* [x] Alignment frames and snapping rules (`GAME_DESIGN.md` section 6)
+* [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block (all but the turn pad)
+* [ ] Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes (simplified set: thresholds, designators, centerline, edges, aiming point, touchdown zone, hold marks, stand lines and boxes)
+* [ ] Grading tool with cut and fill cost (only an automatic grading cost is charged, terrain is not modified)
+* [x] Undo and redo for all build actions, validation messages with explanations
 
 ### M3. Aircraft and movement
 
