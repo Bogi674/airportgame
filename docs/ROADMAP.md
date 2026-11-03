@@ -37,14 +37,14 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ### M0. Scaffold
 
-* [ ] Vite, TypeScript strict, Preact, Zustand, zod, Vitest, Playwright, ESLint configured per `docs/BROWSER.md`
-* [ ] Repo layout from `CLAUDE.md` with path aliases
-* [ ] Sim worker and bake worker entries with the message protocol skeleton and a ticking loop
-* [ ] Seeded RNG with fork, state hash, command log and `replay.ts`, with tests
-* [ ] Snapshot buffer pool with transfer and return
-* [ ] Canvas renderer with camera (pan, zoom 0.05 to 40 px/m, rotation), chunk cache skeleton
-* [ ] `npm run stress` skeleton printing ms per tick per subsystem, `perf-baseline.json`
-* [ ] CI running test, lint, build and stress
+* [x] Vite, TypeScript strict, Preact, Zustand, zod, Vitest, Playwright, ESLint configured per `docs/BROWSER.md`
+* [x] Repo layout from `CLAUDE.md` with path aliases
+* [x] Sim worker and bake worker entries with the message protocol skeleton and a ticking loop
+* [x] Seeded RNG with fork, state hash, command log and `replay.ts`, with tests
+* [x] Snapshot buffer pool with transfer and return
+* [x] Canvas renderer with camera (pan, zoom 0.05 to 40 px/m, rotation), chunk cache skeleton
+* [x] `npm run stress` skeleton printing ms per tick per subsystem, `perf-baseline.json`
+* [ ] CI running test, lint, build and stress (workflow written in `.github/workflows/ci.yml`, tick after its first green run on GitHub)
 
 ### M1. Site, land and camera
 

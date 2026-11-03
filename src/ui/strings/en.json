@@ -1,0 +1,13 @@
+{
+  "app.title": "Airfield Tycoon",
+  "hud.tick": "Tick",
+  "hud.aircraft": "Aircraft",
+  "hud.simMs": "Sim ms per tick",
+  "hud.backlog": "Backlog",
+  "hud.speed": "Speed",
+  "hud.pause": "Pause",
+  "hud.spawn": "Spawn 50 test aircraft",
+  "hud.clear": "Clear aircraft",
+  "error.title": "Something went wrong",
+  "error.restart": "Restart"
+}

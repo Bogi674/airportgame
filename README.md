@@ -10,4 +10,6 @@ This repository currently holds the design package for development with Claude C
 * `docs/reference/sprite-prototypes/`: Python reference code for sprites, markings and collision checks. Not shipped.
 * `src/data/`: aircraft and ground vehicle data.
 
-To begin development, open the repository in Claude Code and ask it to start milestone M0 from `docs/ROADMAP.md`.
+M0 (scaffold) is in place. Run `npm install`, then `npm run dev`, `npm run test`, `npm run lint`, `npm run build`, `npm run stress`, `npm run e2e` (set `PW_CHROMIUM_PATH` to use an installed Chromium).
+
+To continue development, open the repository in Claude Code and ask it to start milestone M0 from `docs/ROADMAP.md`.

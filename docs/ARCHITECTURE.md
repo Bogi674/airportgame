@@ -190,3 +190,10 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-03: Content ships in releases. MVP 1 has 10 aircraft, Release 1.0 all 42 Phase 1 aircraft.
 * 2026-11-03: UI uses Preact for components because it is about 4 KB and fast. Added to the allowed dependency list.
 * 2026-11-03: No noise complaint system.
+* 2026-11-03: Trig lookup table is built with a Taylor series using only `+ - * /`, so it is bit identical on every engine, unlike tables filled with `Math.sin`.
+* 2026-11-03: `Rng.fork(label)` derives from the original seed, not the current state, so a subsystem stream does not depend on fork order or parent use.
+* 2026-11-03: Commands travel as one `commands { list }` message per animation frame instead of one `command` message each, to match the batching rule in `docs/PERFORMANCE.md` section 4.
+* 2026-11-03: While paused the worker calls `flushCommands()`, which applies queued commands at the current tick without advancing time. Replay applies them at the start of that same tick, so the result is identical.
+* 2026-11-03: M0 sim content is test aircraft flying straight lines, only to exercise the loop, snapshots, replay and stress tool. They are removed when real aircraft arrive in M3.
+* 2026-11-03: Zoom bands for chunk baking are below 0.4, 0.4 to 3.2 and above 3.2 px/m, at raster scales of 0.25, 1 and 4 px/m, so a 512 m chunk is at most 2048 px.
+* 2026-11-03: `worker/scope.ts` types the worker global by hand so the DOM lib and worker code share one tsconfig.
