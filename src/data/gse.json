@@ -1,0 +1,107 @@
+{
+ "version": 1,
+ "units": "meters",
+ "note": "Ground support equipment at real size. H is working height used for overhead checks.",
+ "vehicles": [
+  {
+   "id": "tug",
+   "name": "Push back tug",
+   "lengthM": 5.8,
+   "widthM": 2.5,
+   "heightM": 1.9,
+   "docks": false,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "tractor",
+   "name": "Baggage tractor",
+   "lengthM": 2.9,
+   "widthM": 1.45,
+   "heightM": 1.9,
+   "docks": false,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "cart",
+   "name": "Baggage cart",
+   "lengthM": 3.9,
+   "widthM": 1.55,
+   "heightM": 2.0,
+   "docks": false,
+   "articulated": true,
+   "towedBy": "tractor"
+  },
+  {
+   "id": "beltloader",
+   "name": "Belt loader",
+   "lengthM": 7.6,
+   "widthM": 2.1,
+   "heightM": 1.8,
+   "docks": true,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "catering",
+   "name": "Catering high loader",
+   "lengthM": 9.5,
+   "widthM": 2.5,
+   "heightM": 4.6,
+   "docks": true,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "dispenser",
+   "name": "Hydrant dispenser",
+   "lengthM": 6.8,
+   "widthM": 2.5,
+   "heightM": 2.2,
+   "docks": false,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "refueller",
+   "name": "Refueller truck",
+   "lengthM": 10.0,
+   "widthM": 2.5,
+   "heightM": 3.2,
+   "docks": false,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "gpu",
+   "name": "Ground power unit",
+   "lengthM": 3.2,
+   "widthM": 1.7,
+   "heightM": 1.6,
+   "docks": false,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "bus",
+   "name": "Apron bus",
+   "lengthM": 13.8,
+   "widthM": 3.0,
+   "heightM": 3.1,
+   "docks": false,
+   "articulated": false,
+   "towedBy": null
+  },
+  {
+   "id": "stairs",
+   "name": "Passenger stairs",
+   "lengthM": 7.2,
+   "widthM": 2.4,
+   "heightM": 3.2,
+   "docks": true,
+   "articulated": false,
+   "towedBy": null
+  }
+ ]
+}

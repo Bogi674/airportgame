@@ -1,0 +1,3720 @@
+{
+ "version": 1,
+ "units": "SI, meters, kilograms, kilonewtons, kilowatts, km/h, knots",
+ "note": "Rounded public manufacturer figures. Sprite geometry is in meters, nose at y = 0, x positive to the right wing.",
+ "aircraft": [
+  {
+   "id": "b737_700",
+   "name": "Boeing 737-700",
+   "family": "b737ng",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "B737",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 33.63,
+    "wingspanM": 35.79,
+    "heightM": 12.57,
+    "fuselageWidthM": 3.76,
+    "wheelbaseM": 12.6,
+    "mainGearTrackM": 5.72
+   },
+   "weights": {
+    "mtowKg": 70080,
+    "mlwKg": 58604,
+    "oewKg": 38147
+   },
+   "capacity": {
+    "seatsTypical": 126,
+    "seatsMax": 149
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM56-7B24",
+    "thrustKN": 107
+   },
+   "performance": {
+    "rangeKm": 6370,
+    "cruiseKmh": 842,
+    "ceilingM": 12500,
+    "takeoffFieldM": 1900,
+    "landingFieldM": 1415,
+    "vrefKt": 130
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b738",
+    "calibration": "dimension checked",
+    "plugFwd": -3.05,
+    "plugAft": -2.79
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "b737_800",
+   "name": "Boeing 737-800",
+   "family": "b737ng",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "narrowbody",
+   "icaoType": "B738",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 39.47,
+    "wingspanM": 35.79,
+    "heightM": 12.55,
+    "fuselageWidthM": 3.76,
+    "wheelbaseM": 15.6,
+    "mainGearTrackM": 5.72
+   },
+   "weights": {
+    "mtowKg": 79010,
+    "mlwKg": 66361,
+    "oewKg": 41413
+   },
+   "capacity": {
+    "seatsTypical": 162,
+    "seatsMax": 189
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM56-7B27",
+    "thrustKN": 121
+   },
+   "performance": {
+    "rangeKm": 5436,
+    "cruiseKmh": 842,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2316,
+    "landingFieldM": 1634,
+    "vrefKt": 146
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b738",
+    "calibration": "dimension checked"
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b737_900er",
+   "name": "Boeing 737-900ER",
+   "family": "b737ng",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "B739",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 42.11,
+    "wingspanM": 35.79,
+    "heightM": 12.55,
+    "fuselageWidthM": 3.76,
+    "wheelbaseM": 17.17,
+    "mainGearTrackM": 5.72
+   },
+   "weights": {
+    "mtowKg": 85139,
+    "mlwKg": 71350,
+    "oewKg": 44676
+   },
+   "capacity": {
+    "seatsTypical": 178,
+    "seatsMax": 220
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM56-7B27",
+    "thrustKN": 121
+   },
+   "performance": {
+    "rangeKm": 5460,
+    "cruiseKmh": 842,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2500,
+    "landingFieldM": 1800,
+    "vrefKt": 150
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b738",
+    "calibration": "dimension checked",
+    "plugFwd": 1.57,
+    "plugAft": 1.07
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b737_max8",
+   "name": "Boeing 737 MAX 8",
+   "family": "b737max",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "B38M",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 39.52,
+    "wingspanM": 35.92,
+    "heightM": 12.29,
+    "fuselageWidthM": 3.76,
+    "wheelbaseM": 15.6,
+    "mainGearTrackM": 5.72
+   },
+   "weights": {
+    "mtowKg": 82191,
+    "mlwKg": 69309,
+    "oewKg": 45070
+   },
+   "capacity": {
+    "seatsTypical": 172,
+    "seatsMax": 210
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM LEAP-1B27",
+    "thrustKN": 124
+   },
+   "performance": {
+    "rangeKm": 6570,
+    "cruiseKmh": 839,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2500,
+    "landingFieldM": 1600,
+    "vrefKt": 145
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b738",
+    "calibration": "dimension checked",
+    "plugFwd": 0.05,
+    "winglet": "split",
+    "ext": 0.79,
+    "engine": {
+     "len": 5.0,
+     "d": 2.2,
+     "chevrons": true,
+     "fan_end": 0.66
+    }
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b737_max9",
+   "name": "Boeing 737 MAX 9",
+   "family": "b737max",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "B39M",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 42.16,
+    "wingspanM": 35.92,
+    "heightM": 12.29,
+    "fuselageWidthM": 3.76,
+    "wheelbaseM": 17.17,
+    "mainGearTrackM": 5.72
+   },
+   "weights": {
+    "mtowKg": 88314,
+    "mlwKg": 74344,
+    "oewKg": 50300
+   },
+   "capacity": {
+    "seatsTypical": 193,
+    "seatsMax": 220
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM LEAP-1B28",
+    "thrustKN": 130
+   },
+   "performance": {
+    "rangeKm": 6110,
+    "cruiseKmh": 839,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2700,
+    "landingFieldM": 1700,
+    "vrefKt": 150
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b738",
+    "calibration": "dimension checked",
+    "plugFwd": 1.62,
+    "plugAft": 1.07,
+    "winglet": "split",
+    "ext": 0.79,
+    "engine": {
+     "len": 5.0,
+     "d": 2.2,
+     "chevrons": true,
+     "fan_end": 0.66
+    }
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "a319ceo",
+   "name": "Airbus A319ceo",
+   "family": "a320ceo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "A319",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 33.84,
+    "wingspanM": 34.1,
+    "heightM": 11.76,
+    "fuselageWidthM": 3.95,
+    "wheelbaseM": 11.04,
+    "mainGearTrackM": 7.59
+   },
+   "weights": {
+    "mtowKg": 75500,
+    "mlwKg": 62500,
+    "oewKg": 40800
+   },
+   "capacity": {
+    "seatsTypical": 124,
+    "seatsMax": 156
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM56-5B6",
+    "thrustKN": 105
+   },
+   "performance": {
+    "rangeKm": 6850,
+    "cruiseKmh": 828,
+    "ceilingM": 11900,
+    "takeoffFieldM": 1950,
+    "landingFieldM": 1470,
+    "vrefKt": 130
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a320neo",
+    "calibration": "dimension checked",
+    "plugFwd": -2.13,
+    "plugAft": -1.6,
+    "span": 34.1,
+    "winglet": "fence",
+    "ext": 0.0,
+    "engine": {
+     "len": 4.6,
+     "d": 2.1,
+     "fan_end": 0.62
+    }
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a320ceo",
+   "name": "Airbus A320ceo",
+   "family": "a320ceo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "A320",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 37.57,
+    "wingspanM": 34.1,
+    "heightM": 11.76,
+    "fuselageWidthM": 3.95,
+    "wheelbaseM": 12.64,
+    "mainGearTrackM": 7.59
+   },
+   "weights": {
+    "mtowKg": 78000,
+    "mlwKg": 66000,
+    "oewKg": 42600
+   },
+   "capacity": {
+    "seatsTypical": 150,
+    "seatsMax": 180
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM56-5B4",
+    "thrustKN": 120
+   },
+   "performance": {
+    "rangeKm": 6150,
+    "cruiseKmh": 828,
+    "ceilingM": 11900,
+    "takeoffFieldM": 2100,
+    "landingFieldM": 1500,
+    "vrefKt": 136
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a320neo",
+    "calibration": "dimension checked",
+    "span": 34.1,
+    "winglet": "fence",
+    "ext": 0.0,
+    "engine": {
+     "len": 4.6,
+     "d": 2.1,
+     "fan_end": 0.62
+    }
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a321ceo",
+   "name": "Airbus A321ceo",
+   "family": "a320ceo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "A321",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 44.51,
+    "wingspanM": 34.1,
+    "heightM": 11.76,
+    "fuselageWidthM": 3.95,
+    "wheelbaseM": 16.91,
+    "mainGearTrackM": 7.59
+   },
+   "weights": {
+    "mtowKg": 93500,
+    "mlwKg": 77800,
+    "oewKg": 48500
+   },
+   "capacity": {
+    "seatsTypical": 185,
+    "seatsMax": 220
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM56-5B3",
+    "thrustKN": 147
+   },
+   "performance": {
+    "rangeKm": 5950,
+    "cruiseKmh": 828,
+    "ceilingM": 11900,
+    "takeoffFieldM": 2500,
+    "landingFieldM": 1600,
+    "vrefKt": 142
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a320neo",
+    "calibration": "dimension checked",
+    "plugFwd": 4.27,
+    "plugAft": 2.67,
+    "span": 34.1,
+    "winglet": "fence",
+    "ext": 0.0,
+    "engine": {
+     "len": 4.7,
+     "d": 2.15,
+     "fan_end": 0.62
+    }
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "a320neo",
+   "name": "Airbus A320neo",
+   "family": "a320neo",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "narrowbody",
+   "icaoType": "A20N",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 37.57,
+    "wingspanM": 35.8,
+    "heightM": 11.76,
+    "fuselageWidthM": 3.95,
+    "wheelbaseM": 12.64,
+    "mainGearTrackM": 7.59
+   },
+   "weights": {
+    "mtowKg": 79000,
+    "mlwKg": 67400,
+    "oewKg": 44300
+   },
+   "capacity": {
+    "seatsTypical": 165,
+    "seatsMax": 194
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM LEAP-1A26 or PW1127G",
+    "thrustKN": 121
+   },
+   "performance": {
+    "rangeKm": 6300,
+    "cruiseKmh": 828,
+    "ceilingM": 11900,
+    "takeoffFieldM": 1950,
+    "landingFieldM": 1500,
+    "vrefKt": 136
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a320neo",
+    "calibration": "dimension checked"
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a321neo",
+   "name": "Airbus A321neo",
+   "family": "a320neo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "narrowbody",
+   "icaoType": "A21N",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 44.51,
+    "wingspanM": 35.8,
+    "heightM": 11.76,
+    "fuselageWidthM": 3.95,
+    "wheelbaseM": 16.91,
+    "mainGearTrackM": 7.59
+   },
+   "weights": {
+    "mtowKg": 97000,
+    "mlwKg": 79200,
+    "oewKg": 50100
+   },
+   "capacity": {
+    "seatsTypical": 206,
+    "seatsMax": 244
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CFM LEAP-1A32 or PW1133G",
+    "thrustKN": 143
+   },
+   "performance": {
+    "rangeKm": 7400,
+    "cruiseKmh": 828,
+    "ceilingM": 11900,
+    "takeoffFieldM": 2200,
+    "landingFieldM": 1600,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a320neo",
+    "calibration": "dimension checked",
+    "plugFwd": 4.27,
+    "plugAft": 2.67
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "b747_400",
+   "name": "Boeing 747-400",
+   "family": "b747",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "B744",
+   "generation": "classic",
+   "dimensions": {
+    "lengthM": 70.66,
+    "wingspanM": 64.44,
+    "heightM": 19.41,
+    "fuselageWidthM": 6.5,
+    "wheelbaseM": 25.6,
+    "mainGearTrackM": 11.0
+   },
+   "weights": {
+    "mtowKg": 396890,
+    "mlwKg": 285764,
+    "oewKg": 178756
+   },
+   "capacity": {
+    "seatsTypical": 416,
+    "seatsMax": 660
+   },
+   "engines": {
+    "count": 4,
+    "type": "turbofan",
+    "model": "CF6-80C2B5F or PW4062 or RB211-524H",
+    "thrustKN": 270
+   },
+   "performance": {
+    "rangeKm": 13450,
+    "cruiseKmh": 913,
+    "ceilingM": 13700,
+    "takeoffFieldM": 3300,
+    "landingFieldM": 2130,
+    "vrefKt": 157
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b744",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b747_400f",
+   "name": "Boeing 747-400F",
+   "family": "b747",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "freighter",
+   "icaoType": "B744",
+   "generation": "classic",
+   "dimensions": {
+    "lengthM": 70.66,
+    "wingspanM": 64.44,
+    "heightM": 19.41,
+    "fuselageWidthM": 6.5,
+    "wheelbaseM": 25.6,
+    "mainGearTrackM": 11.0
+   },
+   "weights": {
+    "mtowKg": 396890,
+    "mlwKg": 302093,
+    "oewKg": 164382
+   },
+   "capacity": {
+    "seatsTypical": 0,
+    "seatsMax": 0,
+    "maxPayloadKg": 112630
+   },
+   "engines": {
+    "count": 4,
+    "type": "turbofan",
+    "model": "CF6-80C2B5F",
+    "thrustKN": 270
+   },
+   "performance": {
+    "rangeKm": 8230,
+    "cruiseKmh": 913,
+    "ceilingM": 13700,
+    "takeoffFieldM": 3300,
+    "landingFieldM": 2130,
+    "vrefKt": 157
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b744",
+    "calibration": "needs photo calibration",
+    "upperEnd": 14.5,
+    "windows": false
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b747_8i",
+   "name": "Boeing 747-8 Intercontinental",
+   "family": "b747",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "B748",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 76.25,
+    "wingspanM": 68.45,
+    "heightM": 19.35,
+    "fuselageWidthM": 6.5,
+    "wheelbaseM": 29.67,
+    "mainGearTrackM": 11.0
+   },
+   "weights": {
+    "mtowKg": 447700,
+    "mlwKg": 312072,
+    "oewKg": 220128
+   },
+   "capacity": {
+    "seatsTypical": 410,
+    "seatsMax": 605
+   },
+   "engines": {
+    "count": 4,
+    "type": "turbofan",
+    "model": "GEnx-2B67",
+    "thrustKN": 296
+   },
+   "performance": {
+    "rangeKm": 14320,
+    "cruiseKmh": 913,
+    "ceilingM": 13100,
+    "takeoffFieldM": 3100,
+    "landingFieldM": 2200,
+    "vrefKt": 158
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b744",
+    "calibration": "needs photo calibration",
+    "plugFwd": 3.6,
+    "plugAft": 1.99,
+    "winglet": "none",
+    "rake": 5.5,
+    "span": 68.45,
+    "upperEnd": 30.1,
+    "engine": {
+     "len": 7.0,
+     "d": 3.3,
+     "chevrons": true,
+     "fan_end": 0.66
+    }
+   },
+   "derivedForReading": {
+    "code": "F",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b747_8f",
+   "name": "Boeing 747-8F",
+   "family": "b747",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "freighter",
+   "icaoType": "B748",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 76.25,
+    "wingspanM": 68.45,
+    "heightM": 19.35,
+    "fuselageWidthM": 6.5,
+    "wheelbaseM": 29.67,
+    "mainGearTrackM": 11.0
+   },
+   "weights": {
+    "mtowKg": 447700,
+    "mlwKg": 346090,
+    "oewKg": 197131
+   },
+   "capacity": {
+    "seatsTypical": 0,
+    "seatsMax": 0,
+    "maxPayloadKg": 137750
+   },
+   "engines": {
+    "count": 4,
+    "type": "turbofan",
+    "model": "GEnx-2B67",
+    "thrustKN": 296
+   },
+   "performance": {
+    "rangeKm": 7630,
+    "cruiseKmh": 913,
+    "ceilingM": 13100,
+    "takeoffFieldM": 3100,
+    "landingFieldM": 2200,
+    "vrefKt": 158
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b744",
+    "calibration": "needs photo calibration",
+    "plugFwd": 3.6,
+    "plugAft": 1.99,
+    "winglet": "none",
+    "rake": 5.5,
+    "span": 68.45,
+    "upperEnd": 18.0,
+    "windows": false,
+    "engine": {
+     "len": 7.0,
+     "d": 3.3,
+     "chevrons": true,
+     "fan_end": 0.66
+    }
+   },
+   "derivedForReading": {
+    "code": "F",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b777_200er",
+   "name": "Boeing 777-200ER",
+   "family": "b777",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "B772",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 63.73,
+    "wingspanM": 60.93,
+    "heightM": 18.52,
+    "fuselageWidthM": 6.19,
+    "wheelbaseM": 25.88,
+    "mainGearTrackM": 10.97
+   },
+   "weights": {
+    "mtowKg": 297550,
+    "mlwKg": 213180,
+    "oewKg": 138100
+   },
+   "capacity": {
+    "seatsTypical": 313,
+    "seatsMax": 440
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "GE90-94B or PW4090 or Trent 895",
+    "thrustKN": 417
+   },
+   "performance": {
+    "rangeKm": 13080,
+    "cruiseKmh": 905,
+    "ceilingM": 13100,
+    "takeoffFieldM": 3380,
+    "landingFieldM": 1770,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b77w",
+    "calibration": "photo calibrated",
+    "plugFwd": -5.33,
+    "plugAft": -4.8,
+    "rake": 0,
+    "span": 60.93,
+    "engine": {
+     "d": 3.9,
+     "len": 7.6
+    }
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "b777_300er",
+   "name": "Boeing 777-300ER",
+   "family": "b777",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "widebody",
+   "icaoType": "B77W",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 73.86,
+    "wingspanM": 64.8,
+    "heightM": 18.51,
+    "fuselageWidthM": 6.19,
+    "wheelbaseM": 31.22,
+    "mainGearTrackM": 10.97
+   },
+   "weights": {
+    "mtowKg": 351535,
+    "mlwKg": 251290,
+    "oewKg": 167829
+   },
+   "capacity": {
+    "seatsTypical": 396,
+    "seatsMax": 550
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "GE90-115B",
+    "thrustKN": 513
+   },
+   "performance": {
+    "rangeKm": 13650,
+    "cruiseKmh": 905,
+    "ceilingM": 13100,
+    "takeoffFieldM": 3050,
+    "landingFieldM": 1960,
+    "vrefKt": 149
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b77w",
+    "calibration": "photo calibrated"
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b777f",
+   "name": "Boeing 777F",
+   "family": "b777",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "freighter",
+   "icaoType": "B77L",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 63.73,
+    "wingspanM": 64.8,
+    "heightM": 18.6,
+    "fuselageWidthM": 6.19,
+    "wheelbaseM": 25.88,
+    "mainGearTrackM": 10.97
+   },
+   "weights": {
+    "mtowKg": 347815,
+    "mlwKg": 260816,
+    "oewKg": 144379
+   },
+   "capacity": {
+    "seatsTypical": 0,
+    "seatsMax": 0,
+    "maxPayloadKg": 102010
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "GE90-110B1",
+    "thrustKN": 489
+   },
+   "performance": {
+    "rangeKm": 9200,
+    "cruiseKmh": 905,
+    "ceilingM": 13100,
+    "takeoffFieldM": 3200,
+    "landingFieldM": 1900,
+    "vrefKt": 147
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b77w",
+    "calibration": "photo calibrated",
+    "plugFwd": -5.33,
+    "plugAft": -4.8,
+    "windows": false
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b787_8",
+   "name": "Boeing 787-8",
+   "family": "b787",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "B788",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 56.72,
+    "wingspanM": 60.12,
+    "heightM": 16.92,
+    "fuselageWidthM": 5.77,
+    "wheelbaseM": 22.78,
+    "mainGearTrackM": 9.8
+   },
+   "weights": {
+    "mtowKg": 227930,
+    "mlwKg": 172365,
+    "oewKg": 119950
+   },
+   "capacity": {
+    "seatsTypical": 248,
+    "seatsMax": 381
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "GEnx-1B70 or Trent 1000",
+    "thrustKN": 285
+   },
+   "performance": {
+    "rangeKm": 13530,
+    "cruiseKmh": 903,
+    "ceilingM": 13100,
+    "takeoffFieldM": 2600,
+    "landingFieldM": 1700,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b789",
+    "calibration": "dimension checked",
+    "plugFwd": -3.05,
+    "plugAft": -3.04
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "b787_9",
+   "name": "Boeing 787-9",
+   "family": "b787",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "widebody",
+   "icaoType": "B789",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 62.81,
+    "wingspanM": 60.12,
+    "heightM": 17.02,
+    "fuselageWidthM": 5.77,
+    "wheelbaseM": 25.6,
+    "mainGearTrackM": 9.8
+   },
+   "weights": {
+    "mtowKg": 254011,
+    "mlwKg": 192777,
+    "oewKg": 128850
+   },
+   "capacity": {
+    "seatsTypical": 296,
+    "seatsMax": 420
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "GEnx-1B74 or Trent 1000-TEN",
+    "thrustKN": 320
+   },
+   "performance": {
+    "rangeKm": 14010,
+    "cruiseKmh": 903,
+    "ceilingM": 13100,
+    "takeoffFieldM": 2800,
+    "landingFieldM": 1800,
+    "vrefKt": 144
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b789",
+    "calibration": "dimension checked"
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "b787_10",
+   "name": "Boeing 787-10",
+   "family": "b787",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "B78X",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 68.28,
+    "wingspanM": 60.12,
+    "heightM": 17.02,
+    "fuselageWidthM": 5.77,
+    "wheelbaseM": 28.12,
+    "mainGearTrackM": 9.8
+   },
+   "weights": {
+    "mtowKg": 254011,
+    "mlwKg": 201849,
+    "oewKg": 135500
+   },
+   "capacity": {
+    "seatsTypical": 336,
+    "seatsMax": 440
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "GEnx-1B76 or Trent 1000-TEN",
+    "thrustKN": 338
+   },
+   "performance": {
+    "rangeKm": 11910,
+    "cruiseKmh": 903,
+    "ceilingM": 13100,
+    "takeoffFieldM": 2900,
+    "landingFieldM": 1900,
+    "vrefKt": 148
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "b789",
+    "calibration": "dimension checked",
+    "plugFwd": 3.05,
+    "plugAft": 2.42
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "a330_200",
+   "name": "Airbus A330-200",
+   "family": "a330ceo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A332",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 58.82,
+    "wingspanM": 60.3,
+    "heightM": 17.39,
+    "fuselageWidthM": 5.64,
+    "wheelbaseM": 22.18,
+    "mainGearTrackM": 10.69
+   },
+   "weights": {
+    "mtowKg": 242000,
+    "mlwKg": 182000,
+    "oewKg": 120600
+   },
+   "capacity": {
+    "seatsTypical": 247,
+    "seatsMax": 406
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Trent 772B or CF6-80E1 or PW4168",
+    "thrustKN": 316
+   },
+   "performance": {
+    "rangeKm": 13450,
+    "cruiseKmh": 871,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2500,
+    "landingFieldM": 1750,
+    "vrefKt": 137
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a333",
+    "calibration": "needs photo calibration",
+    "plugFwd": -2.13,
+    "plugAft": -2.71
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a330_300",
+   "name": "Airbus A330-300",
+   "family": "a330ceo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A333",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 63.66,
+    "wingspanM": 60.3,
+    "heightM": 16.79,
+    "fuselageWidthM": 5.64,
+    "wheelbaseM": 25.58,
+    "mainGearTrackM": 10.69
+   },
+   "weights": {
+    "mtowKg": 242000,
+    "mlwKg": 187000,
+    "oewKg": 129400
+   },
+   "capacity": {
+    "seatsTypical": 277,
+    "seatsMax": 440
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Trent 772B or CF6-80E1 or PW4168",
+    "thrustKN": 316
+   },
+   "performance": {
+    "rangeKm": 11750,
+    "cruiseKmh": 871,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2770,
+    "landingFieldM": 1850,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a333",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a330_900",
+   "name": "Airbus A330-900",
+   "family": "a330neo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A339",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 63.66,
+    "wingspanM": 64.0,
+    "heightM": 16.79,
+    "fuselageWidthM": 5.64,
+    "wheelbaseM": 25.58,
+    "mainGearTrackM": 10.69
+   },
+   "weights": {
+    "mtowKg": 251000,
+    "mlwKg": 191000,
+    "oewKg": 135000
+   },
+   "capacity": {
+    "seatsTypical": 287,
+    "seatsMax": 460
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Trent 7000-72",
+    "thrustKN": 324
+   },
+   "performance": {
+    "rangeKm": 13330,
+    "cruiseKmh": 871,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2600,
+    "landingFieldM": 1800,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a333",
+    "calibration": "needs photo calibration",
+    "winglet": "sharklet",
+    "ext": 1.2,
+    "span": 64.0,
+    "engine": {
+     "flow": "separate",
+     "d": 3.5,
+     "len": 7.2,
+     "fan_end": 0.7
+    }
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a330_200f",
+   "name": "Airbus A330-200F",
+   "family": "a330ceo",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "freighter",
+   "icaoType": "A332",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 58.82,
+    "wingspanM": 60.3,
+    "heightM": 16.9,
+    "fuselageWidthM": 5.64,
+    "wheelbaseM": 22.18,
+    "mainGearTrackM": 10.69
+   },
+   "weights": {
+    "mtowKg": 233000,
+    "mlwKg": 187000,
+    "oewKg": 109000
+   },
+   "capacity": {
+    "seatsTypical": 0,
+    "seatsMax": 0,
+    "maxPayloadKg": 70000
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Trent 772B or PW4170",
+    "thrustKN": 316
+   },
+   "performance": {
+    "rangeKm": 7400,
+    "cruiseKmh": 871,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2600,
+    "landingFieldM": 1800,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a333",
+    "calibration": "needs photo calibration",
+    "plugFwd": -2.13,
+    "plugAft": -2.71,
+    "windows": false
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a340_300",
+   "name": "Airbus A340-300",
+   "family": "a340",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A343",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 63.69,
+    "wingspanM": 60.3,
+    "heightM": 16.85,
+    "fuselageWidthM": 5.64,
+    "wheelbaseM": 25.37,
+    "mainGearTrackM": 10.69
+   },
+   "weights": {
+    "mtowKg": 276500,
+    "mlwKg": 192000,
+    "oewKg": 129800
+   },
+   "capacity": {
+    "seatsTypical": 277,
+    "seatsMax": 440
+   },
+   "engines": {
+    "count": 4,
+    "type": "turbofan",
+    "model": "CFM56-5C4",
+    "thrustKN": 151
+   },
+   "performance": {
+    "rangeKm": 13700,
+    "cruiseKmh": 871,
+    "ceilingM": 12500,
+    "takeoffFieldM": 3000,
+    "landingFieldM": 1900,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a346",
+    "calibration": "needs photo calibration",
+    "plugFwd": -6.4,
+    "plugAft": -5.27,
+    "span": 60.3,
+    "wing": {
+     "c": 10.9,
+     "sb": 29.6,
+     "kink": 9.8
+    },
+    "engine": {
+     "d": 2.4,
+     "len": 5.8
+    }
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a340_600",
+   "name": "Airbus A340-600",
+   "family": "a340",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A346",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 75.36,
+    "wingspanM": 63.45,
+    "heightM": 17.22,
+    "fuselageWidthM": 5.64,
+    "wheelbaseM": 32.89,
+    "mainGearTrackM": 10.69
+   },
+   "weights": {
+    "mtowKg": 380000,
+    "mlwKg": 265000,
+    "oewKg": 177000
+   },
+   "capacity": {
+    "seatsTypical": 326,
+    "seatsMax": 475
+   },
+   "engines": {
+    "count": 4,
+    "type": "turbofan",
+    "model": "Trent 556",
+    "thrustKN": 249
+   },
+   "performance": {
+    "rangeKm": 14450,
+    "cruiseKmh": 871,
+    "ceilingM": 12500,
+    "takeoffFieldM": 3200,
+    "landingFieldM": 2050,
+    "vrefKt": 150
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a346",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "a350_900",
+   "name": "Airbus A350-900",
+   "family": "a350",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A359",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 66.8,
+    "wingspanM": 64.75,
+    "heightM": 17.05,
+    "fuselageWidthM": 5.96,
+    "wheelbaseM": 28.67,
+    "mainGearTrackM": 10.6
+   },
+   "weights": {
+    "mtowKg": 283000,
+    "mlwKg": 207000,
+    "oewKg": 142400
+   },
+   "capacity": {
+    "seatsTypical": 315,
+    "seatsMax": 440
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Trent XWB-84",
+    "thrustKN": 374
+   },
+   "performance": {
+    "rangeKm": 15000,
+    "cruiseKmh": 903,
+    "ceilingM": 13100,
+    "takeoffFieldM": 2600,
+    "landingFieldM": 1850,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a359",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "a350_1000",
+   "name": "Airbus A350-1000",
+   "family": "a350",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "widebody",
+   "icaoType": "A35K",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 73.79,
+    "wingspanM": 64.75,
+    "heightM": 17.08,
+    "fuselageWidthM": 5.96,
+    "wheelbaseM": 32.48,
+    "mainGearTrackM": 10.73
+   },
+   "weights": {
+    "mtowKg": 319000,
+    "mlwKg": 236000,
+    "oewKg": 155000
+   },
+   "capacity": {
+    "seatsTypical": 369,
+    "seatsMax": 480
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Trent XWB-97",
+    "thrustKN": 431
+   },
+   "performance": {
+    "rangeKm": 16100,
+    "cruiseKmh": 903,
+    "ceilingM": 13100,
+    "takeoffFieldM": 2800,
+    "landingFieldM": 2000,
+    "vrefKt": 145
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "a359",
+    "calibration": "needs photo calibration",
+    "plugFwd": 4.2,
+    "plugAft": 2.79,
+    "engine": {
+     "d": 3.9
+    }
+   },
+   "derivedForReading": {
+    "code": "E",
+    "wake": "H",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "atr42_600",
+   "name": "ATR 42-600",
+   "family": "atr",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "regionalTurboprop",
+   "icaoType": "AT46",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 22.67,
+    "wingspanM": 24.57,
+    "heightM": 7.59,
+    "fuselageWidthM": 2.865,
+    "wheelbaseM": 8.78,
+    "mainGearTrackM": 4.1
+   },
+   "weights": {
+    "mtowKg": 18600,
+    "mlwKg": 18300,
+    "oewKg": 11550
+   },
+   "capacity": {
+    "seatsTypical": 48,
+    "seatsMax": 50
+   },
+   "engines": {
+    "count": 2,
+    "type": "turboprop",
+    "model": "PW127M",
+    "powerKW": 1790
+   },
+   "performance": {
+    "rangeKm": 1326,
+    "cruiseKmh": 556,
+    "ceilingM": 7620,
+    "takeoffFieldM": 1165,
+    "landingFieldM": 1126,
+    "vrefKt": 104
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "gravel"
+   ],
+   "sprite": {
+    "base": "at76",
+    "calibration": "needs photo calibration",
+    "plugFwd": -2.0,
+    "plugAft": -2.5,
+    "span": 24.57
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "atr72_600",
+   "name": "ATR 72-600",
+   "family": "atr",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "regionalTurboprop",
+   "icaoType": "AT76",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 27.17,
+    "wingspanM": 27.05,
+    "heightM": 7.65,
+    "fuselageWidthM": 2.865,
+    "wheelbaseM": 10.77,
+    "mainGearTrackM": 4.1
+   },
+   "weights": {
+    "mtowKg": 23000,
+    "mlwKg": 22350,
+    "oewKg": 13600
+   },
+   "capacity": {
+    "seatsTypical": 70,
+    "seatsMax": 78
+   },
+   "engines": {
+    "count": 2,
+    "type": "turboprop",
+    "model": "PW127M",
+    "powerKW": 2051
+   },
+   "performance": {
+    "rangeKm": 1528,
+    "cruiseKmh": 510,
+    "ceilingM": 7620,
+    "takeoffFieldM": 1367,
+    "landingFieldM": 1067,
+    "vrefKt": 113
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "gravel"
+   ],
+   "sprite": {
+    "base": "at76",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "crj200",
+   "name": "Bombardier CRJ200",
+   "family": "crj",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "regionalJet",
+   "icaoType": "CRJ2",
+   "generation": "classic",
+   "dimensions": {
+    "lengthM": 26.77,
+    "wingspanM": 21.21,
+    "heightM": 6.22,
+    "fuselageWidthM": 2.69,
+    "wheelbaseM": 11.39,
+    "mainGearTrackM": 3.18
+   },
+   "weights": {
+    "mtowKg": 24040,
+    "mlwKg": 21319,
+    "oewKg": 13835
+   },
+   "capacity": {
+    "seatsTypical": 50,
+    "seatsMax": 50
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CF34-3B1",
+    "thrustKN": 41
+   },
+   "performance": {
+    "rangeKm": 3045,
+    "cruiseKmh": 786,
+    "ceilingM": 12500,
+    "takeoffFieldM": 1920,
+    "landingFieldM": 1480,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "crj9",
+    "calibration": "needs photo calibration",
+    "plugFwd": -5.0,
+    "plugAft": -4.42,
+    "span": 21.21,
+    "wing": {
+     "c": 3.9,
+     "kink": 3.8,
+     "tip": 1.1
+    },
+    "engine": {
+     "d": 1.25,
+     "len": 3.6
+    }
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "crj700",
+   "name": "Bombardier CRJ700",
+   "family": "crj",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "regionalJet",
+   "icaoType": "CRJ7",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 32.51,
+    "wingspanM": 23.24,
+    "heightM": 7.57,
+    "fuselageWidthM": 2.69,
+    "wheelbaseM": 14.6,
+    "mainGearTrackM": 4.1
+   },
+   "weights": {
+    "mtowKg": 34019,
+    "mlwKg": 30390,
+    "oewKg": 20069
+   },
+   "capacity": {
+    "seatsTypical": 70,
+    "seatsMax": 78
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CF34-8C5B1",
+    "thrustKN": 61
+   },
+   "performance": {
+    "rangeKm": 2553,
+    "cruiseKmh": 828,
+    "ceilingM": 12500,
+    "takeoffFieldM": 1605,
+    "landingFieldM": 1515,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "crj9",
+    "calibration": "needs photo calibration",
+    "plugFwd": -2.0,
+    "plugAft": -1.68,
+    "span": 23.24
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "crj900",
+   "name": "Bombardier CRJ900",
+   "family": "crj",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "regionalJet",
+   "icaoType": "CRJ9",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 36.19,
+    "wingspanM": 24.85,
+    "heightM": 7.51,
+    "fuselageWidthM": 2.69,
+    "wheelbaseM": 17.32,
+    "mainGearTrackM": 4.1
+   },
+   "weights": {
+    "mtowKg": 38330,
+    "mlwKg": 33339,
+    "oewKg": 21845
+   },
+   "capacity": {
+    "seatsTypical": 76,
+    "seatsMax": 90
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CF34-8C5",
+    "thrustKN": 64
+   },
+   "performance": {
+    "rangeKm": 2956,
+    "cruiseKmh": 828,
+    "ceilingM": 12500,
+    "takeoffFieldM": 1778,
+    "landingFieldM": 1596,
+    "vrefKt": 140
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "crj9",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "C"
+   }
+  },
+  {
+   "id": "crj1000",
+   "name": "Bombardier CRJ1000",
+   "family": "crj",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "regionalJet",
+   "icaoType": "CRJX",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 39.13,
+    "wingspanM": 26.18,
+    "heightM": 7.51,
+    "fuselageWidthM": 2.69,
+    "wheelbaseM": 19.0,
+    "mainGearTrackM": 4.1
+   },
+   "weights": {
+    "mtowKg": 41640,
+    "mlwKg": 36968,
+    "oewKg": 23188
+   },
+   "capacity": {
+    "seatsTypical": 100,
+    "seatsMax": 104
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "CF34-8C5A1",
+    "thrustKN": 61
+   },
+   "performance": {
+    "rangeKm": 3004,
+    "cruiseKmh": 828,
+    "ceilingM": 12500,
+    "takeoffFieldM": 2120,
+    "landingFieldM": 1750,
+    "vrefKt": 145
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "crj9",
+    "calibration": "needs photo calibration",
+    "plugFwd": 1.6,
+    "plugAft": 1.34,
+    "span": 26.18
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "D"
+   }
+  },
+  {
+   "id": "dash8_q400",
+   "name": "De Havilland Canada Dash 8-400",
+   "family": "dash8",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "regionalTurboprop",
+   "icaoType": "DH8D",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 32.81,
+    "wingspanM": 28.42,
+    "heightM": 8.34,
+    "fuselageWidthM": 2.69,
+    "wheelbaseM": 13.94,
+    "mainGearTrackM": 8.79
+   },
+   "weights": {
+    "mtowKg": 29574,
+    "mlwKg": 28123,
+    "oewKg": 17819
+   },
+   "capacity": {
+    "seatsTypical": 78,
+    "seatsMax": 90
+   },
+   "engines": {
+    "count": 2,
+    "type": "turboprop",
+    "model": "PW150A",
+    "powerKW": 3781
+   },
+   "performance": {
+    "rangeKm": 2040,
+    "cruiseKmh": 667,
+    "ceilingM": 8230,
+    "takeoffFieldM": 1425,
+    "landingFieldM": 1295,
+    "vrefKt": 120
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "dh8d",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "C",
+    "wake": "M",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "c172s",
+   "name": "Cessna 172S Skyhawk",
+   "family": "cessnaLight",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "ga",
+   "icaoType": "C172",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 8.28,
+    "wingspanM": 11.0,
+    "heightM": 2.72,
+    "fuselageWidthM": 1.12,
+    "wheelbaseM": 1.65,
+    "mainGearTrackM": 2.54
+   },
+   "weights": {
+    "mtowKg": 1157,
+    "mlwKg": 1157,
+    "oewKg": 767
+   },
+   "capacity": {
+    "seatsTypical": 3,
+    "seatsMax": 3
+   },
+   "engines": {
+    "count": 1,
+    "type": "piston",
+    "model": "Lycoming IO-360-L2A",
+    "powerKW": 134
+   },
+   "performance": {
+    "rangeKm": 1185,
+    "cruiseKmh": 226,
+    "ceilingM": 4270,
+    "takeoffFieldM": 497,
+    "landingFieldM": 407,
+    "vrefKt": 62
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "dirt",
+    "gravel",
+    "grass"
+   ],
+   "sprite": {
+    "base": "c172",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "A",
+    "wake": "L",
+    "approachCategory": "A"
+   }
+  },
+  {
+   "id": "c208b",
+   "name": "Cessna 208B Grand Caravan EX",
+   "family": "cessnaLight",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "commuter",
+   "icaoType": "C208",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 12.67,
+    "wingspanM": 15.87,
+    "heightM": 4.53,
+    "fuselageWidthM": 1.75,
+    "wheelbaseM": 3.56,
+    "mainGearTrackM": 3.56
+   },
+   "weights": {
+    "mtowKg": 3995,
+    "mlwKg": 3856,
+    "oewKg": 2326
+   },
+   "capacity": {
+    "seatsTypical": 9,
+    "seatsMax": 13
+   },
+   "engines": {
+    "count": 1,
+    "type": "turboprop",
+    "model": "PT6A-140",
+    "powerKW": 647
+   },
+   "performance": {
+    "rangeKm": 1689,
+    "cruiseKmh": 344,
+    "ceilingM": 7620,
+    "takeoffFieldM": 734,
+    "landingFieldM": 518,
+    "vrefKt": 78
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "dirt",
+    "gravel",
+    "grass"
+   ],
+   "sprite": {
+    "base": "c208",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "L",
+    "approachCategory": "A"
+   }
+  },
+  {
+   "id": "citation_cj4",
+   "name": "Cessna Citation CJ4 Gen2",
+   "family": "citation",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "businessJet",
+   "icaoType": "C25C",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 16.26,
+    "wingspanM": 15.49,
+    "heightM": 4.67,
+    "fuselageWidthM": 1.6,
+    "wheelbaseM": 6.4,
+    "mainGearTrackM": 3.4
+   },
+   "weights": {
+    "mtowKg": 7761,
+    "mlwKg": 7103,
+    "oewKg": 4980
+   },
+   "capacity": {
+    "seatsTypical": 8,
+    "seatsMax": 10
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "Williams FJ44-4A",
+    "thrustKN": 16.1
+   },
+   "performance": {
+    "rangeKm": 4010,
+    "cruiseKmh": 835,
+    "ceilingM": 13716,
+    "takeoffFieldM": 1036,
+    "landingFieldM": 905,
+    "vrefKt": 115
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "cj4",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "M",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "citation_latitude",
+   "name": "Cessna Citation Latitude",
+   "family": "citation",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "businessJet",
+   "icaoType": "C68A",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 18.97,
+    "wingspanM": 22.05,
+    "heightM": 6.38,
+    "fuselageWidthM": 2.1,
+    "wheelbaseM": 8.1,
+    "mainGearTrackM": 3.8
+   },
+   "weights": {
+    "mtowKg": 14061,
+    "mlwKg": 12746,
+    "oewKg": 9525
+   },
+   "capacity": {
+    "seatsTypical": 9,
+    "seatsMax": 9
+   },
+   "engines": {
+    "count": 2,
+    "type": "turbofan",
+    "model": "PW306D1",
+    "thrustKN": 25.7
+   },
+   "performance": {
+    "rangeKm": 5000,
+    "cruiseKmh": 826,
+    "ceilingM": 13716,
+    "takeoffFieldM": 1091,
+    "landingFieldM": 768,
+    "vrefKt": 110
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete"
+   ],
+   "sprite": {
+    "base": "latitude",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "M",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "kingair_c90gtx",
+   "name": "Beechcraft King Air C90GTx",
+   "family": "kingAir",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "ga",
+   "icaoType": "BE9L",
+   "generation": "mature",
+   "dimensions": {
+    "lengthM": 10.82,
+    "wingspanM": 16.1,
+    "heightM": 4.34,
+    "fuselageWidthM": 1.6,
+    "wheelbaseM": 3.73,
+    "mainGearTrackM": 3.89
+   },
+   "weights": {
+    "mtowKg": 4756,
+    "mlwKg": 4513,
+    "oewKg": 3130
+   },
+   "capacity": {
+    "seatsTypical": 5,
+    "seatsMax": 7
+   },
+   "engines": {
+    "count": 2,
+    "type": "turboprop",
+    "model": "PT6A-135A",
+    "powerKW": 410
+   },
+   "performance": {
+    "rangeKm": 2446,
+    "cruiseKmh": 500,
+    "ceilingM": 9144,
+    "takeoffFieldM": 840,
+    "landingFieldM": 650,
+    "vrefKt": 100
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "gravel",
+    "grass"
+   ],
+   "sprite": {
+    "base": "b360",
+    "calibration": "needs photo calibration",
+    "plugFwd": -1.6,
+    "plugAft": -1.8,
+    "span": 16.1,
+    "ttail": false,
+    "engine": {
+     "blades": 4,
+     "prop_d": 2.29
+    }
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "L",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "kingair_260",
+   "name": "Beechcraft King Air 260",
+   "family": "kingAir",
+   "phase": 1,
+   "release": "mvp2",
+   "role": "ga",
+   "icaoType": "BE20",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 13.36,
+    "wingspanM": 16.61,
+    "heightM": 4.37,
+    "fuselageWidthM": 1.6,
+    "wheelbaseM": 4.56,
+    "mainGearTrackM": 5.23
+   },
+   "weights": {
+    "mtowKg": 5670,
+    "mlwKg": 5670,
+    "oewKg": 3840
+   },
+   "capacity": {
+    "seatsTypical": 7,
+    "seatsMax": 9
+   },
+   "engines": {
+    "count": 2,
+    "type": "turboprop",
+    "model": "PT6A-52",
+    "powerKW": 634
+   },
+   "performance": {
+    "rangeKm": 3185,
+    "cruiseKmh": 578,
+    "ceilingM": 10668,
+    "takeoffFieldM": 1021,
+    "landingFieldM": 870,
+    "vrefKt": 103
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "gravel",
+    "grass"
+   ],
+   "sprite": {
+    "base": "b360",
+    "calibration": "needs photo calibration",
+    "plugFwd": -0.86,
+    "span": 16.61,
+    "winglet": "none"
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "L",
+    "approachCategory": "B"
+   }
+  },
+  {
+   "id": "kingair_360",
+   "name": "Beechcraft King Air 360",
+   "family": "kingAir",
+   "phase": 1,
+   "release": "mvp1",
+   "role": "ga",
+   "icaoType": "BE30",
+   "generation": "modern",
+   "dimensions": {
+    "lengthM": 14.22,
+    "wingspanM": 17.65,
+    "heightM": 4.37,
+    "fuselageWidthM": 1.6,
+    "wheelbaseM": 4.56,
+    "mainGearTrackM": 5.23
+   },
+   "weights": {
+    "mtowKg": 6804,
+    "mlwKg": 6577,
+    "oewKg": 4445
+   },
+   "capacity": {
+    "seatsTypical": 9,
+    "seatsMax": 11
+   },
+   "engines": {
+    "count": 2,
+    "type": "turboprop",
+    "model": "PT6A-60A",
+    "powerKW": 783
+   },
+   "performance": {
+    "rangeKm": 3345,
+    "cruiseKmh": 576,
+    "ceilingM": 10668,
+    "takeoffFieldM": 1006,
+    "landingFieldM": 820,
+    "vrefKt": 105
+   },
+   "surfaces": [
+    "asphalt",
+    "concrete",
+    "gravel",
+    "grass"
+   ],
+   "sprite": {
+    "base": "b360",
+    "calibration": "needs photo calibration"
+   },
+   "derivedForReading": {
+    "code": "B",
+    "wake": "L",
+    "approachCategory": "B"
+   }
+  }
+ ],
+ "spriteBases": {
+  "a320neo": {
+   "gear": {
+    "nose": 5.07,
+    "wheelbase": 12.64,
+    "track": 7.59
+   },
+   "heights": {
+    "wing": 3.0,
+    "stab": 5.4
+   },
+   "name": "Airbus A320neo",
+   "L": 37.57,
+   "span": 35.8,
+   "fw": 3.95,
+   "nose": 5.6,
+   "nose_n": 1.2,
+   "nose_m": 0.66,
+   "tail": 10.6,
+   "tail_end": 0.32,
+   "wing": {
+    "x": 13.2,
+    "c": 6.1,
+    "sweep": 27.5,
+    "kink": 6.3,
+    "tip": 1.55,
+    "sb": 17.05,
+    "te_in": 0,
+    "winglet": "sharklet",
+    "ext": 0.85,
+    "tracks": [
+     3.3,
+     8.2,
+     11.0,
+     13.8
+    ]
+   },
+   "hstab": {
+    "x": 31.7,
+    "c": 3.7,
+    "sweep": 32,
+    "span": 12.45,
+    "tip": 1.3
+   },
+   "fin": {
+    "x0": 29.8,
+    "x1": 37.35,
+    "w": 0.52,
+    "dorsal": 28.3
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 5.75,
+     "x": 11.4,
+     "len": 5.6,
+     "d": 2.45,
+     "flow": "separate",
+     "fan_end": 0.72
+    }
+   ],
+   "ws": {
+    "y": 1.05,
+    "d": 0.62,
+    "c": 0.95,
+    "style": "airbus"
+   },
+   "doors": [
+    5.0,
+    32.4
+   ],
+   "overwing": [
+    16.3,
+    17.1
+   ],
+   "windows": [
+    5.9,
+    31.6,
+    0.533
+   ],
+   "tail_color": "#e9ecef"
+  },
+  "b738": {
+   "gear": {
+    "nose": 3.9,
+    "wheelbase": 15.6,
+    "track": 5.72
+   },
+   "heights": {
+    "wing": 2.6,
+    "stab": 5.6
+   },
+   "name": "Boeing 737-800",
+   "L": 39.47,
+   "span": 35.79,
+   "fw": 3.76,
+   "nose": 6.2,
+   "nose_n": 1.15,
+   "nose_m": 0.58,
+   "tail": 11.2,
+   "tail_end": 0.3,
+   "wing": {
+    "x": 14.3,
+    "c": 6.25,
+    "sweep": 29.0,
+    "kink": 6.0,
+    "tip": 1.25,
+    "sb": 17.16,
+    "te_in": 0.0,
+    "winglet": "blended",
+    "ext": 0.73,
+    "tracks": [
+     3.2,
+     7.6,
+     10.4,
+     13.1
+    ]
+   },
+   "hstab": {
+    "x": 33.9,
+    "c": 3.9,
+    "sweep": 34,
+    "span": 14.35,
+    "tip": 1.15
+   },
+   "fin": {
+    "x0": 30.4,
+    "x1": 39.3,
+    "w": 0.48,
+    "dorsal": 27.6
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 4.9,
+     "x": 12.3,
+     "len": 4.9,
+     "d": 2.05,
+     "fair_len": 1.4,
+     "flow": "separate",
+     "fan_end": 0.62,
+     "core_r": 0.55
+    }
+   ],
+   "ws": {
+    "y": 1.15,
+    "d": 0.58,
+    "c": 1.05,
+    "style": "b737"
+   },
+   "doors": [
+    4.4,
+    36.4
+   ],
+   "overwing": [
+    17.3,
+    18.2
+   ],
+   "windows": [
+    5.2,
+    35.6,
+    0.508
+   ]
+  },
+  "b789": {
+   "gear": {
+    "nose": 4.6,
+    "wheelbase": 25.6,
+    "track": 9.8
+   },
+   "heights": {
+    "wing": 4.6,
+    "stab": 8.0
+   },
+   "name": "Boeing 787-9",
+   "L": 62.81,
+   "span": 60.12,
+   "fw": 5.77,
+   "nose": 9.0,
+   "nose_n": 1.2,
+   "nose_m": 0.62,
+   "tail": 15.0,
+   "tail_end": 0.42,
+   "tail_p": 1.5,
+   "wing": {
+    "x": 22.0,
+    "c": 11.7,
+    "sweep": 34.5,
+    "kink": 9.6,
+    "tip": 1.3,
+    "sb": 30.06,
+    "te_in": -2,
+    "rake": 4.0,
+    "rake_extra": 10,
+    "kink_round": 0.6,
+    "tracks": [
+     6.0,
+     12.0,
+     16.6,
+     21.2,
+     25.4
+    ]
+   },
+   "hstab": {
+    "x": 53.6,
+    "c": 5.9,
+    "sweep": 40,
+    "span": 19.8,
+    "tip": 1.5
+   },
+   "fin": {
+    "x0": 54.0,
+    "x1": 62.6,
+    "w": 0.78,
+    "dorsal": 51.0
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 9.8,
+     "x": 21.6,
+     "len": 7.6,
+     "d": 3.6,
+     "chevrons": true,
+     "fair_len": 2.2,
+     "flow": "separate",
+     "fan_end": 0.7,
+     "core_r": 0.45
+    }
+   ],
+   "ws": {
+    "y": 1.25,
+    "d": 1.0,
+    "c": 1.55,
+    "style": "b787"
+   },
+   "doors": [
+    5.4,
+    16.0,
+    37.8,
+    55.6
+   ],
+   "windows": [
+    6.2,
+    55.0,
+    0.61
+   ],
+   "win_r": 0.15
+  },
+  "b77w": {
+   "gear": {
+    "nose": 4.9,
+    "wheelbase": 31.22,
+    "track": 10.97
+   },
+   "heights": {
+    "wing": 5.0,
+    "stab": 8.3
+   },
+   "name": "Boeing 777-300ER",
+   "L": 73.86,
+   "span": 64.8,
+   "fw": 6.19,
+   "nose": 10.2,
+   "nose_n": 1.2,
+   "nose_m": 0.6,
+   "tail": 15.6,
+   "tail_end": 0.45,
+   "tail_p": 1.5,
+   "wing": {
+    "x": 26.3,
+    "c": 12.7,
+    "sweep": 34.6,
+    "kink": 9.3,
+    "tip": 1.1,
+    "sb": 32.4,
+    "te_in": -4,
+    "rake": 4.0,
+    "rake_extra": 10,
+    "kink_round": 0.5,
+    "tracks": [
+     7.2,
+     13.2,
+     18.0,
+     22.8,
+     27.2
+    ]
+   },
+   "hstab": {
+    "x": 63.1,
+    "c": 6.8,
+    "sweep": 46,
+    "span": 21.51,
+    "tip": 1.4
+   },
+   "fin": {
+    "x0": 64.0,
+    "x1": 73.7,
+    "w": 0.85,
+    "dorsal": 61.0
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 9.75,
+     "x": 24.9,
+     "len": 8.0,
+     "d": 4.1,
+     "fair_len": 2.4,
+     "flow": "separate",
+     "fan_end": 0.66,
+     "core_r": 0.42
+    }
+   ],
+   "ws": {
+    "y": 1.05,
+    "d": 0.85,
+    "c": 1.6,
+    "style": "boeing"
+   },
+   "doors": [
+    5.6,
+    18.6,
+    39.6,
+    52.6,
+    66.0
+   ],
+   "windows": [
+    6.4,
+    67.0,
+    0.533
+   ],
+   "win_r": 0.13
+  },
+  "b744": {
+   "gear": {
+    "nose": 4.2,
+    "wheelbase": 25.6,
+    "track": 11.0
+   },
+   "heights": {
+    "wing": 5.0,
+    "stab": 8.5
+   },
+   "name": "Boeing 747-400",
+   "L": 70.66,
+   "span": 64.44,
+   "fw": 6.5,
+   "nose": 9.6,
+   "nose_n": 1.2,
+   "nose_m": 0.66,
+   "tail": 16.2,
+   "tail_end": 0.45,
+   "tail_p": 1.45,
+   "wing": {
+    "x": 24.7,
+    "c": 15.2,
+    "sweep": 40.0,
+    "kink": 12.4,
+    "tip": 3.6,
+    "sb": 31.2,
+    "te_in": 2,
+    "winglet": "canted",
+    "ext": 1.0,
+    "tracks": [
+     8.0,
+     14.8,
+     19.0,
+     23.4,
+     27.2
+    ]
+   },
+   "hstab": {
+    "x": 60.4,
+    "c": 7.4,
+    "sweep": 41,
+    "span": 22.17,
+    "tip": 1.9
+   },
+   "fin": {
+    "x0": 60.6,
+    "x1": 70.4,
+    "w": 0.9,
+    "dorsal": 57.6
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 11.9,
+     "x": 27.0,
+     "len": 6.6,
+     "d": 2.95,
+     "fair_len": 2.2,
+     "flow": "separate",
+     "fan_end": 0.6,
+     "core_r": 0.5
+    },
+    {
+     "kind": "fan",
+     "y": 21.0,
+     "x": 34.6,
+     "len": 6.6,
+     "d": 2.95,
+     "fair_len": 2.0,
+     "flow": "separate",
+     "fan_end": 0.6,
+     "core_r": 0.5
+    }
+   ],
+   "ws": {
+    "y": 4.6,
+    "d": 0.85,
+    "c": 0.6,
+    "wf": 0.62,
+    "style": "boeing"
+   },
+   "upper": {
+    "y0": 3.6,
+    "y1": 26.0,
+    "w": 4.6,
+    "win": [
+     8.0,
+     23.4,
+     1.95
+    ]
+   },
+   "doors": [
+    6.0,
+    14.4,
+    43.6,
+    57.0
+   ],
+   "overwing": [
+    31.6
+   ],
+   "windows": [
+    6.8,
+    61.6,
+    0.508
+   ],
+   "win_r": 0.13
+  },
+  "a333": {
+   "gear": {
+    "nose": 4.8,
+    "wheelbase": 25.58,
+    "track": 10.69
+   },
+   "heights": {
+    "wing": 4.5,
+    "stab": 7.8
+   },
+   "name": "Airbus A330-300",
+   "L": 63.66,
+   "span": 60.3,
+   "fw": 5.64,
+   "nose": 8.2,
+   "nose_n": 1.2,
+   "nose_m": 0.66,
+   "tail": 14.8,
+   "tail_end": 0.42,
+   "tail_p": 1.5,
+   "wing": {
+    "x": 22.2,
+    "c": 10.9,
+    "sweep": 31.5,
+    "kink": 9.8,
+    "tip": 2.0,
+    "sb": 29.6,
+    "te_in": -1,
+    "winglet": "canted",
+    "ext": 0.55,
+    "tracks": [
+     6.0,
+     12.2,
+     16.8,
+     21.2,
+     25.4
+    ]
+   },
+   "hstab": {
+    "x": 56.0,
+    "c": 5.8,
+    "sweep": 35,
+    "span": 19.4,
+    "tip": 1.6
+   },
+   "fin": {
+    "x0": 55.2,
+    "x1": 63.4,
+    "w": 0.75,
+    "dorsal": 52.6
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 9.37,
+     "x": 22.1,
+     "len": 6.8,
+     "d": 3.0,
+     "fair_len": 2.0,
+     "flow": "longduct"
+    }
+   ],
+   "ws": {
+    "y": 1.55,
+    "d": 0.9,
+    "c": 1.35,
+    "style": "airbus"
+   },
+   "doors": [
+    5.6,
+    17.2,
+    40.6,
+    57.4
+   ],
+   "windows": [
+    6.4,
+    57.8,
+    0.533
+   ],
+   "win_r": 0.13
+  },
+  "a346": {
+   "gear": {
+    "nose": 4.8,
+    "wheelbase": 32.89,
+    "track": 10.69
+   },
+   "heights": {
+    "wing": 4.5,
+    "stab": 7.9
+   },
+   "name": "Airbus A340-600",
+   "L": 75.36,
+   "span": 63.45,
+   "fw": 5.64,
+   "nose": 8.2,
+   "nose_n": 1.2,
+   "nose_m": 0.66,
+   "tail": 14.8,
+   "tail_end": 0.42,
+   "tail_p": 1.5,
+   "wing": {
+    "x": 28.3,
+    "c": 12.4,
+    "sweep": 31.5,
+    "kink": 10.6,
+    "tip": 2.2,
+    "sb": 31.2,
+    "te_in": -1,
+    "winglet": "canted",
+    "ext": 0.52,
+    "tracks": [
+     6.4,
+     13.2,
+     18.0,
+     22.8,
+     27.2
+    ]
+   },
+   "hstab": {
+    "x": 67.0,
+    "c": 6.2,
+    "sweep": 35,
+    "span": 21.5,
+    "tip": 1.7
+   },
+   "fin": {
+    "x0": 66.6,
+    "x1": 75.1,
+    "w": 0.8,
+    "dorsal": 64.0
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 10.1,
+     "x": 28.6,
+     "len": 6.8,
+     "d": 3.0,
+     "fair_len": 2.0,
+     "flow": "longduct"
+    },
+    {
+     "kind": "fan",
+     "y": 19.6,
+     "x": 34.6,
+     "len": 6.8,
+     "d": 3.0,
+     "fair_len": 1.8,
+     "flow": "longduct"
+    }
+   ],
+   "ws": {
+    "y": 1.55,
+    "d": 0.9,
+    "c": 1.35,
+    "style": "airbus"
+   },
+   "doors": [
+    5.6,
+    20.4,
+    50.0,
+    69.0
+   ],
+   "overwing": [
+    35.4
+   ],
+   "windows": [
+    6.4,
+    69.4,
+    0.533
+   ],
+   "win_r": 0.13
+  },
+  "a359": {
+   "gear": {
+    "nose": 5.0,
+    "wheelbase": 28.67,
+    "track": 10.6
+   },
+   "heights": {
+    "wing": 4.7,
+    "stab": 8.2
+   },
+   "name": "Airbus A350-900",
+   "L": 66.8,
+   "span": 64.75,
+   "fw": 5.96,
+   "nose": 9.3,
+   "nose_n": 1.2,
+   "nose_m": 0.63,
+   "tail": 15.4,
+   "tail_end": 0.42,
+   "tail_p": 1.5,
+   "wing": {
+    "x": 23.9,
+    "c": 13.4,
+    "sweep": 33.5,
+    "kink": 10.8,
+    "tip": 1.5,
+    "sb": 31.57,
+    "te_in": -2,
+    "winglet": "sharklet",
+    "ext": 0.8,
+    "kink_round": 0.6,
+    "tracks": [
+     6.4,
+     13.0,
+     18.0,
+     23.0,
+     27.4
+    ]
+   },
+   "hstab": {
+    "x": 58.3,
+    "c": 6.0,
+    "sweep": 38,
+    "span": 19.06,
+    "tip": 1.5
+   },
+   "fin": {
+    "x0": 57.6,
+    "x1": 66.6,
+    "w": 0.75,
+    "dorsal": 54.6
+   },
+   "engines": [
+    {
+     "kind": "fan",
+     "y": 10.3,
+     "x": 23.0,
+     "len": 7.6,
+     "d": 3.8,
+     "fair_len": 2.2,
+     "flow": "separate",
+     "fan_end": 0.7,
+     "core_r": 0.42
+    }
+   ],
+   "ws": {
+    "y": 1.45,
+    "d": 0.95,
+    "c": 1.5,
+    "style": "a350"
+   },
+   "doors": [
+    5.6,
+    18.0,
+    41.4,
+    59.2
+   ],
+   "windows": [
+    6.4,
+    59.6,
+    0.56
+   ],
+   "win_r": 0.14
+  },
+  "at76": {
+   "gear": {
+    "nose": 2.5,
+    "wheelbase": 10.77,
+    "track": 4.1
+   },
+   "heights": {
+    "wing": 3.9,
+    "stab": 7.0
+   },
+   "name": "ATR 72-600",
+   "L": 27.17,
+   "span": 27.05,
+   "fw": 2.865,
+   "nose": 4.0,
+   "nose_n": 1.25,
+   "nose_m": 0.66,
+   "tail": 9.4,
+   "tail_end": 0.22,
+   "tail_p": 1.25,
+   "wing": {
+    "x": 11.0,
+    "c": 2.57,
+    "sweep": 2.0,
+    "kink": 5.0,
+    "tip": 1.41,
+    "sb": 13.525,
+    "te_in": 0.0,
+    "high": true,
+    "aileron": 0.7
+   },
+   "hstab": {
+    "x": 24.9,
+    "c": 1.65,
+    "sweep": 8,
+    "span": 7.31,
+    "tip": 1.0,
+    "ttail": true
+   },
+   "fin": {
+    "x0": 21.2,
+    "x1": 27.1,
+    "w": 0.45,
+    "dorsal": 17.6
+   },
+   "engines": [
+    {
+     "kind": "prop",
+     "y": 4.1,
+     "x": 8.3,
+     "len": 5.8,
+     "d": 1.05,
+     "prop_d": 3.93,
+     "blades": 6,
+     "phase": 8
+    }
+   ],
+   "ws": {
+    "y": 0.95,
+    "d": 0.62,
+    "c": 0.62,
+    "style": "atr"
+   },
+   "sponsons": [
+    [
+     10.4,
+     15.4,
+     0.38
+    ]
+   ],
+   "doors": [
+    3.9,
+    23.3
+   ],
+   "windows": [
+    4.9,
+    22.4,
+    0.76
+   ],
+   "win_r": 0.1,
+   "door_len": 1.1
+  },
+  "dh8d": {
+   "gear": {
+    "nose": 2.6,
+    "wheelbase": 13.94,
+    "track": 8.79
+   },
+   "heights": {
+    "wing": 4.0,
+    "stab": 7.6
+   },
+   "name": "Dash 8 Q400",
+   "L": 32.81,
+   "span": 28.42,
+   "fw": 2.69,
+   "nose": 4.4,
+   "nose_n": 1.2,
+   "nose_m": 0.6,
+   "tail": 10.6,
+   "tail_end": 0.22,
+   "tail_p": 1.25,
+   "wing": {
+    "x": 13.6,
+    "c": 2.95,
+    "sweep": 2.5,
+    "kink": 4.6,
+    "tip": 1.25,
+    "sb": 14.21,
+    "te_in": 0.0,
+    "high": true,
+    "aileron": 0.72
+   },
+   "hstab": {
+    "x": 29.9,
+    "c": 1.85,
+    "sweep": 10,
+    "span": 7.9,
+    "tip": 1.1,
+    "ttail": true
+   },
+   "fin": {
+    "x0": 26.2,
+    "x1": 32.8,
+    "w": 0.45,
+    "dorsal": 22.6
+   },
+   "engines": [
+    {
+     "kind": "prop",
+     "y": 4.15,
+     "x": 10.3,
+     "len": 8.6,
+     "d": 1.15,
+     "prop_d": 4.11,
+     "blades": 6,
+     "phase": 20
+    }
+   ],
+   "ws": {
+    "y": 1.1,
+    "d": 0.58,
+    "c": 0.7,
+    "style": "q400"
+   },
+   "doors": [
+    3.0,
+    28.4
+   ],
+   "windows": [
+    4.0,
+    27.8,
+    0.69
+   ],
+   "win_r": 0.1,
+   "door_len": 1.0
+  },
+  "crj9": {
+   "gear": {
+    "nose": 2.5,
+    "wheelbase": 17.32,
+    "track": 4.1
+   },
+   "heights": {
+    "wing": 1.9,
+    "stab": 6.8
+   },
+   "name": "CRJ900",
+   "L": 36.19,
+   "span": 24.85,
+   "fw": 2.69,
+   "nose": 4.8,
+   "nose_n": 1.15,
+   "nose_m": 0.55,
+   "tail": 10.4,
+   "tail_end": 0.3,
+   "wing": {
+    "x": 16.6,
+    "c": 4.6,
+    "sweep": 27.0,
+    "kink": 4.3,
+    "tip": 1.3,
+    "sb": 11.87,
+    "te_in": 0.0,
+    "winglet": "canted",
+    "ext": 0.55,
+    "tracks": [
+     2.6,
+     5.6,
+     7.8
+    ],
+    "track_len": 0.8,
+    "track_w": 0.24
+   },
+   "hstab": {
+    "x": 33.2,
+    "c": 2.3,
+    "sweep": 33,
+    "span": 8.54,
+    "tip": 1.0,
+    "ttail": true
+   },
+   "fin": {
+    "x0": 29.6,
+    "x1": 36.0,
+    "w": 0.42,
+    "dorsal": 28.0
+   },
+   "engines": [
+    {
+     "kind": "rear",
+     "y": 2.45,
+     "x": 25.3,
+     "len": 4.1,
+     "d": 1.45,
+     "flow": "separate",
+     "fan_end": 0.62,
+     "core_r": 0.55
+    }
+   ],
+   "ws": {
+    "y": 1.25,
+    "d": 0.5,
+    "c": 0.72,
+    "style": "crj"
+   },
+   "doors": [
+    3.2
+   ],
+   "overwing": [
+    17.4,
+    18.2
+   ],
+   "windows": [
+    4.2,
+    25.0,
+    0.508
+   ],
+   "win_r": 0.09,
+   "door_len": 0.85
+  },
+  "c208": {
+   "gear": {
+    "nose": 1.3,
+    "wheelbase": 3.56,
+    "track": 3.56
+   },
+   "heights": {
+    "wing": 2.4,
+    "stab": 2.0
+   },
+   "name": "Cessna 208B Grand Caravan EX",
+   "L": 12.67,
+   "span": 15.87,
+   "fw": 1.75,
+   "nose": 2.4,
+   "nose_n": 1.6,
+   "nose_m": 0.62,
+   "tail": 5.4,
+   "tail_end": 0.16,
+   "tail_p": 1.1,
+   "wing": {
+    "x": 3.9,
+    "c": 1.98,
+    "sweep": 1.5,
+    "kink": 2.6,
+    "tip": 1.24,
+    "sb": 7.935,
+    "te_in": 0.0,
+    "high": true,
+    "aileron": 0.68
+   },
+   "hstab": {
+    "x": 10.8,
+    "c": 1.35,
+    "sweep": 8,
+    "span": 6.25,
+    "tip": 0.9
+   },
+   "fin": {
+    "x0": 9.7,
+    "x1": 12.6,
+    "w": 0.18,
+    "dorsal": 8.6
+   },
+   "nose_prop": {
+    "d": 2.69,
+    "blades": 3,
+    "spinner": 0.24,
+    "phase": 25
+   },
+   "ws": {
+    "y": 2.05,
+    "d": 0.55,
+    "c": 0.3,
+    "style": "ga"
+   },
+   "rear_window": [
+    6.0,
+    6.35
+   ],
+   "doors": [],
+   "windows": [
+    6.9,
+    8.4,
+    0.75
+   ],
+   "win_r": 0.1
+  },
+  "b360": {
+   "gear": {
+    "nose": 1.6,
+    "wheelbase": 4.56,
+    "track": 5.23
+   },
+   "heights": {
+    "wing": 1.2,
+    "stab": 3.8
+   },
+   "name": "King Air 360",
+   "L": 14.22,
+   "span": 17.65,
+   "fw": 1.6,
+   "nose": 3.0,
+   "nose_n": 1.3,
+   "nose_m": 0.6,
+   "tail": 6.2,
+   "tail_end": 0.2,
+   "wing": {
+    "x": 5.3,
+    "c": 2.3,
+    "sweep": 4.0,
+    "kink": 3.0,
+    "tip": 0.9,
+    "sb": 8.6,
+    "te_in": 0.0,
+    "winglet": "canted",
+    "ext": 0.22,
+    "aileron": 0.7
+   },
+   "hstab": {
+    "x": 12.7,
+    "c": 1.25,
+    "sweep": 12,
+    "span": 5.6,
+    "tip": 0.75,
+    "ttail": true
+   },
+   "fin": {
+    "x0": 11.1,
+    "x1": 14.2,
+    "w": 0.2,
+    "dorsal": 9.8
+   },
+   "engines": [
+    {
+     "kind": "prop",
+     "y": 2.55,
+     "x": 3.4,
+     "len": 4.7,
+     "d": 0.85,
+     "prop_d": 2.67,
+     "blades": 4,
+     "phase": 30,
+     "stage": "over"
+    }
+   ],
+   "ws": {
+    "y": 2.15,
+    "d": 0.6,
+    "c": 0.42,
+    "style": "kingair"
+   },
+   "doors": [
+    9.6
+   ],
+   "windows": [
+    4.4,
+    8.8,
+    0.62
+   ],
+   "win_r": 0.11,
+   "door_len": 0.7
+  },
+  "c172": {
+   "gear": {
+    "nose": 0.9,
+    "wheelbase": 1.65,
+    "track": 2.54
+   },
+   "heights": {
+    "wing": 2.0,
+    "stab": 1.3
+   },
+   "name": "Cessna 172S Skyhawk",
+   "L": 8.28,
+   "span": 11.0,
+   "fw": 1.12,
+   "nose": 1.5,
+   "nose_n": 1.6,
+   "nose_m": 0.62,
+   "tail": 4.6,
+   "tail_end": 0.11,
+   "tail_p": 1.05,
+   "wing": {
+    "x": 2.05,
+    "c": 1.63,
+    "sweep": 0.0,
+    "kink": 2.5,
+    "tip": 1.13,
+    "sb": 5.5,
+    "te_in": 0.0,
+    "high": true,
+    "aileron": 0.66
+   },
+   "hstab": {
+    "x": 6.95,
+    "c": 1.2,
+    "sweep": 6,
+    "span": 3.45,
+    "tip": 0.75
+   },
+   "fin": {
+    "x0": 6.4,
+    "x1": 8.28,
+    "w": 0.12,
+    "dorsal": 5.4
+   },
+   "nose_prop": {
+    "d": 1.93,
+    "blades": 2,
+    "spinner": 0.15,
+    "phase": 5
+   },
+   "ws": {
+    "y": 1.35,
+    "d": 0.6,
+    "c": 0.25,
+    "style": "ga"
+   },
+   "rear_window": [
+    3.75,
+    4.25
+   ],
+   "doors": [],
+   "windows": null
+  },
+  "cj4": {
+   "name": "Cessna Citation CJ4",
+   "L": 16.26,
+   "span": 15.49,
+   "fw": 1.6,
+   "nose": 3.4,
+   "nose_n": 1.2,
+   "nose_m": 0.58,
+   "tail": 5.6,
+   "tail_end": 0.2,
+   "wing": {
+    "x": 6.7,
+    "c": 2.6,
+    "sweep": 12.5,
+    "kink": 2.2,
+    "tip": 1.0,
+    "sb": 7.745,
+    "te_in": 0,
+    "aileron": 0.7
+   },
+   "hstab": {
+    "x": 14.4,
+    "c": 1.2,
+    "sweep": 25,
+    "span": 6.3,
+    "tip": 0.7
+   },
+   "fin": {
+    "x0": 12.6,
+    "x1": 16.2,
+    "w": 0.22,
+    "dorsal": 11.2
+   },
+   "engines": [
+    {
+     "kind": "rear",
+     "y": 1.55,
+     "x": 10.6,
+     "len": 2.3,
+     "d": 0.85,
+     "flow": "separate",
+     "fan_end": 0.66
+    }
+   ],
+   "ws": {
+    "y": 1.75,
+    "d": 0.55,
+    "c": 0.5,
+    "style": "crj"
+   },
+   "doors": [
+    3.6
+   ],
+   "windows": [
+    4.6,
+    8.8,
+    0.62
+   ],
+   "win_r": 0.11
+  },
+  "latitude": {
+   "name": "Cessna Citation Latitude",
+   "L": 18.97,
+   "span": 22.05,
+   "fw": 2.1,
+   "nose": 4.0,
+   "nose_n": 1.2,
+   "nose_m": 0.58,
+   "tail": 6.6,
+   "tail_end": 0.22,
+   "wing": {
+    "x": 7.9,
+    "c": 3.3,
+    "sweep": 17,
+    "kink": 3.0,
+    "tip": 1.1,
+    "sb": 11.025,
+    "te_in": 0,
+    "aileron": 0.7
+   },
+   "hstab": {
+    "x": 16.9,
+    "c": 1.5,
+    "sweep": 28,
+    "span": 7.6,
+    "tip": 0.8,
+    "ttail": true
+   },
+   "fin": {
+    "x0": 14.4,
+    "x1": 18.9,
+    "w": 0.26,
+    "dorsal": 13.0
+   },
+   "engines": [
+    {
+     "kind": "rear",
+     "y": 1.95,
+     "x": 12.3,
+     "len": 2.8,
+     "d": 1.05,
+     "flow": "separate",
+     "fan_end": 0.66
+    }
+   ],
+   "ws": {
+    "y": 1.9,
+    "d": 0.6,
+    "c": 0.55,
+    "style": "crj"
+   },
+   "doors": [
+    3.8
+   ],
+   "windows": [
+    5.0,
+    10.6,
+    0.7
+   ],
+   "win_r": 0.12
+  }
+ }
+}
