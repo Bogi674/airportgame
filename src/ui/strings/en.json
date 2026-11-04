@@ -227,6 +227,8 @@
   "inspector.runwayStrength": "Strength",
   "inspector.apply": "Apply",
   "inspector.runwayUpgradeHint": "Upgrading costs money, downgrading refunds a quarter. Connectors follow the new pavement edge.",
+  "confirm.build": "Build",
+  "confirm.cancel": "Cancel",
   "top.theme": "Switch light or dark theme",
   "top.settings": "Settings",
   "settings.light": "Light theme",

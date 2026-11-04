@@ -6,6 +6,7 @@ import type { Preset } from '@shared/site';
 import type { Speed } from '@shared/time';
 import { SimClient } from '../worker/client';
 import { alertText, ALERT_CODES, parseEvent } from './alerts';
+import { ConfirmPopup } from './ConfirmPopup';
 import { ContextBar } from './ContextBar';
 import { CrashPanel } from './CrashPanel';
 import { Guide } from './Guide';
@@ -297,6 +298,7 @@ export function App() {
           <ParcelPanel onBuy={(id) => client.send({ type: 'buyParcel', parcelId: id })} />
           <ContextBar send={(c) => client.send(c)} />
           <Toasts />
+          <ConfirmPopup />
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
           <CrashPanel onMenu={() => {

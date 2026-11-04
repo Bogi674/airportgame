@@ -4,6 +4,7 @@ import type { SimClient } from '../worker/client';
 import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { ToolController } from './tools/controller';
+import { toolActions } from './tools/actions';
 
 const ZOOM_STEP = 1.0015;
 const ROTATE_RATE = 0.004;
@@ -63,11 +64,6 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       downX = e.offsetX;
       downY = e.offsetY;
       canvas.setPointerCapture(e.pointerId);
-      if (e.button === 2 && controller.armed) {
-        // A right click cancels a start point that is waiting for its end point.
-        controller.reset();
-        return;
-      }
       if (e.button === 0 && tool !== 'select' && !spaceHeld) {
         toolDown = true;
         if (controller.armed) endClick = true;
@@ -90,6 +86,11 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     };
     const onUp = (e: PointerEvent): void => {
       const click = Math.hypot(e.offsetX - downX, e.offsetY - downY) < CLICK_SLOP_PX;
+      if (e.button === 2 && rotating && click) {
+        // A right click while laying something out asks to build it or drop it.
+        if (controller.gestureActive) useToolStore.getState().set({ confirmAt: { x: e.offsetX, y: e.offsetY } });
+        else if (useToolStore.getState().tool !== 'select') controller.cancel();
+      }
       if (toolDown && e.button === 0) {
         if (!endClick && click && controller.twoClick) {
           // A click without a drag sets the start point. The next click sets the end point.
@@ -122,6 +123,8 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       if (e.code === 'Space') spaceHeld = false;
     };
 
+    toolActions.confirm = () => controller.confirm();
+    toolActions.cancel = () => controller.cancel();
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onUp);
@@ -187,6 +190,8 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       unsubscribe();
+      toolActions.confirm = () => undefined;
+      toolActions.cancel = () => undefined;
       unsubSelection();
       unsubAirfield();
       dprQuery.removeEventListener('change', onDpr);

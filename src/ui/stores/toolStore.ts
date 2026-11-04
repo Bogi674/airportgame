@@ -29,8 +29,10 @@ interface ToolState {
   exitAngle: 30 | 45 | 90;
   connectors: number;
   gaCount: number;
-  /** Compass heading of stand rows and GA blocks. */
+  /** Rotation of stand rows, GA blocks and new terminals in degrees, relative to the nearest runway (or the site axis). */
   rowHeading: number;
+  /** Where the confirm or cancel popup is shown on screen, or null. */
+  confirmAt: { x: number; y: number } | null;
   /** Terminal sub tool and its options. */
   tSub: TerminalSub;
   floorType: 1 | 2 | 3;
@@ -62,6 +64,7 @@ export const useToolStore = create<ToolState>((set) => ({
   connectors: 3,
   gaCount: 6,
   rowHeading: 0,
+  confirmAt: null,
   tSub: 'foundation',
   floorType: 2,
   wallType: 1,

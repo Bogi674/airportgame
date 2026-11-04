@@ -168,6 +168,7 @@ export class ToolController {
     this.deps.setGuide(null, null);
     this.deps.setHighlight(null, this.selectedShapes());
     this.deps.setCursor('default');
+    useToolStore.getState().set({ confirmAt: null });
     this.start = null;
     this.resize = null;
     this.tEdit = null;
@@ -361,6 +362,23 @@ export class ToolController {
     this.dragging = false;
   }
 
+  /** Builds what is being laid out: finishes a polyline or completes an armed drag at the pointer. */
+  confirm(): void {
+    useToolStore.getState().set({ confirmAt: null });
+    const tool = useToolStore.getState().tool;
+    if (this.armed) {
+      this.up(this.cursor, { shift: false, alt: false });
+      return;
+    }
+    if (tool === 'taxiway' || tool === 'taxilane' || tool === 'apron') this.finish();
+  }
+
+  /** Drops the gesture in progress and keeps the tool. */
+  cancel(): void {
+    useToolStore.getState().set({ confirmAt: null });
+    this.reset();
+  }
+
   /** Double click finishes polylines. */
   finish(): void {
     const tool = useToolStore.getState().tool;
@@ -371,12 +389,14 @@ export class ToolController {
   key(e: KeyboardEvent): boolean {
     const st = useToolStore.getState();
     if (e.key === 'Escape') {
-      this.reset();
-      st.set({ tool: 'select', selection: null });
+      // The first Escape cancels what is being laid out, the next one leaves the tool.
+      const busy = this.gestureActive;
+      this.cancel();
+      if (!busy) st.set({ tool: 'select', selection: null });
       return true;
     }
     if (e.key === 'Enter') {
-      this.finish();
+      this.confirm();
       return true;
     }
     if (e.key === 'Backspace' && this.pts.length > 0) {
@@ -915,11 +935,30 @@ export class ToolController {
 
   // Stands ---------------------------------------------------------------
 
+  /** Heading of the runway nearest a point, or the site axis when there is none. Rows and buildings square up to it. */
+  private frameAt(p: Pt): number {
+    let best = Infinity;
+    let heading = this.site()?.corridor.headingDeg ?? 0;
+    for (const r of this.af.runways) {
+      const f = frameOf(r, p.x, p.y);
+      const d = Math.hypot(f.s < 0 ? f.s : f.s > r.lengthM ? f.s - r.lengthM : 0, f.lateral);
+      if (d < best) {
+        best = d;
+        heading = r.headingDeg;
+      }
+    }
+    return heading;
+  }
+
+  private rowHeadingAt(p: Pt): number {
+    return (((this.frameAt(p) + useToolStore.getState().rowHeading) % 360) + 360) % 360;
+  }
+
   private standPlan(p: Pt): { x: number; y: number; count: number; spacing: number; heading: number; code: CodeLetter; ga: boolean } {
     const st = useToolStore.getState();
     const ga = st.tool === 'gaBlock';
     const code = ga ? 'A' : st.standCode;
-    return { x: p.x, y: p.y, count: ga ? st.gaCount : st.standCount, spacing: AIRFIELD.codes[code].spanM + (ga ? 5 : 7.5), heading: st.rowHeading, code, ga };
+    return { x: p.x, y: p.y, count: ga ? st.gaCount : st.standCount, spacing: AIRFIELD.codes[code].spanM + (ga ? 5 : 7.5), heading: this.rowHeadingAt(p), code, ga };
   }
 
   private previewStands(p: Pt): void {
@@ -1001,7 +1040,7 @@ export class ToolController {
   private gridFor(p: Pt): TerminalGrid {
     const existing = this.buildingAt(p);
     if (existing) return existing;
-    const heading = useToolStore.getState().rowHeading;
+    const heading = this.rowHeadingAt(p);
     const o = originFor(Math.round(p.x / 2) * 2, Math.round(p.y / 2) * 2, heading);
     const t = this.tTemp;
     if (t && t.ox === o.ox && t.oy === o.oy && t.headingDeg === heading) return t;
