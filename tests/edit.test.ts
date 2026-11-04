@@ -66,3 +66,25 @@ describe('taxiway edits', () => {
     expect(sim.airfield.data.taxiways.length).toBe(before + 1);
   });
 });
+
+import { alignGuide } from '@shared/airfieldGeom';
+
+describe('alignment guide', () => {
+  it('snaps onto the extension of a taxiway and onto the square line, and ignores far points', () => {
+    const sim = airport();
+    const af = sim.airfield.data;
+    const t = af.taxiways.find((x) => x.kind === 'taxiway');
+    if (!t) throw new Error('no taxiway');
+    const a = t.points[0];
+    const b = t.points[1];
+    const l = Math.hypot(b.x - a.x, b.y - a.y);
+    const ux = (b.x - a.x) / l;
+    const uy = (b.y - a.y) / l;
+    // 300 m past the end, 3 m off the line.
+    const near = { x: b.x + ux * 300 - uy * 3, y: b.y + uy * 300 + ux * 3 };
+    const g = alignGuide(af, [], near.x, near.y, 9);
+    expect(g).not.toBeNull();
+    if (g) expect(Math.hypot(g.p.x - near.x, g.p.y - near.y)).toBeLessThan(9);
+    expect(alignGuide(af, [], near.x + 4000, near.y + 4000, 9)).toBeNull();
+  });
+});

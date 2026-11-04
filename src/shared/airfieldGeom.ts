@@ -147,6 +147,54 @@ export function snapToRunwayEdge(af: AirfieldPayload, x: number, y: number, radi
   return best;
 }
 
+/**
+ * Alignment guide: when a point is close to the line that continues an existing taxiway or runway
+ * axis, or runs square to it, or lines up with the points of the current gesture, it snaps onto that
+ * line. Returns the snapped point and the anchor the guide line starts from.
+ */
+export function alignGuide(af: AirfieldPayload, extra: readonly Pt[], x: number, y: number, tol: number): { p: Pt; from: Pt } | null {
+  let best: { p: Pt; from: Pt } | null = null;
+  let bestD = tol;
+  const test = (ax: number, ay: number, ux: number, uy: number): void => {
+    const l = Math.hypot(ux, uy);
+    if (l < 1e-6) return;
+    const dx = ux / l;
+    const dy = uy / l;
+    const along = (x - ax) * dx + (y - ay) * dy;
+    if (Math.abs(along) < 20) return;
+    const lat = Math.abs((x - ax) * dy - (y - ay) * dx);
+    if (lat < bestD) {
+      bestD = lat;
+      best = { p: { x: ax + dx * along, y: ay + dy * along }, from: { x: ax, y: ay } };
+    }
+  };
+  const anchor = (p: Pt, dirs: [number, number][]): void => {
+    for (const [ux, uy] of dirs) {
+      test(p.x, p.y, ux, uy);
+      test(p.x, p.y, -uy, ux);
+    }
+  };
+  for (const r of af.runways) {
+    const d = compassVector(r.headingDeg);
+    anchor({ x: r.x1, y: r.y1 }, [[d.x, d.y]]);
+    anchor({ x: r.x2, y: r.y2 }, [[d.x, d.y]]);
+  }
+  for (const t of af.taxiways) {
+    for (let i = 0; i < t.points.length; i++) {
+      const dirs: [number, number][] = [];
+      if (i > 0) dirs.push([t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y]);
+      if (i < t.points.length - 1) dirs.push([t.points[i + 1].x - t.points[i].x, t.points[i + 1].y - t.points[i].y]);
+      anchor(t.points[i], dirs);
+    }
+  }
+  for (let i = 0; i < extra.length; i++) {
+    const dirs: [number, number][] = [[0, 1]];
+    if (i > 0) dirs.push([extra[i].x - extra[i - 1].x, extra[i].y - extra[i - 1].y]);
+    anchor(extra[i], dirs);
+  }
+  return best;
+}
+
 /** Alignment frame angles in degrees (compass): one per runway, or north when there is none. */
 export function frameHeadings(af: AirfieldPayload, fallback: number): number[] {
   if (af.runways.length === 0) return [fallback];

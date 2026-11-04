@@ -28,6 +28,7 @@ export class Renderer {
   private pendingSelected = -1;
   private showParcels = false;
   private ghost: Ghost | null = null;
+  private guide: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
   private hover: GhostShape[] | null = null;
   private selected: GhostShape[] | null = null;
   private readonly sprites = new SpriteCache();
@@ -166,6 +167,11 @@ export class Renderer {
     this.overlay?.setSelected(id);
   }
 
+  /** Dashed alignment guide from an anchor to the snapped point, or none. */
+  setGuide(a: { x: number; y: number } | null, b: { x: number; y: number } | null): void {
+    this.guide = a && b ? { a, b } : null;
+  }
+
   /** Outlines for what the pointer is over and what is selected. */
   setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void {
     this.hover = hover;
@@ -229,10 +235,30 @@ export class Renderer {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
     if (this.hover || this.selected) this.drawHighlights(z * c, z * s, -z * s, z * c, e, f);
+    if (this.guide) this.drawGuide(z * c, z * s, -z * s, z * c, e, f);
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
     this.drawPeople(z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
+  }
+
+  private drawGuide(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const g = this.guide;
+    if (!g) return;
+    const ctx = this.ctx;
+    const zoom = this.camera.zoom;
+    ctx.setTransform(a, b, cc, d, e, f);
+    ctx.strokeStyle = 'rgba(255,90,77,0.9)';
+    ctx.lineWidth = Math.max(1.5 / zoom, 0.3);
+    ctx.setLineDash([10 / zoom, 6 / zoom]);
+    ctx.beginPath();
+    ctx.moveTo(g.a.x, g.a.y);
+    ctx.lineTo(g.b.x, g.b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(g.a.x, g.a.y, 4 / zoom, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   /**

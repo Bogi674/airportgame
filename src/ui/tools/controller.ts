@@ -8,6 +8,7 @@ import {
   runwayFrame,
   snapToCenterline,
   snapToRunwayEdge,
+  alignGuide,
   snapToVertex,
   suggestedExitDistance,
 } from '@shared/airfieldGeom';
@@ -34,6 +35,7 @@ interface Deps {
   zoom(): number;
   setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void;
   setCursor(cursor: string): void;
+  setGuide(from: Pt | null, to: Pt | null): void;
 }
 
 const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(dx, -dy) * 180) / Math.PI) % 360) + 360) % 360;
@@ -163,6 +165,7 @@ export class ToolController {
 
   reset(): void {
     this.hovered = '';
+    this.deps.setGuide(null, null);
     this.deps.setHighlight(null, this.selectedShapes());
     this.deps.setCursor('default');
     this.start = null;
@@ -188,6 +191,14 @@ export class ToolController {
       const c = snapToCenterline(this.af, p.x, p.y, radius * 0.7);
       if (c) return c;
     }
+    if (!mods.alt) {
+      const g = alignGuide(this.af, this.pts.length > 0 ? this.pts : this.start ? [this.start] : [], p.x, p.y, Math.max(4, 9 / this.deps.zoom()));
+      if (g) {
+        this.deps.setGuide(g.from, g.p);
+        return g.p;
+      }
+    }
+    this.deps.setGuide(null, null);
     if (!prev || mods.alt) return p;
     const dx = p.x - prev.x;
     const dy = p.y - prev.y;
@@ -258,6 +269,7 @@ export class ToolController {
 
   move(p: Pt, mods: Mods): void {
     this.cursor = p;
+    this.deps.setGuide(null, null);
     const st = useToolStore.getState();
     switch (st.tool) {
       case 'runway':
