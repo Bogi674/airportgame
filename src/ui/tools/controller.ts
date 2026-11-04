@@ -24,6 +24,7 @@ import type { Command } from '@sim/commands';
 import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
 import { envelopeType, taxiClashes } from '@shared/clearance';
+import { runwayWorksDays } from '@shared/surfaceRules';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
 import { typeOutlines } from '@render/markings/standLayout';
 import { formatMoney, formatNumber } from '../format';
@@ -626,6 +627,9 @@ export class ToolController {
         }
       }
     }
+    // The runway closes while the works run, shown before the click that confirms.
+    const days = m.delta !== 0 ? runwayWorksDays(m.r, { lengthDeltaM: m.delta }) : 0;
+    if (days > 0) label += `. ${tFormat('inspector.runwayWorksPreview', { days })}`;
     this.show(
       {
         valid: problem === null,

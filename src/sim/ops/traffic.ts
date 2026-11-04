@@ -457,7 +457,14 @@ export class Traffic {
 
   // Runway reservations ----------------------------------------------------
 
+  /** A runway under works takes no movements (docs/GAME_DESIGN.md section 6, runway tool). */
+  private runwayClosed(r: number): boolean {
+    const w = this.af.runways[r]?.works;
+    return w !== undefined && w.doneTick > this.tick;
+  }
+
   private slotFree(r: number, start: number, end: number, cat: number): boolean {
+    if (this.runwayClosed(r)) return false;
     for (let k = 0; k < SLOTS; k++) {
       const o = r * SLOTS + k;
       if (this.rsvCat[o] < 0) continue;
@@ -589,6 +596,10 @@ export class Traffic {
     let firstFail = '';
     for (let r = 0; r < af.runways.length; r++) {
       const rw = af.runways[r];
+      if (this.runwayClosed(r)) {
+        firstFail = firstFail || 'runwayWorks|needed=0|available=0';
+        continue;
+      }
       const obs = this.obstacles.find((o) => o.runwayId === rw.id);
       const lim = checkLanding(a, rw, this.lengthFactor(rw, 1));
       if (!lim.ok) {
@@ -1330,6 +1341,10 @@ export class Traffic {
       const rIdx = this.af.runways.findIndex((r) => r.id === en.runwayId);
       if (rIdx < 0) continue;
       const rw = this.af.runways[rIdx];
+      if (this.runwayClosed(rIdx)) {
+        firstFail = firstFail || 'runwayWorks|needed=0|available=0';
+        continue;
+      }
       for (const dir of [1, -1] as const) {
         const toda = dir === 1 ? en.todaTowardB : en.todaTowardA;
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;

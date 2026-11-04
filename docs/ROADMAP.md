@@ -67,7 +67,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [x] Automatic holding points at correct distances, entries with takeoff distance available (the select tool drags a holding point along its taxiway, up to 250 m beyond the default and never closer)
 * [x] Rapid exit tool with 30, 45 and 90 degree presets and suggested distance
 * [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down (aprons merge and cut, free polygon and rectangle modes; stands come in four sizes with a lead in fork)
-* [ ] Surfaces with PCR tiers, condition and resurfacing (done for taxiways with works that close the edges for their duration and allowed codes per surface; the runway does not yet close during works and aprons resurface at once)
+* [x] Surfaces with PCR tiers, condition and resurfacing (taxiway works close the edges for their duration, runway edits close the runway, allowed codes per surface; aprons resurface at once)
 * [x] Alignment frames and snapping rules (`GAME_DESIGN.md` section 6)
 * [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block (all but the turn pad)
 * [ ] Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes (simplified set: thresholds, designators, centerline, edges, aiming point, touchdown zone, hold marks, stand lines and boxes)

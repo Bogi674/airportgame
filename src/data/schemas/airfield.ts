@@ -38,6 +38,8 @@ export const airfieldCodesSchema = z
     holdingDistanceM: perApproach,
     stripWidthM: perApproach,
     gradingCostPerM3: z.number().nonnegative(),
+    /** Runway works durations (docs/GAME_DESIGN.md section 6, runway tool). */
+    runwayWorks: z.strictObject({ note: z.string(), areaFactor: z.number().positive(), approachDays: perApproach }),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
     taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
     /** Approach and transitional surfaces (docs/GAME_DESIGN.md section 6, clearances). */

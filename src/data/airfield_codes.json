@@ -106,6 +106,11 @@
     "precision": 280
   },
   "gradingCostPerM3": 6,
+  "runwayWorks": {
+    "note": "Runway edits close the runway. Days come from the pavement area that changes at the surface's works rate times areaFactor (runway crews are larger), plus fitting out a new approach type.",
+    "areaFactor": 0.15,
+    "approachDays": { "visual": 1, "nonPrecision": 10, "precision": 21 }
+  },
   "taxiwayTool": { "snapRadiusM": 15, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 },
   "obstacleSurfaces": {
     "note": "Simplified ICAO Annex 14 surfaces. The approach surface starts startM before the threshold with innerEdgeM width, widens by divergence each side and rises at slope over lengthM. The transitional surface rises at transitionalSlope from the strip edge up to transitionalTopM. Cover heights stand on terrain the player does not own; owned land is cleared.",

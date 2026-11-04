@@ -16,7 +16,7 @@ import {
 import type { RunwayObstacles } from '@shared/obstacles';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
-import { excludedType, isPaved, polylineLength, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks } from '@shared/surfaceRules';
+import { excludedType, isPaved, polylineLength, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
 import { apronArea, apronContains, cutShape, mergeShapes, touches } from '@shared/apronGeom';
 import { foldU32 } from '../hash';
@@ -210,9 +210,9 @@ export class Airfield {
       case 'moveHolding':
         return this.moveHolding(cmd);
       case 'resizeRunway':
-        return this.resizeRunway(cmd, ctx, cash);
+        return this.resizeRunway(cmd, ctx, cash, env);
       case 'reclassRunway':
-        return this.reclassRunway(cmd, ctx, cash);
+        return this.reclassRunway(cmd, ctx, cash, env);
       case 'editTaxiway':
         return this.editTaxiway(cmd, ctx, cash);
       case 'undo':
@@ -659,7 +659,23 @@ export class Airfield {
       delete t.works;
       done = true;
     }
+    for (const r of this.data.runways) {
+      if (!r.works || r.works.doneTick > tick) continue;
+      delete r.works;
+      done = true;
+    }
     if (done) this.refresh();
+  }
+
+  /**
+   * Closes a runway for the works an edit needs (docs/GAME_DESIGN.md section 6, runway tool). `before`
+   * is the runway as it was, so the days match what the inspector showed. Works already under way run on.
+   */
+  private closeForWorks(r: Runway, before: Runway, edit: RunwayEdit, env: BuildEnv): void {
+    const days = runwayWorksDays(before, edit);
+    if (days <= 0) return;
+    const done = env.tick + worksTicks(days);
+    r.works = { doneTick: Math.max(r.works?.doneTick ?? 0, done) };
   }
 
   private resurface(cmd: Extract<Command, { type: 'resurface' }>, cash: number, env: BuildEnv): BuildResult {
@@ -676,6 +692,7 @@ export class Airfield {
     const cost = Math.round(area * SURFACE_SPEC[cmd.surface].costPerM2 * factor * 0.6);
     if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
     const o = obj as Runway | Apron;
+    if (cmd.kind === 'runway') this.closeForWorks(o as Runway, { ...(o as Runway) }, { surface: cmd.surface }, env);
     o.surface = cmd.surface;
     o.pcr = pcr;
     o.condition = 100;
@@ -752,9 +769,10 @@ export class Airfield {
    * Extends or shortens a runway at one end. The new section joins the old one, so it stays a single
    * runway. Shortening is refused while a taxiway or exit still uses the part that would go.
    */
-  private resizeRunway(cmd: Extract<Command, { type: 'resizeRunway' }>, ctx: BuildContext, cash: number): BuildResult {
+  private resizeRunway(cmd: Extract<Command, { type: 'resizeRunway' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
     const r = this.data.runways.find((x) => x.id === cmd.id);
     if (!r) return { code: 'nothingThere' };
+    const before = { ...r };
     const delta = Math.round(cmd.deltaM / 5) * 5;
     const newLen = r.lengthM + delta;
     if (delta === 0 || newLen < MIN_RUNWAY_M || newLen > MAX_RUNWAY_M) return { code: 'runwayLength', args: { min: MIN_RUNWAY_M, max: MAX_RUNWAY_M } };
@@ -781,6 +799,7 @@ export class Airfield {
       }
       r.lengthM = newLen;
       r.cost += cost;
+      this.closeForWorks(r, before, { lengthDeltaM: delta }, env);
       this.refresh();
       return { cashDelta: -cost };
     }
@@ -805,6 +824,7 @@ export class Airfield {
     }
     r.lengthM = newLen;
     r.cost = Math.max(0, r.cost - Math.round(cut * fullW * unit));
+    this.closeForWorks(r, before, { lengthDeltaM: delta }, env);
     this.refresh();
     return { cashDelta: refund };
   }
@@ -813,9 +833,10 @@ export class Airfield {
    * Changes the class (width and shoulders) and the approach category of a runway. Connectors that end
    * at the old pavement edge follow the new edge. Strength is changed through resurfacing.
    */
-  private reclassRunway(cmd: Extract<Command, { type: 'reclassRunway' }>, ctx: BuildContext, cash: number): BuildResult {
+  private reclassRunway(cmd: Extract<Command, { type: 'reclassRunway' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
     const r = this.data.runways.find((x) => x.id === cmd.id);
     if (!r) return { code: 'nothingThere' };
+    const before = { ...r };
     const paved = isPaved(r.surface);
     if (!paved && cmd.approach !== 'visual') return { code: 'approachNeedsPaved' };
     const row = AIRFIELD.codes[cmd.code];
@@ -860,6 +881,7 @@ export class Airfield {
     r.shoulderM = newSh;
     r.approach = cmd.approach;
     r.cost = Math.max(0, r.cost + Math.round(areaCost > 0 ? areaCost : 0));
+    this.closeForWorks(r, before, { code: cmd.code, approach: cmd.approach }, env);
     this.refresh();
     return { cashDelta: -net };
   }
@@ -1040,7 +1062,7 @@ export class Airfield {
     const r = (v: number): number => Math.round(v * 2);
     for (const x of this.data.runways) {
       acc = foldU32(foldU32(foldU32(acc, x.id), r(x.x1)), r(x.y1));
-      acc = foldU32(foldU32(acc, x.headingDeg), x.lengthM);
+      acc = foldU32(foldU32(foldU32(acc, x.headingDeg), x.lengthM), x.works ? x.works.doneTick % 0xffffffff : 0);
     }
     for (const t of this.data.taxiways) {
       acc = foldU32(foldU32(acc, t.id), t.points.length);

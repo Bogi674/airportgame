@@ -41,6 +41,8 @@ export interface Runway {
   /** Designators such as 09 and 27, with L or R for parallel runways. */
   nameA: string;
   nameB: string;
+  /** Works in progress: the runway is closed until `doneTick`. */
+  works?: { doneTick: number };
 }
 
 export interface Taxiway {

@@ -51,7 +51,7 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 5 to 6: terminal grids grow and store their bounds. Older grids load as the fixed 160 by 160 grid.
   if (save.version < 6) save.version = 6;
-  // Version 6 to 7: taxiways gained optional holding position settings. Older saves keep the defaults.
+  // Version 6 to 7: taxiways gained optional holding position settings and runways optional works. Older saves keep the defaults and have no works.
   if (save.version < 7) save.version = 7;
   return save as SaveData;
 }

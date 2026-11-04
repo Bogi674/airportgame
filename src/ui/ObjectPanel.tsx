@@ -1,6 +1,6 @@
 import { AIRFIELD, SURFACE_SPEC } from '@data/index';
 import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
-import { SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
+import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
 import { apronArea } from '@shared/apronGeom';
 import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PushbackDir, type Runway, type Surface, type Taxiway } from '@shared/airfield';
@@ -130,6 +130,12 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
   const [surface, setSurface] = useState<Surface>(r.surface);
   const surfTiers = SURFACE_SPEC[surface].pcrTiers;
   const paved = surface === 'asphalt' || surface === 'concrete';
+  const tick = useGameStore((st) => st.tick);
+  const t3 = Math.min(tier, surfTiers.length - 1);
+  const resurfacing = surface !== r.surface || surfTiers[t3] !== r.pcr;
+  // How long the edit closes the runway, shown before Apply.
+  const days = runwayWorksDays(r, { code, approach, surface: resurfacing ? surface : undefined });
+  const daysLeft = r.works ? Math.max(0, Math.ceil((r.works.doneTick - tick) / TICKS_PER_DAY)) : 0;
   const apply = (): void => {
     if (code !== r.code || approach !== r.approach) send({ type: 'reclassRunway', id: r.id, code, approach });
     const t2 = Math.min(tier, surfTiers.length - 1);
@@ -180,6 +186,16 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
         </label>
       )}
       <div style="color:var(--muted);font-size:11px">{t('inspector.runwayUpgradeHint')}</div>
+      {r.works && (
+        <div style="font-size:11px;color:var(--warn)" data-testid="rw-works">
+          {tFormat('inspector.runwayWorks', { days: daysLeft })}
+        </div>
+      )}
+      {days > 0 && (
+        <div style="font-size:11px" data-testid="rw-works-preview">
+          {tFormat('inspector.runwayWorksPreview', { days })}
+        </div>
+      )}
       <button data-testid="rw-apply" onClick={apply}>
         {t('inspector.apply')}
       </button>

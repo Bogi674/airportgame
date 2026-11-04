@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { AIRFIELD, SURFACE_DATA, SURFACE_SPEC } from '@data/index';
-import { codeIndex, type CodeLetter, type Surface, type Taxiway } from './airfield';
+import { APPROACHES, codeIndex, type Approach, type CodeLetter, type Runway, type Surface, type Taxiway } from './airfield';
 import { TICKS_PER_DAY } from './business';
 
 /**
@@ -44,6 +44,37 @@ export function worksDays(surface: Surface, areaM2: number): number {
 }
 
 export const worksTicks = (days: number): number => days * TICKS_PER_DAY;
+
+/** A runway edit, as the inspector and the runway tool describe it. */
+export interface RunwayEdit {
+  lengthDeltaM?: number;
+  code?: CodeLetter;
+  approach?: Approach;
+  /** Resurfacing, to this surface (the same surface for a strength change). */
+  surface?: Surface;
+}
+
+/** Days a runway closes for an edit: the pavement that changes, plus fitting out a new approach type. 0 for no change. */
+export function runwayWorksDays(r: Pick<Runway, 'lengthM' | 'widthM' | 'shoulderM' | 'surface' | 'approach' | 'code'>, e: RunwayEdit): number {
+  const W = AIRFIELD.runwayWorks;
+  const full = r.widthM + 2 * r.shoulderM;
+  let area = 0;
+  let surface = r.surface;
+  if (e.lengthDeltaM) area += Math.abs(e.lengthDeltaM) * full;
+  if (e.code && e.code !== r.code) {
+    const row = AIRFIELD.codes[e.code];
+    area += Math.abs(row.runwayWidthM + 2 * (isPaved(r.surface) ? row.runwayShoulderM : 0) - full) * r.lengthM;
+  }
+  if (e.surface) {
+    surface = e.surface;
+    area += r.lengthM * full;
+  }
+  let days = area > 0 ? Math.max(SURFACE_DATA.minWorksDays, Math.ceil((SURFACE_SPEC[surface].worksDaysPerKm2 * area * W.areaFactor) / 1e6)) : 0;
+  if (e.approach && e.approach !== r.approach) {
+    days += APPROACHES.indexOf(e.approach) > APPROACHES.indexOf(r.approach) ? W.approachDays[e.approach] : SURFACE_DATA.minWorksDays;
+  }
+  return days;
+}
 
 export interface SurfaceChange {
   /** Cash change: negative for spending, positive for a downgrade refund. */

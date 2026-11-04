@@ -146,7 +146,7 @@ Runway, taxiway, taxilane, rapid exit taxiway, holding point, apron, stand, stan
 | E | 45 m | 7.5 m each side | 777, 787, A330, A350 |
 | F | 60 m | 7.5 m each side | A380, 747-8, 777X |
 
-Editing a runway later (lengthen, widen, upgrade code or approach type, resurface) changes the same object. Markings regenerate. The runway closes for the works duration, shown before confirming.
+Editing a runway later (lengthen, widen, upgrade code or approach type, resurface) changes the same object. Markings regenerate. The runway closes for the works duration, shown before confirming in the inspector and the resize readout. Days come from the pavement area that changes at the surface's works rate (times `runwayWorks.areaFactor`, runway crews are larger) plus fitting out a new approach type (10 days non precision, 21 days precision). While closed the runway takes no arrivals or departures; flights wait or divert.
 
 ### Taxiway tool
 
