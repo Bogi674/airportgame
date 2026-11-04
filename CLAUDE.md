@@ -12,6 +12,7 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 
 | Doc | Read when |
 | --- | --- |
+| `docs/DESIGN_REVISION_2.md` | First, for any taxiway, stand, apron or terminal work. It overrides the older docs where they disagree. Its reference images are `docs/art/rev2_*.png` and its normative geometry is `docs/reference/geometry/` |
 | `docs/ROADMAP.md` | Always. Releases, milestones, acceptance criteria. Work on one milestone at a time |
 | `docs/GAME_DESIGN.md` | Any gameplay system, rule or formula |
 | `docs/ARCHITECTURE.md` | Threads, data layout, determinism, taxi network, vehicles, rendering pipeline, saves |
@@ -23,8 +24,13 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 | `docs/AIRLINES.md` | Airline generation, scope, rating, fleets, decisions |
 | `docs/art/` | Reference sheets. Match their style and proportions |
 | `docs/reference/sprite-prototypes/` | Python reference code for sprites, markings and collision. Port it, do not ship it |
+| `docs/reference/geometry/` | Python reference code for fillets, junctions, stand forks, funnels and apron shapes. Port the math exactly, do not ship it |
 
 Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`) and `src/data/gse.json` (ground vehicle catalog).
+
+## Precedence
+
+When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
 
 ## Hard rules
 

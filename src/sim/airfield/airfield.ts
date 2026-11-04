@@ -1,4 +1,4 @@
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import {
   codeIndex,
   compassVector,
@@ -43,9 +43,9 @@ const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000,
 const round05 = (v: number): number => Math.round(v * 2) / 2;
 
 function tierOf(surface: Surface, tier: number): { pcr: number; factor: number } {
-  const tiers = AIRFIELD.surfaces[surface].pcrTiers;
+  const tiers = SURFACE_SPEC[surface].pcrTiers;
   const i = Math.max(0, Math.min(tiers.length - 1, Math.floor(tier)));
-  return { pcr: tiers[i], factor: AIRFIELD.tierCostFactor[i] ?? 1 };
+  return { pcr: tiers[i], factor: SURFACE_DATA.tierCostFactor[i] ?? 1 };
 }
 
 const isPaved = (s: Surface): boolean => s === 'asphalt' || s === 'concrete';
@@ -215,7 +215,7 @@ export class Airfield {
     }
     const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
     const area = length * (width + 2 * shoulder);
-    const cost = Math.round(area * AIRFIELD.surfaces[cmd.surface].costPerM2 * factor) + stripGradingCost(ctx, [a, b], width + 2 * shoulder);
+    const cost = Math.round(area * SURFACE_SPEC[cmd.surface].costPerM2 * factor) + stripGradingCost(ctx, [a, b], width + 2 * shoulder);
     const runway: Runway = {
       id: this.nextId++,
       cost,
@@ -253,7 +253,7 @@ export class Airfield {
     const { pcr, factor } = tierOf(surface, tier);
     let len = 0;
     for (let i = 1; i < points.length; i++) len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-    const cost = Math.round(len * width * AIRFIELD.surfaces[surface].costPerM2 * factor) + stripGradingCost(ctx, points, width);
+    const cost = Math.round(len * width * SURFACE_SPEC[surface].costPerM2 * factor) + stripGradingCost(ctx, points, width);
     return {
       id: this.nextId++,
       cost,
@@ -349,7 +349,7 @@ export class Airfield {
     const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
     const apron: Apron = {
       id: this.nextId++,
-      cost: Math.round(area * AIRFIELD.surfaces[cmd.surface].costPerM2 * factor),
+      cost: Math.round(area * SURFACE_SPEC[cmd.surface].costPerM2 * factor),
       polygon: poly,
       surface: cmd.surface,
       pcr,
@@ -459,7 +459,7 @@ export class Airfield {
     const { pcr, factor } = tierOf('asphalt', 0);
     const apron: Apron = {
       id: this.nextId++,
-      cost: Math.round(polygonArea(poly) * AIRFIELD.surfaces.asphalt.costPerM2 * factor),
+      cost: Math.round(polygonArea(poly) * SURFACE_SPEC.asphalt.costPerM2 * factor),
       polygon: poly.map((p) => ({ x: round05(p.x), y: round05(p.y) })),
       surface: 'asphalt',
       pcr,
@@ -521,7 +521,7 @@ export class Airfield {
       const t = obj as Taxiway;
       for (let i = 1; i < t.points.length; i++) area += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y) * t.widthM;
     } else area = polygonArea((obj as Apron).polygon);
-    const cost = Math.round(area * AIRFIELD.surfaces[cmd.surface].costPerM2 * factor * 0.6);
+    const cost = Math.round(area * SURFACE_SPEC[cmd.surface].costPerM2 * factor * 0.6);
     if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
     const o = obj as Runway | Taxiway | Apron;
     o.surface = cmd.surface;
@@ -542,10 +542,10 @@ export class Airfield {
     }
     let len = 0;
     for (let i = 1; i < t.points.length; i++) len += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y);
-    const oldTiers = AIRFIELD.surfaces[t.surface].pcrTiers;
-    const oldUnit = AIRFIELD.surfaces[t.surface].costPerM2 * tierOf(t.surface, Math.max(0, oldTiers.indexOf(t.pcr))).factor;
+    const oldTiers = SURFACE_SPEC[t.surface].pcrTiers;
+    const oldUnit = SURFACE_SPEC[t.surface].costPerM2 * tierOf(t.surface, Math.max(0, oldTiers.indexOf(t.pcr))).factor;
     const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
-    const newUnit = AIRFIELD.surfaces[cmd.surface].costPerM2 * factor;
+    const newUnit = SURFACE_SPEC[cmd.surface].costPerM2 * factor;
     const delta = len * width * newUnit - len * t.widthM * oldUnit;
     const net = Math.round(delta > 0 ? delta : delta * REFUND_SHARE);
     if (net > cash) return { code: 'insufficientFunds', args: { cost: net } };
@@ -562,8 +562,8 @@ export class Airfield {
 
   /** Cost per square meter for a runway at its current strength tier. */
   private unitCost(r: Runway): number {
-    const tiers = AIRFIELD.surfaces[r.surface].pcrTiers;
-    return AIRFIELD.surfaces[r.surface].costPerM2 * tierOf(r.surface, Math.max(0, tiers.indexOf(r.pcr))).factor;
+    const tiers = SURFACE_SPEC[r.surface].pcrTiers;
+    return SURFACE_SPEC[r.surface].costPerM2 * tierOf(r.surface, Math.max(0, tiers.indexOf(r.pcr))).factor;
   }
 
   /**
@@ -694,7 +694,7 @@ export class Airfield {
       for (let i = 1; i < pts.length; i++) l += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
       return l;
     };
-    const unit = AIRFIELD.surfaces[t.surface].costPerM2 * (AIRFIELD.tierCostFactor[Math.max(0, AIRFIELD.surfaces[t.surface].pcrTiers.indexOf(t.pcr))] ?? 1);
+    const unit = SURFACE_SPEC[t.surface].costPerM2 * (SURFACE_DATA.tierCostFactor[Math.max(0, SURFACE_SPEC[t.surface].pcrTiers.indexOf(t.pcr))] ?? 1);
     if (cmd.op === 'extend') {
       const add = (cmd.points ?? []).map((p) => ({ x: round05(p.x), y: round05(p.y) }));
       if (add.length === 0) return { code: 'taxiwayPoints' };
