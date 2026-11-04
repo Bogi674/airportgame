@@ -118,6 +118,35 @@ export function snapToCenterline(af: AirfieldPayload, x: number, y: number, radi
   return best;
 }
 
+/**
+ * Snaps a point to the pavement edge of a runway when it is within `radius` of it. With a previous
+ * point the position along the runway is also matched to it when close, which gives a connector
+ * that meets the runway at a right angle. It works the same for the first and the last point.
+ */
+export function snapToRunwayEdge(af: AirfieldPayload, x: number, y: number, radius: number, prev: Pt | null): Pt | null {
+  let best: Pt | null = null;
+  let bestD = radius;
+  for (const r of af.runways) {
+    const edge = r.widthM / 2 + r.shoulderM;
+    const f = runwayFrame(r, x, y);
+    if (f.s < -radius || f.s > r.lengthM + radius) continue;
+    const side = f.lateral >= 0 ? 1 : -1;
+    const d = Math.abs(Math.abs(f.lateral) - edge);
+    if (d > bestD) continue;
+    let s = Math.max(0, Math.min(r.lengthM, f.s));
+    if (prev) {
+      const fp = runwayFrame(r, prev.x, prev.y);
+      // Same side only: a connector never crosses the runway.
+      if (Math.sign(fp.lateral) === side && Math.abs(s - fp.s) < radius * 2.5) s = fp.s;
+    }
+    const dir = compassVector(r.headingDeg);
+    const lat = side * edge;
+    bestD = d;
+    best = { x: r.x1 + dir.x * s + dir.y * lat, y: r.y1 + dir.y * s - dir.x * lat };
+  }
+  return best;
+}
+
 /** Alignment frame angles in degrees (compass): one per runway, or north when there is none. */
 export function frameHeadings(af: AirfieldPayload, fallback: number): number[] {
   if (af.runways.length === 0) return [fallback];

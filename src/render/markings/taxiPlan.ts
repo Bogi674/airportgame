@@ -158,6 +158,24 @@ function closestOnPolyline(pts: readonly Pt[], cum: readonly number[], x: number
   return best;
 }
 
+/** Position and unit direction at a distance along a polyline, clamped to its ends. */
+function pointAlong(pts: readonly Pt[], cum: readonly number[], s: number): { x: number; y: number; tx: number; ty: number } | null {
+  if (pts.length < 2) return null;
+  const total = cum[pts.length - 1] ?? 0;
+  const d = s < 0 ? 0 : s > total ? total : s;
+  for (let i = 1; i < pts.length; i++) {
+    if (d > cum[i] && i < pts.length - 1) continue;
+    const l = cum[i] - cum[i - 1];
+    if (l <= 0) continue;
+    const t = (d - cum[i - 1]) / l;
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    const ll = len(dx, dy) || 1;
+    return { x: pts[i - 1].x + dx * t, y: pts[i - 1].y + dy * t, tx: dx / ll, ty: dy / ll };
+  }
+  return null;
+}
+
 /** Offsets a polyline sideways with mitred corners. */
 export function offsetPolyline(pts: readonly Pt[], d: number): Pt[] {
   const out: Pt[] = [];
@@ -411,7 +429,11 @@ export function buildPlan(af: AirfieldPayload): Plan {
       tfMax = Math.max(tfMax, len(Cpt.x - j.px, Cpt.y - j.py) * 0 + (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy);
       cutIntervals.push(sigma * ((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty));
       // Lead-on centerline arc: concentric with the fillet where the widths match.
-      const Rc = Math.min(codeR * 2.2, 3.4 * hC + R, 0.45 * (lenC + eDist) * tanH);
+      // Between two taxiways the centerline runs straight almost to the junction and forks into two tight
+      // curves, each tangent to the through centerline. The radius is about half the taxiway width, so
+      // the fork keeps the same look at any angle: the tangent length grows as the angle gets shallower.
+      // Runway entries keep the wider sweep.
+      const Rc = j.throughRunway ? Math.min(codeR * 2.2, 3.4 * hC + R, 0.45 * (lenC + eDist) * tanH) : Math.min(hC * 1.05, 0.45 * (lenC + eDist) * tanH);
       const tc = Rc / tanH;
       const A = { x: j.px + r2x * tc, y: j.py + r2y * tc };
       const B = { x: j.px + r1x * tc, y: j.py + r1y * tc };
@@ -523,11 +545,18 @@ export function buildPlan(af: AirfieldPayload): Plan {
     const instrument = r.approach !== 'visual';
     plan.holds.push({ x: hit.x, y: hit.y, dx, dy, widthM: t.widthM, taxiName: t.name.replace(/\d+$/, '') || t.name, runwayName: `${r.nameA}-${r.nameB}`, instrument });
     if (instrument) {
-      // Dashes either side of the centerline for up to 45.7 m (150 ft) before the hold line.
+      // Dashes either side of the centerline for up to 45.7 m (150 ft) before the hold line. They follow
+      // the taxiway, so on a curve they bend with it and never leave the pavement.
+      const cumT = cum.get(t.id) ?? [];
+      const forward = hit.tx * (-rd.y * toRunwaySign) + hit.ty * (rd.x * toRunwaySign) >= 0;
       for (const side of [-1, 1]) {
         const pts: Pt[] = [];
-        for (let d = 2; d <= 45.7; d += 2.5) pts.push({ x: hit.x - dx * d + -dy * side * 0.55, y: hit.y - dy * d + dx * side * 0.55 });
-        plan.enhanced.push(mkLine(pts));
+        for (let d = 2; d <= 45.7; d += 2.5) {
+          const q = pointAlong(sm, cumT, hit.along + (forward ? -d : d));
+          if (!q) break;
+          pts.push({ x: q.x - q.ty * side * 0.55, y: q.y + q.tx * side * 0.55 });
+        }
+        if (pts.length >= 2) plan.enhanced.push(mkLine(pts));
       }
     }
   }

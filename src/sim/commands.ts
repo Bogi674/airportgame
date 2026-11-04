@@ -21,6 +21,9 @@ export type Command =
   | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number }
   | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
+  | { type: 'resizeRunway'; id: number; end: 'a' | 'b'; deltaM: number }
+  | { type: 'reclassRunway'; id: number; code: CodeLetter; approach: Approach }
+  | { type: 'editTaxiway'; id: number; op: 'extend' | 'trim' | 'cut'; end?: 'start' | 'end'; points?: Pt[]; at?: Pt; at2?: Pt }
   | { type: 'resurface'; kind: 'runway' | 'taxiway' | 'apron'; id: number; surface: Surface; tier: number }
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }

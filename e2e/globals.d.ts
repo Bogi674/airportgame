@@ -7,12 +7,12 @@ interface E2ECamera {
 }
 
 interface E2EGame {
-  airfield: { runways: unknown[]; taxiways: unknown[]; aprons: unknown[]; stands: unknown[]; holding: unknown[] };
+  airfield: { runways: { lengthM: number; code: string }[]; taxiways: unknown[]; aprons: unknown[]; stands: unknown[]; holding: unknown[] };
   cash: number;
   tick: number;
   screen: string;
   business: { today: number[]; terminals: unknown[]; rating: number; paxToday: number; history: number[][]; airlines: { rotations: number }[]; board: unknown[]; day: number } | null;
-  site: { parcelCount: number; corridor: { cx: number; cy: number } } | null;
+  site: { parcelCount: number; corridor: { cx: number; cy: number }; parcelId: Uint16Array; parcelType: Uint8Array } | null;
 }
 
 interface Window {

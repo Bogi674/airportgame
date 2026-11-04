@@ -3,7 +3,7 @@ import { CELL_M, GRID_N } from '@shared/site';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
 import type { AirfieldPayload } from '@shared/airfield';
-import type { Ghost } from '@shared/ghost';
+import type { Ghost, GhostShape } from '@shared/ghost';
 import type { TerminalGrid } from '@shared/business';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
@@ -28,6 +28,8 @@ export class Renderer {
   private pendingSelected = -1;
   private showParcels = false;
   private ghost: Ghost | null = null;
+  private hover: GhostShape[] | null = null;
+  private selected: GhostShape[] | null = null;
   private readonly sprites = new SpriteCache();
   private readonly people = new People();
   private lastFrame = 0;
@@ -164,6 +166,12 @@ export class Renderer {
     this.overlay?.setSelected(id);
   }
 
+  /** Outlines for what the pointer is over and what is selected. */
+  setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void {
+    this.hover = hover;
+    this.selected = selected;
+  }
+
   setGhost(ghost: Ghost | null): void {
     this.ghost = ghost;
   }
@@ -220,10 +228,56 @@ export class Renderer {
     if (this.overlay) {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
+    if (this.hover || this.selected) this.drawHighlights(z * c, z * s, -z * s, z * c, e, f);
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
     this.drawPeople(z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
+  }
+
+  /**
+   * Hover and selection outlines. Hover is a soft tint with a thin outline. The selection is a stronger
+   * tint with an outline whose brightness pulses slowly, so it reads as active. A few shapes per frame.
+   */
+  private drawHighlights(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const zoom = this.camera.zoom;
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 380);
+    const paint = (shapes: GhostShape[], fill: string, stroke: string, lw: number): void => {
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineJoin = 'round';
+      for (const sh of shapes) {
+        ctx.setTransform(a, b, cc, d, e, f);
+        ctx.lineWidth = Math.max(lw / zoom, 0.3);
+        if (sh.k === 'strip') {
+          if (sh.pts.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(sh.pts[0].x, sh.pts[0].y);
+          for (let i = 1; i < sh.pts.length; i++) ctx.lineTo(sh.pts[i].x, sh.pts[i].y);
+          ctx.lineCap = 'round';
+          ctx.lineWidth = sh.w;
+          ctx.strokeStyle = fill;
+          ctx.stroke();
+          ctx.strokeStyle = stroke;
+        } else if (sh.k === 'poly') {
+          if (sh.pts.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(sh.pts[0].x, sh.pts[0].y);
+          for (let i = 1; i < sh.pts.length; i++) ctx.lineTo(sh.pts[i].x, sh.pts[i].y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else if (sh.k === 'box') {
+          ctx.translate(sh.x, sh.y);
+          ctx.rotate((sh.headingDeg * Math.PI) / 180 - Math.PI / 2);
+          ctx.fillRect(0, -sh.w / 2, sh.len, sh.w);
+          ctx.strokeRect(0, -sh.w / 2, sh.len, sh.w);
+        }
+      }
+    };
+    if (this.hover) paint(this.hover, 'rgba(110,190,255,0.16)', 'rgba(150,215,255,0.85)', 1.5);
+    if (this.selected) paint(this.selected, `rgba(90,170,255,${0.14 + 0.1 * pulse})`, `rgba(130,205,255,${0.6 + 0.4 * pulse})`, 2.5);
   }
 
   /** Build tool preview. A handful of shapes per frame, so plain path drawing is fine here. */

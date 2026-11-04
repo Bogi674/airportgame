@@ -15,7 +15,7 @@ import { closestOnSegment, pointInPolygon, segmentIntersection, type Pt } from '
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
-import { rapidExitPoints } from '@shared/airfieldGeom';
+import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
 import { assignRunwayNames, deriveNetwork } from './geometry';
 
 type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand';
@@ -39,6 +39,7 @@ const MIN_RUNWAY_M = 300;
 const MAX_RUNWAY_M = 5000;
 const MIN_RUNWAY_SEP_M = 100;
 const REFUND_SHARE = 0.25;
+const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000, precision: 1_200_000 };
 const round05 = (v: number): number => Math.round(v * 2) / 2;
 
 function tierOf(surface: Surface, tier: number): { pcr: number; factor: number } {
@@ -163,6 +164,12 @@ export class Airfield {
         return this.setTaxiwayProps(cmd);
       case 'resurface':
         return this.resurface(cmd, cash);
+      case 'resizeRunway':
+        return this.resizeRunway(cmd, ctx, cash);
+      case 'reclassRunway':
+        return this.reclassRunway(cmd, ctx, cash);
+      case 'editTaxiway':
+        return this.editTaxiway(cmd, ctx, cash);
       case 'undo':
         return this.undo(cash);
       case 'redo':
@@ -503,6 +510,240 @@ export class Airfield {
     o.condition = 100;
     this.refresh();
     return { cashDelta: -cost };
+  }
+
+  /** Cost per square meter for a runway at its current strength tier. */
+  private unitCost(r: Runway): number {
+    const tiers = AIRFIELD.surfaces[r.surface].pcrTiers;
+    return AIRFIELD.surfaces[r.surface].costPerM2 * tierOf(r.surface, Math.max(0, tiers.indexOf(r.pcr))).factor;
+  }
+
+  /**
+   * Extends or shortens a runway at one end. The new section joins the old one, so it stays a single
+   * runway. Shortening is refused while a taxiway or exit still uses the part that would go.
+   */
+  private resizeRunway(cmd: Extract<Command, { type: 'resizeRunway' }>, ctx: BuildContext, cash: number): BuildResult {
+    const r = this.data.runways.find((x) => x.id === cmd.id);
+    if (!r) return { code: 'nothingThere' };
+    const delta = Math.round(cmd.deltaM / 5) * 5;
+    const newLen = r.lengthM + delta;
+    if (delta === 0 || newLen < MIN_RUNWAY_M || newLen > MAX_RUNWAY_M) return { code: 'runwayLength', args: { min: MIN_RUNWAY_M, max: MAX_RUNWAY_M } };
+    const d = compassVector(r.headingDeg);
+    const fullW = r.widthM + 2 * r.shoulderM;
+    const unit = this.unitCost(r);
+    if (delta > 0) {
+      const from = cmd.end === 'b' ? { x: r.x2, y: r.y2 } : { x: r.x1, y: r.y1 };
+      const sign = cmd.end === 'b' ? 1 : -1;
+      const to = { x: round05(from.x + d.x * delta * sign), y: round05(from.y + d.y * delta * sign) };
+      const problem = checkStrip(ctx, [from, to], fullW);
+      if (problem) return problem;
+      for (const o of this.data.runways) {
+        if (o.id !== r.id && segSegDist(from.x, from.y, to.x, to.y, o.x1, o.y1, o.x2, o.y2) < MIN_RUNWAY_SEP_M) return { code: 'runwayTooClose', args: { min: MIN_RUNWAY_SEP_M } };
+      }
+      const cost = Math.round(delta * fullW * unit) + stripGradingCost(ctx, [from, to], fullW);
+      if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
+      if (cmd.end === 'b') {
+        r.x2 = to.x;
+        r.y2 = to.y;
+      } else {
+        r.x1 = to.x;
+        r.y1 = to.y;
+      }
+      r.lengthM = newLen;
+      r.cost += cost;
+      this.refresh();
+      return { cashDelta: -cost };
+    }
+    // Shorten: nothing may be attached to the part that is removed.
+    const cut = -delta;
+    const edge = r.widthM / 2 + r.shoulderM + 8;
+    const touches = (x: number, y: number): boolean => {
+      const f = runwayFrame(r, x, y);
+      if (Math.abs(f.lateral) > edge) return false;
+      return cmd.end === 'b' ? f.s > newLen - 5 && f.s <= r.lengthM + 5 : f.s < cut + 5 && f.s >= -5;
+    };
+    for (const t of this.data.taxiways) {
+      if (t.points.some((p) => touches(p.x, p.y))) return { code: 'runwayInUse' };
+    }
+    const refund = Math.round(cut * fullW * unit * REFUND_SHARE);
+    if (cmd.end === 'b') {
+      r.x2 = round05(r.x2 - d.x * cut);
+      r.y2 = round05(r.y2 - d.y * cut);
+    } else {
+      r.x1 = round05(r.x1 + d.x * cut);
+      r.y1 = round05(r.y1 + d.y * cut);
+    }
+    r.lengthM = newLen;
+    r.cost = Math.max(0, r.cost - Math.round(cut * fullW * unit));
+    this.refresh();
+    return { cashDelta: refund };
+  }
+
+  /**
+   * Changes the class (width and shoulders) and the approach category of a runway. Connectors that end
+   * at the old pavement edge follow the new edge. Strength is changed through resurfacing.
+   */
+  private reclassRunway(cmd: Extract<Command, { type: 'reclassRunway' }>, ctx: BuildContext, cash: number): BuildResult {
+    const r = this.data.runways.find((x) => x.id === cmd.id);
+    if (!r) return { code: 'nothingThere' };
+    const paved = isPaved(r.surface);
+    if (!paved && cmd.approach !== 'visual') return { code: 'approachNeedsPaved' };
+    const row = AIRFIELD.codes[cmd.code];
+    const newW = row.runwayWidthM;
+    const newSh = paved ? row.runwayShoulderM : 0;
+    const oldFull = r.widthM + 2 * r.shoulderM;
+    const newFull = newW + 2 * newSh;
+    if (newFull > oldFull) {
+      const problem = checkStrip(ctx, [{ x: r.x1, y: r.y1 }, { x: r.x2, y: r.y2 }], newFull);
+      if (problem) return problem;
+    }
+    const unit = this.unitCost(r);
+    const areaCost = (newFull - oldFull) * r.lengthM * unit;
+    const fee = APPROACH_FEE[cmd.approach] - APPROACH_FEE[r.approach];
+    const net = Math.round((areaCost > 0 ? areaCost : areaCost * REFUND_SHARE) + (fee > 0 ? fee : fee * REFUND_SHARE));
+    if (net > cash) return { code: 'insufficientFunds', args: { cost: net } };
+    // Connectors that meet the pavement edge move with it.
+    const oldEdge = r.widthM / 2 + r.shoulderM;
+    const newEdge = newW / 2 + newSh;
+    const d = compassVector(r.headingDeg);
+    for (const t of this.data.taxiways) {
+      for (const endIdx of [0, t.points.length - 1]) {
+        const e = t.points[endIdx];
+        const nb = t.points[endIdx === 0 ? 1 : t.points.length - 2];
+        const f = runwayFrame(r, e.x, e.y);
+        if (f.s < -5 || f.s > r.lengthM + 5 || Math.abs(Math.abs(f.lateral) - oldEdge) > 6) continue;
+        const l = Math.hypot(e.x - nb.x, e.y - nb.y) || 1;
+        const ux = (e.x - nb.x) / l;
+        const uy = (e.y - nb.y) / l;
+        const rate = ux * d.y + uy * -d.x;
+        if (Math.abs(rate) < 0.2) continue;
+        const tt = (Math.sign(f.lateral) * newEdge - f.lateral) / rate;
+        if (Math.abs(tt) > 80) continue;
+        const moved = { x: round05(e.x + ux * tt), y: round05(e.y + uy * tt) };
+        const other = t.points[endIdx === 0 ? 1 : t.points.length - 2];
+        if (Math.hypot(moved.x - other.x, moved.y - other.y) < 8) continue;
+        t.points[endIdx] = moved;
+      }
+    }
+    r.code = cmd.code;
+    r.widthM = newW;
+    r.shoulderM = newSh;
+    r.approach = cmd.approach;
+    r.cost = Math.max(0, r.cost + Math.round(areaCost > 0 ? areaCost : 0));
+    this.refresh();
+    return { cashDelta: -net };
+  }
+
+  /**
+   * Edits a taxiway: extend from an end with more points, trim an end back to a point, or cut a
+   * section out of the middle, which leaves two taxiways.
+   */
+  private editTaxiway(cmd: Extract<Command, { type: 'editTaxiway' }>, ctx: BuildContext, cash: number): BuildResult {
+    const t = this.data.taxiways.find((x) => x.id === cmd.id);
+    if (!t) return { code: 'nothingThere' };
+    const lenOf = (pts: Pt[]): number => {
+      let l = 0;
+      for (let i = 1; i < pts.length; i++) l += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      return l;
+    };
+    const unit = AIRFIELD.surfaces[t.surface].costPerM2 * (AIRFIELD.tierCostFactor[Math.max(0, AIRFIELD.surfaces[t.surface].pcrTiers.indexOf(t.pcr))] ?? 1);
+    if (cmd.op === 'extend') {
+      const add = (cmd.points ?? []).map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+      if (add.length === 0) return { code: 'taxiwayPoints' };
+      const base = cmd.end === 'start' ? t.points[0] : t.points[t.points.length - 1];
+      const chain = [base, ...add];
+      for (let i = 1; i < chain.length; i++) if (Math.hypot(chain[i].x - chain[i - 1].x, chain[i].y - chain[i - 1].y) < 8) return { code: 'segmentTooShort', args: { min: 8 } };
+      const next = cmd.end === 'start' ? [...add.slice().reverse(), ...t.points] : [...t.points, ...add];
+      if (next.length > 60 || lenOf(next) > 8000) return { code: 'taxiwayTooLong', args: { max: 8000 } };
+      const problem = checkStrip(ctx, chain, t.widthM);
+      if (problem) return problem;
+      const cost = Math.round(lenOf(chain) * t.widthM * unit) + stripGradingCost(ctx, chain, t.widthM);
+      if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
+      t.points = next;
+      t.cost += cost;
+      this.refresh();
+      return { cashDelta: -cost };
+    }
+    // Trim and cut work on the arc length of the point nearest the click.
+    const arcOf = (p: Pt | undefined): number | null => {
+      if (!p) return null;
+      let best = Infinity;
+      let at = 0;
+      let run = 0;
+      const c = { x: 0, y: 0, t: 0 };
+      for (let i = 1; i < t.points.length; i++) {
+        const a = t.points[i - 1];
+        const b = t.points[i];
+        closestOnSegment(p.x, p.y, a.x, a.y, b.x, b.y, c);
+        const dd = Math.hypot(p.x - c.x, p.y - c.y);
+        const sl = Math.hypot(b.x - a.x, b.y - a.y);
+        if (dd < best) {
+          best = dd;
+          at = run + sl * c.t;
+        }
+        run += sl;
+      }
+      return best < 40 ? at : null;
+    };
+    const split = (s: number): { before: Pt[]; after: Pt[] } => {
+      const before: Pt[] = [t.points[0]];
+      const after: Pt[] = [];
+      let run = 0;
+      let done = false;
+      for (let i = 1; i < t.points.length; i++) {
+        const a = t.points[i - 1];
+        const b = t.points[i];
+        const sl = Math.hypot(b.x - a.x, b.y - a.y);
+        if (!done && s <= run + sl) {
+          const k = sl > 0 ? (s - run) / sl : 0;
+          const m = { x: round05(a.x + (b.x - a.x) * k), y: round05(a.y + (b.y - a.y) * k) };
+          before.push(m);
+          after.push(m, b);
+          done = true;
+        } else if (!done) before.push(b);
+        else after.push(b);
+        run += sl;
+      }
+      return { before, after };
+    };
+    const total = lenOf(t.points);
+    const s1 = arcOf(cmd.at);
+    if (s1 === null) return { code: 'nothingThere' };
+    const perM = total > 0 ? t.cost / total : 0;
+    const MIN_PART = 8;
+    if (cmd.op === 'trim') {
+      const { before, after } = split(s1);
+      const keep = cmd.end === 'start' ? after : before;
+      if (lenOf(keep) < MIN_PART) return { code: 'segmentTooShort', args: { min: MIN_PART } };
+      const removed = total - lenOf(keep);
+      t.points = keep;
+      t.cost = Math.max(0, Math.round(t.cost - perM * removed));
+      this.refresh();
+      return { cashDelta: Math.round(perM * removed * REFUND_SHARE) };
+    }
+    const s2 = arcOf(cmd.at2);
+    if (s2 === null) return { code: 'nothingThere' };
+    const lo = Math.min(s1, s2);
+    const hi = Math.max(s1, s2);
+    if (hi - lo < 4) return { code: 'segmentTooShort', args: { min: 4 } };
+    const first = split(lo).before;
+    const last = split(hi).after;
+    const keepFirst = lenOf(first) >= MIN_PART;
+    const keepLast = lenOf(last) >= MIN_PART;
+    if (!keepFirst && !keepLast) return { code: 'segmentTooShort', args: { min: MIN_PART } };
+    const kept = (keepFirst ? lenOf(first) : 0) + (keepLast ? lenOf(last) : 0);
+    const refund = Math.round(perM * (total - kept) * REFUND_SHARE);
+    if (keepFirst && keepLast) {
+      const second: Taxiway = { ...t, id: this.nextId++, points: last, cost: Math.round(perM * lenOf(last)), name: this.nextTaxiName() };
+      t.points = first;
+      t.cost = Math.round(perM * lenOf(first));
+      this.data.taxiways.push(second);
+    } else {
+      t.points = keepFirst ? first : last;
+      t.cost = Math.round(perM * kept);
+    }
+    this.refresh();
+    return { cashDelta: refund };
   }
 
   private undo(cash: number): BuildResult {

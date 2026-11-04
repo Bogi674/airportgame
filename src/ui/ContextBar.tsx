@@ -87,6 +87,12 @@ export function ContextBar({ send }: Props) {
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
+        {s.tool === 'runway' && (
+          <Select label={t('opt.mode')} value={s.runwayMode} testId="opt-runway-mode" options={(['new', 'extend', 'shorten'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ runwayMode: v, hint: null, problem: null })} />
+        )}
+        {(s.tool === 'taxiway' || s.tool === 'taxilane') && (
+          <Select label={t('opt.mode')} value={s.taxiMode} testId="opt-taxi-mode" options={(['new', 'extend', 'trim', 'cut'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ taxiMode: v, hint: null, problem: null })} />
+        )}
         {showCode && <Select label={t('opt.code')} value={s.code} testId="opt-code" options={CODES.map((c) => ({ v: c, text: c }))} onChange={(v: CodeLetter) => s.set({ code: v })} />}
         {showPavement && (
           <Select

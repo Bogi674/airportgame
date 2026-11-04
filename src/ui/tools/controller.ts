@@ -1,16 +1,18 @@
 import { AIRFIELD } from '@data/index';
-import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway } from '@shared/airfield';
+import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
+  runwayFrame as frameOf,
   rapidExitPoints,
   runwayFrame,
   snapToCenterline,
+  snapToRunwayEdge,
   snapToVertex,
   suggestedExitDistance,
 } from '@shared/airfieldGeom';
 import type { Ghost, GhostShape } from '@shared/ghost';
-import { pointInPolygon, type Pt } from '@shared/geom';
+import { closestOnSegment, pointInPolygon, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
 import { TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
 import { cellAtWorld, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
@@ -30,6 +32,8 @@ interface Deps {
   send(cmd: Command): void;
   setGhost(g: Ghost | null): void;
   zoom(): number;
+  setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void;
+  setCursor(cursor: string): void;
 }
 
 const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(dx, -dy) * 180) / Math.PI) % 360) + 360) % 360;
@@ -84,8 +88,86 @@ export class ToolController {
     return this.armed || this.dragging || this.pts.length > 0;
   }
 
+  /** Outline shapes of an airfield object or terminal, for the hover and selection highlights. */
+  shapesFor(kind: string, id: number): GhostShape[] {
+    const af = this.af;
+    if (kind === 'runway') {
+      const r = af.runways.find((x) => x.id === id);
+      return r ? [{ k: 'box', x: r.x1, y: r.y1, headingDeg: r.headingDeg, len: r.lengthM, w: r.widthM + 2 * r.shoulderM }] : [];
+    }
+    if (kind === 'taxiway') {
+      const t = af.taxiways.find((x) => x.id === id);
+      return t ? [{ k: 'strip', pts: t.points, w: t.widthM + 2 }] : [];
+    }
+    if (kind === 'apron') {
+      const a = af.aprons.find((x) => x.id === id);
+      return a ? [{ k: 'poly', pts: a.polygon }] : [];
+    }
+    if (kind === 'stand') {
+      const s = af.stands.find((x) => x.id === id);
+      if (!s) return [];
+      const row = AIRFIELD.codes[s.code];
+      const d = compassVector(s.headingDeg);
+      // The stand box runs from the aircraft nose position back over its length.
+      return [{ k: 'box', x: s.x - d.x * row.standLengthM, y: s.y - d.y * row.standLengthM, headingDeg: s.headingDeg, len: row.standLengthM, w: row.spanM + 6 }];
+    }
+    if (kind === 'terminal') {
+      const g = useGameStore.getState().terminalGrids.find((x) => x.id === id);
+      if (!g) return [];
+      let x0 = TERMINAL_GRID;
+      let y0 = TERMINAL_GRID;
+      let x1 = 0;
+      let y1 = 0;
+      for (let cy = 0; cy < TERMINAL_GRID; cy++) {
+        for (let cx = 0; cx < TERMINAL_GRID; cx++) {
+          if (g.floor[cy * TERMINAL_GRID + cx] === 0) continue;
+          if (cx < x0) x0 = cx;
+          if (cy < y0) y0 = cy;
+          if (cx + 1 > x1) x1 = cx + 1;
+          if (cy + 1 > y1) y1 = cy + 1;
+        }
+      }
+      return x1 > x0 ? [{ k: 'poly', pts: rectWorld(g, x0, y0, x1, y1) }] : [];
+    }
+    return [];
+  }
+
+  private hovered = '';
+  /** The runway end or taxiway being edited between the first and second click. */
+  private resize: { id: number; end: 'a' | 'b' } | null = null;
+  private tEdit: { id: number; end: 'start' | 'end' | null; at: Pt | null } | null = null;
+
+  /** Highlights what a click would select and shows a pointer cursor over it. */
+  private hoverAt(p: Pt): void {
+    const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
+    const term = hit ? null : this.terminalAt(p);
+    const kind = hit ? hit.kind : term !== null ? 'terminal' : '';
+    const id = hit ? hit.id : term ?? 0;
+    const key = kind ? `${kind}:${id}` : '';
+    if (key === this.hovered) return;
+    this.hovered = key;
+    this.deps.setHighlight(kind ? this.shapesFor(kind, id) : null, this.selectedShapes());
+    this.deps.setCursor(kind ? 'pointer' : 'default');
+  }
+
+  selectedShapes(): GhostShape[] | null {
+    const sel = useToolStore.getState().selection;
+    return sel ? this.shapesFor(sel.kind, sel.id) : null;
+  }
+
+  /** Called when the selection or the airfield changes, so the selected outline follows. */
+  refreshSelection(): void {
+    this.deps.setHighlight(null, this.selectedShapes());
+    this.hovered = '';
+  }
+
   reset(): void {
+    this.hovered = '';
+    this.deps.setHighlight(null, this.selectedShapes());
+    this.deps.setCursor('default');
     this.start = null;
+    this.resize = null;
+    this.tEdit = null;
     this.pts = [];
     this.dragging = false;
     this.frozen = false;
@@ -101,6 +183,8 @@ export class ToolController {
     const v = snapToVertex(this.af, p.x, p.y, radius);
     if (v) return v;
     if (centerlines) {
+      const edge = snapToRunwayEdge(this.af, p.x, p.y, radius * 1.2, prev);
+      if (edge) return edge;
       const c = snapToCenterline(this.af, p.x, p.y, radius * 0.7);
       if (c) return c;
     }
@@ -157,7 +241,14 @@ export class ToolController {
     this.cursor = p;
     this.frozen = false;
     const tool = useToolStore.getState().tool;
-    if (tool === 'runway') {
+    if (tool === 'runway' && useToolStore.getState().runwayMode !== 'new') {
+      const end = this.runwayEndAt(p);
+      if (end) {
+        this.resize = { id: end.id, end: end.end };
+        this.start = end.pt;
+        this.dragging = true;
+      } else useToolStore.getState().set({ problem: { code: 'pickRunwayEnd' } });
+    } else if (tool === 'runway') {
       this.start = this.snap(p, null, mods, false);
       this.dragging = true;
     } else if (tool === 'terminal') {
@@ -174,7 +265,8 @@ export class ToolController {
         break;
       case 'taxiway':
       case 'taxilane':
-        this.previewTaxiway(p, mods, st.tool === 'taxilane');
+        if (st.taxiMode !== 'new' && !(st.taxiMode === 'extend' && this.tEdit)) this.previewTaxiEdit(p);
+        else this.previewTaxiway(p, mods, st.tool === 'taxilane');
         break;
       case 'rapidExit':
         this.previewRapidExit(p);
@@ -195,6 +287,9 @@ export class ToolController {
       case 'demolish':
         this.previewDemolish(p);
         break;
+      case 'select':
+        this.hoverAt(p);
+        break;
       default:
         break;
     }
@@ -209,6 +304,10 @@ export class ToolController {
         break;
       case 'taxiway':
       case 'taxilane': {
+        if (st.taxiMode !== 'new' && !(st.taxiMode === 'extend' && this.tEdit)) {
+          this.taxiEditClick(p);
+          break;
+        }
         const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
         const q = this.snap(p, prev, mods, true);
         if (prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 3) break;
@@ -281,6 +380,111 @@ export class ToolController {
     return false;
   }
 
+  // Runway extend and shorten -------------------------------------------
+
+  private runwayEndAt(p: Pt): { id: number; end: 'a' | 'b'; pt: Pt } | null {
+    const tol = Math.max(40, 30 / this.deps.zoom());
+    let best: { id: number; end: 'a' | 'b'; pt: Pt } | null = null;
+    let bestD = tol;
+    for (const r of this.af.runways) {
+      for (const [end, pt] of [['a', { x: r.x1, y: r.y1 }], ['b', { x: r.x2, y: r.y2 }]] as const) {
+        const d = Math.hypot(pt.x - p.x, pt.y - p.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { id: r.id, end, pt };
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Signed change in length for a pointer position: positive extends, negative shortens. */
+  private resizeDelta(p: Pt): { r: Runway; delta: number; outward: Pt; from: Pt } | null {
+    const target = this.resize;
+    const r = target ? this.af.runways.find((x) => x.id === target.id) : undefined;
+    if (!target || !r) return null;
+    const d = compassVector(r.headingDeg);
+    const sign = target.end === 'b' ? 1 : -1;
+    const outward = { x: d.x * sign, y: d.y * sign };
+    const from = target.end === 'b' ? { x: r.x2, y: r.y2 } : { x: r.x1, y: r.y1 };
+    const proj = (p.x - from.x) * outward.x + (p.y - from.y) * outward.y;
+    const mode = useToolStore.getState().runwayMode;
+    const amount = Math.round(Math.abs(proj) / 5) * 5;
+    const delta = mode === 'extend' ? (proj > 0 ? amount : 0) : proj < 0 ? -amount : 0;
+    return { r, delta, outward, from };
+  }
+
+  private previewResize(p: Pt): void {
+    const st = useToolStore.getState();
+    if (this.frozen && !this.dragging) return;
+    if (!this.resize || !this.dragging) {
+      // Ring every runway end so the player sees what can be picked.
+      const shapes: GhostShape[] = [];
+      for (const r of this.af.runways) {
+        shapes.push({ k: 'ring', x: r.x1, y: r.y1, r: 22 }, { k: 'ring', x: r.x2, y: r.y2, r: 22 });
+      }
+      this.deps.setGhost({ valid: true, shapes });
+      st.set({ hint: st.runwayMode === 'extend' ? 'hint.runwayExtendPick' : 'hint.runwayShortenPick', problem: null, buy: null });
+      return;
+    }
+    const m = this.resizeDelta(p);
+    if (!m) return;
+    const fullW = m.r.widthM + 2 * m.r.shoulderM;
+    const newLen = m.r.lengthM + m.delta;
+    const sign = m.delta >= 0 ? 1 : -1;
+    const amt = Math.abs(m.delta);
+    const a = sign > 0 ? m.from : { x: m.from.x - m.outward.x * amt, y: m.from.y - m.outward.y * amt };
+    const heading = ((Math.atan2(m.outward.x, -m.outward.y) * 180) / Math.PI + 360) % 360;
+    let problem: Problem | null = null;
+    let label = tFormat('ghost.runwayResize', { len: newLen, delta: `${m.delta >= 0 ? '+' : ''}${m.delta}`, cost: '' });
+    if (m.delta === 0) problem = { code: 'resizeNothing' };
+    else if (newLen < 300 || newLen > 5000) problem = { code: 'runwayLength', args: { min: 300, max: 5000 } };
+    else if (m.delta > 0) {
+      const to = { x: m.from.x + m.outward.x * amt, y: m.from.y + m.outward.y * amt };
+      problem = this.landProblem({ pts: [m.from, to], widthM: fullW });
+      const ctx = this.ctx();
+      const cost = ctx ? estimateStripCost(ctx, [m.from, to], fullW, m.r.surface, 1) : 0;
+      label = tFormat('ghost.runwayResize', { len: newLen, delta: `+${m.delta}`, cost: formatMoney(cost) });
+    } else {
+      for (const t of this.af.taxiways) {
+        for (const q of t.points) {
+          const f = frameOf(m.r, q.x, q.y);
+          const outwardEnd = this.resize.end === 'b';
+          if (Math.abs(f.lateral) <= fullW / 2 + 8 && (outwardEnd ? f.s > newLen - 5 : f.s < amt + 5) && f.s >= -5 && f.s <= m.r.lengthM + 5) problem = { code: 'runwayInUse' };
+        }
+      }
+    }
+    this.show(
+      {
+        valid: problem === null,
+        shapes: [{ k: 'box', x: a.x, y: a.y, headingDeg: heading, len: amt, w: fullW }, { k: 'ring', x: m.from.x, y: m.from.y, r: 22 }],
+        label: { x: p.x, y: p.y, text: label },
+      },
+      problem,
+      'hint.runwayResize',
+    );
+  }
+
+  private commitResize(p: Pt): void {
+    const m = this.resizeDelta(p);
+    const target = this.resize;
+    this.start = null;
+    this.dragging = false;
+    this.resize = null;
+    if (!m || !target || m.delta === 0) {
+      this.deps.setGhost(null);
+      return;
+    }
+    if (useToolStore.getState().problem) {
+      this.frozen = true;
+      this.resize = target;
+      this.start = m.from;
+      return;
+    }
+    this.deps.send({ type: 'resizeRunway', id: target.id, end: target.end, deltaM: m.delta });
+    this.deps.setGhost(null);
+  }
+
   // Runway ---------------------------------------------------------------
 
   private runwayShape(a: Pt, heading: number, length: number): { shapes: GhostShape[]; pts: Pt[]; width: number } {
@@ -310,6 +514,10 @@ export class ToolController {
   }
 
   private previewRunway(p: Pt, mods: Mods): void {
+    if (useToolStore.getState().runwayMode !== 'new') {
+      this.previewResize(p);
+      return;
+    }
     const st = useToolStore.getState();
     if (this.frozen && !this.dragging) return;
     const g = this.runwayGeometry(p, mods);
@@ -343,6 +551,10 @@ export class ToolController {
   }
 
   private finishRunway(p: Pt, mods: Mods): void {
+    if (useToolStore.getState().runwayMode !== 'new') {
+      this.commitResize(p);
+      return;
+    }
     const st = useToolStore.getState();
     const g = this.runwayGeometry(p, mods);
     const start = this.start;
@@ -388,8 +600,168 @@ export class ToolController {
   private commitTaxiway(lane: boolean): void {
     const st = useToolStore.getState();
     if (this.pts.length < 2) return;
+    if (st.taxiMode === 'extend' && this.tEdit) {
+      this.deps.send({ type: 'editTaxiway', id: this.tEdit.id, op: 'extend', end: this.tEdit.end ?? 'end', points: this.pts.slice(1) });
+      this.pts = [];
+      this.tEdit = null;
+      this.deps.setGhost(null);
+      return;
+    }
     this.deps.send({ type: 'buildTaxiway', points: this.pts.slice(), code: st.code, kind: lane ? 'taxilane' : 'taxiway', surface: st.surface, tier: st.tier });
     this.pts = [];
+    this.deps.setGhost(null);
+  }
+
+  // Taxiway extend, trim and cut -----------------------------------------
+
+  private taxiEndAt(p: Pt): { t: Taxiway; end: 'start' | 'end'; pt: Pt } | null {
+    const tol = Math.max(30, 24 / this.deps.zoom());
+    let best: { t: Taxiway; end: 'start' | 'end'; pt: Pt } | null = null;
+    let bestD = tol;
+    for (const t of this.af.taxiways) {
+      for (const [end, pt] of [['start', t.points[0]], ['end', t.points[t.points.length - 1]]] as const) {
+        const d = Math.hypot(pt.x - p.x, pt.y - p.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { t, end, pt };
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Nearest point of a taxiway centerline and its arc length, within a few taxiway widths. */
+  private taxiArc(t: Taxiway, p: Pt): { arc: number; pt: Pt } | null {
+    let best = Infinity;
+    let arc = 0;
+    let run = 0;
+    let pt: Pt = t.points[0];
+    const c = { x: 0, y: 0, t: 0 };
+    for (let i = 1; i < t.points.length; i++) {
+      const a = t.points[i - 1];
+      const b = t.points[i];
+      closestOnSegment(p.x, p.y, a.x, a.y, b.x, b.y, c);
+      const d = Math.hypot(p.x - c.x, p.y - c.y);
+      const sl = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d < best) {
+        best = d;
+        arc = run + sl * c.t;
+        pt = { x: c.x, y: c.y };
+      }
+      run += sl;
+    }
+    return best <= Math.max(t.widthM * 1.5, 20 / this.deps.zoom()) ? { arc, pt } : null;
+  }
+
+  /** The part of a taxiway between two arc lengths. */
+  private taxiSlice(t: Taxiway, s0: number, s1: number): Pt[] {
+    const lo = Math.min(s0, s1);
+    const hi = Math.max(s0, s1);
+    const out: Pt[] = [];
+    let run = 0;
+    const at = (a: Pt, b: Pt, s: number): Pt => {
+      const sl = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const k = (s - run) / sl;
+      return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+    };
+    for (let i = 1; i < t.points.length; i++) {
+      const a = t.points[i - 1];
+      const b = t.points[i];
+      const sl = Math.hypot(b.x - a.x, b.y - a.y);
+      const e = run + sl;
+      if (e >= lo && run <= hi) {
+        if (out.length === 0) out.push(at(a, b, Math.max(lo, run)));
+        if (hi <= e) {
+          out.push(at(a, b, hi));
+          break;
+        }
+        out.push(b);
+      }
+      run = e;
+    }
+    return out;
+  }
+
+  private previewTaxiEdit(p: Pt): void {
+    const st = useToolStore.getState();
+    const mode = st.taxiMode;
+    const shapes: GhostShape[] = [];
+    let valid = true;
+    let problem: Problem | null = null;
+    let hint = mode === 'extend' ? 'hint.taxiExtendPick' : mode === 'trim' ? 'hint.taxiTrimPick' : 'hint.taxiCutPick';
+    if (mode === 'extend' || (mode === 'trim' && !this.tEdit)) {
+      for (const t of this.af.taxiways) {
+        shapes.push({ k: 'ring', x: t.points[0].x, y: t.points[0].y, r: 14 }, { k: 'ring', x: t.points[t.points.length - 1].x, y: t.points[t.points.length - 1].y, r: 14 });
+      }
+    } else {
+      const t = this.af.taxiways.find((x) => x.id === (this.tEdit ? this.tEdit.id : -1));
+      const hit = t ? this.taxiArc(t, p) : null;
+      if (mode === 'trim' && t && this.tEdit && this.tEdit.end) {
+        hint = 'hint.taxiTrimTo';
+        const total = this.arcTotal(t);
+        if (hit) shapes.push({ k: 'strip', pts: this.taxiSlice(t, this.tEdit.end === 'start' ? 0 : total, hit.arc), w: t.widthM }, { k: 'ring', x: hit.pt.x, y: hit.pt.y, r: 10 });
+        else valid = false;
+      } else if (mode === 'cut') {
+        const t0 = this.tEdit ? t : this.af.taxiways.find((x) => this.taxiArc(x, p) !== null);
+        const h0 = t0 ? this.taxiArc(t0, p) : null;
+        if (!this.tEdit) {
+          if (h0) shapes.push({ k: 'ring', x: h0.pt.x, y: h0.pt.y, r: 10 });
+          else valid = false;
+        } else if (t0 && this.tEdit.at && h0) {
+          const a = this.taxiArc(t0, this.tEdit.at);
+          if (a) shapes.push({ k: 'strip', pts: this.taxiSlice(t0, a.arc, h0.arc), w: t0.widthM }, { k: 'ring', x: a.pt.x, y: a.pt.y, r: 10 });
+          hint = 'hint.taxiCutTo';
+        } else valid = false;
+      }
+    }
+    if (!valid) problem = null;
+    this.deps.setGhost({ valid: true, shapes });
+    st.set({ hint, problem, buy: null });
+  }
+
+  private arcTotal(t: Taxiway): number {
+    let l = 0;
+    for (let i = 1; i < t.points.length; i++) l += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y);
+    return l;
+  }
+
+  private taxiEditClick(p: Pt): void {
+    const st = useToolStore.getState();
+    const mode = st.taxiMode;
+    if (mode === 'extend') {
+      const e = this.taxiEndAt(p);
+      if (!e) return;
+      this.tEdit = { id: e.t.id, end: e.end, at: null };
+      this.pts = [e.pt];
+      this.previewTaxiway(p, { shift: false, alt: false }, st.tool === 'taxilane');
+      return;
+    }
+    if (mode === 'trim') {
+      if (!this.tEdit) {
+        const e = this.taxiEndAt(p);
+        if (e) this.tEdit = { id: e.t.id, end: e.end, at: null };
+        return;
+      }
+      const t = this.af.taxiways.find((x) => x.id === this.tEdit?.id);
+      const hit = t ? this.taxiArc(t, p) : null;
+      if (!t || !hit || !this.tEdit.end) return;
+      this.deps.send({ type: 'editTaxiway', id: t.id, op: 'trim', end: this.tEdit.end, at: hit.pt });
+      this.tEdit = null;
+      this.deps.setGhost(null);
+      return;
+    }
+    // Cut: the first click picks the taxiway and one end of the section, the second the other end.
+    if (!this.tEdit) {
+      const t = this.af.taxiways.find((x) => this.taxiArc(x, p) !== null);
+      const hit = t ? this.taxiArc(t, p) : null;
+      if (t && hit) this.tEdit = { id: t.id, end: null, at: hit.pt };
+      return;
+    }
+    const t = this.af.taxiways.find((x) => x.id === this.tEdit?.id);
+    const hit = t ? this.taxiArc(t, p) : null;
+    if (!t || !hit || !this.tEdit.at) return;
+    this.deps.send({ type: 'editTaxiway', id: t.id, op: 'cut', at: this.tEdit.at, at2: hit.pt });
+    this.tEdit = null;
     this.deps.setGhost(null);
   }
 

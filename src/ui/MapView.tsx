@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Renderer } from '@render/renderer';
 import type { SimClient } from '../worker/client';
+import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { ToolController } from './tools/controller';
 
@@ -28,6 +29,10 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       send: (cmd) => client.send(cmd),
       setGhost: (g) => renderer.setGhost(g),
       zoom: () => cam.zoom,
+      setHighlight: (h, s) => renderer.setHighlight(h, s),
+      setCursor: (c) => {
+        canvas.style.cursor = c;
+      },
     });
 
     const world = { x: 0, y: 0 };
@@ -78,7 +83,7 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       lastMods = { shift: e.shiftKey, alt: e.altKey };
       if (panning) cam.panByScreen(e.offsetX - lastX, e.offsetY - lastY);
       else if (rotating) cam.rotateAt(canvas.clientWidth / 2, canvas.clientHeight / 2, (e.offsetX - lastX) * ROTATE_RATE);
-      else if (useToolStore.getState().tool !== 'select') controller.move(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
+      else controller.move(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
       lastX = e.offsetX;
       lastY = e.offsetY;
     };
@@ -125,6 +130,14 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     canvas.addEventListener('contextmenu', onContext);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+
+    // The selected outline follows the selection and any change to the airfield.
+    const unsubSelection = useToolStore.subscribe((s, prev) => {
+      if (s.selection !== prev.selection) controller.refreshSelection();
+    });
+    const unsubAirfield = useGameStore.subscribe((s, prev) => {
+      if (s.airfield !== prev.airfield || s.terminalGrids !== prev.terminalGrids) controller.refreshSelection();
+    });
 
     // Switching tools drops any gesture in progress.
     let lastTool = useToolStore.getState().tool;
@@ -173,6 +186,8 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       unsubscribe();
+      unsubSelection();
+      unsubAirfield();
       dprQuery.removeEventListener('change', onDpr);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);

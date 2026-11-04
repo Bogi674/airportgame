@@ -13,6 +13,10 @@ export interface Selection {
 
 interface ToolState {
   tool: Tool;
+  /** Runway tool mode: build a new one, or extend or shorten an existing one at an end. */
+  runwayMode: 'new' | 'extend' | 'shorten';
+  /** Taxiway tool mode: build, extend from an end, trim an end back, or cut a section out. */
+  taxiMode: 'new' | 'extend' | 'trim' | 'cut';
   /** Whether the bottom options panel is shown. The left rail toggles it. */
   barOpen: boolean;
   code: CodeLetter;
@@ -44,6 +48,8 @@ interface ToolState {
 
 export const useToolStore = create<ToolState>((set) => ({
   tool: 'select',
+  runwayMode: 'new',
+  taxiMode: 'new',
   barOpen: true,
   code: 'C',
   surface: 'asphalt',

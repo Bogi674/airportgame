@@ -1,13 +1,67 @@
 import { AIRFIELD } from '@data/index';
 import { FIXTURE_KEYS } from '@shared/business';
-import { CODES, type CodeLetter, type Surface } from '@shared/airfield';
+import { APPROACHES, CODES, type Approach, type CodeLetter, type Runway, type Surface } from '@shared/airfield';
 import type { Command } from '@sim/commands';
+import { useState } from 'preact/hooks';
 import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { t, tDynamic, tFormat } from './strings';
 
 interface Props {
   send(cmd: Command): void;
+}
+
+/** Class, approach and strength of a runway. Changes are applied together and priced by the sim. */
+function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
+  const [code, setCode] = useState<CodeLetter>(r.code);
+  const [approach, setApproach] = useState<Approach>(r.approach);
+  const tiers = AIRFIELD.surfaces[r.surface].pcrTiers;
+  const [tier, setTier] = useState(Math.max(0, tiers.indexOf(r.pcr)));
+  const paved = r.surface === 'asphalt' || r.surface === 'concrete';
+  const apply = (): void => {
+    if (code !== r.code || approach !== r.approach) send({ type: 'reclassRunway', id: r.id, code, approach });
+    if (tiers[tier] !== r.pcr) send({ type: 'resurface', kind: 'runway', id: r.id, surface: r.surface, tier });
+  };
+  return (
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:4px" data-testid="runway-upgrade">
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('inspector.runwayClass')}
+        <select data-testid="rw-class" value={code} onChange={(e) => setCode((e.target as HTMLSelectElement).value as CodeLetter)}>
+          {CODES.map((c) => (
+            <option key={c} value={c}>
+              {c}, {AIRFIELD.codes[c].runwayWidthM} m
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('inspector.runwayApproach')}
+        <select data-testid="rw-approach" value={approach} onChange={(e) => setApproach((e.target as HTMLSelectElement).value as Approach)}>
+          {APPROACHES.filter((a) => a === 'visual' || paved).map((a) => (
+            <option key={a} value={a}>
+              {tDynamic(`approach.${a}`)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {tiers.length > 1 && (
+        <label style="display:flex;justify-content:space-between;gap:6px">
+          {t('inspector.runwayStrength')}
+          <select data-testid="rw-tier" value={tier} onChange={(e) => setTier(Number((e.target as HTMLSelectElement).value))}>
+            {tiers.map((pcr, i) => (
+              <option key={i} value={i}>
+                PCR {pcr}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div style="color:var(--muted);font-size:11px">{t('inspector.runwayUpgradeHint')}</div>
+      <button data-testid="rw-apply" onClick={apply}>
+        {t('inspector.apply')}
+      </button>
+    </div>
+  );
 }
 
 /** Inspector for the selected airfield object, with segment properties, resurfacing and demolition. */
@@ -65,6 +119,7 @@ export function ObjectPanel({ send }: Props) {
         <div>{tFormat('inspector.pcr', { n: r.pcr, surface: tDynamic(`surface.${r.surface}`) })}</div>
         <div>{tFormat('inspector.condition', { n: Math.round(r.condition) })}</div>
         <div>{tFormat('inspector.holding', { n: af.holding.filter((h) => h.runwayId === r.id).length })}</div>
+        <RunwayUpgrade key={`${r.id}-${r.code}-${r.approach}-${r.pcr}`} r={r} send={send} />
         {entries.map((e, i) => {
           const tw = af.taxiways.find((x) => x.id === e.taxiwayId);
           return (
