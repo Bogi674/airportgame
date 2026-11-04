@@ -172,9 +172,9 @@ Values are ICAO based and live in `src/data/airfield_codes.json`.
 ### Clearances shown as ghost envelopes
 
 * **Runway strip**: about 280 m wide for instrument runways and 150 m for visual ones, shown as a faint band. Objects inside it raise a warning and block precision approaches.
-* **Wingtip envelope**: while drawing a taxiway, a faint outline of the largest aircraft for that code slides along it. Clashes show red.
+* **Wingtip envelope**: while drawing a taxiway, a faint outline of the largest aircraft for that code slides along it at the cursor. Stretches closer than the code's taxiway to object distance to a stand or building, or running beside another taxiway closer than the taxiway separation, show as red bands with a tooltip. They are warnings, the taxiway can still be built.
 * **Separations**: runway to parallel taxiway distance scales with code and approach type (for example about 168 m for a precision runway with code C to E taxiways). If a taxiway is built closer than its code needs, it is not forbidden. Its maximum code drops to the largest code that fits, and the label shows it.
-* **Obstacle surfaces**: an approach surface from each threshold (1:50 for precision, 1:40 for visual) and a transitional surface. Penetrations disable that approach type in that direction and show where.
+* **Obstacle surfaces**: an approach surface from each threshold (1:50 for precision, 1:40 for non precision and visual) and a transitional surface along both sides of the strip (1:7, 1:5 for visual) up to 45 m. Obstacles are terrain, the cover on land the player does not own (forest 12 m, villages 8 m, industry 12 m) and terminals (16 m). Buying land clears its cover. A penetration disables that approach type in that direction: the direction falls back to the best type whose surfaces are clear, and in fog only an instrument approach works. The runway tool and a selected runway show the surfaces dashed in amber and the penetrations as red dots; the inspector names the usable approach per direction. Values live in `airfield_codes.json` under `obstacleSurfaces`.
 
 ### Holding points and entries
 

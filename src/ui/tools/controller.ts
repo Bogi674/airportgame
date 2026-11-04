@@ -23,6 +23,9 @@ import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcel
 import type { Command } from '@sim/commands';
 import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
+import { envelopeType, taxiClashes } from '@shared/clearance';
+import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
+import { typeOutlines } from '@render/markings/standLayout';
 import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
@@ -151,7 +154,24 @@ export class ToolController {
 
   selectedShapes(): GhostShape[] | null {
     const sel = useToolStore.getState().selection;
-    return sel ? this.shapesFor(sel.kind, sel.id) : null;
+    if (!sel) return null;
+    const shapes = this.shapesFor(sel.kind, sel.id);
+    // A selected runway shows its obstacle surfaces and where they are penetrated.
+    const r = sel.kind === 'runway' ? this.af.runways.find((x) => x.id === sel.id) : undefined;
+    if (r) shapes.push(this.surfacesShape(r, this.af.obstacles?.find((o) => o.runwayId === r.id)?.penetrations ?? []));
+    return shapes;
+  }
+
+  private surfacesShape(r: Runway, hits: readonly Penetration[]): GhostShape {
+    const o = surfaceOutlines(r, r.approach);
+    return { k: 'surfaces', approachA: o.approachA, approachB: o.approachB, transitional: o.transitional, hits: hits.map((h) => ({ x: h.x, y: h.y })) };
+  }
+
+  /** Penetrations of a runway being drawn, from the land the player owns now. */
+  private previewHits(r: Runway): Penetration[] {
+    const { site, owner, terminalGrids } = useGameStore.getState();
+    if (!site || !owner) return [];
+    return previewPenetrations(r, { heights: site.heights, landClass: site.landClass, parcelId: site.parcelId, parcelOwner: owner, buildings: this.buildingBoxes(terminalGrids) });
   }
 
   /** Called when the selection or the airfield changes, so the selected outline follows. */
@@ -635,15 +655,18 @@ export class ToolController {
     const des = (h: number): string => String(Math.round((((h % 360) + 360) % 360) / 10) % 36 || 36).padStart(2, '0');
     tmp.nameA = des(g.heading);
     tmp.nameB = des(g.heading + 180);
+    const hits = g.length >= 300 ? this.previewHits(tmp) : [];
     this.show(
       {
         valid: problem === null,
-        shapes: shape.shapes.slice(0, 1),
+        shapes: g.length >= 300 ? [...shape.shapes.slice(0, 1), this.surfacesShape(tmp, hits)] : shape.shapes.slice(0, 1),
         preview: g.length >= 50 ? { runway: tmp } : undefined,
         label: {
           x: p.x,
           y: p.y,
-          text: tFormat('ghost.runway', { len: g.length, hdg: String(g.heading).padStart(3, '0'), band: tFormat(`wind.${band}` as StringKey, {}), cost: formatMoney(cost) }),
+          text:
+            tFormat('ghost.runway', { len: g.length, hdg: String(g.heading).padStart(3, '0'), band: tFormat(`wind.${band}` as StringKey, {}), cost: formatMoney(cost) }) +
+            (hits.length > 0 ? `. ${tFormat('ghost.obstacles', { n: hits.length })}` : ''),
         },
       },
       problem,
@@ -694,7 +717,20 @@ export class ToolController {
       problem = this.landProblem({ pts, widthM: width });
       if (!problem && prev && Math.hypot(q.x - prev.x, q.y - prev.y) < TAXI_TOOL.minNodeGapM) problem = { code: 'segmentTooShort', args: { min: TAXI_TOOL.minNodeGapM } };
     }
-    const tip = hit ? (hit.kind === 'node' ? tFormat('ghost.snapNode', { label: hit.label }) : hit.kind === 'end' ? tFormat('ghost.snapEnd', {}) : tFormat('ghost.snapSegment', {})) : null;
+    // The wingtip envelope: the largest type of the code at the cursor, and red bands where it clashes.
+    let clash = false;
+    let clashTip: string | null = null;
+    if (pts.length >= 2) {
+      const c = taxiClashes(pts, st.code, this.af, { buildings: this.buildingBoxes() });
+      for (const r of c.runs) shapes.push({ k: 'clash', pts: r, w: width });
+      clash = c.runs.length > 0;
+      const row = AIRFIELD.codes[st.code];
+      if (c.object) clashTip = tFormat('ghost.clearance', { m: row.taxiObjectM });
+      else if (c.taxiway) clashTip = tFormat('ghost.taxiSeparation', { m: row.taxiSepM });
+    }
+    const env = this.envelopeAt(q, prev, st.code, clash);
+    if (env) shapes.push(env);
+    const tip = hit ? (hit.kind === 'node' ? tFormat('ghost.snapNode', { label: hit.label }) : hit.kind === 'end' ? tFormat('ghost.snapEnd', {}) : tFormat('ghost.snapSegment', {})) : clashTip;
     const ctx = this.ctx();
     const cost = ctx && pts.length >= 2 ? estimateStripCost(ctx, pts, width, st.surface, st.tier) : 0;
     this.show(
@@ -702,6 +738,30 @@ export class ToolController {
       problem,
       lane ? 'hint.taxilane' : 'hint.taxiway',
     );
+  }
+
+  /** Footprints of every terminal, for clearance checks while drawing. */
+  private buildingBoxes(grids: readonly TerminalGrid[] = useGameStore.getState().terminalGrids): Pt[][] {
+    const out: Pt[][] = [];
+    for (const g of grids) {
+      const b = this.floorBox(g);
+      if (b) out.push(rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1));
+    }
+    return out;
+  }
+
+  /** The largest type of the code with its nose at the cursor, heading along the last segment. */
+  private envelopeAt(q: Pt, prev: Pt | null, code: CodeLetter, clash: boolean): GhostShape | null {
+    const a = envelopeType(code);
+    if (!a) return null;
+    const len = prev ? Math.hypot(q.x - prev.x, q.y - prev.y) : 0;
+    // Outlines are in meters with the nose at y = 0 and the tail at y = minus the length, x to one wing.
+    const ux = len > 0.5 && prev ? (q.x - prev.x) / len : 0;
+    const uy = len > 0.5 && prev ? (q.y - prev.y) / len : -1;
+    const rx = -uy;
+    const ry = ux;
+    const polys = typeOutlines(a, 0).map((poly) => poly.map((p) => ({ x: q.x + rx * p.x + ux * p.y, y: q.y + ry * p.x + uy * p.y })));
+    return { k: 'envelope', polys, clash };
   }
 
   private commitTaxiway(lane: boolean): void {

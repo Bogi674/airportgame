@@ -1,4 +1,5 @@
 import type { Pt } from './geom';
+import type { RunwayObstacles } from './obstacles';
 
 export type Surface = 'dirt' | 'gravel' | 'grass' | 'asphalt' | 'concrete';
 export const SURFACES: readonly Surface[] = ['dirt', 'gravel', 'grass', 'asphalt', 'concrete'];
@@ -139,6 +140,8 @@ export interface AirfieldPayload {
   stands: Stand[];
   holding: HoldingPoint[];
   entries: RunwayEntry[];
+  /** Obstacle surface results per runway, derived from the terrain, land and buildings. */
+  obstacles?: RunwayObstacles[];
 }
 
 export const EMPTY_AIRFIELD: AirfieldPayload = { version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [] };

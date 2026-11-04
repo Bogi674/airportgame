@@ -234,6 +234,10 @@ export function ObjectPanel({ send }: Props) {
     if (!r) return null;
     name = `${r.nameA}/${r.nameB}`;
     const entries = af.entries.filter((e) => e.runwayId === r.id);
+    const obs = af.obstacles?.find((o) => o.runwayId === r.id);
+    // Usable approach per landing direction after the obstacle surfaces (docs/GAME_DESIGN.md section 6).
+    const dirLine = (des: string, ap: typeof r.approach): string =>
+      tFormat(ap === r.approach ? 'inspector.approachDir' : 'inspector.approachDirLimited', { des, approach: tDynamic(`approach.${ap}`) });
     body = (
       <>
         <div>{tFormat('inspector.size', { len: r.lengthM, w: r.widthM })}</div>
@@ -243,6 +247,13 @@ export function ObjectPanel({ send }: Props) {
         <div>{tFormat('inspector.pcr', { n: r.pcr, surface: tDynamic(`surface.${r.surface}`) })}</div>
         <div>{tFormat('inspector.condition', { n: Math.round(r.condition) })}</div>
         <div>{tFormat('inspector.holding', { n: af.holding.filter((h) => h.runwayId === r.id).length })}</div>
+        {obs && (
+          <div data-testid="runway-obstacles" style={obs.penetrations.length > 0 ? 'color:var(--warn)' : undefined}>
+            <div>{dirLine(r.nameA, obs.approachA)}</div>
+            <div>{dirLine(r.nameB, obs.approachB)}</div>
+            {obs.penetrations.length > 0 && <div style="font-size:11px">{tFormat('inspector.obstacles', { n: obs.penetrations.length, m: obs.penetrations[0].byM })}</div>}
+          </div>
+        )}
         <RunwayUpgrade key={`${r.id}-${r.code}-${r.approach}-${r.pcr}`} r={r} send={send} />
         {entries.map((e, i) => {
           const tw = af.taxiways.find((x) => x.id === e.taxiwayId);

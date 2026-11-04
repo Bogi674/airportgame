@@ -48,7 +48,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [x] Snapshot buffer pool with transfer and return
 * [x] Canvas renderer with camera (pan, zoom 0.05 to 40 px/m, rotation), chunk cache skeleton
 * [x] `npm run stress` skeleton printing ms per tick per subsystem, `perf-baseline.json`
-* [ ] CI running test, lint, build and stress (workflow written in `.github/workflows/ci.yml`, tick after its first green run on GitHub)
+* [x] CI running test, lint, build and stress (`.github/workflows/ci.yml`, green on GitHub, with e2e in three engines)
 
 ### M1. Site, land and camera
 
@@ -63,7 +63,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 
 * [x] Runway tool with profile (code, approach type, surface, strength), widths by code, length and heading readouts, wind band readout (shown as text, no ring yet)
 * [x] Taxiway tool with code widths, fillets, segment properties (one way, closed, max code, speed), automatic names (fillets, junctions and bends from `docs/DESIGN_REVISION_2.md` section 2, with node, end and segment snapping)
-* [ ] Ghost envelopes: runway strip, wingtip envelope, separations with automatic max code downgrade, obstacle surfaces (done except obstacle surfaces, and the wingtip envelope is a static ring)
+* [x] Ghost envelopes: runway strip, wingtip envelope, separations with automatic max code downgrade, obstacle surfaces (the wingtip envelope is the largest roster type of the code with red clash bands; obstacle surfaces are simplified to an approach and a transitional surface)
 * [ ] Automatic holding points at correct distances, entries with takeoff distance available (done, the player cannot drag holding points out yet)
 * [x] Rapid exit tool with 30, 45 and 90 degree presets and suggested distance
 * [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down (aprons merge and cut, free polygon and rectangle modes; stands come in four sizes with a lead in fork)

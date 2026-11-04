@@ -304,6 +304,10 @@ export class Renderer {
           ctx.rotate((sh.headingDeg * Math.PI) / 180 - Math.PI / 2);
           ctx.fillRect(0, -sh.w / 2, sh.len, sh.w);
           ctx.strokeRect(0, -sh.w / 2, sh.len, sh.w);
+        } else if (sh.k === 'surfaces') {
+          this.drawSurfaces(sh, a, b, cc, d, e, f);
+          ctx.fillStyle = fill;
+          ctx.strokeStyle = stroke;
         }
       }
     };
@@ -371,6 +375,35 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (sh.k === 'surfaces') {
+        this.drawSurfaces(sh, a, b, cc, d, e, f);
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+      } else if (sh.k === 'envelope') {
+        ctx.beginPath();
+        for (const poly of sh.polys) {
+          if (poly.length < 2) continue;
+          ctx.moveTo(poly[0].x, poly[0].y);
+          for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+          ctx.closePath();
+        }
+        ctx.fillStyle = sh.clash ? 'rgba(255,90,80,0.22)' : 'rgba(255,255,255,0.10)';
+        ctx.strokeStyle = sh.clash ? 'rgba(255,110,100,0.95)' : 'rgba(255,255,255,0.75)';
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+      } else if (sh.k === 'clash') {
+        if (sh.pts.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(sh.pts[0].x, sh.pts[0].y);
+        for (let i = 1; i < sh.pts.length; i++) ctx.lineTo(sh.pts[i].x, sh.pts[i].y);
+        ctx.strokeStyle = 'rgba(255,80,70,0.55)';
+        ctx.lineWidth = sh.w;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        ctx.strokeStyle = stroke;
       } else {
         this.drawMarker(sh.shape, a * sh.x + cc * sh.y + e, b * sh.x + d * sh.y + f, sh.label);
       }
@@ -425,6 +458,51 @@ export class Renderer {
       ctx.fillStyle = g.valid ? '#e6f7ff' : '#ffb4ad';
       ctx.textBaseline = 'middle';
       ctx.fillText(g.label.text, sx + ox + 6 * this.dpr, sy + oy);
+    }
+  }
+
+  /** Obstacle surfaces: dashed amber outlines and a red dot of fixed screen size per penetration. */
+  private drawSurfaces(sh: Extract<GhostShape, { k: 'surfaces' }>, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const zoom = this.camera.zoom;
+    ctx.setTransform(a, b, cc, d, e, f);
+    ctx.lineWidth = Math.max(1.2 / zoom, 0.3);
+    ctx.setLineDash([8 / zoom, 6 / zoom]);
+    ctx.strokeStyle = 'rgba(255,196,80,0.85)';
+    ctx.fillStyle = 'rgba(255,196,80,0.06)';
+    for (const poly of [sh.approachA, sh.approachB]) {
+      ctx.beginPath();
+      ctx.moveTo(poly[0].x, poly[0].y);
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    for (const line of sh.transitional) {
+      ctx.moveTo(line[0].x, line[0].y);
+      for (let i = 1; i < line.length; i++) ctx.lineTo(line[i].x, line[i].y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const r = 3.5 * this.dpr;
+    ctx.fillStyle = 'rgba(255,70,60,0.95)';
+    ctx.strokeStyle = 'rgba(40,0,0,0.8)';
+    ctx.lineWidth = this.dpr;
+    // Dots closer than their own size on screen are drawn once, so they never pile up.
+    const drawn: number[] = [];
+    for (const p of sh.hits) {
+      const sx = a * p.x + cc * p.y + e;
+      const sy = b * p.x + d * p.y + f;
+      let near = false;
+      for (let i = 0; i < drawn.length && !near; i += 2) near = Math.abs(drawn[i] - sx) < 3 * r && Math.abs(drawn[i + 1] - sy) < 3 * r;
+      if (near) continue;
+      drawn.push(sx, sy);
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
   }
 

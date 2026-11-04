@@ -20,6 +20,15 @@ const codeRow = z.strictObject({
 const perCode = z.strictObject({ A: z.number(), B: z.number(), C: z.number(), D: z.number(), E: z.number(), F: z.number() });
 const perApproach = z.strictObject({ visual: z.number(), nonPrecision: z.number(), precision: z.number() });
 
+const obstacleSurface = z.strictObject({
+  innerEdgeM: z.number().positive(),
+  startM: z.number().nonnegative(),
+  divergence: z.number().nonnegative(),
+  slope: z.number().positive(),
+  lengthM: z.number().positive(),
+  transitionalSlope: z.number().positive(),
+});
+
 export const airfieldCodesSchema = z
   .strictObject({
     version: z.literal(1),
@@ -31,6 +40,16 @@ export const airfieldCodesSchema = z
     gradingCostPerM3: z.number().nonnegative(),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
     taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
+    /** Approach and transitional surfaces (docs/GAME_DESIGN.md section 6, clearances). */
+    obstacleSurfaces: z.strictObject({
+      note: z.string(),
+      approach: z.strictObject({ visual: obstacleSurface, nonPrecision: obstacleSurface, precision: obstacleSurface }),
+      transitionalTopM: z.number().positive(),
+      toleranceM: z.number().nonnegative(),
+      coverHeightM: z.strictObject({ forest: z.number().nonnegative(), village: z.number().nonnegative(), industrial: z.number().nonnegative(), road: z.number().nonnegative() }),
+      terminalHeightM: z.number().positive(),
+      maxReported: z.number().int().positive(),
+    }),
   })
   .superRefine((d, ctx) => {
     for (const c of CODE_LETTERS) {

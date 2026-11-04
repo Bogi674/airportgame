@@ -106,5 +106,18 @@
     "precision": 280
   },
   "gradingCostPerM3": 6,
-  "taxiwayTool": { "snapRadiusM": 15, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 }
+  "taxiwayTool": { "snapRadiusM": 15, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 },
+  "obstacleSurfaces": {
+    "note": "Simplified ICAO Annex 14 surfaces. The approach surface starts startM before the threshold with innerEdgeM width, widens by divergence each side and rises at slope over lengthM. The transitional surface rises at transitionalSlope from the strip edge up to transitionalTopM. Cover heights stand on terrain the player does not own; owned land is cleared.",
+    "approach": {
+      "visual": { "innerEdgeM": 150, "startM": 60, "divergence": 0.1, "slope": 0.025, "lengthM": 2500, "transitionalSlope": 0.2 },
+      "nonPrecision": { "innerEdgeM": 280, "startM": 60, "divergence": 0.15, "slope": 0.025, "lengthM": 3000, "transitionalSlope": 0.143 },
+      "precision": { "innerEdgeM": 280, "startM": 60, "divergence": 0.15, "slope": 0.02, "lengthM": 3000, "transitionalSlope": 0.143 }
+    },
+    "transitionalTopM": 45,
+    "toleranceM": 2,
+    "coverHeightM": { "forest": 12, "village": 8, "industrial": 12, "road": 0 },
+    "terminalHeightM": 16,
+    "maxReported": 120
+  }
 }

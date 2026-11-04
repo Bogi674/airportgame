@@ -22,7 +22,8 @@ import {
   type WeatherKind,
 } from '@shared/business';
 import { terminalIssues } from '@shared/terminalRooms';
-import { cellCount, cellIndex, cellOf, cornerWorld, newGrid, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
+import type { Pt } from '@shared/geom';
 import { isShopFixture, fixtureKey, ATC_MIN_CELLS, ZONE } from '@shared/business';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
@@ -335,6 +336,16 @@ export class Business {
   }
 
   /** Contact stands need a terminal building close by. */
+  /** The floor bounds of every terminal as world polygons, for the obstacle surfaces. */
+  footprints(): Pt[][] {
+    const out: Pt[][] = [];
+    for (const g of this.grids) {
+      const b = floorBounds(g);
+      if (b) out.push(rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1));
+    }
+    return out;
+  }
+
   hasTerminalNear(x: number, y: number): boolean {
     const reach = BUSINESS.terminal.contactReachM;
     for (let i = 0; i < this.reach.length; i += 2) if (Math.hypot(this.reach[i] - x, this.reach[i + 1] - y) < reach) return true;

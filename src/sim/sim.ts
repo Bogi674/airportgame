@@ -1,5 +1,6 @@
 import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
+import { checkRunwayObstacles } from '@shared/obstacles';
 import type { GameOptions } from '@shared/protocol';
 import { Gse, MAX_VEHICLES } from './vehicles/gse';
 import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
@@ -37,7 +38,13 @@ export class Sim {
   private gridsSent = -1;
   private businessSentTick = -1000000;
   private airfieldSent = -1;
+  private obstaclesSent = -1;
   private networkVersion = -1;
+  /** Bumped whenever the player buys land, which clears the cover on it. */
+  private ownerVersion = 0;
+  /** Airfield, terminal and ownership versions last looked at, and the inputs the results are for. */
+  private readonly obstacleSeen = [-1, -1, -1];
+  private obstacleKey = '';
   /** Owner per parcel: 0 none, 1 the player. */
   readonly parcelOwner: Uint8Array;
   cash: number;
@@ -118,6 +125,7 @@ export class Sim {
         break;
       case 2:
         this.airfield.update(this.tick);
+        this.updateObstacles();
         if (this.networkVersion !== this.airfield.version) {
           this.networkVersion = this.airfield.version;
           this.traffic.setAirfield(this.airfield.data);
@@ -253,6 +261,7 @@ export class Sim {
       return;
     }
     for (let i = 0; i < todo.length; i++) this.parcelOwner[todo[i]] = 1;
+    this.ownerVersion++;
     this.book('land', -total);
   }
 
@@ -281,9 +290,35 @@ export class Sim {
 
   /** True once per airfield change. */
   takeAirfieldDirty(): boolean {
-    if (this.airfield.version === this.airfieldSent) return false;
+    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent) return false;
     this.airfieldSent = this.airfield.version;
+    this.obstaclesSent = this.airfield.obstaclesVersion;
     return true;
+  }
+
+  /**
+   * Works out the obstacle surfaces again after the airfield, a terminal or the land owned changed.
+   * The results go to the traffic directly, so they never rebuild the taxi network.
+   */
+  private updateObstacles(): void {
+    if (this.airfield.version === this.obstacleSeen[0] && this.business.terminalVersion === this.obstacleSeen[1] && this.ownerVersion === this.obstacleSeen[2]) return;
+    this.obstacleSeen[0] = this.airfield.version;
+    this.obstacleSeen[1] = this.business.terminalVersion;
+    this.obstacleSeen[2] = this.ownerVersion;
+    // Only runways, building outlines and land change the result, so most edits stop here.
+    const runways = this.airfield.data.runways;
+    const buildings = this.business.footprints();
+    let key = `${this.ownerVersion}`;
+    for (const r of runways) key += `|${r.id},${r.x1},${r.y1},${r.x2},${r.y2},${r.approach},${r.widthM}`;
+    for (const b of buildings) for (const p of b) key += `|${p.x},${p.y}`;
+    if (key === this.obstacleKey) return;
+    this.obstacleKey = key;
+    if (runways.length === 0 && (this.airfield.data.obstacles?.length ?? 0) === 0) return;
+    const site = this.site;
+    const input = { heights: site.heights, landClass: site.landClass, parcelId: site.parcelId, parcelOwner: this.parcelOwner, buildings };
+    const list = runways.map((r) => checkRunwayObstacles(r, input));
+    this.airfield.setObstacles(list);
+    this.traffic.obstacles = list;
   }
 
   private buyParcel(id: number): void {
@@ -301,6 +336,7 @@ export class Sim {
     }
     this.book('land', -price);
     this.parcelOwner[id] = 1;
+    this.ownerVersion++;
   }
 
   /** Returns true once after ownership or cash changed. */
@@ -350,6 +386,10 @@ export class Sim {
     this.business.loadState(save.business);
     this.ownershipDirty = true;
     this.airfieldSent = -1;
+    this.obstaclesSent = -1;
+    this.obstacleKey = '';
+    this.obstacleSeen.fill(-1);
+    this.updateObstacles();
     this.businessSent = -1;
     this.gridsSent = -1;
     this.pending.length = 0;

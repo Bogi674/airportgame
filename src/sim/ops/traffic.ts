@@ -8,6 +8,7 @@ import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { standRefusal } from '@shared/standSizes';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
+import type { RunwayObstacles } from '@shared/obstacles';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
 
@@ -162,6 +163,8 @@ export class Traffic {
   private readonly bits = [new Uint32Array(0)];
 
   /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
+  /** Usable approach type per runway direction, set by the sim from the obstacle surfaces. */
+  obstacles: RunwayObstacles[] = [];
   hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean } | null = null;
   weather: 'clear' | 'rain' | 'fog' | 'wind' = 'clear';
 
@@ -586,16 +589,19 @@ export class Traffic {
     let firstFail = '';
     for (let r = 0; r < af.runways.length; r++) {
       const rw = af.runways[r];
-      if (this.weather === 'fog' && rw.approach === 'visual') {
-        firstFail = firstFail || 'fog|needed=0|available=0';
-        continue;
-      }
+      const obs = this.obstacles.find((o) => o.runwayId === rw.id);
       const lim = checkLanding(a, rw, this.lengthFactor(rw, 1));
       if (!lim.ok) {
         if (!firstFail) firstFail = `${lim.reason}|needed=${lim.needed}|available=${lim.available}`;
         continue;
       }
       for (const dir of [1, -1] as const) {
+        // In fog only an instrument approach clear of obstacles in that direction works.
+        const approach = obs ? (dir === 1 ? obs.approachA : obs.approachB) : rw.approach;
+        if (this.weather === 'fog' && approach === 'visual') {
+          firstFail = firstFail || 'fog|needed=0|available=0';
+          continue;
+        }
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;
         const limit = a.weights.mtowKg < 30000 ? 15 : 20;
         if (this.crosswind(hdg) > limit) continue;

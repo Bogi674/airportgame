@@ -7,6 +7,12 @@ export type GhostShape =
   | { k: 'poly'; pts: Pt[] }
   | { k: 'box'; x: number; y: number; headingDeg: number; len: number; w: number }
   | { k: 'ring'; x: number; y: number; r: number }
+  /** A faint aircraft outline, red when it clashes (the taxiway tool's wingtip envelope). */
+  | { k: 'envelope'; polys: Pt[][]; clash: boolean }
+  /** Obstacle surfaces of a runway: approach trapezoids, transitional edges and penetrations. */
+  | { k: 'surfaces'; approachA: Pt[]; approachB: Pt[]; transitional: Pt[][]; hits: Pt[] }
+  /** A red band over a stretch that breaks a clearance. */
+  | { k: 'clash'; pts: Pt[]; w: number }
   /** A snap marker drawn at a fixed size on screen: a node dot, or the active target (docs/DESIGN_REVISION_2.md 2.2). */
   | { k: 'marker'; x: number; y: number; shape: 'dot' | 'ring' | 'square' | 'diamond'; label?: string };
 

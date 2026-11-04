@@ -13,6 +13,7 @@ import {
   type Surface,
   type Taxiway,
 } from '@shared/airfield';
+import type { RunwayObstacles } from '@shared/obstacles';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks } from '@shared/surfaceRules';
@@ -84,8 +85,16 @@ export class Airfield {
   private undoStack: Op[] = [];
   private redoStack: Op[] = [];
 
+  /** Bumped when the obstacle results change; they never rebuild the taxi network. */
+  obstaclesVersion = 0;
+
   get version(): number {
     return this.data.version;
+  }
+
+  setObstacles(list: RunwayObstacles[]): void {
+    this.data.obstacles = list;
+    this.obstaclesVersion++;
   }
 
   get canUndo(): boolean {
