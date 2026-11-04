@@ -1,63 +1,50 @@
 import { useGameStore } from './stores/gameStore';
-import { useToolStore, type Tool } from './stores/toolStore';
-import { Icon, type IconName } from './icons';
+import { useToolStore } from './stores/toolStore';
+import { CATEGORIES, openCategory } from './BuildMenu';
+import { Icon } from './icons';
 import { t, tDynamic } from './strings';
-
-const TOOLS: { tool: Tool; icon: IconName; key: string }[] = [
-  { tool: 'select', icon: 'select', key: 'V' },
-  { tool: 'runway', icon: 'runway', key: '' },
-  { tool: 'taxiway', icon: 'taxiway', key: '' },
-  { tool: 'taxilane', icon: 'taxilane', key: '' },
-  { tool: 'rapidExit', icon: 'rapidExit', key: '' },
-  { tool: 'parallel', icon: 'parallel', key: '' },
-  { tool: 'apron', icon: 'apron', key: '' },
-  { tool: 'stands', icon: 'stands', key: '' },
-  { tool: 'gaBlock', icon: 'gaBlock', key: '' },
-  { tool: 'terminal', icon: 'terminal', key: '' },
-  { tool: 'demolish', icon: 'demolish', key: 'X' },
-];
 
 interface Props {
   onUndo(): void;
   onRedo(): void;
 }
 
-/** Left rail with the build tools and undo and redo. */
+/** Left toolbar: one tile per build category, then select, demolish, undo and redo. A category opens its menu at the bottom. */
 export function ToolRail({ onUndo, onRedo }: Props) {
-  const tool = useToolStore((s) => s.tool);
-  const set = useToolStore((s) => s.set);
-  const canUndo = useGameStore((s) => s.canUndo);
-  const canRedo = useGameStore((s) => s.canRedo);
-  const barOpen = useToolStore((s) => s.barOpen);
-  const pick = (next: Tool): void => {
-    if (tool === next && next !== 'select') set({ barOpen: !barOpen });
-    else set({ tool: next, barOpen: true, selection: null, hint: null, problem: null, buy: null });
-  };
+  const s = useToolStore();
+  const canUndo = useGameStore((g) => g.canUndo);
+  const canRedo = useGameStore((g) => g.canRedo);
+  const plain = (tool: 'select' | 'demolish'): void =>
+    s.set({ tool, category: null, menuOpen: false, selection: null, hint: null, problem: null, buy: null, barOpen: true });
   return (
     <div data-testid="tool-rail" class="panel rail">
-      {TOOLS.map((x) => (
+      {CATEGORIES.map((c) => (
         <button
-          key={x.tool}
+          key={c.id}
           class="round"
-          data-testid={`tool-${x.tool}`}
-          title={tDynamic(`tool.${x.tool}`)}
-          aria-label={tDynamic(`tool.${x.tool}`)}
-          aria-pressed={tool === x.tool}
-          onClick={() => pick(x.tool)}
+          data-testid={c.testId}
+          title={tDynamic(`menu.${c.id}`)}
+          aria-label={tDynamic(`menu.${c.id}`)}
+          aria-pressed={s.category === c.id && s.menuOpen}
+          onClick={() => openCategory(c)}
         >
-          <Icon name={x.icon} />
-          {x.key && <span class="kbd">{x.key}</span>}
+          <Icon name={c.icon} size={20} />
         </button>
       ))}
       <div class="sep" />
-      <button class="round" data-testid="toggle-options" title={t('tool.options')} aria-label={t('tool.options')} aria-pressed={barOpen && tool !== 'select'} disabled={tool === 'select'} onClick={() => set({ barOpen: !barOpen })}>
-        <Icon name="options" />
+      <button class="round small" data-testid="tool-select" title={tDynamic('tool.select')} aria-label={tDynamic('tool.select')} aria-pressed={s.tool === 'select'} onClick={() => plain('select')}>
+        <Icon name="select" size={16} />
+        <span class="kbd">V</span>
       </button>
-      <button class="round" data-testid="undo" title={t('tool.undo')} aria-label={t('tool.undo')} disabled={!canUndo} onClick={onUndo}>
-        <Icon name="undo" size={16} />
+      <button class="round small" data-testid="tool-demolish" title={tDynamic('tool.demolish')} aria-label={tDynamic('tool.demolish')} aria-pressed={s.tool === 'demolish'} onClick={() => plain('demolish')}>
+        <Icon name="demolish" size={16} />
+        <span class="kbd">X</span>
       </button>
-      <button class="round" data-testid="redo" title={t('tool.redo')} aria-label={t('tool.redo')} disabled={!canRedo} onClick={onRedo}>
-        <Icon name="redo" size={16} />
+      <button class="round small" data-testid="undo" title={t('tool.undo')} aria-label={t('tool.undo')} disabled={!canUndo} onClick={onUndo}>
+        <Icon name="undo" size={15} />
+      </button>
+      <button class="round small" data-testid="redo" title={t('tool.redo')} aria-label={t('tool.redo')} disabled={!canRedo} onClick={onRedo}>
+        <Icon name="redo" size={15} />
       </button>
     </div>
   );

@@ -13,6 +13,10 @@ export interface Selection {
 
 interface ToolState {
   tool: Tool;
+  /** Open category of the left toolbar, its tab in the bottom build menu, and whether the menu is shown. */
+  category: string | null;
+  menuTab: string;
+  menuOpen: boolean;
   /** Runway tool mode: build a new one, or extend or shorten an existing one at an end. */
   runwayMode: 'new' | 'extend' | 'shorten';
   /** Taxiway tool mode: build, extend from an end, trim an end back, or cut a section out. */
@@ -50,6 +54,9 @@ interface ToolState {
 
 export const useToolStore = create<ToolState>((set) => ({
   tool: 'select',
+  category: null,
+  menuTab: '',
+  menuOpen: false,
   runwayMode: 'new',
   taxiMode: 'new',
   barOpen: true,

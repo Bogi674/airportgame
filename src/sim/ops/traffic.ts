@@ -118,6 +118,12 @@ export class Traffic {
   readonly fLate = new Int32Array(MAX_FLIGHTS);
   /** Stage length in km a flight departs on, 0 for the default weight. */
   readonly fStage = new Int32Array(MAX_FLIGHTS);
+  /** Stand id a flight is assigned to by the player or the auto scheduler, -1 for none. */
+  readonly fStand = new Int32Array(MAX_FLIGHTS).fill(-1);
+  /** When false only flights with an assigned stand are accepted. */
+  autoStands = true;
+  /** Multiplier on new turnaround times from the ground handling fleet, set by the business. */
+  serviceSlowdown = 1;
   /** Arrival delay in ticks, kept for statistics when the flight completes. */
   completedFlights = 0;
   divertedFlights = 0;
@@ -388,6 +394,7 @@ export class Traffic {
     this.fAirline[f] = airline;
     this.fLate[f] = 0;
     this.fStage[f] = stageKm;
+    this.fStand[f] = -1;
     return f;
   }
 
@@ -484,12 +491,31 @@ export class Traffic {
     return true;
   }
 
-  private pickStand(t: number, fromNode: number): number {
+  /** True when a stand may take this aircraft type under its open or closed state and usage setting. */
+  private standAllows(t: number, s: number): boolean {
+    const st = this.af.stands[s];
+    if (st.closed === true) return false;
+    const ga = AIRCRAFT[t].capacity.seatsTypical < 20;
+    if (st.usage === 'ga' && !ga) return false;
+    if (st.usage === 'commercial' && ga) return false;
+    return true;
+  }
+
+  private pickStand(t: number, fromNode: number, f = -1): number {
+    // A stand the player or the scheduler assigned goes first. Without auto scheduling it is the only choice.
+    if (f >= 0 && this.fStand[f] >= 0) {
+      const s = this.af.stands.findIndex((x) => x.id === this.fStand[f]);
+      if (s >= 0 && this.standOwner[s] === -1 && this.net.standNode[s] >= 0 && this.standFits(t, s) && this.standAllows(t, s)) {
+        const n = this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
+        if (n >= 0) return s;
+      }
+      if (!this.autoStands) return -1;
+    } else if (!this.autoStands) return -1;
     let best = -1;
     let bestScore = Infinity;
     for (let s = 0; s < this.af.stands.length; s++) {
       if (this.standOwner[s] !== -1 || this.net.standNode[s] < 0) continue;
-      if (!this.standFits(t, s)) continue;
+      if (!this.standFits(t, s) || !this.standAllows(t, s)) continue;
       const waste = codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t]);
       const light = CODES_OF[t] === 'A' || CODES_OF[t] === 'B';
       const gaBonus = light && this.af.stands[s].type === 'gaTieDown' ? -1 : 0;
@@ -501,6 +527,36 @@ export class Traffic {
       best = s;
     }
     return best;
+  }
+
+  /** Gives every unassigned scheduled flight a stand that is free for its whole stay, earliest first. */
+  autoAssign(): void {
+    const order: number[] = [];
+    for (let f = 0; f < MAX_FLIGHTS; f++) if (this.fState[f] === FlState.Scheduled && this.fStand[f] < 0) order.push(f);
+    order.sort((a, b) => this.fEta[a] - this.fEta[b] || a - b);
+    for (const f of order) {
+      const t = this.fType[f];
+      const from = this.fEta[f] - 3000;
+      const to = this.fEta[f] + this.fTurn[f] + 3000;
+      let best = -1;
+      let bestScore = Infinity;
+      for (let s = 0; s < this.af.stands.length; s++) {
+        if (this.net.standNode[s] < 0 || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
+        const id = this.af.stands[s].id;
+        let clash = false;
+        for (let g = 0; g < MAX_FLIGHTS && !clash; g++) {
+          if (g === f || this.fStand[g] !== id || (this.fState[g] !== FlState.Scheduled && this.fState[g] !== FlState.Inbound && this.fState[g] !== FlState.OnGround)) continue;
+          clash = this.fEta[g] < to && this.fEta[g] + this.fTurn[g] + 3000 > from;
+        }
+        if (clash) continue;
+        const score = (codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t])) * 100 + s * 0.01;
+        if (score < bestScore) {
+          bestScore = score;
+          best = s;
+        }
+      }
+      if (best >= 0) this.fStand[f] = this.af.stands[best].id;
+    }
   }
 
   private refuse(f: number, reason: string, extra: string): void {
@@ -580,7 +636,7 @@ export class Traffic {
     for (const ex of ordered) {
       if (this.exitQueued(ex.idx) || this.entryDeparting[ex.idx] > 0) continue;
       const node = this.net.entryNode[ex.idx];
-      const s = this.pickStand(t, node);
+      const s = this.pickStand(t, node, f);
       if (s >= 0) {
         chosen = ex.idx;
         stand = s;
@@ -992,7 +1048,7 @@ export class Traffic {
       this.releaseAll(i);
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
-      this.timer[i] = f >= 0 ? this.fTurn[f] : 6000;
+      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 6000;
       if (f >= 0) {
         this.fState[f] = FlState.OnGround;
         this.hooks?.docked(f);
@@ -1353,7 +1409,7 @@ export class Traffic {
       standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
-      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage,
+      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage, fStand: this.fStand,
       nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
     };
@@ -1366,6 +1422,7 @@ export class Traffic {
     return {
       arrays,
       completed: this.completedFlights, diverted: this.divertedFlights, deadlocks: this.deadlocks,
+      autoStands: this.autoStands,
       windFromDeg: this.windFromDeg, windKt: this.windKt, testPerHour: this.testPerHour, testTurnScale: this.testTurnScale,
       tick: this.tick, weather: this.weather, rng: this.rng.getState(), weatherRng: this.weatherRng.getState(),
     };
@@ -1382,6 +1439,7 @@ export class Traffic {
       ctors[k] = C;
       if (o.arrays[k] !== undefined) unpackInto(o.arrays[k], a as never, C as never);
     }
+    this.autoStands = (raw as { autoStands?: boolean }).autoStands ?? true;
     this.completedFlights = o.completed;
     this.divertedFlights = o.diverted;
     this.deadlocks = o.deadlocks;

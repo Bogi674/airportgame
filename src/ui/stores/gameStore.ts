@@ -6,7 +6,7 @@ import type { PerfReport } from '@shared/protocol';
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
 
-export type Sheet = 'airlines' | 'finance' | 'flights' | 'slots' | 'site' | null;
+export type Sheet = 'airlines' | 'finance' | 'flights' | 'slots' | 'stands' | 'site' | null;
 export interface Alert {
   id: number;
   text: string;
@@ -130,7 +130,7 @@ export const useGameStore = create<GameState>((set) => ({
       return { owner, cash };
     }),
   selectParcel: (selectedParcel) => set({ selectedParcel }),
-  toggleParcelOverlay: () => set((s) => ({ parcelOverlay: !s.parcelOverlay })),
+  toggleParcelOverlay: () => set((s) => ({ parcelOverlay: !s.parcelOverlay, selectedParcel: -1 })),
   setNotice: (code) => {
     if (code === null) {
       set({ notice: null });

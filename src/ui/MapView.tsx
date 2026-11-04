@@ -98,7 +98,8 @@ export function MapView({ client, onRenderer, onPick }: Props) {
         } else controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
       } else if (panning && e.button === 0 && click && useToolStore.getState().tool === 'select') {
         controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey });
-        if (useToolStore.getState().selection === null) onPick(renderer.parcelAt(e.offsetX, e.offsetY));
+        // Parcels are only picked in land mode, so building never selects land by accident.
+        if (useGameStore.getState().parcelOverlay && useToolStore.getState().selection === null) onPick(renderer.parcelAt(e.offsetX, e.offsetY));
         else onPick(-1);
       }
       toolDown = false;

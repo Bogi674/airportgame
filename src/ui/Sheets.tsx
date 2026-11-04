@@ -2,6 +2,8 @@ import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS } from '@data/index';
 import { LEDGER_CATEGORIES, type FeeLevel } from '@shared/business';
 import type { Command } from '@sim/commands';
+import { useState } from 'preact/hooks';
+import type { BoardRow } from '@shared/business';
 import { Icon } from './icons';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
 import { useGameStore } from './stores/gameStore';
@@ -11,7 +13,7 @@ interface Props {
   send(cmd: Command): void;
 }
 
-const TABS = ['airlines', 'slots', 'flights', 'finance', 'site'] as const;
+const TABS = ['airlines', 'slots', 'stands', 'flights', 'finance', 'site'] as const;
 
 function Sheet({ title, children, testId }: { title: string; children: preact.ComponentChildren; testId: string }) {
   const setSheet = useGameStore((s) => s.setSheet);
@@ -215,6 +217,183 @@ function SlotsSheet({ send }: Props) {
   );
 }
 
+const HOUR_PX = 44;
+
+function airlineHue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
+
+/**
+ * Stand management: a day timeline per stand. Flights sit on the stand they are assigned to, or in the
+ * unassigned lane. Click a flight to move it, unassign it or cancel it. Stands can be opened, closed and
+ * limited to commercial or general aviation flights, and the auto scheduler can be switched off.
+ */
+function StandsSheet({ send }: Props) {
+  const b = useGameStore((s) => s.business);
+  const af = useGameStore((s) => s.airfield);
+  const [pick, setPick] = useState<number | null>(null);
+  if (!b) return null;
+  const rows = b.board.filter((r) => r.flight >= 0);
+  const nowMin = b.minuteOfDay;
+  const unassigned = rows.filter((r) => r.standId < 0 && r.status === 'scheduled');
+  const block = (r: BoardRow, lane: number) => {
+    const start = Math.max(0, r.eta);
+    const len = Math.max(30, r.turnMin + 10);
+    const hue = airlineHue(r.airline);
+    const active = r.status !== 'scheduled';
+    return (
+      <button
+        key={r.flight}
+        class="blk"
+        data-testid={`flight-${r.flight}`}
+        aria-pressed={pick === r.flight}
+        disabled={active}
+        title={`${r.airline} ${r.type}`}
+        style={`left:${(start / 60) * HOUR_PX}px;width:${(len / 60) * HOUR_PX - 2}px;top:${4 + lane * 34}px;--h:${hue}`}
+        onClick={() => setPick(pick === r.flight ? null : r.flight)}
+      >
+        <b>{r.airline.split(' ')[0]}</b>
+        <span>{r.type}</span>
+      </button>
+    );
+  };
+  const lanes = (list: BoardRow[]): { r: BoardRow; lane: number }[] => {
+    const ends: number[] = [];
+    return list
+      .slice()
+      .sort((p, q) => p.eta - q.eta)
+      .map((r) => {
+        let lane = ends.findIndex((e) => e <= r.eta);
+        if (lane < 0) lane = ends.length;
+        ends[lane] = r.eta + Math.max(30, r.turnMin + 10);
+        return { r, lane };
+      });
+  };
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const picked = rows.find((r) => r.flight === pick) ?? null;
+  const gridW = 24 * HOUR_PX;
+  const unLanes = lanes(unassigned);
+  const unH = Math.max(1, ...unLanes.map((x) => x.lane + 1)) * 34 + 8;
+  return (
+    <Sheet title={t('stands.title')} testId="sheet-stands">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <label class="switch" title={t('stands.autoTip')}>
+          <input data-testid="auto-stands" type="checkbox" checked={b.autoStands} onChange={(e) => send({ type: 'setAutoStands', on: (e.target as HTMLInputElement).checked })} />
+          <span>{t('stands.auto')}</span>
+        </label>
+        <button data-testid="auto-assign" onClick={() => send({ type: 'autoAssignStands' })}>
+          {t('stands.autoAssign')}
+        </button>
+        <span style="color:var(--muted);font-size:12px">{t('stands.help')}</span>
+      </div>
+      {picked && (
+        <div class="panel" data-testid="flight-menu" style="padding:8px 10px;margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <b>
+            {picked.airline} {picked.type}
+          </b>
+          <span style="color:var(--muted)">{clock(picked.eta)}</span>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12px">
+            {t('stands.moveTo')}
+            <select
+              data-testid="flight-stand"
+              value={picked.standId}
+              onChange={(e) => {
+                send({ type: 'assignStand', flight: picked.flight, standId: Number((e.target as HTMLSelectElement).value) });
+                setPick(null);
+              }}
+            >
+              <option value={-1}>{t('stands.unassigned')}</option>
+              {af.stands.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.number} ({s.code})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            data-testid="flight-cancel"
+            onClick={() => {
+              send({ type: 'cancelFlight', flight: picked.flight });
+              setPick(null);
+            }}
+          >
+            {t('stands.cancelFlight')}
+          </button>
+          <button onClick={() => setPick(null)}>{t('sheet.close')}</button>
+        </div>
+      )}
+      <div class="tl-wrap">
+        <div class="tl" style={`min-width:${gridW + 250}px`}>
+          <div class="tl-head">
+            <div class="tl-label">{t('stands.stand')}</div>
+            <div class="tl-grid" style={`width:${gridW}px`}>
+              {hours.map((h) => (
+                <div key={h} class="tl-hour" style={`width:${HOUR_PX}px`}>
+                  {String(h).padStart(2, '0')}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div class="tl-row" data-testid="lane-unassigned">
+            <div class="tl-label">
+              <b>{t('stands.unassigned')}</b>
+              <span class="sub">{unassigned.length}</span>
+            </div>
+            <div class="tl-grid" style={`width:${gridW}px;height:${unH}px`}>
+              <div class="tl-now" style={`left:${(nowMin / 60) * HOUR_PX}px`} />
+              {unLanes.map((x) => block(x.r, x.lane))}
+            </div>
+          </div>
+          {af.stands.length === 0 && <div style="padding:12px;color:var(--muted)">{t('stands.none')}</div>}
+          {af.stands.map((s) => {
+            const mine = lanes(rows.filter((r) => r.standId === s.id));
+            const h = Math.max(1, ...mine.map((x) => x.lane + 1)) * 34 + 8;
+            return (
+              <div key={s.id} class="tl-row" data-testid={`stand-row-${s.id}`}>
+                <div class="tl-label">
+                  <b>
+                    {t('stands.stand')} {s.number}
+                  </b>
+                  <span class="sub">
+                    {s.code}, {tDynamic(`standType.${s.type}`)}
+                  </span>
+                  <span style="display:flex;gap:6px;align-items:center;margin-top:3px">
+                    <label class="switch" title={t('stands.openTip')}>
+                      <input data-testid={`stand-open-${s.id}`} type="checkbox" checked={s.closed !== true} onChange={(e) => send({ type: 'setStandProps', id: s.id, closed: !(e.target as HTMLInputElement).checked })} />
+                      <span>{s.closed === true ? t('stands.closed') : t('stands.open')}</span>
+                    </label>
+                    <select data-testid={`stand-usage-${s.id}`} value={s.usage ?? 'any'} onChange={(e) => send({ type: 'setStandProps', id: s.id, usage: (e.target as HTMLSelectElement).value as 'any' | 'commercial' | 'ga' })}>
+                      <option value="any">{t('stands.usage.any')}</option>
+                      <option value="commercial">{t('stands.usage.commercial')}</option>
+                      <option value="ga">{t('stands.usage.ga')}</option>
+                    </select>
+                  </span>
+                </div>
+                <div
+                  class={`tl-grid${s.closed === true ? ' closed' : ''}`}
+                  style={`width:${gridW}px;height:${h}px`}
+                  onClick={(e) => {
+                    // Clicking an empty spot places the picked flight on this stand.
+                    if (picked && (e.target as HTMLElement).classList.contains('tl-grid')) {
+                      send({ type: 'assignStand', flight: picked.flight, standId: s.id });
+                      setPick(null);
+                    }
+                  }}
+                >
+                  <div class="tl-now" style={`left:${(nowMin / 60) * HOUR_PX}px`} />
+                  {mine.map((x) => block(x.r, x.lane))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
 function FlightsSheet() {
   const b = useGameStore((s) => s.business);
   const rows = b?.board ?? [];
@@ -288,6 +467,7 @@ export function Sheets({ send }: Props) {
   const sheet = useGameStore((s) => s.sheet);
   if (sheet === 'airlines') return <AirlinesSheet send={send} />;
   if (sheet === 'slots') return <SlotsSheet send={send} />;
+  if (sheet === 'stands') return <StandsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;
   if (sheet === 'site') return <SiteSheet />;

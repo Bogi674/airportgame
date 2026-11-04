@@ -6,7 +6,7 @@ import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapsh
 import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
-import { Traffic } from './ops/traffic';
+import { FlState, Traffic } from './ops/traffic';
 import { Business } from './business/business';
 import type { LedgerCategory, TerminalGrid } from '@shared/business';
 import { generateSite, type SiteSpec } from './world/site';
@@ -182,6 +182,22 @@ export class Sim {
         break;
       case 'signAirline':
         this.report(this.business.signAirline(cmd.airlineId, cmd.rotations));
+        break;
+      case 'assignStand':
+        if (this.traffic.fState[cmd.flight] === FlState.Scheduled) this.traffic.fStand[cmd.flight] = cmd.standId;
+        break;
+      case 'cancelFlight':
+        if (this.traffic.fState[cmd.flight] === FlState.Scheduled) this.traffic.fState[cmd.flight] = FlState.Done;
+        break;
+      case 'setAutoStands':
+        this.traffic.autoStands = cmd.on;
+        this.business.version++;
+        break;
+      case 'autoAssignStands':
+        this.traffic.autoAssign();
+        break;
+      case 'buyGse':
+        this.report(this.business.buyGse(cmd.kind, cmd.count));
         break;
       case 'setSlot':
         this.business.setSlot(cmd.airlineId, cmd.index, cmd.minute);

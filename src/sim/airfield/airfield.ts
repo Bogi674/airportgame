@@ -16,7 +16,7 @@ import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
-import { assignRunwayNames, deriveNetwork } from './geometry';
+import { assignRunwayNames, assignTaxiNames, deriveNetwork } from './geometry';
 
 type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand';
 interface Item {
@@ -108,6 +108,7 @@ export class Airfield {
 
   private refresh(): void {
     assignRunwayNames(this.data.runways);
+    assignTaxiNames(this.data.taxiways);
     deriveNetwork(this.data);
     this.data.version++;
   }
@@ -164,6 +165,24 @@ export class Airfield {
         return this.setTaxiwayProps(cmd);
       case 'resurface':
         return this.resurface(cmd, cash);
+      case 'reclassTaxiway':
+        return this.reclassTaxiway(cmd, ctx, cash);
+      case 'reverseTaxiway': {
+        const t = this.data.taxiways.find((x) => x.id === cmd.id);
+        if (!t) return { code: 'nothingThere' };
+        t.points = t.points.slice().reverse();
+        if (t.preferred) t.preferred = -t.preferred;
+        this.refresh();
+        return { cashDelta: 0 };
+      }
+      case 'setStandProps': {
+        const s = this.data.stands.find((x) => x.id === cmd.id);
+        if (!s) return { code: 'nothingThere' };
+        if (cmd.closed !== undefined) s.closed = cmd.closed;
+        if (cmd.usage !== undefined) s.usage = cmd.usage;
+        this.refresh();
+        return { cashDelta: 0 };
+      }
       case 'resizeRunway':
         return this.resizeRunway(cmd, ctx, cash);
       case 'reclassRunway':
@@ -510,6 +529,35 @@ export class Airfield {
     o.condition = 100;
     this.refresh();
     return { cashDelta: -cost };
+  }
+
+  /** Changes a taxiway's class (width), surface and strength. Wider or stronger costs the difference, narrower refunds a quarter. */
+  private reclassTaxiway(cmd: Extract<Command, { type: 'reclassTaxiway' }>, ctx: BuildContext, cash: number): BuildResult {
+    const t = this.data.taxiways.find((x) => x.id === cmd.id);
+    if (!t) return { code: 'nothingThere' };
+    const width = AIRFIELD.codes[cmd.code].taxiwayWidthM;
+    if (width > t.widthM) {
+      const problem = checkStrip(ctx, t.points, width);
+      if (problem) return problem;
+    }
+    let len = 0;
+    for (let i = 1; i < t.points.length; i++) len += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y);
+    const oldTiers = AIRFIELD.surfaces[t.surface].pcrTiers;
+    const oldUnit = AIRFIELD.surfaces[t.surface].costPerM2 * tierOf(t.surface, Math.max(0, oldTiers.indexOf(t.pcr))).factor;
+    const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
+    const newUnit = AIRFIELD.surfaces[cmd.surface].costPerM2 * factor;
+    const delta = len * width * newUnit - len * t.widthM * oldUnit;
+    const net = Math.round(delta > 0 ? delta : delta * REFUND_SHARE);
+    if (net > cash) return { code: 'insufficientFunds', args: { cost: net } };
+    t.code = cmd.code;
+    t.widthM = width;
+    t.userMaxCode = cmd.code;
+    t.surface = cmd.surface;
+    t.pcr = pcr;
+    t.condition = 100;
+    t.cost = Math.max(0, t.cost + Math.round(Math.max(0, delta)));
+    this.refresh();
+    return { cashDelta: -net };
   }
 
   /** Cost per square meter for a runway at its current strength tier. */

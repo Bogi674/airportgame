@@ -83,6 +83,10 @@ export interface Stand {
   code: CodeLetter;
   surface: Surface;
   pushback: PushbackDir;
+  /** Closed stands take no aircraft. */
+  closed?: boolean;
+  /** Which flights may use the stand. Missing means any. */
+  usage?: 'any' | 'commercial' | 'ga';
 }
 
 export interface HoldingPoint {

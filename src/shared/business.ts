@@ -116,6 +116,10 @@ export interface BoardRow {
   delayMin: number;
   /** Stage length of the flight in km, 0 for test flights. */
   stageKm: number;
+  /** Flight index for commands, the stand id it is assigned to or sits on (-1 for none) and its stay in minutes. */
+  flight: number;
+  standId: number;
+  turnMin: number;
 }
 
 export interface BusinessPayload {
@@ -134,6 +138,12 @@ export interface BusinessPayload {
   weather: WeatherKind;
   /** Missing parts that stop flights, keys for the UI checklist. Empty when ready. */
   readiness: string[];
+  /** When false flights only use stands assigned to them. */
+  autoStands: boolean;
+  /** Vehicles owned by catalog index of the ground vehicle list. */
+  fleet: number[];
+  /** 1 when ground handling keeps up, up to 1.6 when it is short of vehicles. */
+  serviceSlowdown: number;
   depCapacity: number;
   arrCapacity: number;
   /** Ledger history, newest day last, one row of LEDGER_CATEGORIES.length numbers per day, plus today. */

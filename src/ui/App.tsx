@@ -6,6 +6,7 @@ import type { Preset } from '@shared/site';
 import type { Speed } from '@shared/time';
 import { SimClient } from '../worker/client';
 import { alertText, ALERT_CODES, parseEvent } from './alerts';
+import { BuildMenu } from './BuildMenu';
 import { ConfirmPopup } from './ConfirmPopup';
 import { ContextBar } from './ContextBar';
 import { CrashPanel } from './CrashPanel';
@@ -204,6 +205,11 @@ export function App() {
   }, [renderer, store.site, store.selectedParcel]);
 
   useEffect(() => {
+    // Land mode and building are separate: entering land mode drops the tool and closes the menus.
+    if (store.parcelOverlay) useToolStore.getState().set({ tool: 'select', category: null, menuOpen: false, selection: null, hint: null, problem: null, buy: null });
+  }, [store.parcelOverlay]);
+
+  useEffect(() => {
     renderer?.setParcelOverlayVisible(store.parcelOverlay);
   }, [renderer, store.parcelOverlay]);
 
@@ -292,11 +298,21 @@ export function App() {
             onSpeed={setSpeed}
             onMenu={pause}
           />
-          <ToolRail onUndo={() => client.send({ type: 'undo' })} onRedo={() => client.send({ type: 'redo' })} />
-          <Guide />
-          <ObjectPanel send={(c) => client.send(c)} />
+          {!store.parcelOverlay && <ToolRail onUndo={() => client.send({ type: 'undo' })} onRedo={() => client.send({ type: 'redo' })} />}
+          {!store.parcelOverlay && <Guide />}
+          {!store.parcelOverlay && <ObjectPanel send={(c) => client.send(c)} />}
+          {store.parcelOverlay && (
+            <div data-testid="land-banner" class="panel" style="position:absolute;left:50%;top:76px;transform:translateX(-50%);padding:8px 14px;z-index:6;display:flex;gap:12px;align-items:center">
+              <b style="letter-spacing:0.14em;text-transform:uppercase;font-size:11px;color:var(--accent)">{t('land.title')}</b>
+              <span style="font-size:12px;color:var(--muted)">{t('land.help')}</span>
+              <button data-testid="land-exit" onClick={() => useGameStore.getState().toggleParcelOverlay()}>
+                {t('land.exit')}
+              </button>
+            </div>
+          )}
           <ParcelPanel onBuy={(id) => client.send({ type: 'buyParcel', parcelId: id })} />
-          <ContextBar send={(c) => client.send(c)} />
+          {!store.parcelOverlay && <BuildMenu send={(c) => client.send(c)} />}
+          {!store.parcelOverlay && <ContextBar send={(c) => client.send(c)} />}
           <Toasts />
           <ConfirmPopup />
           <Sheets send={(c) => client.send(c)} />

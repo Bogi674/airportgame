@@ -46,12 +46,14 @@ const shop = z.object({ cost: z.number().positive(), rentPerDay: z.number().posi
 export const businessSchema = z.object({
   version: z.literal(1),
   note: z.string(),
+  gse: z.record(z.string(), z.object({ price: z.number().nonnegative(), start: z.number().int().nonnegative() })),
   fees: z.object({
     landingPerTonne: z.number().positive(),
     passengerDeparting: z.number().positive(),
     passengerArriving: z.number().positive(),
     parkingPerStandHour: z.number().nonnegative(),
     wageStaffPerDay: z.number().positive(),
+    gseUpkeepPerDay: z.number().nonnegative(),
     interestAnnualPct: z.number().nonnegative(),
     loanMax: z.number().positive(),
     loanTermDays: z.number().int().positive(),

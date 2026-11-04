@@ -1,4 +1,5 @@
 import { AIRCRAFT } from '@data/aircraft';
+import { GSE } from '@data/index';
 import { AcState, FlState } from '../ops/traffic';
 import { maxStageKm, takeoffWeight } from '../ops/performance';
 import { BUSINESS, AIRFIELD } from '@data/index';
@@ -52,6 +53,36 @@ export class Business {
   terminals: Terminal[] = [];
   terminalVersion = 0;
     atcCells = 0;
+  /** Ground support vehicles owned, by catalog index. */
+  fleet: number[] = GSE.map((v) => BUSINESS.gse[v.id]?.start ?? 0);
+
+  /** Buys vehicles for the ground handling fleet. */
+  buyGse(kind: string, count: number): string | null {
+    const i = GSE.findIndex((v) => v.id === kind);
+    const spec = BUSINESS.gse[kind];
+    if (i < 0 || !spec) return 'nothingThere';
+    const n = Math.max(1, Math.min(20, Math.floor(count)));
+    const cost = spec.price * n;
+    if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
+    this.host.book('construction', -cost);
+    this.fleet[i] += n;
+    this.version++;
+    return null;
+  }
+
+  /** Turnarounds run slower when there are fewer loaders, tugs, fuel and power units than aircraft on stands. */
+  private updateServiceLevel(): void {
+    const t = this.traffic;
+    let busy = 0;
+    for (let i = 0; i < 256; i++) if (t.active[i] === 1 && t.state[i] === AcState.Turnaround) busy++;
+    let worst = 1;
+    for (const id of ['beltloader', 'refueller', 'gpu', 'tug']) {
+      const k = GSE.findIndex((v) => v.id === id);
+      if (k >= 0 && busy > 0) worst = Math.min(worst, Math.max(0, this.fleet[k]) / busy);
+    }
+    t.serviceSlowdown = 1 + 0.6 * (1 - Math.min(1, worst));
+  }
+
   /** Layout problems of the main terminal building, from the walls, doors and zones laid. */
   roomIssues: string[] = [];
   private atcX = 0;
@@ -397,6 +428,7 @@ export class Business {
 
   /** Called every tick, cheap. Does its work only on day and hour boundaries. */
   update(tick: number): void {
+    if (tick % 100 === 0) this.updateServiceLevel();
     // The terminal load window decays every 10 game minutes.
     if (tick % (10 * TICKS_PER_MINUTE) === 0) this.depWindow *= 1 - 10 / 60;
     if (tick % TICKS_PER_DAY === dayStartOffset()) this.dailyClose(tick);
@@ -504,6 +536,7 @@ export class Business {
     for (const t of af.taxiways) upkeep += (t.cost * AIRFIELD.surfaces[t.surface].upkeepPct) / 100 / 365;
     for (const a of af.aprons) upkeep += (a.cost * AIRFIELD.surfaces[a.surface].upkeepPct) / 100 / 365;
     for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
+    for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
     this.host.book('upkeep', -Math.round(upkeep));
     // Shop tenants and rent, one lease per shop fixture.
     let rent = 0;
@@ -587,6 +620,9 @@ export class Business {
         eta: f >= 0 ? minuteOfDay(t.fEta[f]) : 0,
         delayMin: f >= 0 ? Math.round(t.fDelay[f] / TICKS_PER_MINUTE) : 0,
         stageKm: f >= 0 ? t.fStage[f] : 0,
+        flight: f,
+        standId: t.standId[i],
+        turnMin: f >= 0 ? Math.round(t.fTurn[f] / TICKS_PER_MINUTE) : 0,
       });
     }
     for (let f = 0; f < 1024 && rows.length < 60; f++) {
@@ -600,6 +636,9 @@ export class Business {
         eta: minuteOfDay(t.fEta[f]),
         delayMin: Math.round(t.fDelay[f] / TICKS_PER_MINUTE),
         stageKm: t.fStage[f],
+        flight: f,
+        standId: t.fStand[f],
+        turnMin: Math.round(t.fTurn[f] / TICKS_PER_MINUTE),
       });
     }
     void tick;
@@ -624,6 +663,9 @@ export class Business {
       weather: this.weather,
       depCapacity: dep,
       readiness: this.readiness(),
+      autoStands: this.traffic.autoStands,
+      fleet: this.fleet,
+      serviceSlowdown: this.traffic.serviceSlowdown,
       arrCapacity: this.arrCapacity(),
       history: this.history.map((h) => Array.from(h)),
       today: Array.from(this.today),
@@ -635,7 +677,7 @@ export class Business {
 
   saveState(): unknown {
     return {
-      version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
+      fleet: this.fleet, version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
       onTime: this.onTime, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
       weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
@@ -652,6 +694,8 @@ export class Business {
       day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number; depWindow: number;
       flightPax: string; flightDockedAt: string; rng: number; marketRng: number;
     };
+    const fl = (raw as { fleet?: number[] }).fleet;
+    if (fl && fl.length === this.fleet.length) this.fleet = fl.slice();
     this.grids.length = 0;
     for (const sg of o.grids) this.grids.push(loadGrid(sg));
     this.airlines.length = 0;

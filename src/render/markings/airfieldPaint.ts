@@ -372,7 +372,8 @@ function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window, plan: Plan): void {
   const breaks = (plan.runwayBreaks.get(r.id) ?? []).slice().sort((p, q) => p[0] - q[0]);
   for (const side of [-1, 1]) {
     let x = 0;
-    for (const [s0, s1] of breaks) {
+    for (const [s0, s1, bs] of breaks) {
+      if (bs !== side) continue;
       if (s0 > x) ctx.fillRect(x, side * (half - 0.6) - (side > 0 ? edgeW : 0), Math.min(s0, L) - x, edgeW);
       x = Math.max(x, s1);
     }

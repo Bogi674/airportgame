@@ -1,6 +1,7 @@
 import { AIRFIELD } from '@data/index';
 import { FIXTURE_KEYS } from '@shared/business';
-import { APPROACHES, CODES, type Approach, type CodeLetter, type Runway, type Surface } from '@shared/airfield';
+import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type Runway, type Surface, type Taxiway } from '@shared/airfield';
+import { ClassHelp } from './ClassHelp';
 import type { Command } from '@sim/commands';
 import { useState } from 'preact/hooks';
 import { useGameStore } from './stores/gameStore';
@@ -11,16 +12,85 @@ interface Props {
   send(cmd: Command): void;
 }
 
+/** Class, surface and strength of a taxiway, plus reversing it and the tools to extend, trim or cut it. */
+function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
+  const [code, setCode] = useState<CodeLetter>(x.code);
+  const [surface, setSurface] = useState<Surface>(x.surface);
+  const tiers = AIRFIELD.surfaces[surface].pcrTiers;
+  const [tier, setTier] = useState(Math.max(0, AIRFIELD.surfaces[x.surface].pcrTiers.indexOf(x.pcr)));
+  const mode = (m: 'extend' | 'trim' | 'cut'): void => {
+    useToolStore.getState().set({ tool: x.kind === 'taxilane' ? 'taxilane' : 'taxiway', taxiMode: m, category: 'taxiway', menuTab: 'build', menuOpen: true, selection: null, hint: null, problem: null });
+  };
+  return (
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:4px" data-testid="taxiway-upgrade">
+      <div class="section" style="margin:0 0 2px">{t('inspector.taxiUpgrade')}</div>
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('opt.code')}
+        <select data-testid="tw-class" value={code} onChange={(e) => setCode((e.target as HTMLSelectElement).value as CodeLetter)}>
+          {CODES.map((c) => (
+            <option key={c} value={c}>
+              {c}, {AIRFIELD.codes[c].taxiwayWidthM} m
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('inspector.surfaceLabel')}
+        <select data-testid="tw-surface" value={surface} onChange={(e) => { setSurface((e.target as HTMLSelectElement).value as Surface); setTier(0); }}>
+          {SURFACES.map((s) => (
+            <option key={s} value={s}>
+              {tDynamic(`surface.${s}`)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {tiers.length > 1 && (
+        <label style="display:flex;justify-content:space-between;gap:6px">
+          {t('inspector.runwayStrength')}
+          <select data-testid="tw-tier" value={Math.min(tier, tiers.length - 1)} onChange={(e) => setTier(Number((e.target as HTMLSelectElement).value))}>
+            {tiers.map((pcr, i) => (
+              <option key={i} value={i}>
+                PCR {pcr}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <button data-testid="tw-apply" onClick={() => send({ type: 'reclassTaxiway', id: x.id, code, surface, tier: Math.min(tier, tiers.length - 1) })}>
+        {t('inspector.apply')}
+      </button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button data-testid="tw-reverse" onClick={() => send({ type: 'reverseTaxiway', id: x.id })}>
+          {t('inspector.reverse')}
+        </button>
+        <button data-testid="tw-extend" onClick={() => mode('extend')}>
+          {t('inspector.extendEnd')}
+        </button>
+        <button data-testid="tw-trim" onClick={() => mode('trim')}>
+          {t('inspector.trimEnd')}
+        </button>
+        <button data-testid="tw-cut" onClick={() => mode('cut')}>
+          {t('inspector.cutOut')}
+        </button>
+      </div>
+      <ClassHelp />
+    </div>
+  );
+}
+
 /** Class, approach and strength of a runway. Changes are applied together and priced by the sim. */
 function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
   const [code, setCode] = useState<CodeLetter>(r.code);
   const [approach, setApproach] = useState<Approach>(r.approach);
   const tiers = AIRFIELD.surfaces[r.surface].pcrTiers;
   const [tier, setTier] = useState(Math.max(0, tiers.indexOf(r.pcr)));
-  const paved = r.surface === 'asphalt' || r.surface === 'concrete';
+  const [surface, setSurface] = useState<Surface>(r.surface);
+  const surfTiers = AIRFIELD.surfaces[surface].pcrTiers;
+  const paved = surface === 'asphalt' || surface === 'concrete';
   const apply = (): void => {
     if (code !== r.code || approach !== r.approach) send({ type: 'reclassRunway', id: r.id, code, approach });
-    if (tiers[tier] !== r.pcr) send({ type: 'resurface', kind: 'runway', id: r.id, surface: r.surface, tier });
+    const t2 = Math.min(tier, surfTiers.length - 1);
+    if (surface !== r.surface || surfTiers[t2] !== r.pcr) send({ type: 'resurface', kind: 'runway', id: r.id, surface, tier: t2 });
   };
   return (
     <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:4px" data-testid="runway-upgrade">
@@ -44,11 +114,21 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
           ))}
         </select>
       </label>
-      {tiers.length > 1 && (
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('inspector.surfaceLabel')}
+        <select data-testid="rw-surface" value={surface} onChange={(e) => { setSurface((e.target as HTMLSelectElement).value as Surface); setTier(0); }}>
+          {SURFACES.map((x) => (
+            <option key={x} value={x}>
+              {tDynamic(`surface.${x}`)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {surfTiers.length > 1 && (
         <label style="display:flex;justify-content:space-between;gap:6px">
           {t('inspector.runwayStrength')}
-          <select data-testid="rw-tier" value={tier} onChange={(e) => setTier(Number((e.target as HTMLSelectElement).value))}>
-            {tiers.map((pcr, i) => (
+          <select data-testid="rw-tier" value={Math.min(tier, surfTiers.length - 1)} onChange={(e) => setTier(Number((e.target as HTMLSelectElement).value))}>
+            {surfTiers.map((pcr, i) => (
               <option key={i} value={i}>
                 PCR {pcr}
               </option>
@@ -60,6 +140,7 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
       <button data-testid="rw-apply" onClick={apply}>
         {t('inspector.apply')}
       </button>
+      <ClassHelp />
     </div>
   );
 }
@@ -170,6 +251,7 @@ export function ObjectPanel({ send }: Props) {
           {tFormat('inspector.speed', { n: x.speedKmh })}
           <input type="range" min="5" max="80" step="5" value={x.speedKmh} onChange={(e) => send({ type: 'setTaxiwayProps', id, speedKmh: Number((e.target as HTMLInputElement).value) })} />
         </label>
+        <TaxiwayUpgrade key={`${x.id}-${x.code}-${x.surface}-${x.pcr}-${x.points.length}`} x={x} send={send} />
       </>
     );
   } else if (kind === 'apron') {

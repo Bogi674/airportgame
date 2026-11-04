@@ -21,6 +21,14 @@ export type Command =
   | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number }
   | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
+  | { type: 'reclassTaxiway'; id: number; code: CodeLetter; surface: Surface; tier: number }
+  | { type: 'reverseTaxiway'; id: number }
+  | { type: 'buyGse'; kind: string; count: number }
+  | { type: 'setStandProps'; id: number; closed?: boolean; usage?: 'any' | 'commercial' | 'ga' }
+  | { type: 'assignStand'; flight: number; standId: number }
+  | { type: 'cancelFlight'; flight: number }
+  | { type: 'setAutoStands'; on: boolean }
+  | { type: 'autoAssignStands' }
   | { type: 'resizeRunway'; id: number; end: 'a' | 'b'; deltaM: number }
   | { type: 'reclassRunway'; id: number; code: CodeLetter; approach: Approach }
   | { type: 'editTaxiway'; id: number; op: 'extend' | 'trim' | 'cut'; end?: 'start' | 'end'; points?: Pt[]; at?: Pt; at2?: Pt }

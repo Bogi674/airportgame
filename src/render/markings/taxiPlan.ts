@@ -41,7 +41,8 @@ export interface Plan {
   leadIns: Line[];
   holds: HoldMark[];
   /** Cuts in the white runway edge stripes at taxiway openings, per runway id: [s0, s1] along the runway. */
-  runwayBreaks: Map<number, [number, number][]>;
+  /** Openings in the runway edge stripes: start, end and the side (+1 right of travel, -1 left) they are on. */
+  runwayBreaks: Map<number, [number, number, number][]>;
 }
 
 const EDGE_INSETS = [0.45, 0.8];
@@ -306,6 +307,8 @@ export function buildPlan(af: AirfieldPayload): Plan {
   const cutsByTaxi = new Map<number, Cut[]>();
   const endCuts = new Map<number, { start: number; end: number }>();
   const centerCuts = new Map<number, { start: number; end: number }>();
+  /** Edge line cuts at an end of an arriving taxiway, per side, from where each fillet arc leaves the straight edge. */
+  const sideCuts = new Map<number, { start: Map<number, number>; end: Map<number, number> }>();
   const extraCenter: Pt[][] = [];
   const addCut = (id: number, c: Cut): void => {
     const l = cutsByTaxi.get(id);
@@ -366,6 +369,20 @@ export function buildPlan(af: AirfieldPayload): Plan {
     }
   }
 
+  // Two taxiways that meet the same through taxiway from opposite sides at one point form a crossing:
+  // their centerlines run straight across instead of forking into the through line.
+  const crossing = new Set<Junction>();
+  for (let a = 0; a < junctions.length; a++) {
+    for (let b = a + 1; b < junctions.length; b++) {
+      const p = junctions[a];
+      const q = junctions[b];
+      if (!p.throughTaxi || !q.throughTaxi || p.throughTaxi.id !== q.throughTaxi.id || p.c.id === q.c.id) continue;
+      if (len(p.px - q.px, p.py - q.py) > 4 || p.cx * q.cx + p.cy * q.cy > -0.94) continue;
+      crossing.add(p);
+      crossing.add(q);
+    }
+  }
+
   for (const j of junctions) {
     const c = j.c;
     const sm = plan.smooth.get(c.id) ?? c.points;
@@ -386,6 +403,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
     }
     let tfMax = 0;
     let tcMax = 0;
+    const perSide = new Map<number, number>();
     const cutIntervals: number[] = [];
     for (const sigma of [1, -1] as const) {
       const r1x = sigma * j.tx;
@@ -426,6 +444,9 @@ export function buildPlan(af: AirfieldPayload): Plan {
       const a1 = Math.atan2(Cpt.y - cyn, Cpt.x - cxn);
       plan.patches.push([{ x: Qx, y: Qy }, ...arc(cxn, cyn, R, a0, a1)]);
       for (const inset of EDGE_INSETS) plan.edges.push(mkLine(arc(cxn, cyn, R + inset, a0, a1)));
+      const tn = j.end === 1 ? { x: -j.cy, y: j.cx } : { x: j.cy, y: -j.cx };
+      const sideSign = ex * tn.x + ey * tn.y >= 0 ? 1 : -1;
+      perSide.set(sideSign, Math.max(perSide.get(sideSign) ?? 0, (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy));
       tfMax = Math.max(tfMax, len(Cpt.x - j.px, Cpt.y - j.py) * 0 + (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy);
       cutIntervals.push((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty);
       // Lead-on centerline arc: concentric with the fillet where the widths match.
@@ -441,23 +462,33 @@ export function buildPlan(af: AirfieldPayload): Plan {
       const ccx = j.px + (bx / bl) * bc;
       const ccy = j.py + (by / bl) * bc;
       const arcPts = arc(ccx, ccy, Rc, Math.atan2(A.y - ccy, A.x - ccx), Math.atan2(B.y - ccy, B.x - ccx));
-      extraCenter.push(arcPts);
-      tcMax = Math.max(tcMax, tc);
+      if (!crossing.has(j)) {
+        extraCenter.push(arcPts);
+        tcMax = Math.max(tcMax, tc);
+      }
     }
     // Opening in the through feature's edge: from the first to the last fillet tangent point.
     if (cutIntervals.length > 0) {
-      const lo = Math.min(...cutIntervals) + j.along - 1;
-      const hi = Math.max(...cutIntervals) + j.along + 1;
-      if (j.throughTaxi) addCut(j.throughTaxi.id, { side: 0, s0: lo, s1: hi });
+      // The opening runs exactly between the fillet tangent points, so the straight edge meets the arc without a gap,
+      // and it is only on the side the arriving taxiway comes from.
+      const lo = Math.min(...cutIntervals) + j.along;
+      const hi = Math.max(...cutIntervals) + j.along;
+      if (j.throughTaxi) addCut(j.throughTaxi.id, { side: nx * -j.ty + ny * j.tx > 0 ? 1 : -1, s0: lo, s1: hi });
       else if (j.throughRunway) {
         const l = plan.runwayBreaks.get(j.throughRunway.id) ?? [];
-        l.push([lo, hi]);
+        l.push([lo, hi, -(nx * j.ty - ny * j.tx > 0 ? 1 : -1)]);
         plan.runwayBreaks.set(j.throughRunway.id, l);
       }
     }
     // The arriving taxiway's own edge lines start at the fillets, its centerline at the lead-on arcs.
-    const edgeFromEnd = Math.max(0, tfMax - eDist) + 0.5;
+    const edgeFromEnd = Math.max(0, tfMax - eDist);
     bump(endCuts, c.id, j.end, edgeFromEnd + eDist * 0);
+    const sc = sideCuts.get(c.id) ?? { start: new Map<number, number>(), end: new Map<number, number>() };
+    for (const [sd, tf] of perSide) {
+      const m = j.end === 0 ? sc.start : sc.end;
+      m.set(sd, Math.max(m.get(sd) ?? 0, Math.max(0, tf - eDist)));
+    }
+    sideCuts.set(c.id, sc);
     const centerFromEnd = tcMax - eDist;
     if (centerFromEnd > 0) bump(centerCuts, c.id, j.end, centerFromEnd);
     else if (tcMax > 0) {
@@ -515,7 +546,9 @@ export function buildPlan(af: AirfieldPayload): Plan {
       for (const inset of EDGE_INSETS) {
         const off = offsetPolyline(sm, side * (t.widthM / 2 - inset));
         const samples = resample(off, STEP);
-        for (const run of runsOf(samples, side, cuts, total, ec, inOtherPavement)) if (run.length >= 2) plan.edges.push(mkLine(run));
+        const sc = sideCuts.get(t.id);
+        const ecSide = sc ? { start: sc.start.get(side) ?? ec.start, end: sc.end.get(side) ?? ec.end } : ec;
+        for (const run of runsOf(samples, side, cuts, total, ecSide, inOtherPavement)) if (run.length >= 2) plan.edges.push(mkLine(run));
       }
     }
   }

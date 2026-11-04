@@ -34,6 +34,8 @@ test('builds a runway, taxiway, apron and stands, and undoes them', async ({ pag
     }
   });
   await page.getByTestId('tool-runway').click();
+  // Close the build menu so it does not cover the map.
+  await page.getByTestId('tool-runway').click();
   const a = await screenOf(page, 4800, 6200);
   const b = await screenOf(page, 4800, 4600);
   await page.mouse.move(box.x + a.x, box.y + a.y);

@@ -4,6 +4,7 @@ import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { FIXTURE_KEYS } from '@shared/business';
 import { useToolStore, type TerminalSub } from './stores/toolStore';
+import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
 
@@ -57,6 +58,8 @@ function Num({ label, value, min, max, onChange, testId }: { label: string; valu
 /** Bottom bar: options of the active tool, the hint, and the reason a preview is invalid. */
 export function ContextBar({ send }: Props) {
   const s = useToolStore();
+  // Sits above the build menu when that is open.
+  const bottom = s.menuOpen && s.category ? 214 : 12;
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = AIRFIELD.surfaces[s.surface].pcrTiers;
@@ -75,7 +78,7 @@ export function ContextBar({ send }: Props) {
   ) : null;
   if (!s.barOpen) {
     return problemBlock ? (
-      <div class="panel" style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 12px">
+      <div class="panel" style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);padding:6px 12px`}>
         {problemBlock}
       </div>
     ) : null;
@@ -83,7 +86,7 @@ export function ContextBar({ send }: Props) {
   return (
     <div
       data-testid="context-bar"
-      style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:760px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px"
+      style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);max-width:760px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
@@ -156,6 +159,7 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'gaBlock' && <Num label={t('opt.standCount')} value={s.gaCount} min={1} max={20} onChange={(v) => s.set({ gaCount: v })} />}
       </div>
+      {showCode && <ClassHelp />}
       {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
       {problemBlock}
     </div>

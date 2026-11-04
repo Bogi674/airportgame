@@ -162,3 +162,57 @@ function dedupeHolding(list: HoldingPoint[]): HoldingPoint[] {
 export function taxiwayLength(t: Taxiway): number {
   return polylineLength(t.points);
 }
+
+/**
+ * Taxiway names after the usual convention: main taxiways take letters A, B, C and so on, skipping I
+ * and O (they read as 1 and 0) and N and X (N for north, X for closed), then double letters. A short
+ * taxiway that joins the side of a longer one is a connector and is numbered after it, A1, A2, in the
+ * order along the longer taxiway. Names follow the layout, so they are worked out again after every change.
+ */
+const NAME_LETTERS = 'ABCDEFGHJKLMPQRSTUVWYZ';
+
+export function assignTaxiNames(taxiways: Taxiway[]): void {
+  const lens = new Map<number, number>();
+  for (const t of taxiways) lens.set(t.id, polylineLength(t.points));
+  // Which longer taxiway does each short one end on, and where along it.
+  const parent = new Map<number, { id: number; at: number }>();
+  const c = { x: 0, y: 0, t: 0 };
+  for (const t of taxiways) {
+    if ((lens.get(t.id) ?? 0) > 400) continue;
+    let best: { id: number; at: number; d: number } | null = null;
+    for (const end of [t.points[0], t.points[t.points.length - 1]]) {
+      for (const o of taxiways) {
+        if (o.id === t.id || (lens.get(o.id) ?? 0) <= (lens.get(t.id) ?? 0)) continue;
+        let run = 0;
+        for (let i = 1; i < o.points.length; i++) {
+          const a = o.points[i - 1];
+          const b = o.points[i];
+          closestOnSegment(end.x, end.y, a.x, a.y, b.x, b.y, c);
+          const d = Math.hypot(end.x - c.x, end.y - c.y);
+          const sl = Math.hypot(b.x - a.x, b.y - a.y);
+          if (d < 2 && (!best || d < best.d)) best = { id: o.id, at: run + sl * c.t, d };
+          run += sl;
+        }
+      }
+    }
+    if (best) parent.set(t.id, { id: best.id, at: best.at });
+  }
+  // Main taxiways first, longest first so the main parallel takes A.
+  const mains = taxiways.filter((t) => !parent.has(t.id)).sort((p, q) => (lens.get(q.id) ?? 0) - (lens.get(p.id) ?? 0) || p.id - q.id);
+  const names = new Map<number, string>();
+  mains.forEach((t, i) => {
+    const letter = NAME_LETTERS[i % NAME_LETTERS.length];
+    names.set(t.id, i < NAME_LETTERS.length ? letter : `${letter}${letter}`);
+  });
+  const byParent = new Map<number, { id: number; at: number }[]>();
+  for (const [id, p] of parent) {
+    const list = byParent.get(p.id) ?? [];
+    list.push({ id, at: p.at });
+    byParent.set(p.id, list);
+  }
+  for (const [pid, list] of byParent) {
+    list.sort((a, b) => a.at - b.at || a.id - b.id);
+    list.forEach((x, i) => names.set(x.id, `${names.get(pid) ?? 'T'}${i + 1}`));
+  }
+  for (const t of taxiways) t.name = names.get(t.id) ?? t.name;
+}

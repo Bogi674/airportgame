@@ -51,3 +51,45 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .hud .chip { box-shadow: var(--shadow); background: var(--panel); }
 .minimap { opacity: 0.42; transition: opacity 0.18s; }
 .minimap:hover, .minimap:focus-within, .minimap.active { opacity: 1; }
+
+.switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.switch input { appearance: none; width: 30px; height: 17px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background 0.15s; padding: 0; }
+.switch input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--panel-solid); transition: transform 0.15s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(13px); }
+.tl-wrap { overflow: auto; max-height: 52vh; border: 1px solid var(--line-soft); border-radius: 10px; }
+.tl { display: flex; flex-direction: column; }
+.tl-head, .tl-row { display: flex; border-bottom: 1px solid var(--line-soft); }
+.tl-head { position: sticky; top: 0; z-index: 3; background: var(--panel-solid); }
+.tl-label { flex: 0 0 250px; padding: 6px 10px; position: sticky; left: 0; background: var(--panel-solid); z-index: 2; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; font-size: 12px; }
+.tl-label .sub { color: var(--muted); font-size: 11px; }
+.tl-grid { position: relative; background-image: repeating-linear-gradient(90deg, var(--line-soft) 0 1px, transparent 1px 44px); }
+.tl-grid.closed { background-color: color-mix(in srgb, var(--bad) 8%, transparent); }
+.tl-head .tl-grid { display: flex; background-image: none; }
+.tl-hour { text-align: center; font-size: 10px; letter-spacing: 0.08em; color: var(--muted); padding: 6px 0; border-left: 1px solid var(--line-soft); box-sizing: border-box; }
+.tl-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: 0.7; pointer-events: none; z-index: 1; }
+.blk { position: absolute; height: 28px; padding: 0 6px; border-radius: 8px; border: 1px solid hsl(var(--h) 55% 45%); background: hsl(var(--h) 60% 55% / 0.28); color: var(--text); display: flex; gap: 6px; align-items: center; overflow: hidden; white-space: nowrap; font-size: 11px; z-index: 2; }
+.blk b { font-weight: 600; }
+.blk span { color: var(--muted); }
+.blk[aria-pressed='true'] { background: hsl(var(--h) 70% 50%); color: #fff; }
+.blk:disabled { opacity: 0.6; cursor: default; }
+
+.rail { top: 72px; gap: 6px; padding: 8px; }
+.round.small { width: 34px; height: 34px; }
+.buildmenu { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(880px, calc(100vw - 460px)); padding: 8px 10px 10px; z-index: 6; display: flex; flex-direction: column; gap: 6px; border-top: 2px solid hsl(var(--h) 70% 55%); }
+.bm-head { display: flex; align-items: center; gap: 12px; }
+.bm-title { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; color: hsl(var(--h) 70% 62%); white-space: nowrap; }
+.bm-cards { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 6px; }
+.card { flex: 0 0 124px; display: flex; flex-direction: column; gap: 4px; }
+.card-main { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0; border-radius: 12px; text-align: left; background: var(--panel-solid); border: 1px solid var(--line); overflow: hidden; }
+.card-main:hover:not(:disabled) { border-color: hsl(var(--h) 70% 55%); background: var(--panel-solid); transform: translateY(-2px); }
+.card.on .card-main { border-color: hsl(var(--h) 80% 58%); box-shadow: 0 0 0 2px hsl(var(--h) 80% 58% / 0.4); background: var(--panel-solid); color: var(--text); }
+.card .thumb { position: relative; height: 66px; background: var(--field); }
+.card-name { font-size: 12px; font-weight: 600; padding: 0 8px; white-space: normal; line-height: 1.2; min-height: 28px; }
+.card-sub { font-size: 11px; color: var(--muted); padding: 0 8px 6px; letter-spacing: 0; }
+.card.locked { opacity: 0.55; }
+.lockbadge { position: absolute; right: 6px; top: 6px; color: var(--muted); }
+.buy { font-size: 11px; padding: 3px 8px; }
+
+.classhelp summary { cursor: pointer; font-size: 11px; letter-spacing: 0.06em; color: var(--accent); }
+.classhelp[open] { max-height: 220px; overflow: auto; }
