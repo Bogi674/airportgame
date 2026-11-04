@@ -1,12 +1,13 @@
-import { AIRFIELD, PAINT, SURFACE_SPEC } from '@data/index';
+import { PAINT, SURFACE_SPEC } from '@data/index';
 import type { Sign } from '@shared/pavement/pavement';
-import { compassVector, type AirfieldPayload, type Runway, type Stand, type Surface } from '@shared/airfield';
+import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
-import { FLOOR, TERMINAL_CELL_M, TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
-import { worldToCell } from '@shared/terminalOps';
+import { FLOOR, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
+import { cellIndex, hEdgeIndex, vEdgeIndex, worldToCell } from '@shared/terminalOps';
 import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
+import { paintStands } from './standPaint';
 import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -64,10 +65,35 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     if (!overlaps(win, minX, minY, maxX, maxY)) continue;
     ctx.fillStyle = pavementColor(a.surface);
     ctx.beginPath();
-    ctx.moveTo(a.polygon[0].x, a.polygon[0].y);
-    for (let i = 1; i < a.polygon.length; i++) ctx.lineTo(a.polygon[i].x, a.polygon[i].y);
-    ctx.closePath();
-    ctx.fill();
+    for (const r of [a.polygon, ...(a.holes ?? [])]) {
+      ctx.moveTo(r[0].x, r[0].y);
+      for (let i = 1; i < r.length; i++) ctx.lineTo(r[i].x, r[i].y);
+      ctx.closePath();
+    }
+    ctx.fill('evenodd');
+    // Concrete slab joints on a world grid, clipped to the apron.
+    const slab = SURFACE_SPEC[a.surface].slabJointM;
+    if (slab !== null && win.scale >= 1) {
+      ctx.save();
+      ctx.clip();
+      ctx.strokeStyle = SLAB_JOINT;
+      ctx.lineWidth = 1 / win.scale;
+      ctx.beginPath();
+      const x0 = Math.max(minX, win.minX);
+      const x1 = Math.min(maxX, win.maxX);
+      const y0 = Math.max(minY, win.minY);
+      const y1 = Math.min(maxY, win.maxY);
+      for (let x = Math.ceil(x0 / slab) * slab; x <= x1; x += slab) {
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y1);
+      }
+      for (let y = Math.ceil(y0 / slab) * slab; y <= y1; y += slab) {
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   paintAreas(ctx, plan.areas, win);
@@ -76,9 +102,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
   for (const h of plan.holds) paintHold(ctx, h, win);
   for (const r of af.runways) paintRunwayMarks(ctx, r, win, plan);
   for (const g of terminals) paintTerminal(ctx, g, win);
-  for (const s of af.stands) {
-    if (overlaps(win, s.x - 100, s.y - 100, s.x + 100, s.y + 100)) paintStand(ctx, s, win);
-  }
+  paintStands(ctx, af, af.stands, win);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
@@ -257,7 +281,6 @@ function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): 
   strokeLines(ctx, plan.centerlines, win, YELLOW, TW.centerlineWidthM, TW.centerlineMinPx);
   ctx.strokeStyle = YELLOW;
   ctx.lineWidth = lineM(win, TW.centerlineWidthM, TW.centerlineMinPx);
-  drawLines(ctx, plan.leadIns, win);
   strokeLines(ctx, plan.redCenterlines, win, RED, TW.centerlineWidthM, TW.centerlineMinPx);
   if (win.scale >= 1) {
     strokeLines(ctx, plan.edges, win, YELLOW, TW.edgeLineWidthM, TW.edgeLineMinPx);
@@ -491,49 +514,6 @@ function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window, plan: Plan): void {
   ctx.restore();
 }
 
-function paintStand(ctx: Ctx, s: Stand, win: Window): void {
-  const row = AIRFIELD.codes[s.code];
-  const d = compassVector(s.headingDeg);
-  const rot = Math.atan2(d.y, d.x);
-  ctx.save();
-  ctx.translate(s.x, s.y);
-  ctx.rotate(rot);
-  // Local frame: +x is the nose direction, +y is to the right.
-  const halfSpan = row.spanM / 2;
-  const paved = s.surface === 'asphalt' || s.surface === 'concrete';
-  if (paved) {
-    if (s.type !== 'gaTieDown') {
-      ctx.fillStyle = YELLOW;
-      ctx.fillRect(-0.4, -3, Math.max(0.8, 1 / win.scale), 6);
-    }
-  } else {
-    ctx.fillStyle = WHITE;
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.arc(-row.standLengthM * 0.4, side * halfSpan * 0.9, Math.max(0.4, 0.8 / win.scale), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  if (s.type !== 'gaTieDown') {
-    ctx.strokeStyle = RED;
-    ctx.lineWidth = lineM(win, 0.3);
-    ctx.strokeRect(-row.standLengthM - 6, -halfSpan - 3, row.standLengthM + 10, row.spanM + 6);
-  } else {
-    ctx.strokeStyle = WHITE;
-    ctx.lineWidth = lineM(win, 0.15);
-    ctx.strokeRect(-row.standLengthM - 1, -halfSpan - 0.5, row.standLengthM + 2, row.spanM + 1);
-  }
-  if (win.scale >= 0.25) {
-    ctx.fillStyle = s.type === 'contact' ? '#6fa8ff' : YELLOW;
-    ctx.font = 'bold 4.5px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.rotate(Math.PI / 2);
-    ctx.fillText(s.number, 0, -(s.type === 'gaTieDown' ? 2 : 9));
-  }
-  ctx.restore();
-}
-
 /**
  * Draws not yet built objects with the same painting as the finished ones, so a preview shows the
  * real shape: runway with its markings, stands with lead-in curves, stop bars and restraint boxes.
@@ -545,18 +525,7 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
     paintRunwayPavement(ctx, preview.runway, win);
     paintRunwayMarks(ctx, preview.runway, win, planFor(af));
   }
-  if (preview.leadIns && preview.leadIns.length > 0) {
-    ctx.strokeStyle = YELLOW;
-    ctx.lineWidth = lineM(win, 0.3);
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    for (const l of preview.leadIns) {
-      ctx.moveTo(l[0].x, l[0].y);
-      for (let i = 1; i < l.length; i++) ctx.lineTo(l[i].x, l[i].y);
-    }
-    ctx.stroke();
-  }
-  for (const s of preview.stands ?? []) paintStand(ctx, s, win);
+  if (preview.stands) paintStands(ctx, af, preview.stands, win);
 }
 
 const FLOOR_COLOR = ['', '#a9aeb3', '#d3dadd', '#7f90a8'];
@@ -567,7 +536,6 @@ const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk'
 const ZONE_TINT = ['', 'rgba(70,140,230,0.22)', 'rgba(235,170,50,0.26)', 'rgba(70,190,120,0.24)', 'rgba(220,80,80,0.26)'];
 
 function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
-  const N = TERMINAL_GRID;
   const C = TERMINAL_CELL_M;
   // Cell range under the window.
   let minX = Infinity;
@@ -581,16 +549,18 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     maxX = Math.max(maxX, c.cx);
     maxY = Math.max(maxY, c.cy);
   }
-  const x0 = Math.max(0, Math.floor(minX));
-  const y0 = Math.max(0, Math.floor(minY));
-  const x1 = Math.min(N - 1, Math.ceil(maxX));
-  const y1 = Math.min(N - 1, Math.ceil(maxY));
+  // Logical cells of the building's grid that fall under the window.
+  const x0 = Math.max(g.x0, Math.floor(minX));
+  const y0 = Math.max(g.y0, Math.floor(minY));
+  const x1 = Math.min(g.x0 + g.w - 1, Math.ceil(maxX));
+  const y1 = Math.min(g.y0 + g.h - 1, Math.ceil(maxY));
   if (x1 < x0 || y1 < y0) return;
   ctx.save();
   ctx.translate(g.ox, g.oy);
   ctx.rotate((g.headingDeg * Math.PI) / 180 - Math.PI / 2);
   // Cleared pad and soft edge darkening so the building looks seated on the ground. Baked into the chunk.
-  const filled = (cx: number, cy: number): boolean => cx >= 0 && cy >= 0 && cx < N && cy < N && g.floor[cy * N + cx] > 0;
+  const at = (cx: number, cy: number): number => cellIndex(g, cx, cy);
+  const filled = (cx: number, cy: number): boolean => at(cx, cy) >= 0 && g.floor[at(cx, cy)] > 0;
   for (let cy = y0; cy <= y1; cy++) {
     let runStart = -1;
     for (let cx = x0; cx <= x1 + 1; cx++) {
@@ -624,7 +594,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     let runStart = -1;
     let runType = 0;
     for (let cx = x0; cx <= x1 + 1; cx++) {
-      const f = cx <= x1 ? g.floor[cy * N + cx] : 0;
+      const f = cx <= x1 ? g.floor[at(cx, cy)] : 0;
       if (f !== runType) {
         if (runType !== 0) {
           ctx.fillStyle = FLOOR_COLOR[runType];
@@ -645,7 +615,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     let runStart = -1;
     let runZone = 0;
     for (let cx = x0; cx <= x1 + 1; cx++) {
-      const z = cx <= x1 && g.floor[cy * N + cx] > 0 ? g.zone[cy * N + cx] : 0;
+      const z = cx <= x1 && g.floor[at(cx, cy)] > 0 ? g.zone[at(cx, cy)] : 0;
       if (z !== runZone) {
         if (runZone !== 0) {
           ctx.fillStyle = ZONE_TINT[runZone];
@@ -662,7 +632,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     ctx.beginPath();
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
-        if (g.floor[cy * N + cx] === FLOOR.None) continue;
+        if (g.floor[at(cx, cy)] === FLOOR.None) continue;
         ctx.rect(cx * C, cy * C, C, C);
       }
     }
@@ -685,7 +655,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   // Fixtures.
   for (let cy = y0; cy <= y1; cy++) {
     for (let cx = x0; cx <= x1; cx++) {
-      const f0 = g.fixture[cy * N + cx];
+      const f0 = g.fixture[at(cx, cy)];
       if (f0 === 0) continue;
       // A short shadow under each fixture lifts it off the floor in the same cheap way.
       ctx.fillStyle = 'rgba(0,0,0,0.22)';
@@ -694,7 +664,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   }
   for (let cy = y0; cy <= y1; cy++) {
     for (let cx = x0; cx <= x1; cx++) {
-      const f = g.fixture[cy * N + cx];
+      const f = g.fixture[at(cx, cy)];
       if (f === 0) continue;
       ctx.fillStyle = FIXTURE_COLOR[f];
       ctx.fillRect(cx * C + 0.2, cy * C + 0.2, C - 0.4, C - 0.4);
@@ -718,10 +688,10 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   for (const t of [WALL.Wall, WALL.Glass, WALL.Door]) {
     wallStyle(t);
     ctx.beginPath();
-    for (let y = y0; y <= y1 + 1 && y <= N; y++) {
+    for (let y = y0; y <= y1 + 1; y++) {
       let start = -1;
       for (let x = x0; x <= x1 + 1; x++) {
-        const on = x <= x1 && g.hWall[y * N + x] === t;
+        const on = x <= x1 && g.hWall[hEdgeIndex(g, x, y)] === t;
         if (on && start < 0) start = x;
         if (!on && start >= 0) {
           ctx.moveTo(start * C, y * C);
@@ -730,10 +700,10 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
         }
       }
     }
-    for (let x = x0; x <= x1 + 1 && x <= N; x++) {
+    for (let x = x0; x <= x1 + 1; x++) {
       let start = -1;
       for (let y = y0; y <= y1 + 1; y++) {
-        const on = y <= y1 && g.vWall[y * (N + 1) + x] === t;
+        const on = y <= y1 && g.vWall[vEdgeIndex(g, x, y)] === t;
         if (on && start < 0) start = y;
         if (!on && start >= 0) {
           ctx.moveTo(x * C, start * C);

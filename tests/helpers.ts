@@ -1,6 +1,8 @@
 import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
 import type { StandType } from '@shared/airfield';
+import { STAND_SIZES } from '@data/index';
+import { sizeForCode } from '@shared/standSizes';
 import { originFor } from '@shared/terminalOps';
 
 export const OPTIONS = { preset: 'flatCoastal' } as const;
@@ -35,8 +37,9 @@ export function buildTestAirport(sim: Sim, o: AirportOptions = {}): void {
   const len = o.runwayLengthM ?? 2600;
   const per = o.standsPerRow ?? 8;
   const code = o.standCode ?? 'C';
-  const spacing = { A: 18, B: 27, C: 45, D: 60, E: 70 }[code];
-  const type = o.standType ?? 'remotePushback';
+  const size = sizeForCode(code);
+  const spacing = STAND_SIZES[size].widthM;
+  const type = o.standType ?? 'remote';
   const x0 = 3000;
   const errors: string[] = [];
   const go = (cmd: Command): void => {
@@ -49,7 +52,7 @@ export function buildTestAirport(sim: Sim, o: AirportOptions = {}): void {
   go({ type: 'buildApron', polygon: [{ x: x0 + 800, y: 5260 }, { x: x0 + 800 + span, y: 5260 }, { x: x0 + 800 + span, y: 5400 }, { x: x0 + 800, y: 5400 }], surface: 'concrete', tier: 2 });
   // One command places at most 30 stands, so larger rows are laid in batches along the same apron.
   for (let placed = 0; placed < per; placed += 30) {
-    go({ type: 'buildStands', x: x0 + 800 + span - 50 - placed * spacing, y: 5330, headingDeg: 180, count: Math.min(30, per - placed), spacingM: spacing, standType: type, code });
+    go({ type: 'buildStands', x: x0 + 800 + span - 50 - placed * spacing, y: 5330, headingDeg: 180, count: Math.min(30, per - placed), spacingM: spacing, standType: type, size });
   }
   if (errors.length > 0) throw new Error(`test airport failed: ${errors.join(', ')}`);
 }

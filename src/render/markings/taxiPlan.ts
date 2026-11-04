@@ -1,3 +1,4 @@
+import { apronContains } from '@shared/apronGeom';
 import { AIRFIELD, SURFACE_SPEC } from '@data/index';
 import { compassVector, type AirfieldPayload, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
@@ -9,7 +10,7 @@ import { buildPavement, type EndTrim, type Sign } from '@shared/pavement/pavemen
  * into marking geometry automatically. Taxiway pavement, bends, junctions, shoulders, centerlines
  * and edge lines come from the node based generator in @shared/pavement (docs/DESIGN_REVISION_2.md
  * section 2). This module adds what meets the runways: fillets, lead-on curves, edge stripe
- * openings, holding positions with their signs and enhanced centerlines, plus stand lead-in lines.
+ * openings, holding positions with their signs and enhanced centerlines. Stand markings live in standPaint.ts.
  * The plan is computed once per airfield change and drawn per chunk.
  */
 
@@ -57,7 +58,6 @@ export interface Plan {
   redCenterlines: Line[];
   edges: Line[];
   enhanced: Line[];
-  leadIns: Line[];
   /** Shoulder stripes on junction fillets. */
   stripes: Line[];
   /** Edge markers along unpaved taxiways. */
@@ -244,7 +244,7 @@ function runsOutside(pts: readonly Pt[], excluded: (x: number, y: number) => boo
   return runs;
 }
 
-const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], leadIns: [], stripes: [], markers: [], joints: [], signs: [], holds: [], runwayBreaks: new Map() });
+const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], runwayBreaks: new Map() });
 
 const cache = new WeakMap<AirfieldPayload, Plan>();
 
@@ -470,7 +470,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
   };
   const onRunwayOrApron = (x: number, y: number): boolean => {
     if (onRunway(x, y)) return true;
-    for (const ap of af.aprons) if (insidePoly(x, y, ap.polygon)) return true;
+    for (const ap of af.aprons) if (apronContains(ap, x, y)) return true;
     return false;
   };
   // Lines stop where they would enter a runway; edge lines also stop on aprons.
@@ -526,74 +526,5 @@ export function buildPlan(af: AirfieldPayload): Plan {
     }
   }
 
-  // Stand lead-in lines run straight back to a lead-on curve into the taxiway centerline, both ways.
-  for (const s of af.stands) {
-    const bd = compassVector((s.headingDeg + 180) % 360);
-    let best: { t: number; hit: Hit } | null = null;
-    for (const t of af.taxiways) {
-      const sm = plan.smooth.get(t.id) ?? t.points;
-      for (let i = 1; i < sm.length; i++) {
-        const a = sm[i - 1];
-        const b = sm[i];
-        const rx = bd.x * 260;
-        const ry = bd.y * 260;
-        const sx = b.x - a.x;
-        const sy = b.y - a.y;
-        const den = rx * sy - ry * sx;
-        if (Math.abs(den) < 1e-9) continue;
-        const k = ((a.x - s.x) * sy - (a.y - s.y) * sx) / den;
-        const u = ((a.x - s.x) * ry - (a.y - s.y) * rx) / den;
-        if (k < 0 || k > 1 || u < 0 || u > 1) continue;
-        const l = len(sx, sy);
-        if (!best || k < best.t) best = { t: k, hit: { dist: 0, along: 0, tx: sx / l, ty: sy / l, t: u, x: s.x + rx * k, y: s.y + ry * k } };
-      }
-    }
-    if (!best) continue;
-    const P = { x: best.hit.x, y: best.hit.y };
-    const cdx = -bd.x;
-    const cdy = -bd.y;
-    const dist = len(P.x - s.x, P.y - s.y);
-    const R = Math.min(AIRFIELD.codes[s.code].turnRadiusM * 0.6, dist * 0.4);
-    const tx = best.hit.tx;
-    const ty = best.hit.ty;
-    const cos = Math.abs(cdx * tx + cdy * ty);
-    const psi = Math.acos(Math.min(1, cos));
-    const sinPsi = Math.sin(psi);
-    if (sinPsi < 0.3) continue;
-    const lines: Pt[][] = [];
-    lines.push([{ x: s.x, y: s.y }, { x: P.x + bd.x * 0 - cdx * R * 0, y: P.y }]);
-    // Tangent length for a turn of the angle between the lead-in and the taxiway direction.
-    for (const sg of [1, -1]) {
-      const r1x = sg * tx;
-      const r1y = sg * ty;
-      const r2x = bd.x;
-      const r2y = bd.y;
-      const ps = Math.acos(Math.max(-1, Math.min(1, r1x * r2x + r1y * r2y)));
-      if (ps < 0.4 || ps > 2.75) continue;
-      const tn = Math.tan(ps / 2);
-      const tc = R / tn;
-      const A = { x: P.x + r2x * tc, y: P.y + r2y * tc };
-      const B = { x: P.x + r1x * tc, y: P.y + r1y * tc };
-      const bx = r1x + r2x;
-      const by = r1y + r2y;
-      const bl = len(bx, by) || 1;
-      const dc = R / Math.sin(ps / 2);
-      const cxn = P.x + (bx / bl) * dc;
-      const cyn = P.y + (by / bl) * dc;
-      lines.push(arc(cxn, cyn, R, Math.atan2(A.y - cyn, A.x - cxn), Math.atan2(B.y - cyn, B.x - cxn)));
-      lines[0] = [{ x: s.x, y: s.y }, A];
-    }
-    for (const l of lines) if (l.length >= 2) plan.leadIns.push(mkLine(l));
-  }
   return plan;
-}
-
-function insidePoly(x: number, y: number, poly: readonly Pt[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i];
-    const b = poly[j];
-    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
-  }
-  return inside;
 }

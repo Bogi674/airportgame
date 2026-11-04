@@ -37,6 +37,8 @@ const INV_TWO_PI = 1 / TWO_PI;
 export function sinLut(angle: number): number {
   let t = angle * INV_TWO_PI;
   t -= Math.floor(t);
+  // A tiny negative angle leaves t rounded up to exactly 1, one step past the table.
+  if (t >= 1) t = 0;
   const f = t * TABLE_SIZE;
   const i = Math.floor(f);
   const frac = f - i;

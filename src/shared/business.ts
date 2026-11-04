@@ -46,9 +46,13 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
 
 export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
 
-/** Terminal grid: 160 by 160 cells of 2 m in the local frame of a building. */
-export const TERMINAL_GRID = 160;
+/** Terminal cells are 2 m in the local frame of a building. */
 export const TERMINAL_CELL_M = 2;
+/**
+ * A building's grid grows in steps of this many cells (64 m) when an edit reaches past it, so a
+ * building has no size limit beyond land, money and clearances (docs/DESIGN_REVISION_2.md section 5).
+ */
+export const TERMINAL_CHUNK = 32;
 /** A new building puts its first cell this far from the grid corner, so it can grow in every direction. */
 export const TERMINAL_MARGIN = 40;
 
@@ -59,13 +63,18 @@ export interface TerminalGrid {
   ox: number;
   oy: number;
   headingDeg: number;
+  /** Logical cell of array cell (0, 0) and the array size in cells. Logical cells never move as the grid grows. */
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
   floor: Uint8Array;
   /** Painted zone per cell, see ZONE. */
   zone: Uint8Array;
   fixture: Uint8Array;
-  /** Horizontal wall edges, (grid + 1) rows of grid columns. Index y * grid + x. */
+  /** Horizontal wall edges, (h + 1) rows of w columns. Index row * w + column, the edge above that cell. */
   hWall: Uint8Array;
-  /** Vertical wall edges, grid rows of (grid + 1) columns. Index y * (grid + 1) + x. */
+  /** Vertical wall edges, h rows of (w + 1) columns. Index row * (w + 1) + column, the edge left of that cell. */
   vWall: Uint8Array;
   /** 1 when a shop fixture has a tenant. */
   leased: Uint8Array;

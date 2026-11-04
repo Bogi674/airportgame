@@ -39,7 +39,7 @@ export async function playSmallAirport(page: Page): Promise<void> {
   await send({ type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2600, code: 'C', approach: 'precision', surface: 'asphalt', tier: 1 });
   await send({ type: 'buildParallelTaxiway', runwayId: 1, side: 'right', offsetM: 190, code: 'C', connectors: 4, surface: 'asphalt', tier: 1 });
   await send({ type: 'buildApron', polygon: [{ x: 3800, y: 5260 }, { x: 4300, y: 5260 }, { x: 4300, y: 5400 }, { x: 3800, y: 5400 }], surface: 'concrete', tier: 1 });
-  await send({ type: 'buildStands', x: 4250, y: 5330, headingDeg: 180, count: 6, spacingM: 45, standType: 'remotePushback', code: 'C' });
+  await send({ type: 'buildStands', x: 4250, y: 5330, headingDeg: 180, count: 6, spacingM: 45, standType: 'remote', size: 'medium' });
   // A terminal laid cell by cell: foundation, flooring, a wall with a door, and fixtures (heading 90, origin 3880, 5360).
   const edit = (building: number, e: object) => send({ type: 'terminalBuild', building, ox: 3880, oy: 5360, headingDeg: 90, edit: e });
   await edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });

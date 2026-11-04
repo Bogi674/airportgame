@@ -80,3 +80,14 @@ describe('geom', () => {
     expect(pointInPolygon(15, 5, sq)).toBe(false);
   });
 });
+
+describe('trig lookup edge', () => {
+  it('stays finite for angles a hair below zero', async () => {
+    const { cosLut, sinLut } = await import('@shared/trig');
+    for (const a of [-1e-17, -2.2e-16, -1.5707963267948968]) {
+      expect(Number.isFinite(sinLut(a))).toBe(true);
+      expect(Number.isFinite(cosLut(a))).toBe(true);
+    }
+    expect(cosLut(-1.5707963267948968)).toBeCloseTo(0, 6);
+  });
+});

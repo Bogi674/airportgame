@@ -7,9 +7,14 @@ export const CODES: readonly CodeLetter[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 export type Approach = 'visual' | 'nonPrecision' | 'precision';
 export const APPROACHES: readonly Approach[] = ['visual', 'nonPrecision', 'precision'];
 export type TaxiKind = 'taxiway' | 'taxilane' | 'rapidExit';
-export type StandType = 'contact' | 'remotePushback' | 'remoteThrough' | 'gaTieDown';
-export const STAND_TYPES: readonly StandType[] = ['contact', 'remotePushback', 'remoteThrough', 'gaTieDown'];
-export type PushbackDir = 'left' | 'right' | 'straight' | 'none';
+/** Contact stands sit at a terminal with jet bridges, remote stands do not (docs/DESIGN_REVISION_2.md 3.5). */
+export type StandType = 'contact' | 'remote';
+export const STAND_TYPES: readonly StandType[] = ['contact', 'remote'];
+/** The four stand sizes (docs/DESIGN_REVISION_2.md section 3.1). */
+export type StandSize = 'small' | 'medium' | 'large' | 'xl';
+export const STAND_SIZES_ORDER: readonly StandSize[] = ['small', 'medium', 'large', 'xl'];
+/** Push back along the left or right fork arc, or the side away from the departure route. */
+export type PushbackDir = 'left' | 'right' | 'auto';
 
 export const codeIndex = (c: CodeLetter): number => CODES.indexOf(c);
 
@@ -75,7 +80,12 @@ export interface Apron {
   id: number;
   /** What it cost to build, used for demolition refunds. */
   cost: number;
+  /** Outer ring. */
   polygon: Pt[];
+  /** Pieces cut out of it (docs/DESIGN_REVISION_2.md section 4). */
+  holes?: Pt[][];
+  /** Shown in the inspector, such as Apron 1. */
+  name?: string;
   surface: Surface;
   pcr: number;
   condition: number;
@@ -91,6 +101,8 @@ export interface Stand {
   /** Compass heading the aircraft nose points to when parked. */
   headingDeg: number;
   type: StandType;
+  size: StandSize;
+  /** Largest code of the size, for routing. */
   code: CodeLetter;
   surface: Surface;
   pushback: PushbackDir;

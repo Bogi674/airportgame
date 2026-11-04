@@ -1,5 +1,7 @@
-import { AIRFIELD, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
-import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Stand, type Taxiway } from '@shared/airfield';
+import { apronContains } from '@shared/apronGeom';
+import { AIRFIELD, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { sizeCode } from '@shared/standSizes';
+import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -13,15 +15,15 @@ import {
   suggestedExitDistance,
 } from '@shared/airfieldGeom';
 import type { Ghost, GhostShape } from '@shared/ghost';
-import { closestOnSegment, pointInPolygon, type Pt } from '@shared/geom';
+import { closestOnSegment, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import { TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
-import { cellAtWorld, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
+import { WALL, type TerminalGrid } from '@shared/business';
+import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
-import { buildPlan, planFor, smoothCorners } from '@render/markings/taxiPlan';
+import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
-import { formatMoney } from '../format';
+import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { useToolStore } from '../stores/toolStore';
@@ -29,6 +31,8 @@ import { useToolStore } from '../stores/toolStore';
 export interface Mods {
   shift: boolean;
   alt: boolean;
+  /** Ctrl or Cmd: the apron tool cuts instead of building. */
+  ctrl?: boolean;
 }
 
 interface Deps {
@@ -51,6 +55,8 @@ export class ToolController {
   private pts: Pt[] = [];
   private cursor: Pt = { x: 0, y: 0 };
   private dragging = false;
+  /** The polygon being laid out cuts instead of building (Ctrl held on a click). */
+  private cutting = false;
   /** After a refused drag the preview and its buy offer stay up until the next press. */
   private frozen = false;
 
@@ -119,20 +125,8 @@ export class ToolController {
     if (kind === 'terminal') {
       const g = useGameStore.getState().terminalGrids.find((x) => x.id === id);
       if (!g) return [];
-      let x0 = TERMINAL_GRID;
-      let y0 = TERMINAL_GRID;
-      let x1 = 0;
-      let y1 = 0;
-      for (let cy = 0; cy < TERMINAL_GRID; cy++) {
-        for (let cx = 0; cx < TERMINAL_GRID; cx++) {
-          if (g.floor[cy * TERMINAL_GRID + cx] === 0) continue;
-          if (cx < x0) x0 = cx;
-          if (cy < y0) y0 = cy;
-          if (cx + 1 > x1) x1 = cx + 1;
-          if (cy + 1 > y1) y1 = cy + 1;
-        }
-      }
-      return x1 > x0 ? [{ k: 'poly', pts: rectWorld(g, x0, y0, x1, y1) }] : [];
+      const b = floorBounds(g);
+      return b ? [{ k: 'poly', pts: rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1) }] : [];
     }
     return [];
   }
@@ -295,6 +289,9 @@ export class ToolController {
     } else if (tool === 'runway') {
       this.start = this.snap(p, null, mods, false);
       this.dragging = true;
+    } else if (tool === 'apron' && useToolStore.getState().apronMode === 'rect') {
+      this.start = this.rectSnap(p, this.apronFrame(p), mods);
+      this.dragging = true;
     } else if (tool === 'terminal') {
       this.terminalDown(p);
     }
@@ -320,7 +317,10 @@ export class ToolController {
         this.previewParallel(p);
         break;
       case 'apron':
-        this.previewApron(p, mods);
+        if (st.apronMode === 'rect') {
+          if (this.dragging && this.start) this.previewApronRect(p, mods);
+          else this.show({ valid: true, shapes: [] }, null, 'hint.apronRect');
+        } else this.previewApron(p, mods);
         break;
       case 'stands':
       case 'gaBlock':
@@ -361,8 +361,13 @@ export class ToolController {
         break;
       }
       case 'apron': {
+        if (st.apronMode === 'rect') {
+          this.commitApronRect(p, mods);
+          break;
+        }
         const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
         this.pts.push(this.snap(p, prev, mods, false));
+        this.cutting = mods.ctrl === true;
         this.previewApron(p, mods);
         break;
       }
@@ -434,6 +439,11 @@ export class ToolController {
     if (e.key === 'Backspace' && this.pts.length > 0) {
       this.pts.pop();
       this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
+    if ((e.key === 'a' || e.key === 'A') && st.tool === 'apron' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      this.cancel();
+      st.set({ apronMode: st.apronMode === 'rect' ? 'polygon' : 'rect' });
       return true;
     }
     if ((e.key === 'r' || e.key === 'R') && (st.tool === 'stands' || st.tool === 'gaBlock' || st.tool === 'terminal')) {
@@ -973,29 +983,145 @@ export class ToolController {
 
   // Apron ----------------------------------------------------------------
 
+  /** Free polygon apron (docs/DESIGN_REVISION_2.md section 4): live edge lengths and area, Ctrl cuts. */
   private previewApron(p: Pt, mods: Mods): void {
-    const st = useToolStore.getState();
     const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
     const q = this.snap(p, prev, mods, false);
     const pts = [...this.pts, q];
+    const cut = mods.ctrl === true || this.cutting;
     const shapes: GhostShape[] = pts.length >= 3 ? [{ k: 'poly', pts }] : [{ k: 'strip', pts, w: 1 }];
     let problem: Problem | null = null;
     let area = 0;
     if (pts.length >= 3) {
       area = polygonArea(pts);
-      problem = area < 400 ? { code: 'apronTooSmall', args: { min: 400 } } : this.landProblem({ polygon: pts });
+      if (!cut) problem = area < 400 ? { code: 'apronTooSmall', args: { min: 400 } } : this.landProblem({ polygon: pts });
     }
+    const tags = pts.slice(1).map((b, i) => ({ x: (pts[i].x + b.x) / 2, y: (pts[i].y + b.y) / 2, text: `${Math.round(Math.hypot(b.x - pts[i].x, b.y - pts[i].y))} m` }));
+    this.show({ valid: problem === null, shapes, tone: 'snap', tags, label: { x: q.x, y: q.y, text: this.apronReadout(area, cut) } }, problem, 'hint.apron');
+  }
+
+  private apronReadout(area: number, cut: boolean): string {
+    const st = useToolStore.getState();
+    if (cut) return tFormat('ghost.apronCut', { area: formatNumber(Math.round(area)) });
     const tierIdx = Math.min(st.tier, SURFACE_SPEC[st.surface].pcrTiers.length - 1);
     const cost = Math.round(area * SURFACE_SPEC[st.surface].costPerM2 * (SURFACE_DATA.tierCostFactor[tierIdx] ?? 1));
-    this.show({ valid: problem === null, shapes, label: { x: q.x, y: q.y, text: tFormat('ghost.apron', { area: Math.round(area), cost: formatMoney(cost) }) } }, problem, 'hint.apron');
+    return tFormat('ghost.apron', { area: formatNumber(Math.round(area)), cost: formatMoney(cost) });
   }
 
   private commitApron(): void {
     const st = useToolStore.getState();
     if (this.pts.length < 3) return;
-    this.deps.send({ type: 'buildApron', polygon: this.pts.slice(), surface: st.surface, tier: st.tier });
+    if (this.cutting) this.deps.send({ type: 'cutApron', polygon: this.pts.slice() });
+    else this.deps.send({ type: 'buildApron', polygon: this.pts.slice(), surface: st.surface, tier: st.tier });
     this.pts = [];
+    this.cutting = false;
     this.deps.setGhost(null);
+  }
+
+  /**
+   * Snaps a rectangle corner in the alignment frame (heading `frame`): each frame axis snaps to the
+   * nearest apron edge, apron corner or taxiway edge parallel to it within a few meters. Alt is free.
+   */
+  private rectSnap(p: Pt, frame: number, mods: Mods): Pt {
+    if (mods.alt) return p;
+    const u = compassVector(frame);
+    const v = { x: -u.y, y: u.x };
+    const tol = Math.max(3, 10 / this.deps.zoom());
+    const pu = p.x * u.x + p.y * u.y;
+    const pv = p.x * v.x + p.y * v.y;
+    let bu = pu;
+    let bv = pv;
+    let du = tol;
+    let dv = tol;
+    const take = (q: Pt): void => {
+      const qu = q.x * u.x + q.y * u.y;
+      const qv = q.x * v.x + q.y * v.y;
+      if (Math.abs(qu - pu) < du) {
+        du = Math.abs(qu - pu);
+        bu = qu;
+      }
+      if (Math.abs(qv - pv) < dv) {
+        dv = Math.abs(qv - pv);
+        bv = qv;
+      }
+    };
+    for (const a of this.af.aprons) for (const r of [a.polygon, ...(a.holes ?? [])]) for (const q of r) take(q);
+    for (const t of this.af.taxiways) {
+      for (let i = 1; i < t.points.length; i++) {
+        const a = t.points[i - 1];
+        const b = t.points[i];
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const nx = -(b.y - a.y) / len;
+        const ny = (b.x - a.x) / len;
+        for (const side of [1, -1]) for (const q of [a, b]) take({ x: q.x + nx * side * (t.widthM / 2), y: q.y + ny * side * (t.widthM / 2) });
+      }
+    }
+    return { x: u.x * bu + v.x * bv, y: u.y * bu + v.y * bv };
+  }
+
+  /**
+   * Alignment frame of an apron rectangle: the runway frame, or without a runway the direction of the
+   * nearest apron edge, so new pieces square up with the apron they extend, else the site axis.
+   */
+  private apronFrame(p: Pt): number {
+    if (this.af.runways.length > 0) return this.frameAt(p);
+    let best = 100;
+    let heading = this.frameAt(p);
+    const c = { x: 0, y: 0, t: 0 };
+    for (const a of this.af.aprons) {
+      for (let i = 0; i < a.polygon.length; i++) {
+        const u = a.polygon[i];
+        const v = a.polygon[(i + 1) % a.polygon.length];
+        closestOnSegment(p.x, p.y, u.x, u.y, v.x, v.y, c);
+        const d = Math.hypot(p.x - c.x, p.y - c.y);
+        if (d < best) {
+          best = d;
+          heading = compassOf(v.x - u.x, v.y - u.y);
+        }
+      }
+    }
+    return heading;
+  }
+
+  /** The rectangle from the drag start to p, aligned to the frame at the start. */
+  private apronRect(p: Pt, mods: Mods): { pts: Pt[]; w: number; h: number } | null {
+    const s0 = this.start;
+    if (!s0) return null;
+    const frame = this.apronFrame(s0);
+    const q = this.rectSnap(p, frame, mods);
+    const u = compassVector(frame);
+    const v = { x: -u.y, y: u.x };
+    const du = (q.x - s0.x) * u.x + (q.y - s0.y) * u.y;
+    const dv = (q.x - s0.x) * v.x + (q.y - s0.y) * v.y;
+    const pts = [s0, { x: s0.x + u.x * du, y: s0.y + u.y * du }, { x: s0.x + u.x * du + v.x * dv, y: s0.y + u.y * du + v.y * dv }, { x: s0.x + v.x * dv, y: s0.y + v.y * dv }];
+    return { pts, w: Math.abs(du), h: Math.abs(dv) };
+  }
+
+  /** Rectangle apron: live width, height and area; Ctrl cuts. */
+  private previewApronRect(p: Pt, mods: Mods): void {
+    const r = this.apronRect(p, mods);
+    if (!r) return;
+    const cut = mods.ctrl === true;
+    const area = r.w * r.h;
+    let problem: Problem | null = null;
+    if (!cut) problem = area < 400 ? { code: 'apronTooSmall', args: { min: 400 } } : this.landProblem({ polygon: r.pts });
+    const [a, b, c] = r.pts;
+    const tags = [
+      { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, text: `${Math.round(r.w)} m` },
+      { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2, text: `${Math.round(r.h)} m` },
+    ];
+    this.show({ valid: problem === null, shapes: [{ k: 'poly', pts: r.pts }], tone: 'snap', tags, label: { x: c.x, y: c.y, text: this.apronReadout(area, cut) } }, problem, 'hint.apronRect');
+  }
+
+  private commitApronRect(p: Pt, mods: Mods): void {
+    const st = useToolStore.getState();
+    const r = this.apronRect(p, mods);
+    this.dragging = false;
+    this.start = null;
+    this.deps.setGhost(null);
+    if (!r || r.w < 1 || r.h < 1) return;
+    if (mods.ctrl) this.deps.send({ type: 'cutApron', polygon: r.pts });
+    else this.deps.send({ type: 'buildApron', polygon: r.pts, surface: st.surface, tier: st.tier });
   }
 
   // Stands ---------------------------------------------------------------
@@ -1019,18 +1145,18 @@ export class ToolController {
     return (((this.frameAt(p) + useToolStore.getState().rowHeading) % 360) + 360) % 360;
   }
 
-  private standPlan(p: Pt): { x: number; y: number; count: number; spacing: number; heading: number; code: CodeLetter; ga: boolean } {
+  private standPlan(p: Pt): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean } {
     const st = useToolStore.getState();
     const ga = st.tool === 'gaBlock';
-    const code = ga ? 'A' : st.standCode;
-    return { x: p.x, y: p.y, count: ga ? st.gaCount : st.standCount, spacing: AIRFIELD.codes[code].spanM + (ga ? 5 : 7.5), heading: this.rowHeadingAt(p), code, ga };
+    const size: StandSize = ga ? 'small' : st.standSize;
+    // Stands sit side by side at the size's width (docs/DESIGN_REVISION_2.md table 3.2).
+    return { x: p.x, y: p.y, count: ga ? st.gaCount : st.standCount, spacing: STAND_SIZES[size].widthM, heading: this.rowHeadingAt(p), size, ga };
   }
 
   private previewStands(p: Pt): void {
     const plan = this.standPlan(p);
     const d = compassVector(plan.heading);
     const perp = { x: -d.y, y: d.x };
-    const row = AIRFIELD.codes[plan.code];
     const shapes: GhostShape[] = [];
     // The stands as they will be built: lead-in lines and curves to the taxiway, stop bars, boxes and numbers.
     const st = useToolStore.getState();
@@ -1043,37 +1169,35 @@ export class ToolController {
         x: plan.x + perp.x * plan.spacing * i,
         y: plan.y + perp.y * plan.spacing * i,
         headingDeg: plan.heading,
-        type: plan.ga ? 'gaTieDown' : st.standType,
-        code: plan.code,
+        type: plan.ga || plan.size === 'small' ? 'remote' : st.standType,
+        size: plan.size,
+        code: sizeCode(plan.size),
         surface: plan.ga ? 'gravel' : 'concrete',
-        pushback: 'straight',
+        pushback: 'auto',
       });
     }
-    const base = planFor(this.af).leadIns.length;
-    const full = buildPlan({ ...this.af, stands: [...this.af.stands, ...cands] });
-    const leadIns = full.leadIns.slice(base).map((l) => l.pts);
     let problem: Problem | null = null;
     if (this.ctx()) {
       const last = { x: plan.x + perp.x * plan.spacing * (plan.count - 1), y: plan.y + perp.y * plan.spacing * (plan.count - 1) };
-      problem = this.landProblem({ pts: [{ x: plan.x, y: plan.y }, last], widthM: row.spanM });
+      problem = this.landProblem({ pts: [{ x: plan.x, y: plan.y }, last], widthM: STAND_SIZES[plan.size].maxSpanM });
       if (!problem && !plan.ga) {
         let onApron = true;
         for (let i = 0; i < plan.count && onApron; i++) {
           const sx = plan.x + perp.x * plan.spacing * i;
           const sy = plan.y + perp.y * plan.spacing * i;
-          onApron = this.af.aprons.some((a) => pointInPolygon(sx, sy, a.polygon));
+          onApron = this.af.aprons.some((a) => apronContains(a, sx, sy));
         }
         if (!onApron) problem = { code: 'standNeedsApron' };
       }
     }
-    this.show({ valid: problem === null, shapes, preview: { stands: cands, leadIns }, label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0') }) } }, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
+    this.show({ valid: problem === null, shapes, preview: { stands: cands }, label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0') }) } }, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
   }
 
   private commitStands(p: Pt): void {
     const st = useToolStore.getState();
     const plan = this.standPlan(p);
     if (plan.ga) this.deps.send({ type: 'buildGaBlock', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count });
-    else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, code: plan.code });
+    else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, size: plan.size });
   }
 
   // Terminal ---------------------------------------------------------------
@@ -1085,21 +1209,7 @@ export class ToolController {
 
   private floorBox(g: TerminalGrid): { x0: number; y0: number; x1: number; y1: number } | null {
     if (this.bboxCache.has(g)) return this.bboxCache.get(g) ?? null;
-    const N = TERMINAL_GRID;
-    let x0 = N;
-    let y0 = N;
-    let x1 = -1;
-    let y1 = -1;
-    for (let cy = 0; cy < N; cy++) {
-      for (let cx = 0; cx < N; cx++) {
-        if (g.floor[cy * N + cx] === 0) continue;
-        if (cx < x0) x0 = cx;
-        if (cy < y0) y0 = cy;
-        if (cx > x1) x1 = cx;
-        if (cy > y1) y1 = cy;
-      }
-    }
-    const box = x1 < 0 ? null : { x0, y0, x1, y1 };
+    const box = floorBounds(g);
     this.bboxCache.set(g, box);
     return box;
   }
@@ -1130,7 +1240,8 @@ export class ToolController {
   private terminalAt(p: Pt): number | null {
     for (const g of useGameStore.getState().terminalGrids) {
       const c = cellAtWorld(g, p.x, p.y);
-      if (c && g.floor[c.cy * TERMINAL_GRID + c.cx] > 0) return g.id;
+      const i = cellIndex(g, c.cx, c.cy);
+      if (i >= 0 && g.floor[i] > 0) return g.id;
     }
     return null;
   }

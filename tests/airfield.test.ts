@@ -145,21 +145,21 @@ describe('Aprons and stands', () => {
 
   it('needs an apron for jet stands and puts them on its surface', () => {
     const sim = ownedSim();
-    const stand: Command = { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 4, spacingM: 45, standType: 'remotePushback', code: 'C' };
+    const stand: Command = { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 4, spacingM: 45, standType: 'remote', size: 'medium' };
     expect(run(sim, stand)).toEqual(['standNeedsApron']);
     expect(run(sim, apron)).toEqual([]);
     expect(run(sim, stand)).toEqual([]);
     expect(sim.airfield.data.stands.map((s) => s.number)).toEqual(['1', '2', '3', '4']);
     expect(sim.airfield.data.stands[0].surface).toBe('concrete');
-    expect(sim.airfield.data.stands[0].pushback).toBe('straight');
+    expect(sim.airfield.data.stands[0].pushback).toBe('auto');
   });
 
   it('refuses overlapping stands and tight spacing', () => {
     const sim = ownedSim();
     run(sim, apron);
-    expect(run(sim, { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 2, spacingM: 30, standType: 'remotePushback', code: 'C' })[0]).toMatch(/^standSpacing/);
-    run(sim, { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 2, spacingM: 45, standType: 'remotePushback', code: 'C' });
-    expect(run(sim, { type: 'buildStands', x: 4060, y: 4050, headingDeg: 0, count: 1, spacingM: 45, standType: 'remotePushback', code: 'C' })).toEqual(['standOverlap']);
+    expect(run(sim, { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 2, spacingM: 30, standType: 'remote', size: 'medium' })[0]).toMatch(/^standSpacing/);
+    run(sim, { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 2, spacingM: 45, standType: 'remote', size: 'medium' });
+    expect(run(sim, { type: 'buildStands', x: 4060, y: 4050, headingDeg: 0, count: 1, spacingM: 45, standType: 'remote', size: 'medium' })).toEqual(['standOverlap']);
   });
 
   it('builds a GA block with an asphalt apron and tie down stands', () => {
@@ -167,7 +167,7 @@ describe('Aprons and stands', () => {
     expect(run(sim, { type: 'buildGaBlock', x: 3000, y: 3000, headingDeg: 0, count: 6 })).toEqual([]);
     expect(sim.airfield.data.aprons).toHaveLength(1);
     expect(sim.airfield.data.stands).toHaveLength(6);
-    expect(sim.airfield.data.stands[0].type).toBe('gaTieDown');
+    expect(sim.airfield.data.stands[0].size).toBe('small');
     const d = compassVector(0);
     expect(d.y).toBeCloseTo(-1);
   });
@@ -233,7 +233,7 @@ describe('Airfield determinism', () => {
       RUNWAY,
       { type: 'buildParallelTaxiway', runwayId: 1, side: 'right', offsetM: 190, code: 'C', connectors: 3, surface: 'asphalt', tier: 0 },
       { type: 'buildApron', polygon: [{ x: 4000, y: 6200 }, { x: 4300, y: 6200 }, { x: 4300, y: 6300 }, { x: 4000, y: 6300 }], surface: 'concrete', tier: 1 },
-      { type: 'buildStands', x: 4040, y: 6250, headingDeg: 0, count: 3, spacingM: 45, standType: 'remotePushback', code: 'C' },
+      { type: 'buildStands', x: 4040, y: 6250, headingDeg: 0, count: 3, spacingM: 45, standType: 'remote', size: 'medium' },
       { type: 'undo' },
       { type: 'redo' },
     ];

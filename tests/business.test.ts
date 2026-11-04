@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
 import { Sim } from '@sim/sim';
-import { originFor } from '@shared/terminalOps';
+import { cellIndex, floorBounds, originFor } from '@shared/terminalOps';
 import { buildTestAirport, buildTestTerminal, ownedSim, run } from './helpers';
 
 function airportWithTerminal() {
@@ -49,17 +49,41 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.grids).toHaveLength(0);
   });
 
-  it('refuses a foundation on a pavement, on unowned land and across the grid edge', () => {
+  it('refuses a foundation on a pavement and on unowned land, but not past the old grid edge', () => {
     const sim = ownedSim();
     sim.cash = 100_000_000;
     buildTestAirport(sim, { standsPerRow: 8 });
     const { ox, oy } = originFor(4000, 5330, 90);
     expect(run(sim, { type: 'terminalBuild', building: -1, ox, oy, headingDeg: 90, edit: { op: 'foundation', x0: 40, y0: 40, x1: 50, y1: 46, variant: 0 } })[0]).toBe('terminalOnPavement');
     const free = originFor(4000, 5600, 90);
-    expect(run(sim, { type: 'terminalBuild', building: -1, ox: free.ox, oy: free.oy, headingDeg: 90, edit: { op: 'foundation', x0: 150, y0: 40, x1: 170, y1: 50, variant: 0 } })[0]).toBe('terminalBounds');
+    // The fixed 160 cell grid is gone (docs/DESIGN_REVISION_2.md section 5): this reaches past its old edge.
+    expect(run(sim, { type: 'terminalBuild', building: -1, ox: free.ox, oy: free.oy, headingDeg: 90, edit: { op: 'foundation', x0: 150, y0: 40, x1: 170, y1: 50, variant: 0 } })).toEqual([]);
     const poor = new Sim('GOLDEN-0001', { preset: 'flatCoastal' });
     const o2 = originFor(500, 500, 0);
     expect(run(poor, { type: 'terminalBuild', building: -1, ox: o2.ox, oy: o2.oy, headingDeg: 0, edit: { op: 'foundation', x0: 40, y0: 40, x1: 50, y1: 50, variant: 0 } })[0]).toMatch(/onWater|notOwned/);
+  });
+
+  it('builds a 640 by 120 m terminal and extends it in every direction (revision 2 test 7)', () => {
+    const sim = ownedSim();
+    sim.cash = 500_000_000;
+    const { ox, oy } = originFor(3000, 6300, 90);
+    const edit = (building: number, e: object): string[] => run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e as never });
+    expect(edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 360, y1: 100, variant: 0 })).toEqual([]);
+    const g = sim.business.grids[0];
+    expect(sim.business.terminals[0].cells).toBe(320 * 60);
+    expect(sim.business.terminals[0].cells * 4).toBe(76800);
+    // Extending left and up past the original corner keeps every existing cell where it was.
+    expect(edit(g.id, { op: 'foundation', x0: -20, y0: 30, x1: 40, y1: 40, variant: 0 })).toEqual([]);
+    expect(sim.business.terminals[0].cells).toBe(320 * 60 + 60 * 10);
+    expect(g.x0).toBeLessThanOrEqual(-20);
+    expect(edit(g.id, { op: 'fixture', x0: 350, y0: 90, x1: 352, y1: 91, variant: 1 })).toEqual([]);
+    expect(sim.business.terminals[0].counts.checkIn).toBe(2);
+    // The grid grows in 64 m chunks and allocates only the bounds it needs, not a fixed square.
+    expect(g.w % 32).toBe(0);
+    expect(g.h % 32).toBe(0);
+    const b = floorBounds(g);
+    if (!b) throw new Error('no floor');
+    expect(g.w * g.h).toBeLessThanOrEqual((b.x1 - b.x0 + 1 + 64) * (b.y1 - b.y0 + 1 + 64));
   });
 
   it('two buildings cannot share a cell', () => {
@@ -156,12 +180,12 @@ describe('zones, control room and slots', () => {
   it('fixtures take the zone they belong in and refuse a conflicting one', () => {
     const { sim, id } = airportWithTerminal();
     const g = sim.business.grids[0];
-    const N = 160;
-    expect(g.zone[42 * N + 42]).toBe(1);
-    expect(g.zone[46 * N + 76]).toBe(3);
+    const zoneAt = (x: number, y: number): number => g.zone[cellIndex(g, x, y)];
+    expect(zoneAt(42, 42)).toBe(1);
+    expect(zoneAt(76, 46)).toBe(3);
     const at = (e: object) => run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: e as never });
     expect(at({ op: 'zone', x0: 60, y0: 44, x1: 64, y1: 46, variant: 2 })).toEqual([]);
-    expect(g.zone[44 * N + 60]).toBe(2);
+    expect(zoneAt(60, 44)).toBe(2);
     // A check in desk does not fit the commercial zone.
     expect(at({ op: 'fixture', x0: 60, y0: 44, x1: 61, y1: 45, variant: 1 })[0]).toBe('wrongZone');
     // Painting staff only over a check in desk is refused.

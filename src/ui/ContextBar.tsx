@@ -1,5 +1,5 @@
 import { SURFACE_SPEC } from '@data/index';
-import { APPROACHES, CODES, STAND_TYPES, SURFACES, type CodeLetter, type Surface } from '@shared/airfield';
+import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { FIXTURE_KEYS } from '@shared/business';
@@ -132,11 +132,20 @@ export function ContextBar({ send }: Props) {
         {s.tool === 'rapidExit' && (
           <Select label={t('opt.angle')} value={s.exitAngle} options={[30, 45, 90].map((a) => ({ v: a, text: `${a}°` }))} onChange={(v) => s.set({ exitAngle: v as 30 | 45 | 90 })} />
         )}
+        {s.tool === 'apron' && (
+          <div style="display:flex;gap:4px;align-self:center" data-testid="apron-mode">
+            {(['polygon', 'rect'] as const).map((m) => (
+              <button key={m} data-testid={`apron-mode-${m}`} aria-pressed={s.apronMode === m} onClick={() => s.set({ apronMode: m, hint: null, problem: null })}>
+                {tDynamic(`apronMode.${m}`)}
+              </button>
+            ))}
+          </div>
+        )}
         {s.tool === 'parallel' && <Num label={t('opt.connectors')} value={s.connectors} min={1} max={12} onChange={(v) => s.set({ connectors: v })} />}
         {s.tool === 'stands' && (
           <>
-            <Select label={t('opt.standType')} value={s.standType} testId="opt-standType" options={STAND_TYPES.filter((x) => x !== 'gaTieDown').map((x) => ({ v: x, text: tDynamic(`standType.${x}`) }))} onChange={(v) => s.set({ standType: v })} />
-            <Select label={t('opt.code')} value={s.standCode} options={CODES.map((c) => ({ v: c, text: c }))} onChange={(v: CodeLetter) => s.set({ standCode: v })} />
+            <Select label={t('opt.standType')} value={s.standType} testId="opt-standType" options={STAND_TYPES.map((x) => ({ v: x, text: tDynamic(`standType.${x}`) }))} onChange={(v) => s.set({ standType: v })} />
+            <Select label={t('opt.standSize')} value={s.standSize} testId="opt-standSize" options={STAND_SIZES_ORDER.map((z) => ({ v: z, text: tDynamic(`standSize.${z}`) }))} onChange={(v: StandSize) => s.set({ standSize: v })} />
             <Num label={t('opt.standCount')} value={s.standCount} min={1} max={30} onChange={(v) => s.set({ standCount: v })} />
           </>
         )}

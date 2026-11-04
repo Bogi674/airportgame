@@ -33,6 +33,14 @@ const aircraftSchema = z.object({
     vrefKt: z.number().positive(),
   }),
   surfaces: z.array(surface).min(1),
+  /** Stand geometry in meters from the nose tip: nose gear, door stations for jet bridges, fuel coupling (v to the right). */
+  stand: z
+    .object({
+      noseGearM: z.number().positive(),
+      doorStationsM: z.array(z.number().positive()),
+      fuelCouplingM: z.object({ u: z.number().positive(), v: z.number().positive() }),
+    })
+    .optional(),
   sprite: z.object({ base: z.string() }).passthrough(),
   derivedForReading: z.object({ code: z.enum(['A', 'B', 'C', 'D', 'E', 'F']), wake: z.enum(['L', 'M', 'H', 'J']), approachCategory: z.enum(['A', 'B', 'C', 'D', 'E']) }),
 });
@@ -87,7 +95,15 @@ export function acr(a: AircraftSpec, surface: 'asphalt' | 'concrete' | 'gravel' 
   return ((a.weights.mtowKg / 1000) * gearFactor(a)) / Math.sqrt(mainWheelCount(a)) * (surface === 'concrete' ? 1.1 : 1.0);
 }
 
-const file = z.object({ aircraft: z.array(aircraftSchema) });
+const file = z.object({
+  aircraft: z.array(aircraftSchema).refine((l) => l.every((a) => a.release !== 'mvp1' || a.stand !== undefined), { message: 'every released type needs stand geometry' }),
+});
+
+/** Stand geometry of a released type. Every released type has it, the schema checks that. */
+export function standGeometry(a: AircraftSpec): NonNullable<AircraftSpec['stand']> {
+  if (!a.stand) throw new Error(`no stand geometry for ${a.id}`);
+  return a.stand;
+}
 
 /** Aircraft released in MVP 1, validated once at load. Index in this array is the type index used by the sim. */
 export const AIRCRAFT: readonly AircraftSpec[] = file.parse(raw).aircraft.filter((a) => a.release === 'mvp1');

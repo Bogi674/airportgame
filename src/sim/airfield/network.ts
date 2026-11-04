@@ -1,8 +1,9 @@
-import { codeIndex, compassVector, type AirfieldPayload, type CodeLetter, type Surface } from '@shared/airfield';
+import { codeIndex, type AirfieldPayload, type CodeLetter, type Surface } from '@shared/airfield';
 import { atan2Det } from '@shared/trig';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
+import { nearestOnLines, standForks } from '@shared/standFork';
 
-export const EdgeKind = { Taxiway: 0, Taxilane: 1, RapidExit: 2, Runway: 3, StandLeadIn: 4 } as const;
+export const EdgeKind = { Taxiway: 0, Taxilane: 1, RapidExit: 2, Runway: 3, StandLeadIn: 4, StandFork: 5 } as const;
 export const SAMPLE_M = 2;
 const MERGE_M = 3.5;
 const SNAP_M = 7;
@@ -24,7 +25,12 @@ interface Line {
   runwayId: number;
   /** Stand index for lead in lines, else -1. */
   standIdx: number;
+  /** Stand index for fork arcs (0 left, 1 right), else -1. */
+  forkStand: number;
+  forkSide: number;
 }
+
+const isStandLine = (l: Line): boolean => l.edgeKind === EdgeKind.StandLeadIn || l.edgeKind === EdgeKind.StandFork;
 
 /** Where aircraft hold before a runway entry. */
 export interface HoldInfo {
@@ -63,6 +69,9 @@ export class TaxiNetwork {
   edgePcr = new Float32Array(0);
   edgeSurface = new Uint8Array(0);
   edgeStand = new Int32Array(0);
+  /** Stand index for fork arcs, else -1, and the side: 0 left, 1 right as seen from the parked aircraft. */
+  edgeForkStand = new Int32Array(0);
+  edgeForkSide = new Int8Array(0);
   edgeSource = new Int32Array(0);
   /** Reservation block per edge, or -1 for one way edges. Two way taxiway edges share one block per taxiway, so opposing aircraft never meet on it. */
   edgeBlock = new Int32Array(0);
@@ -80,6 +89,12 @@ export class TaxiNetwork {
 
   standNode: Int32Array = new Int32Array(0);
   standEdge: Int32Array = new Int32Array(0);
+  /** Fork node per stand, and the arc edge per stand and side (index stand * 2 + side) that ends at it. */
+  forkNode: Int32Array = new Int32Array(0);
+  forkEdge: Int32Array = new Int32Array(0);
+  /** Unit direction along the taxilane away from the fork at each arc end (index stand * 2 + side). */
+  forkAwayX: Float64Array = new Float64Array(0);
+  forkAwayY: Float64Array = new Float64Array(0);
   entryNode: Int32Array = new Int32Array(0);
   holds: HoldInfo[] = [];
 
@@ -122,6 +137,8 @@ export class TaxiNetwork {
         surface: surfaceIndex(t.surface),
         runwayId: -1,
         standIdx: -1,
+        forkStand: -1,
+        forkSide: -1,
       });
     }
     // Extend taxiway ends that touch a runway edge to the entry point on the centerline.
@@ -151,56 +168,50 @@ export class TaxiNetwork {
         surface: surfaceIndex(r.surface),
         runwayId: r.id,
         standIdx: -1,
+        forkStand: -1,
+        forkSide: -1,
       });
     }
-    // Stand lead ins run from the stand point straight back along its heading to the first pavement centerline.
+    // Stand lead ins (docs/DESIGN_REVISION_2.md section 1): the stand centerline from the fork point to the
+    // stop point, and two fork arcs that join the taxilane tangentially. Without a taxilane straight behind,
+    // a straight lead in runs to the nearest centerline.
     const taxiLines = lines.filter((l) => l.edgeKind !== EdgeKind.Runway);
+    const standLine = (s: AirfieldPayload['stands'][number], idx: number, pts: Pt[], kind: number, side: number): Line => ({
+      edgeKind: kind,
+      sourceId: s.id,
+      pts,
+      oneWay: false,
+      preferred: 0,
+      closed: false,
+      maxCode: codeIndex(s.code),
+      speedMs: 4,
+      pcr: 999,
+      surface: surfaceIndex(s.surface),
+      runwayId: -1,
+      standIdx: kind === EdgeKind.StandLeadIn ? idx : -1,
+      forkStand: kind === EdgeKind.StandFork ? idx : -1,
+      forkSide: side,
+    });
+    const forks = standForks(af.stands, taxiLines);
+    this.forkAwayX = new Float64Array(af.stands.length * 2);
+    this.forkAwayY = new Float64Array(af.stands.length * 2);
+    forks.forEach((f, st) => {
+      if (!f) return;
+      for (const side of [0, 1]) {
+        this.forkAwayX[st * 2 + side] = f.away[side].x;
+        this.forkAwayY[st * 2 + side] = f.away[side].y;
+      }
+    });
     af.stands.forEach((s, idx) => {
-      const back = compassVector((s.headingDeg + 180) % 360);
-      let bestT = Infinity;
-      let hit: Pt | null = null;
-      for (const l of taxiLines) {
-        for (let i = 1; i < l.pts.length; i++) {
-          const a = l.pts[i - 1];
-          const b = l.pts[i];
-          const t = segmentIntersection(s.x, s.y, s.x + back.x * 260, s.y + back.y * 260, a.x, a.y, b.x, b.y);
-          if (t >= 0 && t < bestT) {
-            bestT = t;
-            hit = { x: s.x + back.x * 260 * t, y: s.y + back.y * 260 * t };
-          }
-        }
-      }
-      if (!hit) {
-        // Fall back to the nearest centerline point within reach.
-        let best = 150;
-        const c = { x: 0, y: 0, t: 0 };
-        for (const l of taxiLines) {
-          for (let i = 1; i < l.pts.length; i++) {
-            closestOnSegment(s.x, s.y, l.pts[i - 1].x, l.pts[i - 1].y, l.pts[i].x, l.pts[i].y, c);
-            const d = Math.hypot(s.x - c.x, s.y - c.y);
-            if (d < best) {
-              best = d;
-              hit = { x: c.x, y: c.y };
-            }
-          }
-        }
-      }
-      if (!hit) return;
-      lines.push({
-        edgeKind: EdgeKind.StandLeadIn,
-        sourceId: s.id,
+      const fork = forks[idx];
+      if (fork) {
         // From the pavement to the stand, so forward is the way an arriving aircraft drives.
-        pts: [hit, { x: s.x, y: s.y }],
-        oneWay: false,
-        preferred: 0,
-        closed: false,
-        maxCode: codeIndex(s.code),
-        speedMs: 4,
-        pcr: 999,
-        surface: surfaceIndex(s.surface),
-        runwayId: -1,
-        standIdx: idx,
-      });
+        lines.push(standLine(s, idx, [fork.fork, { x: s.x, y: s.y }], EdgeKind.StandLeadIn, -1));
+        fork.arcs.forEach((arc, side) => lines.push(standLine(s, idx, arc.slice().reverse(), EdgeKind.StandFork, side)));
+        return;
+      }
+      const hit = nearestOnLines(s, taxiLines, 150);
+      if (hit) lines.push(standLine(s, idx, [hit, { x: s.x, y: s.y }], EdgeKind.StandLeadIn, -1));
     });
 
     this.splitCrossings(lines);
@@ -214,7 +225,8 @@ export class TaxiNetwork {
     const key = (li: number, si: number): string => `${li}:${si}`;
     for (let a = 0; a < lines.length; a++) {
       for (let b = a + 1; b < lines.length; b++) {
-        if (lines[a].edgeKind === EdgeKind.StandLeadIn && lines[b].edgeKind === EdgeKind.StandLeadIn) continue;
+        // Stand lines never join each other: neighbouring forks may cross near the taxilane.
+        if (isStandLine(lines[a]) && isStandLine(lines[b])) continue;
         for (let i = 1; i < lines[a].pts.length; i++) {
           for (let j = 1; j < lines[b].pts.length; j++) {
             const pa = lines[a].pts[i - 1];
@@ -264,6 +276,7 @@ export class TaxiNetwork {
         let at: Pt | null = null;
         for (let lj = 0; lj < lines.length; lj++) {
           if (lj === li) continue;
+          if (isStandLine(lines[li]) && isStandLine(lines[lj])) continue;
           const other = lines[lj].pts;
           for (let i = 1; i < other.length; i++) {
             closestOnSegment(p.x, p.y, other[i - 1].x, other[i - 1].y, other[i].x, other[i].y, c);
@@ -311,12 +324,17 @@ export class TaxiNetwork {
       else cell.set(k, [id]);
       return id;
     };
-    const seqs: number[][] = lines.map((l) => {
+    // A node that nothing else merges into, for the inside of fork arcs: neighbouring forks may cross
+    // near the taxilane, and only their ends may join the network.
+    const privateNode = (p: Pt): number => {
+      nx.push(p.x);
+      ny.push(p.y);
+      return nx.length - 1;
+    };
+    const ids: number[][] = lines.map((l) => l.pts.map((p, k) => (l.edgeKind === EdgeKind.StandFork && k > 0 && k < l.pts.length - 1 ? privateNode(p) : nodeFor(p))));
+    const seqs: number[][] = ids.map((line) => {
       const seq: number[] = [];
-      for (const p of l.pts) {
-        const n = nodeFor(p);
-        if (seq.length === 0 || seq[seq.length - 1] !== n) seq.push(n);
-      }
+      for (const n of line) if (seq.length === 0 || seq[seq.length - 1] !== n) seq.push(n);
       return seq;
     });
     const degree = new Int32Array(nx.length);
@@ -335,16 +353,18 @@ export class TaxiNetwork {
       const line = lines[li];
       if (seq.length < 2) return;
       // Walk the original vertices so curved geometry survives, cutting at junction nodes.
+      const own = ids[li];
       let chain: Pt[] = [{ x: nx[seq[0]], y: ny[seq[0]] }];
+      let chainFrom = seq[0];
       for (let k = 1; k < line.pts.length; k++) {
-        const n = nodeFor(line.pts[k]);
-        const prevNode = nodeFor(line.pts[k - 1]);
-        if (n === prevNode) continue;
+        const n = own[k];
+        if (n === own[k - 1]) continue;
         chain.push({ x: nx[n], y: ny[n] });
         const isCut = k === line.pts.length - 1 || degree[n] !== 2;
         if (isCut) {
-          raw.push({ from: nodeFor(chain[0]), to: n, pts: chain, line });
+          raw.push({ from: chainFrom, to: n, pts: chain, line });
           chain = [{ x: nx[n], y: ny[n] }];
+          chainFrom = n;
         }
       }
     });
@@ -367,6 +387,8 @@ export class TaxiNetwork {
     this.edgePcr = new Float32Array(E);
     this.edgeSurface = new Uint8Array(E);
     this.edgeStand = new Int32Array(E).fill(-1);
+    this.edgeForkStand = new Int32Array(E).fill(-1);
+    this.edgeForkSide = new Int8Array(E).fill(-1);
     this.edgeSource = new Int32Array(E);
     this.edgeBlock = new Int32Array(E).fill(-1);
     this.edgeSampleStart = new Int32Array(E);
@@ -387,6 +409,8 @@ export class TaxiNetwork {
       this.edgePcr[e] = r.line.pcr;
       this.edgeSurface[e] = r.line.surface;
       this.edgeStand[e] = r.line.standIdx;
+      this.edgeForkStand[e] = r.line.forkStand;
+      this.edgeForkSide[e] = r.line.forkSide;
       this.edgeSource[e] = r.line.sourceId;
       if (r.line.edgeKind === EdgeKind.Runway) {
         this.nodeOnRunway[r.from] = 1;
@@ -422,7 +446,7 @@ export class TaxiNetwork {
       const kind = this.edgeKind[e];
       if (kind === EdgeKind.Runway || this.edgeOneWay[e] === 1) continue;
       // Taxiway edges share their taxiway's block, stand lead ins have their own.
-      const key = kind === EdgeKind.StandLeadIn ? 1_000_000 + e : this.edgeSource[e];
+      const key = kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork ? 1_000_000 + e : this.edgeSource[e];
       let b = blockOfKey.get(key);
       if (b === undefined) {
         b = blockOfKey.size;
@@ -463,6 +487,14 @@ export class TaxiNetwork {
         this.standNode[this.edgeStand[e]] = this.edgeTo[e];
         this.standEdge[this.edgeStand[e]] = e;
       }
+    }
+    // The fork node of a stand is where its lead in starts, and each fork arc ends there.
+    this.forkNode = new Int32Array(af.stands.length).fill(-1);
+    this.forkEdge = new Int32Array(af.stands.length * 2).fill(-1);
+    for (let st = 0; st < af.stands.length; st++) if (this.standEdge[st] >= 0) this.forkNode[st] = this.edgeFrom[this.standEdge[st]];
+    for (let e = 0; e < E; e++) {
+      const st = this.edgeForkStand[e];
+      if (st >= 0 && this.edgeTo[e] === this.forkNode[st]) this.forkEdge[st * 2 + this.edgeForkSide[e]] = e;
     }
     this.entryNode = new Int32Array(af.entries.length).fill(-1);
     af.entries.forEach((en, i) => {
@@ -607,6 +639,14 @@ export class TaxiNetwork {
         if (this.closed[m] === 1) continue;
         // Stand lead ins are dead ends: only the start or goal may sit on one.
         if (kind === EdgeKind.StandLeadIn && n !== from && m !== to) continue;
+        // A fork is entered only on the way to its own stand and left only from it, never driven through.
+        if (kind === EdgeKind.StandFork) {
+          const st = this.edgeForkStand[e];
+          const fk = this.forkNode[st];
+          const sn = this.standNode[st];
+          if (m === fk && to !== sn && to !== fk) continue;
+          if (n === fk && from !== sn && from !== fk) continue;
+        }
         // Against a preferred flow the edge costs three times as much, so it is the last choice but not closed.
         const against = this.edgePreferred[e] !== 0 && this.edgePreferred[e] !== dir ? 3 : 1;
         const cost = this.g[n] + (this.edgeLen[e] / Math.max(1, this.edgeSpeed[e])) * against + this.congestion[e];

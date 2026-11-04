@@ -1,4 +1,5 @@
-import { AIRFIELD, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { sizeCode } from '@shared/standSizes';
 import {
   codeIndex,
   compassVector,
@@ -7,14 +8,16 @@ import {
   type CodeLetter,
   type Runway,
   type Stand,
+  type StandSize,
   type StandType,
   type Surface,
   type Taxiway,
 } from '@shared/airfield';
-import { closestOnSegment, pointInPolygon, segmentIntersection, type Pt } from '@shared/geom';
+import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
+import { apronArea, apronContains, cutShape, mergeShapes, touches } from '@shared/apronGeom';
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
@@ -33,6 +36,8 @@ interface Op {
   cashDelta: number;
   /** Taxiways the operation changed in place, as copies before and after, so undo restores them exactly. */
   swaps?: { before: Taxiway; after: Taxiway }[];
+  /** Objects the operation removed while adding `items`, such as aprons merged into a new one. */
+  replaced?: Item[];
 }
 
 export type BuildResult = { cashDelta: number } | Problem;
@@ -75,6 +80,7 @@ export class Airfield {
   private nextId = 1;
   private nameIndex = 0;
   private standNumber = 0;
+  private apronNumber = 0;
   private undoStack: Op[] = [];
   private redoStack: Op[] = [];
 
@@ -159,6 +165,8 @@ export class Airfield {
         return this.buildParallel(cmd, ctx, cash);
       case 'buildApron':
         return this.buildApron(cmd, ctx, cash);
+      case 'cutApron':
+        return this.cutApron(cmd);
       case 'buildStands':
         return this.buildStands(cmd, ctx, cash);
       case 'buildGaBlock':
@@ -184,6 +192,7 @@ export class Airfield {
         if (!s) return { code: 'nothingThere' };
         if (cmd.closed !== undefined) s.closed = cmd.closed;
         if (cmd.usage !== undefined) s.usage = cmd.usage;
+        if (cmd.pushback !== undefined) s.pushback = cmd.pushback;
         this.refresh();
         return { cashDelta: 0 };
       }
@@ -384,66 +393,115 @@ export class Airfield {
     return this.place(items, cash);
   }
 
+  /**
+   * Apron piece from either tool mode (docs/DESIGN_REVISION_2.md section 4). It merges with every apron
+   * of the same surface it overlaps or touches; only the new area is paid for.
+   */
   private buildApron(cmd: Extract<Command, { type: 'buildApron' }>, ctx: BuildContext, cash: number): BuildResult {
     const poly = cmd.polygon.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
     if (poly.length < 3 || poly.length > 16) return { code: 'apronPoints' };
     const area = polygonArea(poly);
     if (area < 400) return { code: 'apronTooSmall', args: { min: 400 } };
-    if (area > 600000) return { code: 'apronTooLarge' };
     const problem = checkPolygon(ctx, poly);
     if (problem) return problem;
     const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
-    const apron: Apron = {
-      id: this.nextId++,
-      cost: Math.round(area * SURFACE_SPEC[cmd.surface].costPerM2 * factor),
-      polygon: poly,
-      surface: cmd.surface,
-      pcr,
-      condition: 100,
-    };
-    return this.place([{ type: 'apron', obj: apron }], cash);
+    const unit = SURFACE_SPEC[cmd.surface].costPerM2 * factor;
+    const piece = { polygon: poly };
+    const absorbed = this.data.aprons.filter((a) => a.surface === cmd.surface && touches(a, piece));
+    const shapes = mergeShapes(poly, absorbed);
+    const before = absorbed.reduce((sum, a) => sum + apronArea(a), 0);
+    const after = shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
+    if (after > 600000) return { code: 'apronTooLarge' };
+    const cost = Math.round(Math.max(0, after - before) * unit);
+    if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
+    const oldCost = absorbed.reduce((sum, a) => sum + a.cost, 0);
+    const items: Item[] = shapes.map((sh, k) => ({
+      type: 'apron',
+      obj: {
+        id: this.nextId++,
+        cost: Math.round((oldCost * apronArea(sh)) / Math.max(1, after) + (cost * apronArea(sh)) / Math.max(1, after)),
+        polygon: sh.polygon,
+        holes: sh.holes.length > 0 ? sh.holes : undefined,
+        surface: cmd.surface,
+        pcr: Math.max(pcr, ...absorbed.map((a) => a.pcr)),
+        condition: 100,
+        name: k === 0 && absorbed[0]?.name ? absorbed[0].name : `Apron ${++this.apronNumber}`,
+      },
+    }));
+    const replaced: Item[] = absorbed.map((a) => ({ type: 'apron', obj: a }));
+    this.removeItems(replaced);
+    this.addItems(items);
+    this.undoStack.push({ items, added: true, cashDelta: -cost, replaced });
+    this.redoStack.length = 0;
+    return { cashDelta: -cost };
+  }
+
+  /** Cuts a piece out of an apron, or out of every apron it overlaps, refunding a share of the removed area. */
+  private cutApron(cmd: Extract<Command, { type: 'cutApron' }>): BuildResult {
+    const poly = cmd.polygon.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+    if (poly.length < 3 || poly.length > 16) return { code: 'apronPoints' };
+    const targets = this.data.aprons.filter((a) => (cmd.id === undefined ? touches(a, { polygon: poly }) : a.id === cmd.id));
+    const replaced: Item[] = [];
+    const items: Item[] = [];
+    let refund = 0;
+    for (const a of targets) {
+      const shapes = cutShape(a, poly);
+      const removed = apronArea(a) - shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
+      if (removed < 1) continue;
+      const perM2 = a.cost / Math.max(1, apronArea(a));
+      refund += removed * perM2 * SURFACE_SPEC[a.surface].refundShare;
+      replaced.push({ type: 'apron', obj: a });
+      shapes.forEach((sh, k) =>
+        items.push({
+          type: 'apron',
+          obj: { ...a, id: this.nextId++, cost: Math.round(perM2 * apronArea(sh)), polygon: sh.polygon, holes: sh.holes.length > 0 ? sh.holes : undefined, name: k === 0 ? a.name : `Apron ${++this.apronNumber}` },
+        }),
+      );
+    }
+    if (replaced.length === 0) return { code: 'nothingThere' };
+    this.removeItems(replaced);
+    this.addItems(items);
+    const cashDelta = Math.round(refund);
+    this.undoStack.push({ items, added: true, cashDelta, replaced });
+    this.redoStack.length = 0;
+    return { cashDelta };
   }
 
   private surfaceAt(x: number, y: number): Surface | null {
-    for (const a of this.data.aprons) if (pointInPolygon(x, y, a.polygon)) return a.surface;
+    for (const a of this.data.aprons) if (apronContains(a, x, y)) return a.surface;
     return null;
   }
 
-  private makeStands(
-    x: number,
-    y: number,
-    headingDeg: number,
-    count: number,
-    spacing: number,
-    type: StandType,
-    code: CodeLetter,
-    ctx: BuildContext,
-  ): Item[] | Problem {
+  /**
+   * A row of stands of one size (docs/DESIGN_REVISION_2.md section 3). Spacing is at least the size's
+   * width, the surface comes from the apron under each stand and must be on the size's list. Small
+   * stands may sit on grass without an apron.
+   */
+  private makeStands(x: number, y: number, headingDeg: number, count: number, spacing: number, type: StandType, size: StandSize, ctx: BuildContext): Item[] | Problem {
     const n = Math.floor(count);
     if (n < 1 || n > 30) return { code: 'standCount', args: { max: 30 } };
+    const spec = STAND_SIZES[size];
     const d = compassVector(headingDeg);
     const perp = { x: -d.y, y: d.x };
     const items: Item[] = [];
-    const span = AIRFIELD.codes[code].spanM;
-    const minSpacing = span + 3;
-    if (spacing < minSpacing) return { code: 'standSpacing', args: { min: Math.ceil(minSpacing) } };
+    if (spacing < spec.widthM) return { code: 'standSpacing', args: { min: Math.ceil(spec.widthM) } };
+    const halfW = spec.widthM / 2;
     let number = this.standNumber;
     for (let i = 0; i < n; i++) {
       const sx = round05(x + perp.x * spacing * i);
       const sy = round05(y + perp.y * spacing * i);
-      const p = checkStrip(ctx, [{ x: sx, y: sy }, { x: sx + d.x * 2, y: sy + d.y * 2 }], span * 0.5);
+      const p = checkStrip(ctx, [{ x: sx, y: sy }, { x: sx + d.x * 2, y: sy + d.y * 2 }], spec.maxSpanM * 0.5);
       if (p) return p;
       const apronSurface = this.surfaceAt(sx, sy);
-      if (type !== 'gaTieDown' && !apronSurface) return { code: 'standNeedsApron' };
+      if (size !== 'small' && !apronSurface) return { code: 'standNeedsApron' };
       const surface: Surface = apronSurface ?? 'grass';
-      if (type !== 'gaTieDown' && !isPaved(surface)) return { code: 'standSurface' };
+      if (!spec.surfaces.includes(surface)) return { code: 'standSurface' };
       for (const s of this.data.stands) {
-        const min = (AIRFIELD.codes[s.code].spanM + span) / 2 + 3;
-        if (Math.hypot(s.x - sx, s.y - sy) < min) return { code: 'standOverlap' };
+        if (Math.hypot(s.x - sx, s.y - sy) < STAND_SIZES[s.size].widthM / 2 + halfW - 0.5) return { code: 'standOverlap' };
       }
       for (const it of items) {
         const s = it.obj as Stand;
-        if (Math.hypot(s.x - sx, s.y - sy) < span + 3) return { code: 'standOverlap' };
+        if (Math.hypot(s.x - sx, s.y - sy) < spec.widthM - 0.5) return { code: 'standOverlap' };
       }
       number++;
       items.push({
@@ -451,14 +509,16 @@ export class Airfield {
         obj: {
           id: this.nextId++,
           number: String(number),
-          cost: AIRFIELD.standCost[type],
+          cost: spec.cost[type],
           x: sx,
           y: sy,
           headingDeg: ((Math.round(headingDeg) % 360) + 360) % 360,
-          type,
-          code,
+          // Small stands have no jet bridges, so they are always remote.
+          type: size === 'small' ? 'remote' : type,
+          size,
+          code: sizeCode(size),
           surface,
-          pushback: type === 'remoteThrough' || type === 'gaTieDown' ? 'none' : 'straight',
+          pushback: 'auto',
         },
       });
     }
@@ -469,7 +529,7 @@ export class Airfield {
   private buildStands(cmd: Extract<Command, { type: 'buildStands' }>, ctx: BuildContext, cash: number): BuildResult {
     const before = this.standNumber;
     const idBefore = this.nextId;
-    const items = this.makeStands(cmd.x, cmd.y, cmd.headingDeg, cmd.count, cmd.spacingM, cmd.standType, cmd.code, ctx);
+    const items = this.makeStands(cmd.x, cmd.y, cmd.headingDeg, cmd.count, cmd.spacingM, cmd.standType, cmd.size, ctx);
     if (!Array.isArray(items)) {
       this.standNumber = before;
       this.nextId = idBefore;
@@ -486,7 +546,7 @@ export class Airfield {
   private buildGaBlock(cmd: Extract<Command, { type: 'buildGaBlock' }>, ctx: BuildContext, cash: number): BuildResult {
     const n = Math.floor(cmd.count);
     if (n < 1 || n > 20) return { code: 'standCount', args: { max: 20 } };
-    const spacing = AIRFIELD.codes.A.spanM + 5;
+    const spacing = STAND_SIZES.small.widthM;
     const d = compassVector(cmd.headingDeg);
     const perp = { x: -d.y, y: d.x };
     const w = spacing * n + 10;
@@ -513,7 +573,7 @@ export class Airfield {
     };
     // The apron must exist for the stands to find their surface.
     this.data.aprons.push(apron);
-    const stands = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'gaTieDown', 'A', ctx);
+    const stands = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'remote', 'small', ctx);
     this.data.aprons.pop();
     if (!Array.isArray(stands)) {
       this.nextId = idBefore;
@@ -889,6 +949,7 @@ export class Airfield {
     if (op.swaps) this.applySwaps(op.swaps.map((w) => w.before));
     if (op.added) this.removeItems(op.items);
     else this.addItems(op.items);
+    if (op.replaced) this.addItems(op.replaced);
     this.redoStack.push(op);
     return { cashDelta: -op.cashDelta };
   }
@@ -899,6 +960,7 @@ export class Airfield {
     if (op.cashDelta < 0 && cash < -op.cashDelta) return { code: 'insufficientFunds', args: { cost: -op.cashDelta } };
     this.redoStack.pop();
     if (op.swaps) this.applySwaps(op.swaps.map((w) => w.after));
+    if (op.replaced) this.removeItems(op.replaced);
     if (op.added) this.addItems(op.items);
     else this.removeItems(op.items);
     this.undoStack.push(op);
@@ -908,7 +970,7 @@ export class Airfield {
   /** Everything needed to rebuild the airfield. Undo history is not saved. */
   saveState(): unknown {
     const d = this.data;
-    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, version: d.version };
+    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
   }
 
   loadState(raw: unknown): void {
@@ -921,6 +983,7 @@ export class Airfield {
     this.nextId = o.nextId;
     this.nameIndex = o.nameIndex;
     this.standNumber = o.standNumber;
+    this.apronNumber = (raw as { apronNumber?: number }).apronNumber ?? o.aprons.length;
     this.undoStack = [];
     this.redoStack = [];
     this.refresh();
@@ -941,7 +1004,7 @@ export class Airfield {
       acc = foldU32(foldU32(acc, surfaceRank(t.surface)), t.works ? t.works.doneTick % 0xffffffff : 0);
       for (const p of t.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
     }
-    for (const a of this.data.aprons) acc = foldU32(foldU32(acc, a.id), a.polygon.length);
+    for (const a of this.data.aprons) acc = foldU32(foldU32(foldU32(acc, a.id), a.polygon.length), a.holes?.length ?? 0);
     for (const s of this.data.stands) acc = foldU32(foldU32(foldU32(acc, s.id), r(s.x)), r(s.y));
     return acc;
   }

@@ -1,6 +1,5 @@
-import { FIXTURE_KEYS, TERMINAL_GRID, WALL, ZONE, type TerminalGrid } from './business';
+import { FIXTURE_KEYS, WALL, ZONE, type TerminalGrid } from './business';
 
-const N = TERMINAL_GRID;
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const SEATING = FIXTURE_KEYS.indexOf('seating') + 1;
@@ -8,12 +7,16 @@ const SEATING = FIXTURE_KEYS.indexOf('seating') + 1;
 /** Walls and glass block people, doors and open edges let them through. */
 const passable = (type: number): boolean => type === WALL.None || type === WALL.Door;
 
-/** True when a person can step from cell (x, y) to its neighbour in direction d (0 left, 1 right, 2 up, 3 down). */
+/**
+ * True when a person can step from array cell (x, y) to its neighbour in direction d (0 left, 1 right,
+ * 2 up, 3 down). Works in array coordinates of the building's grid.
+ */
 function canStep(g: TerminalGrid, x: number, y: number, d: number): boolean {
-  if (d === 0) return x > 0 && passable(g.vWall[y * (N + 1) + x]) && g.floor[y * N + x - 1] > 0;
-  if (d === 1) return x < N - 1 && passable(g.vWall[y * (N + 1) + x + 1]) && g.floor[y * N + x + 1] > 0;
-  if (d === 2) return y > 0 && passable(g.hWall[y * N + x]) && g.floor[(y - 1) * N + x] > 0;
-  return y < N - 1 && passable(g.hWall[(y + 1) * N + x]) && g.floor[(y + 1) * N + x] > 0;
+  const W = g.w;
+  if (d === 0) return x > 0 && passable(g.vWall[y * (W + 1) + x]) && g.floor[y * W + x - 1] > 0;
+  if (d === 1) return x < W - 1 && passable(g.vWall[y * (W + 1) + x + 1]) && g.floor[y * W + x + 1] > 0;
+  if (d === 2) return y > 0 && passable(g.hWall[y * W + x]) && g.floor[(y - 1) * W + x] > 0;
+  return y < g.h - 1 && passable(g.hWall[(y + 1) * W + x]) && g.floor[(y + 1) * W + x] > 0;
 }
 
 const DX = [-1, 1, 0, 0];
@@ -35,8 +38,9 @@ export function terminalIssues(g: TerminalGrid): string[] {
   }
   if (!hasCheckIn || !hasSecurity) return issues;
 
-  const seen = new Uint8Array(N * N);
-  const queue = new Int32Array(N * N);
+  const W = g.w;
+  const seen = new Uint8Array(g.w * g.h);
+  const queue = new Int32Array(g.w * g.h);
   let head = 0;
   let tail = 0;
   const lanes: number[] = [];
@@ -51,11 +55,11 @@ export function terminalIssues(g: TerminalGrid): string[] {
   }
   while (head < tail) {
     const i = queue[head++];
-    const x = i % N;
-    const y = (i - x) / N;
+    const x = i % W;
+    const y = (i - x) / W;
     for (let d = 0; d < 4; d++) {
       if (!canStep(g, x, y, d)) continue;
-      const j = (y + DY[d]) * N + x + DX[d];
+      const j = (y + DY[d]) * W + x + DX[d];
       if (g.fixture[j] === SECURITY) {
         touchesLane = true;
         if (!lanes.includes(j)) lanes.push(j);
@@ -76,7 +80,7 @@ export function terminalIssues(g: TerminalGrid): string[] {
   if (bypass) issues.push('securityBypass');
 
   // Airside: from the lanes into secure floor, looking for seats.
-  const air = new Uint8Array(N * N);
+  const air = new Uint8Array(g.w * g.h);
   head = 0;
   tail = 0;
   for (let i = 0; i < g.fixture.length; i++) {
@@ -88,11 +92,11 @@ export function terminalIssues(g: TerminalGrid): string[] {
   let seats = false;
   while (head < tail) {
     const i = queue[head++];
-    const x = i % N;
-    const y = (i - x) / N;
+    const x = i % W;
+    const y = (i - x) / W;
     for (let d = 0; d < 4; d++) {
       if (!canStep(g, x, y, d)) continue;
-      const j = (y + DY[d]) * N + x + DX[d];
+      const j = (y + DY[d]) * W + x + DX[d];
       if (air[j] === 1 || g.zone[j] !== ZONE.Secure) continue;
       air[j] = 1;
       queue[tail++] = j;

@@ -103,6 +103,7 @@
     "asphalt",
     "concrete"
    ],
+   "stand": { "noseGearM": 4.4, "doorStationsM": [4.0], "fuelCouplingM": { "u": 18.6, "v": 8.9 } },
    "sprite": {
     "base": "b738",
     "calibration": "dimension checked"
@@ -530,6 +531,7 @@
     "asphalt",
     "concrete"
    ],
+   "stand": { "noseGearM": 5.1, "doorStationsM": [6.5], "fuelCouplingM": { "u": 19.2, "v": 9.0 } },
    "sprite": {
     "base": "a320neo",
     "calibration": "dimension checked"
@@ -947,6 +949,7 @@
     "asphalt",
     "concrete"
    ],
+   "stand": { "noseGearM": 8.0, "doorStationsM": [7.5, 20.0], "fuelCouplingM": { "u": 37.0, "v": 10.1 } },
    "sprite": {
     "base": "b77w",
     "calibration": "photo calibrated"
@@ -1115,6 +1118,7 @@
     "asphalt",
     "concrete"
    ],
+   "stand": { "noseGearM": 5.2, "doorStationsM": [7.0, 18.0], "fuelCouplingM": { "u": 33.0, "v": 9.9 } },
    "sprite": {
     "base": "b789",
     "calibration": "dimension checked"
@@ -1748,6 +1752,7 @@
     "concrete",
     "gravel"
    ],
+   "stand": { "noseGearM": 2.5, "doorStationsM": [3.5], "fuelCouplingM": { "u": 12.4, "v": 5.4 } },
    "sprite": {
     "base": "at76",
     "calibration": "needs photo calibration"
@@ -1925,6 +1930,7 @@
     "asphalt",
     "concrete"
    ],
+   "stand": { "noseGearM": 3.2, "doorStationsM": [3.2], "fuelCouplingM": { "u": 17.5, "v": 6.3 } },
    "sprite": {
     "base": "crj9",
     "calibration": "needs photo calibration"
@@ -2036,6 +2042,7 @@
     "asphalt",
     "concrete"
    ],
+   "stand": { "noseGearM": 3.0, "doorStationsM": [4.2], "fuelCouplingM": { "u": 14.0, "v": 5.8 } },
    "sprite": {
     "base": "dh8d",
     "calibration": "needs photo calibration"
@@ -2093,6 +2100,7 @@
     "gravel",
     "grass"
    ],
+   "stand": { "noseGearM": 1.6, "doorStationsM": [], "fuelCouplingM": { "u": 2.6, "v": 2.4 } },
    "sprite": {
     "base": "c172",
     "calibration": "needs photo calibration"
@@ -2150,6 +2158,7 @@
     "gravel",
     "grass"
    ],
+   "stand": { "noseGearM": 2.0, "doorStationsM": [], "fuelCouplingM": { "u": 4.8, "v": 2.8 } },
    "sprite": {
     "base": "c208",
     "calibration": "needs photo calibration"
@@ -2437,6 +2446,7 @@
     "gravel",
     "grass"
    ],
+   "stand": { "noseGearM": 2.5, "doorStationsM": [], "fuelCouplingM": { "u": 6.6, "v": 3.2 } },
    "sprite": {
     "base": "b360",
     "calibration": "needs photo calibration"

@@ -16,14 +16,13 @@ import {
   type FeeLevel,
   type LedgerCategory,
   FIXTURE_KEYS,
-  TERMINAL_GRID,
   type FixtureKey,
   type Terminal,
   type TerminalGrid,
   type WeatherKind,
 } from '@shared/business';
 import { terminalIssues } from '@shared/terminalRooms';
-import { cellCount, cornerWorld, newGrid, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellCount, cellIndex, cellOf, cornerWorld, newGrid, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { isShopFixture, fixtureKey, ATC_MIN_CELLS, ZONE } from '@shared/business';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
@@ -221,9 +220,10 @@ export class Business {
     for (const t of this.terminals) for (const k of FIXTURE_KEYS) this.totals[k] += t.counts[k];
     this.reach = [];
     for (const g of this.grids) {
-      for (let cy = 0; cy < TERMINAL_GRID; cy += 3) {
-        for (let cx = 0; cx < TERMINAL_GRID; cx += 3) {
-          if (g.floor[cy * TERMINAL_GRID + cx] === 0) continue;
+      // Every third cell on the logical grid, so the sample does not shift as a building grows.
+      for (let cy = Math.ceil(g.y0 / 3) * 3; cy < g.y0 + g.h; cy += 3) {
+        for (let cx = Math.ceil(g.x0 / 3) * 3; cx < g.x0 + g.w; cx += 3) {
+          if (g.floor[cellIndex(g, cx, cy)] === 0) continue;
           const w = cornerWorld(g, cx + 0.5, cy + 0.5);
           this.reach.push(w.x, w.y);
         }
@@ -240,19 +240,17 @@ export class Business {
     let sy = 0;
     this.secureSeating = 0;
     for (const g of this.grids) {
-      for (let cy = 0; cy < TERMINAL_GRID; cy++) {
-        for (let cx = 0; cx < TERMINAL_GRID; cx++) {
-          const i = cy * TERMINAL_GRID + cx;
-          const f = g.fixture[i];
-          if (f === 0) continue;
-          const k = fixtureKey(f);
-          if (k === 'atc') {
-            const w = cornerWorld(g, cx + 0.5, cy + 0.5);
-            cells++;
-            sx += w.x;
-            sy += w.y;
-          } else if (k === 'seating' && g.zone[i] === ZONE.Secure) this.secureSeating++;
-        }
+      for (let i = 0; i < g.fixture.length; i++) {
+        const f = g.fixture[i];
+        if (f === 0) continue;
+        const k = fixtureKey(f);
+        if (k === 'atc') {
+          const c = cellOf(g, i);
+          const w = cornerWorld(g, c.x + 0.5, c.y + 0.5);
+          cells++;
+          sx += w.x;
+          sy += w.y;
+        } else if (k === 'seating' && g.zone[i] === ZONE.Secure) this.secureSeating++;
       }
     }
     this.atcCells = cells;
@@ -742,7 +740,11 @@ export class Business {
     for (const a of this.airlines) acc = foldU32(foldU32(acc, a.rotations), a.pax);
     for (const g of this.grids) {
       acc = foldU32(foldU32(acc, g.id), cellCount(g));
-      for (let i = 0; i < g.fixture.length; i++) if (g.fixture[i] !== 0) acc = foldU32(acc, i * 16 + g.fixture[i]);
+      for (let i = 0; i < g.fixture.length; i++) {
+        if (g.fixture[i] === 0) continue;
+        const c = cellOf(g, i);
+        acc = foldU32(foldU32(foldU32(acc, c.x + 65536), c.y + 65536), g.fixture[i]);
+      }
     }
     return foldU32(acc, this.weather.length);
   }
@@ -772,9 +774,16 @@ interface SavedGrid {
   vWall: string;
   leased: string;
   cost: number;
+  /** Grid bounds; saves before format 6 have a fixed 160 by 160 grid at the origin. */
+  x0?: number;
+  y0?: number;
+  w?: number;
+  h?: number;
 }
 
 const cellCountOf = (g: TerminalGrid): number => cellCount(g);
+/** Size of the fixed grid that saves before format 6 used. */
+const LEGACY_GRID = 160;
 
 const SLOT_FIRST = 6 * 60;
 const SLOT_LAST = 21 * 60;
@@ -791,11 +800,16 @@ function fitSlots(old: number[], rotations: number, id: number): number[] {
 }
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
   const g = newGrid(sg.id, sg.ox, sg.oy, sg.headingDeg);
+  const x0 = sg.x0 ?? 0;
+  const y0 = sg.y0 ?? 0;
+  const w = sg.w ?? LEGACY_GRID;
+  const h = sg.h ?? LEGACY_GRID;
+  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
   unpackInto(sg.floor, g.floor, Uint8Array);
   if (sg.zone) unpackInto(sg.zone, g.zone, Uint8Array);
   unpackInto(sg.fixture, g.fixture, Uint8Array);

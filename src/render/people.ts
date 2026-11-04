@@ -1,5 +1,5 @@
-import { FIXTURE_KEYS, TERMINAL_GRID, ZONE, type TerminalGrid } from '@shared/business';
-import { cornerWorld } from '@shared/terminalOps';
+import { FIXTURE_KEYS, ZONE, type TerminalGrid } from '@shared/business';
+import { cellIndex, cornerWorld } from '@shared/terminalOps';
 
 const MAX_PEOPLE = 3000;
 /** Each dot stands for this many passengers. */
@@ -68,10 +68,9 @@ export class People {
   setTerminals(grids: readonly TerminalGrid[]): void {
     this.anchors = grids.slice(0, 255).map((g) => {
       const a: Anchors = { entrance: [], checkIn: [], security: [], belt: [], seating: [], shop: [] };
-      const N = TERMINAL_GRID;
-      for (let cy = 0; cy < N; cy++) {
-        for (let cx = 0; cx < N; cx++) {
-          const i = cy * N + cx;
+      for (let cy = g.y0; cy < g.y0 + g.h; cy++) {
+        for (let cx = g.x0; cx < g.x0 + g.w; cx++) {
+          const i = cellIndex(g, cx, cy);
           if (g.floor[i] === 0) continue;
           const f = g.fixture[i];
           let list: number[] | null = null;
@@ -80,7 +79,7 @@ export class People {
           else if (f === BELT) list = a.belt;
           else if (f === SEATING) list = a.seating;
           else if (f >= SHOP_FIRST && f <= SHOP_LAST) list = a.shop;
-          else if (f === 0 && (g.zone[i] === ZONE.Public || g.zone[i] === ZONE.None) && (cx % 4 === 0) && (cy % 4 === 0)) list = a.entrance;
+          else if (f === 0 && (g.zone[i] === ZONE.Public || g.zone[i] === ZONE.None) && (((cx % 4) + 4) % 4 === 0) && (((cy % 4) + 4) % 4 === 0)) list = a.entrance;
           if (list) {
             const w = cornerWorld(g, cx + 0.5, cy + 0.5);
             list.push(w.x, w.y);

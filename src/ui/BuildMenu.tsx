@@ -133,8 +133,7 @@ export const CATEGORIES: Category[] = [
       {
         id: 'commercial',
         items: [
-          { id: 'remotePushback', thumb: 'stand', icon: 'stands', run: (s) => s.set({ tool: 'stands', standType: 'remotePushback' }), active: (s) => s.tool === 'stands' && s.standType === 'remotePushback' },
-          { id: 'remoteThrough', thumb: 'stand', icon: 'stands', run: (s) => s.set({ tool: 'stands', standType: 'remoteThrough' }), active: (s) => s.tool === 'stands' && s.standType === 'remoteThrough' },
+          { id: 'remote', thumb: 'stand', icon: 'stands', run: (s) => s.set({ tool: 'stands', standType: 'remote' }), active: (s) => s.tool === 'stands' && s.standType === 'remote' },
           { id: 'contact', thumb: 'stand', icon: 'stands', run: (s) => s.set({ tool: 'stands', standType: 'contact' }), active: (s) => s.tool === 'stands' && s.standType === 'contact' },
         ],
       },

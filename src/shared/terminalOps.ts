@@ -1,3 +1,4 @@
+import { apronContains } from '@shared/apronGeom';
 import { BUSINESS } from '@data/index';
 import type { AirfieldPayload } from './airfield';
 import {
@@ -5,7 +6,7 @@ import {
   FIXTURE_KEYS,
   FLOOR,
   TERMINAL_CELL_M,
-  TERMINAL_GRID,
+  TERMINAL_CHUNK,
   TERMINAL_MARGIN,
   WALL,
   FIXTURE_ZONES,
@@ -15,12 +16,13 @@ import {
   type Terminal,
   type TerminalGrid,
 } from './business';
-import { distToSegment, pointInPolygon, type Pt } from './geom';
+import { distToSegment, type Pt } from './geom';
 import { cosLut, sinLut } from './trig';
 import { checkPoint, type BuildContext, type Problem } from './validate';
 
-const N = TERMINAL_GRID;
 const CELL = TERMINAL_CELL_M;
+/** A wall edit spans at most this many edges, a guard against runaway input only. */
+const MAX_WALL_EDGES = 2000;
 const DEG = Math.PI / 180;
 
 export type TerminalOp = 'foundation' | 'floor' | 'erase' | 'wall' | 'removeWall' | 'fixture' | 'zone';
@@ -44,20 +46,69 @@ export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: numb
   return { ux, uy, vx: -uy, vy: ux };
 }
 
+/** An empty building. Its grid is allocated as edits reach into it. */
 export function newGrid(id: number, ox: number, oy: number, headingDeg: number): TerminalGrid {
-  return {
-    id,
-    ox,
-    oy,
-    headingDeg,
-    floor: new Uint8Array(N * N),
-    zone: new Uint8Array(N * N),
-    fixture: new Uint8Array(N * N),
-    hWall: new Uint8Array((N + 1) * N),
-    vWall: new Uint8Array(N * (N + 1)),
-    leased: new Uint8Array(N * N),
-    cost: 0,
+  return { id, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
+}
+
+/** Array index of a logical cell, or -1 outside the grid. */
+export function cellIndex(g: TerminalGrid, x: number, y: number): number {
+  const ax = x - g.x0;
+  const ay = y - g.y0;
+  return ax < 0 || ay < 0 || ax >= g.w || ay >= g.h ? -1 : ay * g.w + ax;
+}
+
+/** Index of the horizontal edge above logical cell (x, y), or -1 outside. y may equal the bottom row + 1. */
+export function hEdgeIndex(g: TerminalGrid, x: number, y: number): number {
+  const ax = x - g.x0;
+  const ay = y - g.y0;
+  return ax < 0 || ay < 0 || ax >= g.w || ay > g.h ? -1 : ay * g.w + ax;
+}
+
+/** Index of the vertical edge left of logical cell (x, y), or -1 outside. x may equal the right column + 1. */
+export function vEdgeIndex(g: TerminalGrid, x: number, y: number): number {
+  const ax = x - g.x0;
+  const ay = y - g.y0;
+  return ax < 0 || ay < 0 || ax > g.w || ay >= g.h ? -1 : ay * (g.w + 1) + ax;
+}
+
+/** Logical cell of an array index. */
+export const cellOf = (g: TerminalGrid, i: number): { x: number; y: number } => ({ x: g.x0 + (i % g.w), y: g.y0 + Math.floor(i / g.w) });
+
+/**
+ * Grows the grid to cover logical cells [x0, x1) by [y0, y1), in whole 64 m chunks aligned to the
+ * logical origin. Existing cells keep their logical coordinates.
+ */
+export function ensureCells(g: TerminalGrid, x0: number, y0: number, x1: number, y1: number): void {
+  const C = TERMINAL_CHUNK;
+  const nx0 = Math.floor(Math.min(x0, g.w > 0 ? g.x0 : x0) / C) * C;
+  const ny0 = Math.floor(Math.min(y0, g.h > 0 ? g.y0 : y0) / C) * C;
+  const nx1 = Math.ceil(Math.max(x1, g.w > 0 ? g.x0 + g.w : x1) / C) * C;
+  const ny1 = Math.ceil(Math.max(y1, g.h > 0 ? g.y0 + g.h : y1) / C) * C;
+  if (g.w > 0 && nx0 === g.x0 && ny0 === g.y0 && nx1 === g.x0 + g.w && ny1 === g.y0 + g.h) return;
+  const w = nx1 - nx0;
+  const h = ny1 - ny0;
+  const dx = g.x0 - nx0;
+  const dy = g.y0 - ny0;
+  const cells = (src: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < g.h; y++) out.set(src.subarray(y * g.w, (y + 1) * g.w), (y + dy) * w + dx);
+    return out;
   };
+  const hEdges = new Uint8Array((h + 1) * w);
+  for (let y = 0; y <= g.h && g.w > 0; y++) hEdges.set(g.hWall.subarray(y * g.w, (y + 1) * g.w), (y + dy) * w + dx);
+  const vEdges = new Uint8Array(h * (w + 1));
+  for (let y = 0; y < g.h; y++) vEdges.set(g.vWall.subarray(y * (g.w + 1), (y + 1) * (g.w + 1)), (y + dy) * (w + 1) + dx);
+  g.floor = cells(g.floor);
+  g.zone = cells(g.zone);
+  g.fixture = cells(g.fixture);
+  g.leased = cells(g.leased);
+  g.hWall = hEdges;
+  g.vWall = vEdges;
+  g.x0 = nx0;
+  g.y0 = ny0;
+  g.w = w;
+  g.h = h;
 }
 
 /** Grid origin so that cell (cx, cy) has its corner at the world point (px, py). */
@@ -83,6 +134,23 @@ export function worldToCell(g: Pick<TerminalGrid, 'ox' | 'oy' | 'headingDeg'>, x
 /** Corners of a cell rectangle in world space. */
 export function rectWorld(g: Pick<TerminalGrid, 'ox' | 'oy' | 'headingDeg'>, x0: number, y0: number, x1: number, y1: number): Pt[] {
   return [cornerWorld(g, x0, y0), cornerWorld(g, x1, y0), cornerWorld(g, x1, y1), cornerWorld(g, x0, y1)];
+}
+
+/** Inclusive logical bounds of the floor cells, or null for a building with no floor. */
+export function floorBounds(g: TerminalGrid): { x0: number; y0: number; x1: number; y1: number } | null {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < g.floor.length; i++) {
+    if (g.floor[i] === 0) continue;
+    const c = cellOf(g, i);
+    if (c.x < x0) x0 = c.x;
+    if (c.y < y0) y0 = c.y;
+    if (c.x > x1) x1 = c.x;
+    if (c.y > y1) y1 = c.y;
+  }
+  return x1 < x0 ? null : { x0, y0, x1, y1 };
 }
 
 export function cellCount(g: TerminalGrid): number {
@@ -126,7 +194,7 @@ export interface Plan {
 
 /** True when a world point is clear of runways, taxiways and aprons, so a foundation may sit there. */
 function clearOfPavement(af: AirfieldPayload, x: number, y: number): boolean {
-  for (const a of af.aprons) if (pointInPolygon(x, y, a.polygon)) return false;
+  for (const a of af.aprons) if (apronContains(a, x, y)) return false;
   for (const r of af.runways) if (distToSegment(x, y, r.x1, r.y1, r.x2, r.y2) < r.widthM / 2 + r.shoulderM + 12) return false;
   for (const t of af.taxiways) {
     for (let i = 1; i < t.points.length; i++) if (distToSegment(x, y, t.points[i - 1].x, t.points[i - 1].y, t.points[i].x, t.points[i].y) < t.widthM / 2 + 4) return false;
@@ -138,14 +206,21 @@ function otherHasCell(others: readonly TerminalGrid[], self: number, x: number, 
   for (const o of others) {
     if (o.id === self) continue;
     const c = worldToCell(o, x, y);
-    const cx = Math.floor(c.cx);
-    const cy = Math.floor(c.cy);
-    if (cx >= 0 && cy >= 0 && cx < N && cy < N && o.floor[cy * N + cx] > 0) return true;
+    if (hasFloor(o, Math.floor(c.cx), Math.floor(c.cy))) return true;
   }
   return false;
 }
 
-const hasFloor = (g: TerminalGrid, cx: number, cy: number): boolean => cx >= 0 && cy >= 0 && cx < N && cy < N && g.floor[cy * N + cx] > 0;
+const hasFloor = (g: TerminalGrid, cx: number, cy: number): boolean => {
+  const i = cellIndex(g, cx, cy);
+  return i >= 0 && g.floor[i] > 0;
+};
+
+/** Per cell layers of a logical cell, all zero outside the grid. */
+function cellAt(g: TerminalGrid, x: number, y: number): { floor: number; zone: number; fixture: number } {
+  const i = cellIndex(g, x, y);
+  return i < 0 ? { floor: 0, zone: 0, fixture: 0 } : { floor: g.floor[i], zone: g.zone[i], fixture: g.fixture[i] };
+}
 
 /**
  * Works out what an edit would cost and whether it is allowed, without changing the grid.
@@ -163,14 +238,15 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
 
   const area = e.op === 'foundation' || e.op === 'floor' || e.op === 'erase' || e.op === 'fixture' || e.op === 'zone';
   if (area) {
-    if (x0 < 0 || y0 < 0 || x1 > N || y1 > N || x1 <= x0 || y1 <= y0) return none({ code: 'terminalBounds' });
-    if ((x1 - x0) * (y1 - y0) > 4000) return none({ code: 'terminalTooLarge' });
+    if (x1 <= x0 || y1 <= y0) return none({ code: 'terminalBounds' });
     let blocked: Problem | null = null;
+    // Cells are written by logical coordinates, after the grid has grown to cover the edit.
+    const at = (cx: number, cy: number): number => cellIndex(g, cx, cy);
     for (let cy = y0; cy < y1; cy++) {
       for (let cx = x0; cx < x1; cx++) {
-        const i = cy * N + cx;
+        const cur = cellAt(g, cx, cy);
         if (e.op === 'foundation') {
-          if (g.floor[i] > 0) continue;
+          if (cur.floor > 0) continue;
           const c = cornerWorld(g, cx + 0.5, cy + 0.5);
           const site = checkPoint(env.ctx, c.x, c.y);
           if (site) {
@@ -187,40 +263,42 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
           }
           cost += T.foundationPerCell;
           writes.push(() => {
-            g.floor[i] = FLOOR.Concrete;
+            g.floor[at(cx, cy)] = FLOOR.Concrete;
           });
         } else if (e.op === 'floor') {
-          if (g.floor[i] === 0 || g.floor[i] === e.variant) continue;
+          if (cur.floor === 0 || cur.floor === e.variant) continue;
           cost += e.variant === FLOOR.Tile ? T.tilePerCell : e.variant === FLOOR.Carpet ? T.carpetPerCell : 0;
           writes.push(() => {
-            g.floor[i] = e.variant;
+            g.floor[at(cx, cy)] = e.variant;
           });
         } else if (e.op === 'fixture') {
-          if (g.floor[i] === 0 || g.fixture[i] !== 0) continue;
+          if (cur.floor === 0 || cur.fixture !== 0) continue;
           const allowed = FIXTURE_ZONES[fixtureKey(e.variant)] ?? [];
-          if (g.zone[i] !== 0 && !allowed.includes(g.zone[i])) {
+          if (cur.zone !== 0 && !allowed.includes(cur.zone)) {
             blocked = blocked ?? { code: 'wrongZone', args: {} };
             continue;
           }
           cost += FIXTURE_COST(e.variant);
           writes.push(() => {
+            const i = at(cx, cy);
             g.fixture[i] = e.variant;
             g.leased[i] = 0;
             if (g.zone[i] === 0) g.zone[i] = allowed[0] ?? 0;
           });
         } else if (e.op === 'zone') {
-          if (g.floor[i] === 0 || g.zone[i] === e.variant) continue;
-          if (g.fixture[i] !== 0 && e.variant !== 0 && !(FIXTURE_ZONES[fixtureKey(g.fixture[i])] ?? []).includes(e.variant)) {
+          if (cur.floor === 0 || cur.zone === e.variant) continue;
+          if (cur.fixture !== 0 && e.variant !== 0 && !(FIXTURE_ZONES[fixtureKey(cur.fixture)] ?? []).includes(e.variant)) {
             blocked = blocked ?? { code: 'zoneHasFixture', args: {} };
             continue;
           }
           writes.push(() => {
-            g.zone[i] = e.variant;
+            g.zone[at(cx, cy)] = e.variant;
           });
         } else {
           // Erase clears floor, fixture and any wall that no longer has a floor beside it.
-          if (g.floor[i] === 0 && g.fixture[i] === 0) continue;
+          if (cur.floor === 0 && cur.fixture === 0) continue;
           writes.push(() => {
+            const i = at(cx, cy);
             g.floor[i] = 0;
             g.zone[i] = 0;
             g.fixture[i] = 0;
@@ -239,6 +317,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       cost,
       changes: writes.length,
       apply: () => {
+        if (e.op === 'foundation') ensureCells(g, x0, y0, x1, y1);
         for (const w of writes) w();
         if (e.op === 'erase') pruneWalls(g);
         g.cost += cost;
@@ -252,34 +331,33 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
   const horizontal = e.y0 === e.y1;
   const vertical = e.x0 === e.x1;
   if (horizontal === vertical) return none({ code: 'wallStraight' });
-  if (horizontal && (e.y0 < 0 || e.y0 > N || x0 < 0 || x1 > N)) return none({ code: 'terminalBounds' });
-  if (vertical && (e.x0 < 0 || e.x0 > N || y0 < 0 || y1 > N)) return none({ code: 'terminalBounds' });
-  if (x1 - x0 + (y1 - y0) > 200) return none({ code: 'terminalTooLarge' });
+  if (x1 - x0 + (y1 - y0) > MAX_WALL_EDGES) return none({ code: 'terminalTooLarge' });
   const type = e.op === 'removeWall' ? WALL.None : e.variant;
   if (e.op === 'wall' && type !== WALL.Wall && type !== WALL.Glass && type !== WALL.Door) return none({ code: 'nothingThere' });
   const edgeCost = type === WALL.Wall ? T.wallPerEdge : type === WALL.Glass ? T.glassPerEdge : type === WALL.Door ? T.doorPerEdge : 0;
   const count = horizontal ? x1 - x0 : y1 - y0;
   for (let k = 0; k < count; k++) {
-    let arr: Uint8Array;
+    // A wall only sits next to floor, so its edge is always inside the grid.
     let idx: number;
     let beside: boolean;
     if (horizontal) {
       const x = x0 + k;
-      arr = g.hWall;
-      idx = e.y0 * N + x;
+      idx = hEdgeIndex(g, x, e.y0);
       beside = hasFloor(g, x, e.y0 - 1) || hasFloor(g, x, e.y0);
     } else {
       const y = y0 + k;
-      arr = g.vWall;
-      idx = y * (N + 1) + e.x0;
+      idx = vEdgeIndex(g, e.x0, y);
       beside = hasFloor(g, e.x0 - 1, y) || hasFloor(g, e.x0, y);
     }
+    if (idx < 0) continue;
+    const arr = horizontal ? g.hWall : g.vWall;
     if (arr[idx] === type) continue;
     if (type !== WALL.None && !beside) continue;
     if (type === WALL.None && arr[idx] === 0) continue;
     cost += edgeCost;
+    const at = idx;
     writes.push(() => {
-      arr[idx] = type;
+      arr[at] = type;
     });
   }
   if (writes.length === 0) return none({ code: type === WALL.None ? 'nothingThere' : 'terminalNeedsFoundation' });
@@ -296,25 +374,22 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
 
 /** Removes wall edges that have no floor on either side. */
 export function pruneWalls(g: TerminalGrid): void {
-  for (let y = 0; y <= N; y++) {
-    for (let x = 0; x < N; x++) {
-      const i = y * N + x;
+  for (let y = g.y0; y <= g.y0 + g.h; y++) {
+    for (let x = g.x0; x < g.x0 + g.w; x++) {
+      const i = hEdgeIndex(g, x, y);
       if (g.hWall[i] !== 0 && !hasFloor(g, x, y - 1) && !hasFloor(g, x, y)) g.hWall[i] = 0;
     }
   }
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x <= N; x++) {
-      const i = y * (N + 1) + x;
+  for (let y = g.y0; y < g.y0 + g.h; y++) {
+    for (let x = g.x0; x <= g.x0 + g.w; x++) {
+      const i = vEdgeIndex(g, x, y);
       if (g.vWall[i] !== 0 && !hasFloor(g, x - 1, y) && !hasFloor(g, x, y)) g.vWall[i] = 0;
     }
   }
 }
 
-/** Cell under a world point, or null when it is outside the grid. */
-export function cellAtWorld(g: TerminalGrid, x: number, y: number): { cx: number; cy: number } | null {
+/** Logical cell under a world point. Grids grow, so every point has a cell. */
+export function cellAtWorld(g: TerminalGrid, x: number, y: number): { cx: number; cy: number } {
   const c = worldToCell(g, x, y);
-  const cx = Math.floor(c.cx);
-  const cy = Math.floor(c.cy);
-  if (cx < 0 || cy < 0 || cx >= N || cy >= N) return null;
-  return { cx, cy };
+  return { cx: Math.floor(c.cx), cy: Math.floor(c.cy) };
 }

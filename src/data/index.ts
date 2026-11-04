@@ -25,7 +25,10 @@ export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
 export const SURFACE_SPEC: SurfacesData['surfaces'] = SURFACE_DATA.surfaces;
 /** Marking palette and dimensions. */
 export const PAINT: PaintData = paintSchema.parse(paintJson);
-export const STAND_SIZES: StandSizesData['sizes'] = standSizesSchema.parse(standSizesJson).sizes;
+const STAND_DATA: StandSizesData = standSizesSchema.parse(standSizesJson);
+export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
+/** Stand marking dimensions. */
+export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
 
 export interface GseSpec {
   id: string;

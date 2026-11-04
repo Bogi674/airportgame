@@ -1,4 +1,4 @@
-import { union, type MultiPolygon, type Polygon as ClipPolygon, type Ring } from 'polygon-clipping';
+import { union, type MultiPolygon, type Polygon as ClipPolygon, type Ring } from '../clip';
 import { AIRFIELD, PAINT, SURFACE_SPEC } from '@data/index';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '../trig';
 import { codeIndex, type CodeLetter, type Surface, type TaxiKind } from '../airfield';

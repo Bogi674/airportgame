@@ -1,8 +1,11 @@
 import { AIRFIELD, SURFACE_SPEC } from '@data/index';
 import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
 import { SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
-import { formatMoney } from './format';
-import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type Runway, type Surface, type Taxiway } from '@shared/airfield';
+import { formatMoney, formatNumber } from './format';
+import { apronArea } from '@shared/apronGeom';
+import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PushbackDir, type Runway, type Surface, type Taxiway } from '@shared/airfield';
+import { AIRCRAFT } from '@data/aircraft';
+import { standRefusal } from '@shared/standSizes';
 import { ClassHelp } from './ClassHelp';
 import type { Command } from '@sim/commands';
 import { useState } from 'preact/hooks';
@@ -297,9 +300,10 @@ export function ObjectPanel({ send }: Props) {
   } else if (kind === 'apron') {
     const x = af.aprons.find((o) => o.id === id);
     if (!x) return null;
-    name = String(x.id);
+    name = x.name ?? String(x.id);
     body = (
       <>
+        <div data-testid="apron-area">{tFormat('inspector.apronArea', { area: formatNumber(Math.round(apronArea(x))) })}</div>
         <div>{tFormat('inspector.pcr', { n: x.pcr, surface: tDynamic(`surface.${x.surface}`) })}</div>
         <div>{tFormat('inspector.condition', { n: Math.round(x.condition) })}</div>
       </>
@@ -311,8 +315,24 @@ export function ObjectPanel({ send }: Props) {
     body = (
       <>
         <div>
-          {tFormat('inspector.standInfo', { type: tDynamic(`standType.${x.type}`), code: x.code, surface: tDynamic(`surface.${x.surface}`), pb: x.pushback })}
+          {tFormat('inspector.standInfo', { type: tDynamic(`standType.${x.type}`), size: tDynamic(`standSize.${x.size}`), surface: tDynamic(`surface.${x.surface}`) })}
         </div>
+        {/* Types this stand cannot take, with the reason (docs/DESIGN_REVISION_2.md section 3.1). */}
+        {AIRCRAFT.filter((a) => standRefusal(x, a) === 'surface').length > 0 && (
+          <div style="color:var(--muted);font-size:11px" data-testid="stand-refused">
+            {tFormat('inspector.standSurfaceRefused', { types: AIRCRAFT.filter((a) => standRefusal(x, a) === 'surface').map((a) => a.icaoType).join(', ') })}
+          </div>
+        )}
+        <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
+          {t('inspector.pushback')}
+          <select data-testid="stand-pushback" value={x.pushback} onChange={(e) => send({ type: 'setStandProps', id: x.id, pushback: (e.target as HTMLSelectElement).value as PushbackDir })}>
+            {(['auto', 'left', 'right'] as const).map((d) => (
+              <option key={d} value={d}>
+                {tDynamic(`pushback.${d}`)}
+              </option>
+            ))}
+          </select>
+        </label>
         {x.type === 'contact' && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
       </>
     );

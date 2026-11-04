@@ -13,9 +13,8 @@ export type GhostShape =
 /** Objects drawn the way they will look once built, so the preview matches the result. */
 export interface GhostPreview {
   runway?: Runway;
+  /** New stands, drawn with their forks and markings on the existing taxiways. */
   stands?: Stand[];
-  /** Lead-in lines and lead-on curves of the new stands. */
-  leadIns?: Pt[][];
 }
 
 export interface Ghost {
@@ -24,6 +23,8 @@ export interface Ghost {
   preview?: GhostPreview;
   /** Optional text pinned near a point, for readouts such as length and heading. */
   label?: { x: number; y: number; text: string };
+  /** Small readouts pinned to points, such as edge lengths. */
+  tags?: { x: number; y: number; text: string }[];
   /** Snap tooltip next to the cursor, such as "Snap to J1". */
   tip?: { x: number; y: number; text: string };
   /** Snap tone: the new arm in snapping cyan instead of the default preview blue. */

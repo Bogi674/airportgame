@@ -1,4 +1,4 @@
-import type { Approach, CodeLetter, StandType, Surface } from '@shared/airfield';
+import type { Approach, CodeLetter, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
 import type { FeeLevel } from '@shared/business';
 import type { TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -17,14 +17,16 @@ export type Command =
   | { type: 'buildRapidExit'; runwayId: number; distM: number; side: 'left' | 'right'; angleDeg: 30 | 45 | 90; code: CodeLetter; surface: Surface; tier: number }
   | { type: 'buildParallelTaxiway'; runwayId: number; side: 'left' | 'right'; offsetM: number; code: CodeLetter; connectors: number; surface: Surface; tier: number }
   | { type: 'buildApron'; polygon: Pt[]; surface: Surface; tier: number }
-  | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; code: CodeLetter }
+  /** Takes a piece out of an apron: the one given, or every apron the piece overlaps. */
+  | { type: 'cutApron'; polygon: Pt[]; id?: number }
+  | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; size: StandSize }
   | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number }
   | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
   | { type: 'reclassTaxiway'; id: number; code: CodeLetter; surface: Surface; tier: number }
   | { type: 'reverseTaxiway'; id: number }
   | { type: 'buyGse'; kind: string; count: number }
-  | { type: 'setStandProps'; id: number; closed?: boolean; usage?: 'any' | 'commercial' | 'ga' }
+  | { type: 'setStandProps'; id: number; closed?: boolean; usage?: 'any' | 'commercial' | 'ga'; pushback?: PushbackDir }
   | { type: 'assignStand'; flight: number; standId: number }
   | { type: 'cancelFlight'; flight: number }
   | { type: 'setAutoStands'; on: boolean }

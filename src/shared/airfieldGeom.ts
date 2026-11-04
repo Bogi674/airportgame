@@ -1,5 +1,6 @@
+import { apronContains } from '@shared/apronGeom';
 import { compassVector, type AirfieldPayload, type Runway } from './airfield';
-import { closestOnSegment, distToSegment, pointInPolygon, type Pt } from './geom';
+import { closestOnSegment, distToSegment, type Pt } from './geom';
 import { cosLut, sinLut } from './trig';
 
 const round05 = (v: number): number => Math.round(v * 2) / 2;
@@ -76,7 +77,7 @@ export function pickObject(af: AirfieldPayload, x: number, y: number, tol: numbe
     for (let i = 1; i < t.points.length; i++) d = Math.min(d, distToSegment(x, y, t.points[i - 1].x, t.points[i - 1].y, t.points[i].x, t.points[i].y));
     consider('taxiway', t.id, Math.max(0, d - t.widthM / 2), -400);
   }
-  for (const a of af.aprons) if (pointInPolygon(x, y, a.polygon)) consider('apron', a.id, 0, 0);
+  for (const a of af.aprons) if (apronContains(a, x, y)) consider('apron', a.id, 0, 0);
   return best;
 }
 

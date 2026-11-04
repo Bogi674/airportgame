@@ -20,7 +20,14 @@
       "forkRadiusM": 16.5,
       "wingtipClearanceM": 3.0,
       "noseClearanceM": null,
-      "mergeable": false
+      "mergeable": false,
+      "cost": {
+        "contact": 8000,
+        "remote": 5000
+      },
+      "stopBarGapM": 3.0,
+      "jetBridges": 0,
+      "hydrants": false
     },
     "medium": {
       "codes": [
@@ -39,7 +46,14 @@
       "forkRadiusM": 24.5,
       "wingtipClearanceM": 4.5,
       "noseClearanceM": 6.0,
-      "mergeable": false
+      "mergeable": false,
+      "cost": {
+        "contact": 120000,
+        "remote": 40000
+      },
+      "stopBarGapM": 3.5,
+      "jetBridges": 1,
+      "hydrants": false
     },
     "large": {
       "codes": [
@@ -56,7 +70,14 @@
       "forkRadiusM": 42.5,
       "wingtipClearanceM": 7.5,
       "noseClearanceM": 6.0,
-      "mergeable": false
+      "mergeable": false,
+      "cost": {
+        "contact": 220000,
+        "remote": 70000
+      },
+      "stopBarGapM": 5.0,
+      "jetBridges": 2,
+      "hydrants": true
     },
     "xl": {
       "codes": [
@@ -72,7 +93,47 @@
       "forkRadiusM": 50.5,
       "wingtipClearanceM": 7.5,
       "noseClearanceM": 6.0,
-      "mergeable": true
+      "mergeable": true,
+      "cost": {
+        "contact": 300000,
+        "remote": 100000
+      },
+      "stopBarGapM": 5.0,
+      "jetBridges": 2,
+      "hydrants": true
     }
+  },
+  "markings": {
+    "note": "Contact and small stand markings (docs/DESIGN_REVISION_2.md sections 3.3 to 3.5), from fig4_stand_data.py and fig5.py.",
+    "funnelSideM": 4.5,
+    "funnelNoseInsetM": 5,
+    "funnelStartM": 2,
+    "funnelStepM": 0.5,
+    "funnelClearM": 3,
+    "boundaryExtendM": 12,
+    "cornerInsetM": 1,
+    "serviceRoadM": 12,
+    "roadEdgeInsetM": 0.4,
+    "roadArrowAt": 0.3,
+    "cabLengthM": 3.5,
+    "cabWidthM": 4,
+    "tunnelWidthM": 3.6,
+    "linkWidthM": 3.2,
+    "rotundaRadiusM": 2.6,
+    "rotundaOffsetM": 6,
+    "rotundaStepM": [
+      9,
+      3
+    ],
+    "pitSizeM": 2.2,
+    "tieRingDiameterM": 2,
+    "coneSpacingM": 6,
+    "numberAt": 0.35,
+    "maxStopBars": 3,
+    "stopBarWidthM": 0.5,
+    "stopBarMinPx": 3,
+    "boundaryWidthM": 0.3,
+    "boundaryMinPx": 2.4,
+    "hatchSpacingM": 1.4
   }
 }

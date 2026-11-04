@@ -29,12 +29,6 @@ export const airfieldCodesSchema = z
     holdingDistanceM: perApproach,
     stripWidthM: perApproach,
     gradingCostPerM3: z.number().nonnegative(),
-    standCost: z.strictObject({
-      contact: z.number(),
-      remotePushback: z.number(),
-      remoteThrough: z.number(),
-      gaTieDown: z.number(),
-    }),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
     taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
   })
@@ -85,6 +79,12 @@ const standSize = z
     wingtipClearanceM: z.number().positive(),
     noseClearanceM: z.number().positive().nullable(),
     mergeable: z.boolean(),
+    /** Build cost of one stand of this size. */
+    cost: z.strictObject({ contact: z.number().nonnegative(), remote: z.number().nonnegative() }),
+    /** Spacing of the stop bars of the type groups, jet bridges on a contact stand, hydrant fuel pits. */
+    stopBarGapM: z.number().positive(),
+    jetBridges: z.number().int().nonnegative(),
+    hydrants: z.boolean(),
   })
   .refine((s) => s.widthM >= s.maxSpanM + 2 * s.wingtipClearanceM - 1, { message: 'stand width must hold the largest span plus both wingtip clearances' });
 
@@ -93,6 +93,36 @@ export const standSizesSchema = z
     version: z.literal(1),
     note: z.string(),
     sizes: z.strictObject({ small: standSize, medium: standSize, large: standSize, xl: standSize }),
+    markings: z.strictObject({
+      note: z.string(),
+      funnelSideM: z.number().positive(),
+      funnelNoseInsetM: z.number().positive(),
+      funnelStartM: z.number().positive(),
+      funnelStepM: z.number().positive(),
+      funnelClearM: z.number().positive(),
+      boundaryExtendM: z.number().positive(),
+      cornerInsetM: z.number().positive(),
+      serviceRoadM: z.number().positive(),
+      roadEdgeInsetM: z.number().positive(),
+      roadArrowAt: z.number().positive(),
+      cabLengthM: z.number().positive(),
+      cabWidthM: z.number().positive(),
+      tunnelWidthM: z.number().positive(),
+      linkWidthM: z.number().positive(),
+      rotundaRadiusM: z.number().positive(),
+      rotundaOffsetM: z.number().positive(),
+      rotundaStepM: z.tuple([z.number(), z.number()]),
+      pitSizeM: z.number().positive(),
+      tieRingDiameterM: z.number().positive(),
+      coneSpacingM: z.number().positive(),
+      numberAt: z.number().positive(),
+      maxStopBars: z.number().int().positive(),
+      stopBarWidthM: z.number().positive(),
+      stopBarMinPx: z.number().positive(),
+      boundaryWidthM: z.number().positive(),
+      boundaryMinPx: z.number().positive(),
+      hatchSpacingM: z.number().positive(),
+    }),
   })
   .refine((d) => d.sizes.small.maxSpanM < d.sizes.medium.maxSpanM && d.sizes.medium.maxSpanM < d.sizes.large.maxSpanM && d.sizes.large.maxSpanM < d.sizes.xl.maxSpanM, {
     message: 'sizes must be ordered by span',

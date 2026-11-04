@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Approach, CodeLetter, StandType, Surface } from '@shared/airfield';
+import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
@@ -28,7 +28,9 @@ interface ToolState {
   tier: number;
   approach: Approach;
   standType: StandType;
-  standCode: CodeLetter;
+  standSize: StandSize;
+  /** Apron tool: free polygon or rectangle (docs/DESIGN_REVISION_2.md section 4). */
+  apronMode: 'polygon' | 'rect';
   standCount: number;
   exitAngle: 30 | 45 | 90;
   connectors: number;
@@ -64,8 +66,9 @@ export const useToolStore = create<ToolState>((set) => ({
   surface: 'asphalt',
   tier: 1,
   approach: 'precision',
-  standType: 'remotePushback',
-  standCode: 'C',
+  standType: 'remote',
+  standSize: 'medium',
+  apronMode: 'polygon',
   standCount: 4,
   exitAngle: 30,
   connectors: 3,

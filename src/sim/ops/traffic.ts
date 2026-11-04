@@ -6,6 +6,8 @@ import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
 import { foldF64, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
+import { standRefusal } from '@shared/standSizes';
+import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
 
@@ -154,6 +156,8 @@ export class Traffic {
   private rsvCat = new Int8Array(0);
   private readonly tmpEdge = new Int32Array(MAX_ROUTE);
   private readonly tmpDir = new Int8Array(MAX_ROUTE);
+  private readonly tailEdge = new Int32Array(MAX_ROUTE);
+  private readonly tailDir = new Int8Array(MAX_ROUTE);
   private readonly pos: Scratch = { x: 0, y: 0, h: 0 };
   private readonly bits = [new Uint32Array(0)];
 
@@ -483,10 +487,8 @@ export class Traffic {
 
   private standFits(t: number, s: number): boolean {
     const st = this.af.stands[s];
-    if (codeIndex(st.code) < codeIndex(CODES_OF[t])) return false;
-    if (!AIRCRAFT[t].surfaces.includes(st.surface)) return false;
-    const light = CODES_OF[t] === 'A' || CODES_OF[t] === 'B';
-    if (st.type === 'gaTieDown' && !light) return false;
+    // Wingspan within the stand size and the stand surface on the type's list (docs/DESIGN_REVISION_2.md 3.1).
+    if (standRefusal(st, AIRCRAFT[t]) !== null) return false;
     if (st.type === 'contact' && this.hooks?.contactOk && !this.hooks.contactOk(st.x, st.y)) return false;
     return true;
   }
@@ -518,7 +520,7 @@ export class Traffic {
       if (!this.standFits(t, s) || !this.standAllows(t, s)) continue;
       const waste = codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t]);
       const light = CODES_OF[t] === 'A' || CODES_OF[t] === 'B';
-      const gaBonus = light && this.af.stands[s].type === 'gaTieDown' ? -1 : 0;
+      const gaBonus = light && this.af.stands[s].size === 'small' ? -1 : 0;
       const score = waste * 100 + gaBonus * 50 + s * 0.01;
       if (score >= bestScore) continue;
       const n = this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
@@ -1013,8 +1015,9 @@ export class Traffic {
         this.nextAcq[i] = -1;
         this.routeIdx[i] = idx + 1;
         if (st === AcState.TaxiIn && this.entryCounted[i] === 1) this.uncount(i);
-        if (st === AcState.Pushback) {
-          // Push back ends at the junction: free the stand for the next arrival and taxi under own power.
+        if (st === AcState.Pushback && this.net.edgeKind[nextE] !== EdgeKind.StandFork) {
+          // Push back runs along the lead in and a fork arc and ends on the taxilane: free the stand for the
+          // next arrival and taxi under own power.
           this.state[i] = AcState.TaxiOut;
           const sIdx = this.af.stands.findIndex((x) => x.id === this.standId[i]);
           if (sIdx >= 0 && this.standOwner[sIdx] === i) this.standOwner[sIdx] = -1;
@@ -1076,7 +1079,20 @@ export class Traffic {
     }
   }
 
-  private tryEnter(i: number, node: number, nextE: number, nextD: number): boolean {
+  /**
+   * The aircraft to wait for on a block held the other way: one of its holders that is waiting itself,
+   * so the deadlock check sees the whole cycle, else the last to enter it.
+   */
+  private blockHolder(i: number, nb: number): number {
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === i || this.waitingFor[j] < 0) continue;
+      if (this.curBlock[j] === nb || this.nextBlock[j] === nb) return j;
+    }
+    return this.blockLast[nb];
+  }
+
+    private tryEnter(i: number, node: number, nextE: number, nextD: number): boolean {
     const net = this.net;
     const ignore = this.ignoreLocks[i] > 0;
     const owner = this.nodeOwner[node];
@@ -1088,12 +1104,14 @@ export class Traffic {
     // A block the aircraft already holds (the same taxiway) needs no new reservation.
     const needsBlock = nb >= 0 && nb !== this.curBlock[i];
     if (needsBlock && this.blockCount[nb] > 0 && this.blockDir[nb] !== nextD && this.blockLast[nb] !== i && !ignore) {
-      this.waitingFor[i] = this.blockLast[nb];
+      this.waitingFor[i] = this.blockHolder(i, nb);
       return false;
     }
-    // A stand lead in is only for the aircraft that owns the stand.
-    if (net.edgeKind[nextE] === EdgeKind.StandLeadIn) {
-      const s = net.edgeStand[nextE];
+    // A stand lead in and its fork arcs are only for the aircraft that owns the stand, so an arrival
+    // waits on the taxilane and never blocks the way out of the aircraft still on the stand.
+    const leadKind = net.edgeKind[nextE];
+    if (leadKind === EdgeKind.StandLeadIn || leadKind === EdgeKind.StandFork) {
+      const s = leadKind === EdgeKind.StandLeadIn ? net.edgeStand[nextE] : net.edgeForkStand[nextE];
       if (this.standOwner[s] !== -1 && this.standOwner[s] !== i) return false;
     }
     if (this.heldNode[i] >= 0 && this.heldNode[i] !== node && this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
@@ -1111,8 +1129,32 @@ export class Traffic {
   }
 
   private pushbackClear(i: number): boolean {
-    const e = this.routeEdge[i * MAX_ROUTE];
-    const node = this.routeDir[i * MAX_ROUTE] === 1 ? this.net.edgeTo[e] : this.net.edgeFrom[e];
+    const k = i * MAX_ROUTE + this.routeIdx[i];
+    const e = this.routeEdge[k];
+    const node = this.routeDir[k] === 1 ? this.net.edgeTo[e] : this.net.edgeFrom[e];
+    if (this.net.edgeKind[e] === EdgeKind.StandFork) return this.forkPushClear(i, e, node);
+    // The fork point belongs to this stand alone and arrivals keep off its fork while the stand is taken.
+    // Before leaving the stand a fork push back needs the taxilane node at the end of its arc free, no other
+    // push back heading for it and the stretch beyond it clear, so neighbouring stands take turns.
+    const nextIdx = k + 1;
+    if (this.net.edgeKind[e] === EdgeKind.StandLeadIn && node === this.net.forkNode[this.net.edgeStand[e]] && this.routeIdx[i] + 1 < this.routeLen[i] && this.net.edgeKind[this.routeEdge[nextIdx]] === EdgeKind.StandFork) {
+      let blocker = this.forkSideBlocker(i, this.routeEdge[nextIdx]);
+      // While still on the stand the push may switch to the other arc when that side is free.
+      if (blocker >= 0 && this.af.stands[this.net.edgeStand[e]].pushback === 'auto') {
+        const other = this.net.forkEdge[this.net.edgeForkStand[this.routeEdge[nextIdx]] * 2 + 1 - this.net.edgeForkSide[this.routeEdge[nextIdx]]];
+        if (other >= 0 && this.forkSideBlocker(i, other) < 0 && this.rerouteFrom(i, nextIdx, other)) blocker = -1;
+      }
+      // The taxiway past the arc must not be held the other way, or the push would meet that traffic head on.
+      if (blocker < 0 && this.routeIdx[i] + 2 < this.routeLen[i]) {
+        const nb = this.net.edgeBlock[this.routeEdge[nextIdx + 1]];
+        if (nb >= 0 && this.blockCount[nb] > 0 && this.blockDir[nb] !== this.routeDir[nextIdx + 1] && this.blockLast[nb] !== i) blocker = this.blockHolder(i, nb);
+      }
+      if (blocker >= 0) {
+        this.waitingFor[i] = blocker;
+        return false;
+      }
+      return true;
+    }
     // Pushback goes from the stand to the junction, which is the far end of that edge in travel direction.
     const owner = this.nodeOwner[node];
     if (owner !== -1 && owner !== i) {
@@ -1126,6 +1168,95 @@ export class Traffic {
       if (s === AcState.TaxiIn || s === AcState.TaxiOut || s === AcState.Pushback) {
         if (Math.hypot(this.x[j] - this.net.nodeX[node], this.y[j] - this.net.nodeY[node]) < 28) return false;
       }
+    }
+    if (this.nodeOwner[node] !== i) {
+      this.nodeOwner[node] = i;
+      this.heldNode[i] = node;
+    }
+    return true;
+  }
+
+  /** Who keeps aircraft i from pushing along a fork arc: the owner of its taxilane node or an aircraft in the stretch, or -1. */
+  private forkSideBlocker(i: number, arc: number): number {
+    const net = this.net;
+    const end = net.edgeFrom[arc];
+    const owner = this.nodeOwner[end];
+    if (owner !== -1 && owner !== i) return owner;
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === i || this.state[j] !== AcState.Pushback) continue;
+      // Another push back on its lead in or arc toward the same taxilane node.
+      for (let q = this.routeIdx[j]; q < Math.min(this.routeLen[j], this.routeIdx[j] + 2); q++) {
+        const ej = this.routeEdge[j * MAX_ROUTE + q];
+        if (net.edgeKind[ej] === EdgeKind.StandFork && net.edgeFrom[ej] === end) return j;
+      }
+    }
+    const slot = net.edgeForkStand[arc] * 2 + net.edgeForkSide[arc];
+    return this.stretchOccupant(i, end, net.forkAwayX[slot], net.forkAwayY[slot], AIRCRAFT[this.type[i]].dimensions.wingspanM / 2);
+  }
+
+  /** Replaces the route from position k on with a push along `arc` and a route from its taxilane end to the same goal. */
+  private rerouteFrom(i: number, k: number, arc: number): boolean {
+    const base = i * MAX_ROUTE;
+    const lastE = this.routeEdge[base + this.routeLen[i] - 1];
+    const goal = this.routeDir[base + this.routeLen[i] - 1] === 1 ? this.net.edgeTo[lastE] : this.net.edgeFrom[lastE];
+    const t = this.type[i];
+    const m = this.net.route(this.net.edgeFrom[arc], goal, CODES_OF[t], ACR_OF[t], MASKS[t], this.tailEdge, this.tailDir, MAX_ROUTE);
+    if (m < 0 || k - base + 1 + m > MAX_ROUTE) return false;
+    this.routeEdge[k] = arc;
+    this.routeDir[k] = -1;
+    for (let q = 0; q < m; q++) {
+      this.routeEdge[k + 1 + q] = this.tailEdge[q];
+      this.routeDir[k + 1 + q] = this.tailDir[q];
+    }
+    this.routeLen[i] = k + 1 + m - base;
+    return true;
+  }
+
+  /** True when a ground aircraft stands or moves in the push back stretch of a stand's fork side. */
+  private forkStretchBusy(s: number, side: number): boolean {
+    const net = this.net;
+    const arc = net.forkEdge[s * 2 + side];
+    if (arc < 0) return true;
+    const node = net.edgeFrom[arc];
+    return this.stretchOccupant(-1, node, net.forkAwayX[s * 2 + side], net.forkAwayY[s * 2 + side], 20) >= 0;
+  }
+
+  /** The first ground aircraft other than i inside the 28 m stretch from a node along (ax, ay), or -1. */
+  private stretchOccupant(i: number, node: number, ax: number, ay: number, halfSpan: number): number {
+    const nx = this.net.nodeX[node];
+    const ny = this.net.nodeY[node];
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === i) continue;
+      const st = this.state[j];
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback) continue;
+      const rx = this.x[j] - nx;
+      const ry = this.y[j] - ny;
+      const along = rx * ax + ry * ay;
+      const lateral = Math.abs(-rx * ay + ry * ax);
+      if (along > 0 && along < PUSHBACK_EXTENSION_M && lateral < halfSpan + AIRCRAFT[this.type[j]].dimensions.wingspanM / 2) return j;
+    }
+    return -1;
+  }
+
+  /**
+   * Push back along a fork arc reserves the taxilane node at its end and the 28 m of taxilane beyond it
+   * in the push direction (docs/DESIGN_REVISION_2.md section 1). Aircraft waiting on the other side of
+   * the node do not block it.
+   */
+  private forkPushClear(i: number, e: number, node: number): boolean {
+    const net = this.net;
+    const owner = this.nodeOwner[node];
+    if (owner !== -1 && owner !== i) {
+      this.waitingFor[i] = owner;
+      return false;
+    }
+    const slot = net.edgeForkStand[e] * 2 + net.edgeForkSide[e];
+    const j = this.stretchOccupant(i, node, net.forkAwayX[slot], net.forkAwayY[slot], AIRCRAFT[this.type[i]].dimensions.wingspanM / 2);
+    if (j >= 0) {
+      this.waitingFor[i] = j;
+      return false;
     }
     if (this.nodeOwner[node] !== i) {
       this.nodeOwner[node] = i;
@@ -1230,7 +1361,7 @@ export class Traffic {
     }
     const hold = this.net.holds.find((h) => h.entryIdx === bestHold);
     if (!hold) return;
-    const bestN = this.net.route(from, hold.node, CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
+    const bestN = this.forkPushback(s, this.net.route(from, hold.node, CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE), hold.node, t);
     const base = i * MAX_ROUTE;
     for (let k = 0; k < bestN; k++) {
       this.routeEdge[base + k] = this.tmpEdge[k];
@@ -1259,6 +1390,33 @@ export class Traffic {
     }
     // Leave the stand free for the next arrival once the aircraft is out of the way.
     this.standOwner[s] = i;
+  }
+
+  /**
+   * Push back along a fork arc (docs/DESIGN_REVISION_2.md section 1). The planned route leaves the stand
+   * nose first along one arc; the aircraft is instead pushed tail first along the other arc, or the side
+   * the stand sets, onto the taxilane and then taxis forward from there. Rewrites tmpEdge and tmpDir and
+   * returns the new length, or the planned length when the stand has no fork.
+   */
+  private forkPushback(s: number, n: number, goal: number, t: number): number {
+    const net = this.net;
+    if (n < 2 || this.tmpEdge[0] !== net.standEdge[s] || net.edgeKind[this.tmpEdge[1]] !== EdgeKind.StandFork) return n;
+    const pref = this.af.stands[s].pushback;
+    const away = 1 - net.edgeForkSide[this.tmpEdge[1]];
+    // A set side is kept; otherwise the side away from the route, unless its stretch is taken and the other is clear.
+    let side = pref === 'left' ? 0 : pref === 'right' ? 1 : away;
+    if (pref === 'auto' && this.forkStretchBusy(s, away) && !this.forkStretchBusy(s, 1 - away)) side = 1 - away;
+    const arc = net.forkEdge[s * 2 + side];
+    if (arc < 0) return n;
+    const m = net.route(net.edgeFrom[arc], goal, CODES_OF[t], ACR_OF[t], MASKS[t], this.tailEdge, this.tailDir, MAX_ROUTE);
+    if (m < 0 || m + 2 > MAX_ROUTE) return n;
+    this.tmpEdge[1] = arc;
+    this.tmpDir[1] = -1;
+    for (let k = 0; k < m; k++) {
+      this.tmpEdge[k + 2] = this.tailEdge[k];
+      this.tmpDir[k + 2] = this.tailDir[k];
+    }
+    return m + 2;
   }
 
   /** Takeoff weight share of the flight on aircraft i, from its stage length. */

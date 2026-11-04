@@ -375,6 +375,23 @@ export class Renderer {
         this.drawMarker(sh.shape, a * sh.x + cc * sh.y + e, b * sh.x + d * sh.y + f, sh.label);
       }
     }
+    if (g.tags) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const k = this.dpr;
+      ctx.font = `bold ${11 * k}px system-ui, sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      for (const tg of g.tags) {
+        const sx = a * tg.x + cc * tg.y + e;
+        const sy = b * tg.x + d * tg.y + f;
+        const w = ctx.measureText(tg.text).width + 10 * k;
+        ctx.fillStyle = 'rgba(16,22,28,0.9)';
+        ctx.fillRect(sx - w / 2, sy - 9 * k, w, 18 * k);
+        ctx.fillStyle = '#f4f4f4';
+        ctx.fillText(tg.text, sx, sy + 0.5 * k);
+      }
+      ctx.textAlign = 'start';
+    }
     if (g.tip) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const k = this.dpr;
