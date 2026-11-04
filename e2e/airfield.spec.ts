@@ -46,7 +46,7 @@ test('builds a runway, taxiway, apron and stands, and undoes them', async ({ pag
   await expect(page.getByTestId('buy-land')).toBeVisible();
   expect((await counts()).r).toBe(0);
   await page.getByTestId('buy-land').click();
-  await expect.poll(() => page.evaluate(() => window.__store?.getState().cash ?? 0)).toBeLessThan(30_000_000);
+  await expect.poll(() => page.evaluate(() => window.__store?.getState().cash ?? 0)).toBeLessThan(120_000_000);
 
   await page.mouse.move(box.x + a.x, box.y + a.y);
   await page.mouse.down();

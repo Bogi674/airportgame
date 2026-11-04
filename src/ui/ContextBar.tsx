@@ -2,7 +2,8 @@ import { AIRFIELD } from '@data/index';
 import { APPROACHES, CODES, STAND_TYPES, SURFACES, type CodeLetter, type Surface } from '@shared/airfield';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
-import { useToolStore } from './stores/toolStore';
+import { FIXTURE_KEYS } from '@shared/business';
+import { useToolStore, type TerminalSub } from './stores/toolStore';
 import { noticeText, t, tDynamic, tFormat } from './strings';
 
 interface Props {
@@ -99,6 +100,30 @@ export function ContextBar({ send }: Props) {
             <Select label={t('opt.standType')} value={s.standType} testId="opt-standType" options={STAND_TYPES.filter((x) => x !== 'gaTieDown').map((x) => ({ v: x, text: tDynamic(`standType.${x}`) }))} onChange={(v) => s.set({ standType: v })} />
             <Select label={t('opt.code')} value={s.standCode} options={CODES.map((c) => ({ v: c, text: c }))} onChange={(v: CodeLetter) => s.set({ standCode: v })} />
             <Num label={t('opt.standCount')} value={s.standCount} min={1} max={30} onChange={(v) => s.set({ standCount: v })} />
+          </>
+        )}
+        {s.tool === 'terminal' && (
+          <>
+            {(['foundation', 'floor', 'wall', 'door', 'fixture', 'erase'] as TerminalSub[]).map((sub) => (
+              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })}>
+                {tDynamic(`terminal.sub.${sub}`)}
+              </button>
+            ))}
+            {s.tSub === 'floor' && (
+              <Select label={t('opt.floorType')} value={s.floorType} options={[1, 2, 3].map((f) => ({ v: f, text: tDynamic(`terminal.floor.${f}`) }))} onChange={(v) => s.set({ floorType: v as 1 | 2 | 3 })} />
+            )}
+            {s.tSub === 'wall' && (
+              <Select label={t('opt.wallType')} value={s.wallType} options={[1, 2].map((f) => ({ v: f, text: tDynamic(`terminal.wall.${f}`) }))} onChange={(v) => s.set({ wallType: v as 1 | 2 })} />
+            )}
+            {s.tSub === 'fixture' && (
+              <Select
+                label={t('opt.fixture')}
+                value={s.fixtureId}
+                testId="opt-fixture"
+                options={FIXTURE_KEYS.map((_, i) => ({ v: i + 1, text: tDynamic(`fixture.${i + 1}`) }))}
+                onChange={(v) => s.set({ fixtureId: v })}
+              />
+            )}
           </>
         )}
         {s.tool === 'gaBlock' && <Num label={t('opt.standCount')} value={s.gaCount} min={1} max={20} onChange={(v) => s.set({ gaCount: v })} />}

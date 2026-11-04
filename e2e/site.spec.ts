@@ -7,7 +7,7 @@ test('generates a site, buys land, and navigates with the minimap tools', async 
   await page.getByTestId('open-site').click();
   await expect(page.getByTestId('site-info')).toBeVisible();
   await expect(page.getByTestId('minimap')).toBeVisible();
-  expect(await page.getByTestId('site-info').textContent()).toContain('$30,000,000');
+  expect(await page.getByTestId('site-info').textContent()).toContain('$120,000,000');
   await page.getByTestId('sheet-close').click();
 
   // Terrain chunks bake and show real colours, not just the clear colour.
@@ -33,7 +33,7 @@ test('generates a site, buys land, and navigates with the minimap tools', async 
   if (await buy.isVisible()) {
     await buy.click();
     await expect(page.getByTestId('parcel')).toContainText('Owned');
-    expect(await page.evaluate(() => window.__store?.getState().cash)).toBeLessThan(30_000_000);
+    expect(await page.evaluate(() => window.__store?.getState().cash)).toBeLessThan(120_000_000);
   }
 
   // Compass and align view.

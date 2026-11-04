@@ -7,7 +7,7 @@ import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { Traffic } from './ops/traffic';
 import { Business } from './business/business';
-import type { LedgerCategory } from '@shared/business';
+import type { LedgerCategory, TerminalGrid } from '@shared/business';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
@@ -32,6 +32,7 @@ export class Sim {
   readonly traffic: Traffic;
   readonly business: Business;
   private businessSent = -1;
+  private gridsSent = -1;
   private businessSentTick = -1000000;
   private airfieldSent = -1;
   private networkVersion = -1;
@@ -163,17 +164,8 @@ export class Sim {
       case 'buyParcels':
         this.buyParcels(cmd.ids);
         break;
-      case 'buildTerminal':
-        this.report(this.business.buildTerminal(cmd.cx, cmd.cy, cmd.w, cmd.d, cmd.headingDeg, this.buildContext()));
-        break;
-      case 'addModule':
-        this.report(this.business.addModule(cmd.terminalId, cmd.kind, cmd.count));
-        break;
-      case 'addShop':
-        this.report(this.business.addShop(cmd.terminalId, cmd.kind));
-        break;
-      case 'removeShop':
-        this.business.removeShop(cmd.terminalId, cmd.index);
+      case 'terminalBuild':
+        this.report(this.business.terminalBuild(cmd.building, cmd.ox, cmd.oy, cmd.headingDeg, cmd.edit, this.buildContext()));
         break;
       case 'demolishTerminal':
         this.report(this.business.demolishTerminal(cmd.id));
@@ -240,6 +232,20 @@ export class Sim {
     this.businessSent = this.business.version;
     this.businessSentTick = this.tick;
     return this.business.payload(this.tick);
+  }
+
+  /** Copies of the terminal grids when they changed since the last call, otherwise null. */
+  takeTerminalGrids(): TerminalGrid[] | null {
+    if (this.business.terminalVersion === this.gridsSent) return null;
+    this.gridsSent = this.business.terminalVersion;
+    return this.business.grids.map((g) => ({
+      ...g,
+      floor: g.floor.slice(),
+      fixture: g.fixture.slice(),
+      hWall: g.hWall.slice(),
+      vWall: g.vWall.slice(),
+      leased: g.leased.slice(),
+    }));
   }
 
   /** True once per airfield change. */
@@ -314,6 +320,7 @@ export class Sim {
     this.ownershipDirty = true;
     this.airfieldSent = -1;
     this.businessSent = -1;
+    this.gridsSent = -1;
     this.pending.length = 0;
   }
 

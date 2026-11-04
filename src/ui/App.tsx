@@ -60,6 +60,7 @@ export function App() {
         onOwnership: (o) => useGameStore.getState().setOwnership(o.owner, o.cash),
         onAirfield: (m) => useGameStore.getState().setAirfield(m.airfield, m.canUndo, m.canRedo),
         onBusiness: (b) => useGameStore.getState().setBusiness(b),
+        onTerminals: (g) => useGameStore.getState().setTerminalGrids(g),
         onEvents: (list) => {
           for (const code of list) {
             const { name } = parseEvent(code);
@@ -179,11 +180,9 @@ export function App() {
     renderer?.setAirfield(store.airfield);
   }, [renderer, store.airfield]);
 
-  const terminals = store.business?.terminals;
-  const terminalKey = terminals ? JSON.stringify(terminals.map((x) => [x.id, x.cx, x.cy, x.w, x.d, x.headingDeg])) : '';
   useEffect(() => {
-    renderer?.setTerminals(terminals ?? []);
-  }, [renderer, terminalKey]);
+    renderer?.setTerminals(store.terminalGrids);
+  }, [renderer, store.terminalGrids]);
 
   useEffect(() => {
     renderer?.setSelectedParcel(store.selectedParcel);

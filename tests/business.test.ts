@@ -2,47 +2,84 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
 import { Sim } from '@sim/sim';
-import { buildTestAirport, ownedSim, run } from './helpers';
+import { originFor } from '@shared/terminalOps';
+import { buildTestAirport, buildTestTerminal, ownedSim, run } from './helpers';
 
 function airportWithTerminal() {
   const sim = ownedSim();
   sim.cash = 100_000_000;
   buildTestAirport(sim, { standsPerRow: 8 });
-  const ev = run(sim, { type: 'buildTerminal', cx: 4000, cy: 5480, w: 160, d: 40, headingDeg: 90 });
-  expect(ev).toEqual([]);
-  const id = sim.business.terminals[0].id;
-  run(sim, { type: 'addModule', terminalId: id, kind: 'checkIn', count: 10 });
-  run(sim, { type: 'addModule', terminalId: id, kind: 'security', count: 3 });
-  run(sim, { type: 'addModule', terminalId: id, kind: 'belt', count: 2 });
-  return { sim, id };
+  expect(buildTestTerminal(sim)).toEqual([]);
+  return { sim, id: sim.business.grids[0].id };
 }
 
-describe('terminal', () => {
-  it('costs by area, takes modules within its floor, and reports capacity', () => {
-    const { sim, id } = airportWithTerminal();
-    const t = sim.business.terminals[0];
-    expect(t.cost).toBe(160 * 40 * 1500);
-    expect(sim.business.depCapacity()).toBe(Math.min(10 * 30, 3 * 150));
+describe('terminal built from foundations, flooring, walls and fixtures', () => {
+  it('prices every layer, and capacity comes from the fixtures laid', () => {
+    const { sim } = airportWithTerminal();
+    const g = sim.business.grids[0];
+    const cells = 60 * 12;
+    expect(sim.business.terminals[0].cells).toBe(cells);
+    expect(sim.business.terminals[0].counts.checkIn).toBe(8);
+    expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * 150));
     expect(sim.business.arrCapacity()).toBe(2 * 260);
-    // Too many modules for the floor area.
-    run(sim, { type: 'addModule', terminalId: id, kind: 'belt', count: 50 });
-    expect(run(sim, { type: 'addModule', terminalId: id, kind: 'security', count: 50 })[0]).toBe('terminalFull');
-    expect(sim.business.terminals[0].modules.security).toBe(3);
+    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
+    const expected = cells * (2000 + 480) + 120 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
+    expect(g.cost).toBe(expected);
   });
 
-  it('refuses a terminal on an apron, on water, off owned land and too small', () => {
+  it('is custom: a different layout gives different capacity and cost', () => {
+    const a = ownedSim();
+    a.cash = 100_000_000;
+    buildTestAirport(a, { standsPerRow: 4 });
+    buildTestTerminal(a, { checkIn: 2, security: 1, belt: 1 });
+    const b = airportWithTerminal().sim;
+    expect(a.business.depCapacity()).toBeLessThan(b.business.depCapacity());
+    expect(a.business.grids[0].cost).toBeLessThan(b.business.grids[0].cost);
+  });
+
+  it('fixtures need a foundation, and erasing removes them and their walls', () => {
+    const { sim, id } = airportWithTerminal();
+    const at = (e: object) => run(sim, { type: 'terminalBuild', building: id, ox: sim.business.grids[0].ox, oy: sim.business.grids[0].oy, headingDeg: 90, edit: e as never });
+    expect(at({ op: 'fixture', x0: 10, y0: 10, x1: 12, y1: 11, variant: 1 })[0]).toBe('terminalNeedsFoundation');
+    at({ op: 'erase', x0: 42, y0: 42, x1: 50, y1: 43, variant: 0 });
+    expect(sim.business.terminals[0].counts.checkIn).toBe(0);
+    expect(sim.business.terminals[0].cells).toBe(60 * 12 - 8);
+    // Erase the whole foundation: the building goes away.
+    at({ op: 'erase', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });
+    expect(sim.business.grids).toHaveLength(0);
+  });
+
+  it('refuses a foundation on a pavement, on unowned land and across the grid edge', () => {
     const sim = ownedSim();
     sim.cash = 100_000_000;
     buildTestAirport(sim, { standsPerRow: 8 });
-    expect(run(sim, { type: 'buildTerminal', cx: 4000, cy: 5330, w: 100, d: 40, headingDeg: 90 })[0]).toBe('terminalOnPavement');
-    expect(run(sim, { type: 'buildTerminal', cx: 4000, cy: 5480, w: 10, d: 10, headingDeg: 90 })[0]).toMatch(/^terminalSize/);
+    const { ox, oy } = originFor(4000, 5330, 90);
+    expect(run(sim, { type: 'terminalBuild', building: -1, ox, oy, headingDeg: 90, edit: { op: 'foundation', x0: 40, y0: 40, x1: 50, y1: 46, variant: 0 } })[0]).toBe('terminalOnPavement');
+    const free = originFor(4000, 5600, 90);
+    expect(run(sim, { type: 'terminalBuild', building: -1, ox: free.ox, oy: free.oy, headingDeg: 90, edit: { op: 'foundation', x0: 150, y0: 40, x1: 170, y1: 50, variant: 0 } })[0]).toBe('terminalBounds');
     const poor = new Sim('GOLDEN-0001', { preset: 'flatCoastal' });
-    expect(run(poor, { type: 'buildTerminal', cx: 500, cy: 500, w: 100, d: 40, headingDeg: 0 })[0]).toMatch(/onWater|notOwned/);
+    const o2 = originFor(500, 500, 0);
+    expect(run(poor, { type: 'terminalBuild', building: -1, ox: o2.ox, oy: o2.oy, headingDeg: 0, edit: { op: 'foundation', x0: 40, y0: 40, x1: 50, y1: 50, variant: 0 } })[0]).toMatch(/onWater|notOwned/);
   });
 
-  it('contact stands need a terminal nearby', () => {
+  it('two buildings cannot share a cell', () => {
     const { sim } = airportWithTerminal();
-    expect(sim.business.hasTerminalNear(4000, 5330)).toBe(true);
+    const { ox, oy } = originFor(4000, 5450, 90);
+    expect(run(sim, { type: 'terminalBuild', building: -1, ox, oy, headingDeg: 90, edit: { op: 'foundation', x0: 40, y0: 40, x1: 46, y1: 44, variant: 0 } })[0]).toBe('terminalOverlap');
+  });
+
+  it('walls and doors are laid on grid lines and priced per edge', () => {
+    const { sim, id } = airportWithTerminal();
+    const g = sim.business.grids[0];
+    const before = sim.cash;
+    run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: { op: 'wall', x0: 60, y0: 40, x1: 60, y1: 46, variant: 2 } });
+    expect(before - sim.cash).toBe(6 * 700);
+    expect(run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: { op: 'wall', x0: 60, y0: 40, x1: 62, y1: 42, variant: 1 } })[0]).toBe('wallStraight');
+  });
+
+  it('contact stands need a terminal building nearby', () => {
+    const { sim } = airportWithTerminal();
+    expect(sim.business.hasTerminalNear(4000, 5420)).toBe(true);
     expect(sim.business.hasTerminalNear(9000, 1000)).toBe(false);
   });
 });
@@ -94,12 +131,12 @@ describe('airlines and money', () => {
     expect(sim.cash).toBe(c + 1_500_000);
   });
 
-  it('shops are rented once the rating allows', () => {
-    const { sim, id } = airportWithTerminal();
-    run(sim, { type: 'addShop', terminalId: id, kind: 'convenience' });
-    expect(sim.business.terminals[0].shops).toHaveLength(1);
-    run(sim, { type: 'removeShop', terminalId: id, index: 0 });
-    expect(sim.business.terminals[0].shops).toHaveLength(0);
+  it('shop fixtures are rented once the rating allows', () => {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    buildTestTerminal(sim, { shop: true });
+    expect(sim.business.terminals[0].counts.convenience).toBe(1);
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Command } from '@sim/commands';
 import { recordReplay } from '@sim/replay';
 import { Sim } from '@sim/sim';
+import { START_CASH } from '@shared/site';
 import { createSnapshotBuffer, createSnapshotViews, SnapHeader } from '@shared/snapshot';
 import { buildTestAirport, OPTIONS, ownedSim, run } from './helpers';
 
@@ -115,7 +116,7 @@ describe('Parcel purchase', () => {
     let owned = 0;
     for (let p = 0; p < sim.site.parcelCount; p++) owned += sim.parcelOwner[p];
     expect(owned).toBe(3);
-    expect(sim.cash).toBe(30_000_000);
+    expect(sim.cash).toBe(START_CASH);
   });
 
   it('buying deducts the price and marks the parcel owned', () => {
@@ -125,7 +126,7 @@ describe('Parcel purchase', () => {
     sim.enqueue({ type: 'buyParcel', parcelId: p });
     sim.step();
     expect(sim.parcelOwner[p]).toBe(1);
-    expect(sim.cash).toBe(30_000_000 - price);
+    expect(sim.cash).toBe(START_CASH - price);
     expect(sim.takeOwnershipDirty()).toBe(true);
     expect(sim.takeOwnershipDirty()).toBe(false);
   });
@@ -161,7 +162,7 @@ describe('Parcel purchase', () => {
     sim.enqueue({ type: 'buyParcel', parcelId: 1e9 });
     sim.enqueue({ type: 'buyParcel', parcelId: sim.site.startParcels[0] });
     sim.step();
-    expect(sim.cash).toBe(30_000_000);
+    expect(sim.cash).toBe(START_CASH);
   });
 
   it('buys several parcels at once or none', () => {
@@ -171,7 +172,7 @@ describe('Parcel purchase', () => {
     const total = ids.reduce((s, id) => s + sim.site.parcelPrice[id], 0);
     sim.enqueue({ type: 'buyParcels', ids });
     sim.step();
-    expect(sim.cash).toBe(30_000_000 - total);
+    expect(sim.cash).toBe(START_CASH - total);
     expect(ids.every((id) => sim.parcelOwner[id] === 1)).toBe(true);
     const poor = new Sim('GOLDEN-0001', OPTIONS);
     poor.cash = 1;

@@ -1,6 +1,5 @@
-import { AIRFIELD, BUSINESS } from '@data/index';
-import { MODULE_KINDS, SHOP_KINDS } from '@shared/business';
-import { formatMoney } from './format';
+import { AIRFIELD } from '@data/index';
+import { FIXTURE_KEYS } from '@shared/business';
 import { CODES, type CodeLetter, type Surface } from '@shared/airfield';
 import type { Command } from '@sim/commands';
 import { useGameStore } from './stores/gameStore';
@@ -21,46 +20,22 @@ export function ObjectPanel({ send }: Props) {
   if (kind === 'terminal') {
     const term = biz?.terminals.find((x) => x.id === id);
     if (!biz || !term) return null;
-    let used = 0;
-    for (const k of MODULE_KINDS) used += term.modules[k] * BUSINESS.modules[k].areaM2;
-    for (const sh of term.shops) used += BUSINESS.shops[sh.kind].areaM2;
+    const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k }));
     return (
-      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:290px;max-height:calc(100% - 120px);overflow:auto;padding:8px 10px;background:#10161cf2;border:1px solid #2c3a45;border-radius:6px;line-height:1.5">
+      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:#10161cf2;border:1px solid #2c3a45;border-radius:6px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
-        <div>{tFormat('terminal.size', { w: term.w, d: term.d, used: Math.round(used), total: Math.round(term.w * term.d * 0.8) })}</div>
+        <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
         <div>{tFormat('terminal.capacity', { dep: biz.depCapacity, arr: biz.arrCapacity })}</div>
-        {MODULE_KINDS.map((k) => (
-          <div key={k} style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-            <span>
-              {tDynamic(`module.${k}`)} ({formatMoney(BUSINESS.modules[k].cost)})
-            </span>
-            <span style="display:flex;gap:4px;align-items:center">
-              <button data-testid={`mod-${k}-minus`} style="padding:0 8px" onClick={() => send({ type: 'addModule', terminalId: id, kind: k, count: -1 })}>
-                −
-              </button>
-              <span data-testid={`mod-${k}`}>{term.modules[k]}</span>
-              <button data-testid={`mod-${k}-plus`} style="padding:0 8px" onClick={() => send({ type: 'addModule', terminalId: id, kind: k, count: 1 })}>
-                +
-              </button>
-            </span>
-          </div>
-        ))}
-        <div style="margin-top:6px;font-weight:600">{t('top.rating')} {Math.round(biz.rating)}</div>
-        {term.shops.map((sh, i) => (
-          <div key={i} style="display:flex;justify-content:space-between;align-items:center">
-            <span>
-              {tDynamic(`shop.${sh.kind}`)}, {sh.leased ? t('shop.leased') : t('shop.vacant')}
-            </span>
-            <button onClick={() => send({ type: 'removeShop', terminalId: id, index: i })}>{t('shop.remove')}</button>
-          </div>
-        ))}
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
-          {SHOP_KINDS.map((k) => (
-            <button key={k} data-testid={`shop-${k}`} style="font-size:11px" onClick={() => send({ type: 'addShop', terminalId: id, kind: k })}>
-              {tFormat('shop.add', { kind: tDynamic(`shop.${k}`), cost: formatMoney(BUSINESS.shops[k].cost) })}
-            </button>
+        <div>{tFormat('terminal.leased', { n: term.leased })}</div>
+        {rows
+          .filter((r) => term.counts[r.key] > 0)
+          .map((r) => (
+            <div key={r.key} style="display:flex;justify-content:space-between">
+              <span>{tDynamic(`fixture.${r.id}`)}</span>
+              <span data-testid={`count-${r.key}`}>{term.counts[r.key]}</span>
+            </div>
           ))}
-        </div>
+        <div style="margin-top:4px;color:#9fb4c4;font-size:12px">{t('inspector.terminalHint')}</div>
         <button
           data-testid="demolish"
           style="margin-top:8px"

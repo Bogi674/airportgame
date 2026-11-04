@@ -3,7 +3,7 @@ import { chunkPixelSize } from '../chunks';
 import { TerrainBaker } from '../terrain';
 import { paintAirfield } from '../markings/airfieldPaint';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
-import type { Terminal } from '@shared/business';
+import type { TerminalGrid } from '@shared/business';
 
 interface BakeScope {
   postMessage(message: FromBakeMessage, transfer: Transferable[]): void;
@@ -13,7 +13,7 @@ interface BakeScope {
 const scope = self as unknown as BakeScope;
 let terrain: TerrainBaker | null = null;
 let airfield: AirfieldPayload = EMPTY_AIRFIELD;
-let terminals: Terminal[] = [];
+let terminals: TerminalGrid[] = [];
 
 scope.onmessage = (event) => {
   const msg = event.data;

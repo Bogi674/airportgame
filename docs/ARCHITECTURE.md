@@ -64,7 +64,7 @@ The renderer interpolates positions and headings between the last two snapshots.
 
 ## 3. Time
 
-* 1 tick is 0.1 game seconds. At speed 1 the clock runs 1 game minute per real second.
+* 1 tick is 0.1 game seconds. At speed 1 one game hour takes 20 real seconds (3 game minutes per real second, 1800 ticks per second).
 * Cadences: aircraft and vehicles every tick, people cohorts every 5 ticks, queues and service nodes every 10, baggage and turnaround tasks every 10, ATC sequencing every 20, congestion costs every 50, market, tenants and finance once per game day, events every game hour.
 * If the worker falls behind it drops snapshots, never ticks, and reports `tickBacklog`. Over 50 ticks of backlog, speed caps automatically and the UI says so.
 
@@ -216,4 +216,7 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-03: Every cash change goes through `Sim.book(category, amount)`, which keeps the daily ledger. The daily close runs at midnight and the game starts at 06:00.
 * 2026-11-03: Saves are the full dynamic state as JSON with base64 typed arrays, gzip in the browser. The site is regenerated from the seed. Determinism test: 5 000 ticks, save, load, 5 000 more equals 10 000 uninterrupted.
 * 2026-11-03: Test traffic commands (`setTestTraffic`, `testArrival`) stay as scaffolding for tests and the stress tool, real flights come from airline contracts.
+* 2026-11-04: Terminals are player built, not prefabs. Each building has a 160 by 160 cell grid (2 m cells) with an origin and a heading, and layers for floor, fixtures, horizontal and vertical wall edges and shop leases. `shared/terminalOps.ts` holds the edit rules and prices, and both the sim and the UI previews call it, so a preview is red exactly when the sim would refuse. Capacity comes from the fixtures laid: check in and security set departures, belts set arrivals.
+* 2026-11-04: At speed 1 one game hour takes 20 real seconds (1800 ticks per second). Starting cash is 120 million.
+* 2026-11-04: Taxiway markings are one continuous centerline cut only where it would enter a runway, and mitred edge lines that stop where another pavement opens (junctions, runways, aprons), found by sampling along the line.
 

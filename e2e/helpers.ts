@@ -33,18 +33,23 @@ export async function playSmallAirport(page: Page): Promise<void> {
     return list.length;
   });
   expect(bought).toBeGreaterThan(3);
-  await expect.poll(() => page.evaluate(() => window.__store?.getState().cash ?? 0)).toBeLessThan(30_000_000);
+  await expect.poll(() => page.evaluate(() => window.__store?.getState().cash ?? 0)).toBeLessThan(120_000_000);
 
   const send = (cmd: unknown) => page.evaluate((c) => window.__send?.(c), cmd);
   await send({ type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2600, code: 'C', approach: 'precision', surface: 'asphalt', tier: 1 });
   await send({ type: 'buildParallelTaxiway', runwayId: 1, side: 'right', offsetM: 190, code: 'C', connectors: 4, surface: 'asphalt', tier: 1 });
   await send({ type: 'buildApron', polygon: [{ x: 3800, y: 5260 }, { x: 4300, y: 5260 }, { x: 4300, y: 5400 }, { x: 3800, y: 5400 }], surface: 'concrete', tier: 1 });
   await send({ type: 'buildStands', x: 4250, y: 5330, headingDeg: 180, count: 6, spacingM: 45, standType: 'remotePushback', code: 'C' });
-  await send({ type: 'buildTerminal', cx: 4050, cy: 5480, w: 120, d: 40, headingDeg: 90 });
+  // A terminal laid cell by cell: foundation, flooring, a wall with a door, and fixtures (heading 90, origin 3880, 5360).
+  const edit = (building: number, e: object) => send({ type: 'terminalBuild', building, ox: 3880, oy: 5360, headingDeg: 90, edit: e });
+  await edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });
   await expect.poll(() => page.evaluate(() => window.__store?.getState().business?.terminals.length ?? 0)).toBe(1);
-  await send({ type: 'addModule', terminalId: 1, kind: 'checkIn', count: 8 });
-  await send({ type: 'addModule', terminalId: 1, kind: 'security', count: 3 });
-  await send({ type: 'addModule', terminalId: 1, kind: 'belt', count: 2 });
+  await edit(1, { op: 'floor', x0: 40, y0: 40, x1: 100, y1: 52, variant: 2 });
+  await edit(1, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
+  await edit(1, { op: 'wall', x0: 70, y0: 40, x1: 72, y1: 40, variant: 3 });
+  await edit(1, { op: 'fixture', x0: 42, y0: 42, x1: 50, y1: 43, variant: 1 });
+  await edit(1, { op: 'fixture', x0: 54, y0: 42, x1: 57, y1: 43, variant: 2 });
+  await edit(1, { op: 'fixture', x0: 62, y0: 42, x1: 64, y1: 43, variant: 3 });
   await send({ type: 'signAirline', airlineId: 0, rotations: 2 });
   await send({ type: 'signAirline', airlineId: 1, rotations: 2 });
   await expect.poll(() => page.evaluate(() => window.__store?.getState().airfield.runways.length ?? 0)).toBe(1);

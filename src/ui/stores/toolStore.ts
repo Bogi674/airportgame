@@ -4,6 +4,8 @@ import type { Problem } from '@shared/validate';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
 
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase';
+
 export interface Selection {
   kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal';
   id: number;
@@ -23,6 +25,11 @@ interface ToolState {
   gaCount: number;
   /** Compass heading of stand rows and GA blocks. */
   rowHeading: number;
+  /** Terminal sub tool and its options. */
+  tSub: TerminalSub;
+  floorType: 1 | 2 | 3;
+  wallType: 1 | 2;
+  fixtureId: number;
   selection: Selection | null;
   /** What the active tool wants the player to do next. */
   hint: string | null;
@@ -45,6 +52,10 @@ export const useToolStore = create<ToolState>((set) => ({
   connectors: 3,
   gaCount: 6,
   rowHeading: 0,
+  tSub: 'foundation',
+  floorType: 2,
+  wallType: 1,
+  fixtureId: 1,
   selection: null,
   hint: null,
   problem: null,

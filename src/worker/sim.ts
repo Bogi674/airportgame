@@ -63,6 +63,8 @@ function postAirfieldIfDirty(): void {
 
 function postBusinessIfDirty(): void {
   if (!sim) return;
+  const grids = sim.takeTerminalGrids();
+  if (grids) scope.postMessage({ type: 'staticData', kind: 'terminals', payload: grids });
   const payload = sim.takeBusiness();
   if (payload) scope.postMessage({ type: 'staticData', kind: 'business', payload });
 }

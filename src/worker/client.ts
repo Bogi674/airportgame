@@ -1,6 +1,6 @@
 import SimWorker from './sim.ts?worker&inline';
 import type { Command } from '@sim/commands';
-import type { BusinessPayload } from '@shared/business';
+import type { BusinessPayload, TerminalGrid } from '@shared/business';
 import type { AirfieldMessage, FromSimMessage, GameOptions, OwnershipPayload, PerfReport, ToSimMessage } from '@shared/protocol';
 import type { SitePayload } from '@shared/site';
 import { createSnapshotViews, SnapHeader, type SnapshotViews } from '@shared/snapshot';
@@ -20,6 +20,7 @@ export interface ClientEvents {
   onEvents?(list: string[]): void;
   onAirfield?(msg: AirfieldMessage): void;
   onBusiness?(b: BusinessPayload): void;
+  onTerminals?(grids: TerminalGrid[]): void;
   onSaved?(id: number, data: string, tick: number): void;
 }
 
@@ -83,7 +84,8 @@ export class SimClient {
         if (msg.kind === 'site') this.events.onSite?.(msg.payload);
         else if (msg.kind === 'ownership') this.events.onOwnership?.(msg.payload);
         else if (msg.kind === 'airfield') this.events.onAirfield?.(msg.payload);
-        else this.events.onBusiness?.(msg.payload);
+        else if (msg.kind === 'business') this.events.onBusiness?.(msg.payload);
+        else this.events.onTerminals?.(msg.payload);
         break;
       case 'events':
         this.events.onEvents?.(msg.list);

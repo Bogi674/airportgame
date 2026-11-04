@@ -1,12 +1,4 @@
-import { compassVector } from './airfield';
-import type { Pt } from './geom';
-
 /** Business state shared with the UI: terminals, airlines, the ledger, the loan and the rating. */
-
-export type ModuleKind = 'checkIn' | 'security' | 'belt' | 'seating' | 'toilet';
-export const MODULE_KINDS: readonly ModuleKind[] = ['checkIn', 'security', 'belt', 'seating', 'toilet'];
-export type ShopKind = 'convenience' | 'quickFood' | 'cafe' | 'dutyFree' | 'booksGifts' | 'pharmacy';
-export const SHOP_KINDS: readonly ShopKind[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
 
 export const TICKS_PER_DAY = 864000;
 export const TICKS_PER_MINUTE = 600;
@@ -20,21 +12,49 @@ export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers
 export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
-export interface Shop {
-  kind: ShopKind;
-  leased: boolean;
+/** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'] as const;
+export type FixtureKey = (typeof FIXTURE_KEYS)[number];
+export const FIXTURE_COUNT = FIXTURE_KEYS.length;
+export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
+export const isShopFixture = (id: number): boolean => id >= 6;
+export const fixtureKey = (id: number): FixtureKey => FIXTURE_KEYS[id - 1];
+export type ShopKind = FixtureKey;
+
+export const FLOOR = { None: 0, Concrete: 1, Tile: 2, Carpet: 3 } as const;
+export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
+
+/** Terminal grid: 160 by 160 cells of 2 m in the local frame of a building. */
+export const TERMINAL_GRID = 160;
+export const TERMINAL_CELL_M = 2;
+/** A new building puts its first cell this far from the grid corner, so it can grow in every direction. */
+export const TERMINAL_MARGIN = 40;
+
+/** One terminal building: the floor, fixtures and walls the player laid. */
+export interface TerminalGrid {
+  id: number;
+  /** World position of the grid corner and the heading of its x axis (compass degrees). */
+  ox: number;
+  oy: number;
+  headingDeg: number;
+  floor: Uint8Array;
+  fixture: Uint8Array;
+  /** Horizontal wall edges, (grid + 1) rows of grid columns. Index y * grid + x. */
+  hWall: Uint8Array;
+  /** Vertical wall edges, grid rows of (grid + 1) columns. Index y * (grid + 1) + x. */
+  vWall: Uint8Array;
+  /** 1 when a shop fixture has a tenant. */
+  leased: Uint8Array;
+  /** Money spent on this building, for demolition refunds. */
+  cost: number;
 }
 
+/** A building in the business payload: counts only, the grids travel separately. */
 export interface Terminal {
   id: number;
-  cx: number;
-  cy: number;
-  w: number;
-  d: number;
-  headingDeg: number;
-  cost: number;
-  modules: Record<ModuleKind, number>;
-  shops: Shop[];
+  cells: number;
+  counts: Record<FixtureKey, number>;
+  leased: number;
 }
 
 export type AirlineScope = 'regional' | 'national';
@@ -74,6 +94,7 @@ export interface BusinessPayload {
   day: number;
   minuteOfDay: number;
   terminals: Terminal[];
+  terminalVersion: number;
   airlines: Airline[];
   rating: number;
   satisfaction: number;
@@ -89,14 +110,4 @@ export interface BusinessPayload {
   paxToday: number;
   flightsToday: number;
   lostPaxToday: number;
-}
-
-/** Corners of a terminal in world space. */
-export function terminalPolygon(t: Pick<Terminal, 'cx' | 'cy' | 'w' | 'd' | 'headingDeg'>): Pt[] {
-  const u = compassVector(t.headingDeg);
-  const v = { x: -u.y, y: u.x };
-  const hw = t.w / 2;
-  const hd = t.d / 2;
-  const c = (a: number, b: number): Pt => ({ x: t.cx + u.x * a + v.x * b, y: t.cy + u.y * a + v.y * b });
-  return [c(-hw, -hd), c(hw, -hd), c(hw, hd), c(-hw, hd)];
 }

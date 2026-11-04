@@ -4,14 +4,14 @@ import { chunkPixelSize, type ChunkRequester } from '../chunks';
 import { TerrainBaker } from '../terrain';
 import { paintAirfield } from '../markings/airfieldPaint';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
-import type { Terminal } from '@shared/business';
+import type { TerminalGrid } from '@shared/business';
 
 type Deliver = (key: number, image: CanvasImageSource) => void;
 
 export interface ChunkBaker extends ChunkRequester {
   setSite(site: BakeSite): void;
   setAirfield(airfield: AirfieldPayload): void;
-  setTerminals(terminals: Terminal[]): void;
+  setTerminals(terminals: TerminalGrid[]): void;
   setOwner(owner: Uint8Array): void;
   dispose(): void;
 }
@@ -42,7 +42,7 @@ class WorkerBaker implements ChunkBaker {
     this.worker.postMessage(msg);
   }
 
-  setTerminals(terminals: Terminal[]): void {
+  setTerminals(terminals: TerminalGrid[]): void {
     const msg: ToBakeMessage = { type: 'terminals', terminals };
     this.worker.postMessage(msg);
   }
@@ -67,11 +67,11 @@ class MainThreadBaker implements ChunkBaker {
   private scheduled = false;
   private terrain: TerrainBaker | null = null;
   private airfield: AirfieldPayload = EMPTY_AIRFIELD;
-  private terminals: Terminal[] = [];
+  private terminals: TerminalGrid[] = [];
 
   constructor(private readonly deliver: Deliver) {}
 
-  setTerminals(terminals: Terminal[]): void {
+  setTerminals(terminals: TerminalGrid[]): void {
     this.terminals = terminals;
   }
 

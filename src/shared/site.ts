@@ -37,7 +37,7 @@ export const WIND_BINS = 16;
 export const SEASONS = 4;
 
 /** Starting cash until the finance milestone defines difficulty. */
-export const START_CASH = 30_000_000;
+export const START_CASH = 120_000_000;
 /** Land the player can afford in the first two years, used by the fairness guarantee. */
 export const AFFORDABLE_LAND_BUDGET = 8_000_000;
 

@@ -40,8 +40,8 @@ export const airfieldCodesSchema = z.object({
 
 export type AirfieldCodes = z.infer<typeof airfieldCodesSchema>;
 
-const module = z.object({ cost: z.number().nonnegative(), areaM2: z.number().positive(), capacityPerHour: z.number().nonnegative(), staff: z.number().nonnegative() });
-const shop = z.object({ cost: z.number().positive(), areaM2: z.number().positive(), rentPerDay: z.number().positive(), spendPerPax: z.number().positive(), minRating: z.number().min(0).max(100) });
+const module = z.object({ cost: z.number().nonnegative(), capacityPerHour: z.number().nonnegative(), staff: z.number().nonnegative() });
+const shop = z.object({ cost: z.number().positive(), rentPerDay: z.number().positive(), spendPerPax: z.number().positive(), minRating: z.number().min(0).max(100) });
 
 export const businessSchema = z.object({
   version: z.literal(1),
@@ -56,7 +56,7 @@ export const businessSchema = z.object({
     loanMax: z.number().positive(),
     loanTermDays: z.number().int().positive(),
   }),
-  terminal: z.object({ buildCostPerM2: z.number().positive(), minSideM: z.number().positive(), maxSideM: z.number().positive(), contactReachM: z.number().positive() }),
+  terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive() }),
   modules: z.object({ checkIn: module, security: module, belt: module, seating: module, toilet: module }),
   shops: z.object({ convenience: shop, quickFood: shop, cafe: shop, dutyFree: shop, booksGifts: shop, pharmacy: shop }),
   airlines: z.object({ regionalNames: z.array(z.string()).min(4), nationalNames: z.array(z.string()).min(4), suffixes: z.array(z.string()).min(2) }),

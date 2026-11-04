@@ -1,6 +1,6 @@
 import type { Command } from '@sim/commands';
 import type { AirfieldPayload } from './airfield';
-import type { BusinessPayload, Terminal } from './business';
+import type { BusinessPayload, TerminalGrid } from './business';
 import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
@@ -49,6 +49,7 @@ export type FromSimMessage =
   | { type: 'staticData'; kind: 'ownership'; payload: OwnershipPayload }
   | { type: 'staticData'; kind: 'airfield'; payload: AirfieldMessage }
   | { type: 'staticData'; kind: 'business'; payload: BusinessPayload }
+  | { type: 'staticData'; kind: 'terminals'; payload: TerminalGrid[] }
   | { type: 'queryResult'; id: number; data: unknown }
   | { type: 'events'; list: string[] }
   | { type: 'perf'; report: PerfReport }
@@ -58,7 +59,7 @@ export type FromSimMessage =
 export type ToBakeMessage =
   | { type: 'site'; site: BakeSite }
   | { type: 'airfield'; airfield: AirfieldPayload }
-  | { type: 'terminals'; terminals: Terminal[] }
+  | { type: 'terminals'; terminals: TerminalGrid[] }
   | { type: 'owner'; owner: Uint8Array }
   | { type: 'bake'; key: number; band: number; cx: number; cy: number };
 

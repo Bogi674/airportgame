@@ -12,8 +12,8 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { pointInPolygon, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import { terminalPolygon } from '@shared/business';
-import { BUSINESS } from '@data/index';
+import { TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
+import { cellAtWorld, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
 import { formatMoney } from '../format';
@@ -67,6 +67,8 @@ export class ToolController {
     this.pts = [];
     this.dragging = false;
     this.frozen = false;
+    this.tStart = null;
+    this.tGrid = null;
     this.deps.setGhost(null);
     useToolStore.getState().set({ hint: null, problem: null, buy: null });
   }
@@ -133,9 +135,11 @@ export class ToolController {
     this.cursor = p;
     this.frozen = false;
     const tool = useToolStore.getState().tool;
-    if (tool === 'runway' || tool === 'terminal') {
+    if (tool === 'runway') {
       this.start = this.snap(p, null, mods, false);
       this.dragging = true;
+    } else if (tool === 'terminal') {
+      this.terminalDown(p);
     }
   }
 
@@ -550,60 +554,183 @@ export class ToolController {
 
   // Terminal ---------------------------------------------------------------
 
-  private terminalAt(p: Pt): number | null {
-    const b = useGameStore.getState().business;
-    if (!b) return null;
-    for (const t of b.terminals) if (pointInPolygon(p.x, p.y, terminalPolygon(t))) return t.id;
+  private tStart: { cx: number; cy: number } | null = null;
+  private tGrid: TerminalGrid | null = null;
+  private tTemp: TerminalGrid | null = null;
+  private readonly bboxCache = new WeakMap<TerminalGrid, { x0: number; y0: number; x1: number; y1: number } | null>();
+
+  private floorBox(g: TerminalGrid): { x0: number; y0: number; x1: number; y1: number } | null {
+    if (this.bboxCache.has(g)) return this.bboxCache.get(g) ?? null;
+    const N = TERMINAL_GRID;
+    let x0 = N;
+    let y0 = N;
+    let x1 = -1;
+    let y1 = -1;
+    for (let cy = 0; cy < N; cy++) {
+      for (let cx = 0; cx < N; cx++) {
+        if (g.floor[cy * N + cx] === 0) continue;
+        if (cx < x0) x0 = cx;
+        if (cy < y0) y0 = cy;
+        if (cx > x1) x1 = cx;
+        if (cy > y1) y1 = cy;
+      }
+    }
+    const box = x1 < 0 ? null : { x0, y0, x1, y1 };
+    this.bboxCache.set(g, box);
+    return box;
+  }
+
+  /** The existing building a point belongs to: inside or within four cells of its floor. */
+  private buildingAt(p: Pt): TerminalGrid | null {
+    for (const g of useGameStore.getState().terminalGrids) {
+      const box = this.floorBox(g);
+      if (!box) continue;
+      const c = worldToCell(g, p.x, p.y);
+      if (c.cx >= box.x0 - 4 && c.cx <= box.x1 + 5 && c.cy >= box.y0 - 4 && c.cy <= box.y1 + 5) return g;
+    }
     return null;
   }
 
-  /** Terminal footprint from a drag, in the frame of the chosen heading. */
-  private terminalRect(a: Pt, b: Pt): { cx: number; cy: number; w: number; d: number; heading: number } {
+  /** The grid an edit at this point goes to: an existing building or a fresh one that starts here. */
+  private gridFor(p: Pt): TerminalGrid {
+    const existing = this.buildingAt(p);
+    if (existing) return existing;
     const heading = useToolStore.getState().rowHeading;
-    const u = compassVector(heading);
-    const v = { x: -u.y, y: u.x };
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const w = Math.round(Math.abs(dx * u.x + dy * u.y) / 2) * 2;
-    const d = Math.round(Math.abs(dx * v.x + dy * v.y) / 2) * 2;
-    return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, w, d, heading };
+    const o = originFor(Math.round(p.x / 2) * 2, Math.round(p.y / 2) * 2, heading);
+    const t = this.tTemp;
+    if (t && t.ox === o.ox && t.oy === o.oy && t.headingDeg === heading) return t;
+    this.tTemp = newGrid(-1, o.ox, o.oy, heading);
+    return this.tTemp;
+  }
+
+  private terminalAt(p: Pt): number | null {
+    for (const g of useGameStore.getState().terminalGrids) {
+      const c = cellAtWorld(g, p.x, p.y);
+      if (c && g.floor[c.cy * TERMINAL_GRID + c.cx] > 0) return g.id;
+    }
+    return null;
+  }
+
+  private env() {
+    const ctx = this.ctx();
+    if (!ctx) return null;
+    return { ctx, af: this.af, others: useGameStore.getState().terminalGrids };
+  }
+
+  /** Builds the edit for the current drag in the cell space of the grid. */
+  private terminalEdit(g: TerminalGrid, a: { cx: number; cy: number }, b: { cx: number; cy: number }): TerminalEdit | null {
+    const st = useToolStore.getState();
+    const sub = st.tSub;
+    if (sub === 'wall' || sub === 'door') {
+      // Grid lines: horizontal when the drag is mostly along x.
+      let x0 = Math.round(a.cx);
+      let y0 = Math.round(a.cy);
+      let x1 = Math.round(b.cx);
+      let y1 = Math.round(b.cy);
+      if (sub === 'door') {
+        const e = this.nearestEdge(a);
+        return { op: 'wall', x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, variant: WALL.Door };
+      }
+      if (Math.abs(x1 - x0) >= Math.abs(y1 - y0)) y1 = y0;
+      else x1 = x0;
+      if (x0 === x1 && y0 === y1) {
+        const e = this.nearestEdge(a);
+        x0 = e.x0;
+        y0 = e.y0;
+        x1 = e.x1;
+        y1 = e.y1;
+      }
+      return { op: 'wall', x0, y0, x1, y1, variant: st.wallType };
+    }
+    void g;
+    const x0 = Math.floor(Math.min(a.cx, b.cx));
+    const y0 = Math.floor(Math.min(a.cy, b.cy));
+    const x1 = Math.floor(Math.max(a.cx, b.cx)) + 1;
+    const y1 = Math.floor(Math.max(a.cy, b.cy)) + 1;
+    if (sub === 'foundation') return { op: 'foundation', x0, y0, x1, y1, variant: 0 };
+    if (sub === 'floor') return { op: 'floor', x0, y0, x1, y1, variant: st.floorType };
+    if (sub === 'erase') return { op: 'erase', x0, y0, x1, y1, variant: 0 };
+    return { op: 'fixture', x0, y0, x1, y1, variant: st.fixtureId };
+  }
+
+  /** The grid edge closest to a fractional cell position. */
+  private nearestEdge(c: { cx: number; cy: number }): { x0: number; y0: number; x1: number; y1: number } {
+    const ry = Math.round(c.cy);
+    const rx = Math.round(c.cx);
+    if (Math.abs(c.cy - ry) <= Math.abs(c.cx - rx)) return { x0: Math.floor(c.cx), y0: ry, x1: Math.floor(c.cx) + 1, y1: ry };
+    return { x0: rx, y0: Math.floor(c.cy), x1: rx, y1: Math.floor(c.cy) + 1 };
+  }
+
+  private terminalDown(p: Pt): void {
+    this.frozen = false;
+    const g = this.gridFor(p);
+    this.tGrid = g;
+    const c = worldToCell(g, p.x, p.y);
+    this.tStart = { cx: c.cx, cy: c.cy };
+    this.dragging = true;
   }
 
   private previewTerminal(p: Pt): void {
     if (this.frozen && !this.dragging) return;
-    if (!this.start || !this.dragging) {
-      this.deps.setGhost({ valid: true, shapes: [{ k: 'ring', x: p.x, y: p.y, r: 12 }] });
-      useToolStore.getState().set({ hint: 'hint.terminal', problem: null, buy: null });
+    const st = useToolStore.getState();
+    const hint = `hint.terminal.${st.tSub}`;
+    const g = this.dragging && this.tGrid ? this.tGrid : this.gridFor(p);
+    const c = worldToCell(g, p.x, p.y);
+    const a = this.dragging && this.tStart ? this.tStart : c;
+    const edit = this.terminalEdit(g, a, c);
+    const env = this.env();
+    if (!edit || !env) {
+      this.deps.setGhost(null);
       return;
     }
-    const r = this.terminalRect(this.start, p);
-    const T = BUSINESS.terminal;
-    const poly = terminalPolygon({ cx: r.cx, cy: r.cy, w: Math.max(2, r.w), d: Math.max(2, r.d), headingDeg: r.heading });
-    let problem: Problem | null;
-    if (r.w < T.minSideM || r.d < T.minSideM || r.w > T.maxSideM || r.d > T.maxSideM) problem = { code: 'terminalSize', args: { min: T.minSideM, max: T.maxSideM } };
-    else problem = this.landProblem({ polygon: poly });
-    if (!problem && this.af.aprons.some((a) => poly.some((c) => pointInPolygon(c.x, c.y, a.polygon)))) problem = { code: 'terminalOnPavement' };
-    const cost = Math.round(r.w * r.d * T.buildCostPerM2);
-    this.show(
-      { valid: problem === null, shapes: [{ k: 'poly', pts: poly }], label: { x: p.x, y: p.y, text: tFormat('ghost.terminal', { w: r.w, d: r.d, cost: formatMoney(cost) }) } },
-      problem,
-      'hint.terminal',
-    );
+    const plan = planEdit(g, edit, env);
+    const isWall = edit.op === 'wall';
+    const shapes: GhostShape[] = [];
+    let label: string;
+    if (isWall) {
+      const a0 = cornerWorld(g, edit.x0, edit.y0);
+      const a1 = cornerWorld(g, edit.x1, edit.y1);
+      shapes.push({ k: 'strip', pts: [a0, a1], w: 0.8 });
+      label = tFormat('ghost.terminalWall', { n: plan.changes, cost: formatMoney(plan.cost) });
+    } else {
+      shapes.push({ k: 'poly', pts: rectWorld(g, edit.x0, edit.y0, edit.x1, edit.y1) });
+      label = tFormat('ghost.terminal', { n: plan.changes, cost: formatMoney(plan.cost) });
+    }
+    // Before a drag starts, a hovered cell with nothing to do is not an error.
+    const idle = !this.dragging && plan.changes === 0;
+    let problem: Problem | null = idle ? null : plan.problem;
+    if (!problem && !idle && plan.changes === 0) problem = { code: 'terminalNeedsFoundation' };
+    if (problem && problem.code === 'notOwned' && edit.op === 'foundation') {
+      const ids = unownedParcelsUnder(env.ctx, { polygon: rectWorld(g, edit.x0, edit.y0, edit.x1, edit.y1) });
+      const site = this.site();
+      let cost = 0;
+      if (site) for (const id of ids) cost += site.parcelPrice[id];
+      useToolStore.getState().set({ buy: { ids, cost } });
+    } else {
+      useToolStore.getState().set({ buy: null });
+    }
+    this.show({ valid: problem === null && !idle, shapes, label: { x: p.x, y: p.y, text: label } }, problem, hint);
   }
 
   private finishTerminal(p: Pt): void {
-    const start = this.start;
-    this.start = null;
+    const g = this.tGrid;
+    const a = this.tStart;
     this.dragging = false;
-    this.deps.setGhost(null);
-    if (!start) return;
-    const r = this.terminalRect(start, p);
-    if (r.w < 4 || r.d < 4) return;
-    if (useToolStore.getState().problem) {
+    this.tStart = null;
+    this.tGrid = null;
+    if (!g || !a) return;
+    const c = worldToCell(g, p.x, p.y);
+    const edit = this.terminalEdit(g, a, c);
+    const env = this.env();
+    if (!edit || !env) return;
+    const plan = planEdit(g, edit, env);
+    if (plan.problem || plan.changes === 0) {
+      // Keep the preview and the reason up, so missing land can be bought first.
       this.frozen = true;
       return;
     }
-    this.deps.send({ type: 'buildTerminal', cx: r.cx, cy: r.cy, w: r.w, d: r.d, headingDeg: r.heading });
+    this.deps.send({ type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit });
+    this.deps.setGhost(null);
   }
 
   // Demolish -------------------------------------------------------------

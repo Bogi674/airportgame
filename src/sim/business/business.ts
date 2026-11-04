@@ -8,19 +8,21 @@ import {
   TICKS_PER_MINUTE,
   dayIndex,
   minuteOfDay,
-  terminalPolygon,
   type Airline,
   type BoardRow,
   type BusinessPayload,
   type FeeLevel,
   type LedgerCategory,
-  type ModuleKind,
-  type ShopKind,
+  FIXTURE_KEYS,
+  TERMINAL_GRID,
+  type FixtureKey,
   type Terminal,
+  type TerminalGrid,
   type WeatherKind,
 } from '@shared/business';
-import { pointInPolygon, type Pt } from '@shared/geom';
-import { checkPolygon, type BuildContext } from '@shared/validate';
+import { cellCount, cornerWorld, newGrid, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { isShopFixture, fixtureKey } from '@shared/business';
+import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
@@ -42,7 +44,14 @@ export interface BusinessHost {
 /** Terminals, airlines, flights revenue, daily close, rating, loan and weather. Everything is aggregated. */
 export class Business {
   version = 0;
-  readonly terminals: Terminal[] = [];
+  /** Full grids of every terminal building. */
+  readonly grids: TerminalGrid[] = [];
+  /** Counts per building, rebuilt after every edit. */
+  terminals: Terminal[] = [];
+  terminalVersion = 0;
+  private totals: Record<FixtureKey, number> = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
+  /** Sample of foundation cell centres, for the contact stand reach test. */
+  private reach: number[] = [];
   readonly airlines: Airline[] = [];
   rating = 25;
   satisfaction = 0.8;
@@ -150,134 +159,80 @@ export class Business {
 
   // Terminals ----------------------------------------------------------------
 
-  private polygonOf(t: Pick<Terminal, 'cx' | 'cy' | 'w' | 'd' | 'headingDeg'>): Pt[] {
-    return terminalPolygon(t);
-  }
-
-  terminalPolygon(t: Terminal): Pt[] {
-    return this.polygonOf(t);
-  }
-
-  buildTerminal(cx: number, cy: number, w: number, d: number, headingDeg: number, ctx: BuildContext): string | null {
-    const T = BUSINESS.terminal;
-    const ww = Math.round(w / 2) * 2;
-    const dd = Math.round(d / 2) * 2;
-    if (ww < T.minSideM || dd < T.minSideM || ww > T.maxSideM || dd > T.maxSideM) return `terminalSize|min=${T.minSideM}|max=${T.maxSideM}`;
-    const t = { cx: Math.round(cx * 2) / 2, cy: Math.round(cy * 2) / 2, w: ww, d: dd, headingDeg: ((Math.round(headingDeg) % 360) + 360) % 360 };
-    const poly = this.polygonOf(t);
-    const problem = checkPolygon(ctx, poly);
-    if (problem) return problem.code;
-    // Not on pavement and not over another terminal.
-    const af = this.airfield.data;
-    for (const p of poly) {
-      for (const a of af.aprons) if (pointInPolygon(p.x, p.y, a.polygon)) return 'terminalOnPavement';
+  /** Rebuilds counts, totals and the reach sample after any change to the grids. */
+  private refreshTerminals(): void {
+    this.terminals = this.grids.map(summarize);
+    this.totals = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
+    for (const t of this.terminals) for (const k of FIXTURE_KEYS) this.totals[k] += t.counts[k];
+    this.reach = [];
+    for (const g of this.grids) {
+      for (let cy = 0; cy < TERMINAL_GRID; cy += 3) {
+        for (let cx = 0; cx < TERMINAL_GRID; cx += 3) {
+          if (g.floor[cy * TERMINAL_GRID + cx] === 0) continue;
+          const w = cornerWorld(g, cx + 0.5, cy + 0.5);
+          this.reach.push(w.x, w.y);
+        }
+      }
     }
-    for (const r of af.runways) {
-      for (const p of poly) if (Math.hypot(p.x - (r.x1 + r.x2) / 2, p.y - (r.y1 + r.y2) / 2) < r.lengthM / 2 + 30 && distToRunway(r, p.x, p.y) < 80) return 'terminalNearRunway';
-    }
-    for (const other of this.terminals) {
-      if (Math.hypot(other.cx - t.cx, other.cy - t.cy) < (other.w + ww + other.d + dd) / 4) return 'terminalOverlap';
-    }
-    const cost = Math.round(ww * dd * T.buildCostPerM2);
-    if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
-    this.host.book('construction', -cost);
-    this.terminals.push({
-      id: this.nextTerminalId++,
-      ...t,
-      cost,
-      modules: { checkIn: 0, security: 0, belt: 0, seating: 0, toilet: 0 },
-      shops: [],
-    });
+    this.terminalVersion++;
     this.version++;
+  }
+
+  /**
+   * Applies one edit to a terminal building. With `building` below 0 and a foundation edit a new
+   * building is started at the given origin. Returns a problem code or null.
+   */
+  terminalBuild(building: number, ox: number, oy: number, headingDeg: number, edit: TerminalEdit, ctx: BuildContext): string | null {
+    let grid = building >= 0 ? this.grids.find((g) => g.id === building) : undefined;
+    const fresh = grid === undefined;
+    if (building >= 0 && !grid) return 'nothingThere';
+    if (!grid) {
+      if (edit.op !== 'foundation') return 'terminalNeedsFoundation';
+      grid = newGrid(this.nextTerminalId, ox, oy, ((Math.round(headingDeg) % 360) + 360) % 360);
+    }
+    const plan = planEdit(grid, edit, { ctx, af: this.airfield.data, others: this.grids });
+    if (plan.problem && plan.changes === 0) return plan.problem.code + argsOf(plan.problem.args);
+    if (plan.problem) return plan.problem.code + argsOf(plan.problem.args);
+    if (plan.cost > this.host.getCash()) return `insufficientFunds|cost=${plan.cost}`;
+    if (plan.cost > 0) this.host.book('construction', -plan.cost);
+    plan.apply();
+    if (fresh) {
+      this.nextTerminalId++;
+      this.grids.push(grid);
+    }
+    if (cellCount(grid) === 0) this.grids.splice(this.grids.indexOf(grid), 1);
+    this.refreshTerminals();
     return null;
-  }
-
-  private usedArea(t: Terminal): number {
-    let a = 0;
-    for (const k of Object.keys(t.modules) as ModuleKind[]) a += t.modules[k] * BUSINESS.modules[k].areaM2;
-    for (const s of t.shops) a += BUSINESS.shops[s.kind].areaM2;
-    return a;
-  }
-
-  addModule(terminalId: number, kind: ModuleKind, count: number): string | null {
-    const t = this.terminals.find((x) => x.id === terminalId);
-    if (!t) return 'nothingThere';
-    const spec = BUSINESS.modules[kind];
-    const n = Math.max(-50, Math.min(50, Math.floor(count)));
-    if (n === 0) return null;
-    if (n < 0) {
-      t.modules[kind] = Math.max(0, t.modules[kind] + n);
-      this.version++;
-      return null;
-    }
-    if (this.usedArea(t) + n * spec.areaM2 > t.w * t.d * 0.8) return 'terminalFull';
-    const cost = n * spec.cost;
-    if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
-    this.host.book('construction', -cost);
-    t.modules[kind] += n;
-    this.version++;
-    return null;
-  }
-
-  addShop(terminalId: number, kind: ShopKind): string | null {
-    const t = this.terminals.find((x) => x.id === terminalId);
-    if (!t) return 'nothingThere';
-    const spec = BUSINESS.shops[kind];
-    if (this.usedArea(t) + spec.areaM2 > t.w * t.d * 0.8) return 'terminalFull';
-    if (spec.cost > this.host.getCash()) return `insufficientFunds|cost=${spec.cost}`;
-    this.host.book('construction', -spec.cost);
-    t.shops.push({ kind, leased: false });
-    this.version++;
-    return null;
-  }
-
-  removeShop(terminalId: number, index: number): void {
-    const t = this.terminals.find((x) => x.id === terminalId);
-    if (!t || index < 0 || index >= t.shops.length) return;
-    t.shops.splice(index, 1);
-    this.version++;
   }
 
   demolishTerminal(id: number): string | null {
-    const i = this.terminals.findIndex((x) => x.id === id);
+    const i = this.grids.findIndex((x) => x.id === id);
     if (i < 0) return 'nothingThere';
-    this.host.book('construction', Math.round(this.terminals[i].cost * 0.25));
-    this.terminals.splice(i, 1);
-    this.version++;
+    this.host.book('construction', Math.round(this.grids[i].cost * 0.25));
+    this.grids.splice(i, 1);
+    this.refreshTerminals();
     return null;
   }
 
   /** Departing passengers the terminals can process per hour. */
   depCapacity(): number {
-    let ci = 0;
-    let sec = 0;
-    for (const t of this.terminals) {
-      ci += t.modules.checkIn * BUSINESS.modules.checkIn.capacityPerHour;
-      sec += t.modules.security * BUSINESS.modules.security.capacityPerHour;
-    }
-    return Math.min(ci, sec);
+    return Math.min(this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour, this.totals.security * BUSINESS.modules.security.capacityPerHour);
   }
 
   arrCapacity(): number {
-    let b = 0;
-    for (const t of this.terminals) b += t.modules.belt * BUSINESS.modules.belt.capacityPerHour;
-    return b;
+    return this.totals.belt * BUSINESS.modules.belt.capacityPerHour;
   }
 
-  /** Contact stands need a terminal facade close by. */
+  /** Contact stands need a terminal building close by. */
   hasTerminalNear(x: number, y: number): boolean {
-    for (const t of this.terminals) {
-      const poly = this.polygonOf(t);
-      for (const p of poly) if (Math.hypot(p.x - x, p.y - y) < BUSINESS.terminal.contactReachM + Math.max(t.w, t.d) / 2) return true;
-    }
+    const reach = BUSINESS.terminal.contactReachM;
+    for (let i = 0; i < this.reach.length; i += 2) if (Math.hypot(this.reach[i] - x, this.reach[i + 1] - y) < reach) return true;
     return false;
   }
 
   staffCount(): number {
     let s = 0;
-    for (const t of this.terminals) {
-      for (const k of Object.keys(t.modules) as ModuleKind[]) s += t.modules[k] * BUSINESS.modules[k].staff;
-    }
+    for (const k of ['checkIn', 'security', 'belt', 'toilet'] as const) s += this.totals[k] * BUSINESS.modules[k].staff;
     s += this.airfield.data.stands.length * 1.5;
     if (this.airfield.data.runways.length > 0) s += 4 + this.airfield.data.runways.length * 2;
     return Math.round(s);
@@ -461,16 +416,18 @@ export class Business {
     for (const r of af.runways) upkeep += (r.cost * AIRFIELD.surfaces[r.surface].upkeepPct) / 100 / 365;
     for (const t of af.taxiways) upkeep += (t.cost * AIRFIELD.surfaces[t.surface].upkeepPct) / 100 / 365;
     for (const a of af.aprons) upkeep += (a.cost * AIRFIELD.surfaces[a.surface].upkeepPct) / 100 / 365;
-    for (const t of this.terminals) upkeep += (t.cost * 0.5) / 100 / 365;
+    for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
     this.host.book('upkeep', -Math.round(upkeep));
-    // Shop tenants and rent.
+    // Shop tenants and rent, one lease per shop fixture.
     let rent = 0;
-    for (const t of this.terminals) {
-      for (const s of t.shops) {
-        const spec = BUSINESS.shops[s.kind];
-        if (!s.leased && this.rating >= spec.minRating && this.rng.next() < 0.35) s.leased = true;
-        if (s.leased && this.rating < spec.minRating - 15) s.leased = false;
-        if (s.leased) rent += spec.rentPerDay * Math.min(1.5, 0.5 + this.paxToday / 1500);
+    for (const g of this.grids) {
+      for (let i = 0; i < g.fixture.length; i++) {
+        const f = g.fixture[i];
+        if (!isShopFixture(f)) continue;
+        const spec = BUSINESS.shops[fixtureKey(f) as keyof typeof BUSINESS.shops];
+        if (g.leased[i] === 0 && this.rating >= spec.minRating && this.rng.next() < 0.35) g.leased[i] = 1;
+        if (g.leased[i] === 1 && this.rating < spec.minRating - 15) g.leased[i] = 0;
+        if (g.leased[i] === 1) rent += spec.rentPerDay * Math.min(1.5, 0.5 + this.paxToday / 1500);
       }
     }
     this.host.book('rent', Math.round(rent));
@@ -485,11 +442,9 @@ export class Business {
   }
 
   private updateRating(): void {
-    let facilities = 0;
-    for (const t of this.terminals) {
-      facilities += Math.min(1, t.modules.seating / 8) * 0.4 + Math.min(1, t.modules.toilet / 3) * 0.3 + Math.min(1, t.shops.filter((s) => s.leased).length / 4) * 0.3;
-    }
-    facilities = Math.min(1, facilities / Math.max(1, this.terminals.length));
+    const leased = this.terminals.reduce((n, t) => n + t.leased, 0);
+    const facilities =
+      this.terminals.length === 0 ? 0 : Math.min(1, this.totals.seating / 12) * 0.4 + Math.min(1, this.totals.toilet / 4) * 0.3 + Math.min(1, leased / 4) * 0.3;
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
     const target = 100 * (0.35 * this.onTime + 0.35 * this.satisfaction + 0.2 * facilities + 0.1 * infra);
     this.rating += (target - this.rating) * 0.15;
@@ -570,6 +525,7 @@ export class Business {
       day: dayIndex(tick),
       minuteOfDay: minuteOfDay(tick),
       terminals: this.terminals,
+      terminalVersion: this.terminalVersion,
       airlines: this.airlines,
       rating: Math.round(this.rating * 10) / 10,
       satisfaction: Math.round(this.satisfaction * 100) / 100,
@@ -589,7 +545,7 @@ export class Business {
 
   saveState(): unknown {
     return {
-      version: this.version, terminals: this.terminals, airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
+      version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
       onTime: this.onTime, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
       weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
@@ -601,13 +557,13 @@ export class Business {
 
   loadState(raw: unknown): void {
     const o = raw as {
-      version: number; terminals: Terminal[]; airlines: Airline[]; rating: number; satisfaction: number; onTime: number; loan: number;
+      version: number; grids: SavedGrid[]; airlines: Airline[]; rating: number; satisfaction: number; onTime: number; loan: number;
       loanOriginal: number; weather: WeatherKind; weatherStart: number; weatherEnd: number; pendingKind: WeatherKind; nextTerminalId: number;
       day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number; depWindow: number;
       flightPax: string; flightDockedAt: string; rng: number; marketRng: number;
     };
-    this.terminals.length = 0;
-    this.terminals.push(...o.terminals);
+    this.grids.length = 0;
+    for (const sg of o.grids) this.grids.push(loadGrid(sg));
     this.airlines.length = 0;
     this.airlines.push(...o.airlines);
     this.rating = o.rating;
@@ -633,18 +589,19 @@ export class Business {
     unpackInto(o.flightDockedAt, this.flightDockedAt, Int32Array);
     this.rng.setState(o.rng);
     this.marketRng.setState(o.marketRng);
-    this.version = o.version + 1;
+    this.refreshTerminals();
+    this.version = Math.max(this.version, o.version + 1);
   }
 
   hash(h: number): number {
-    let acc = foldU32(h, this.terminals.length);
+    let acc = foldU32(h, this.grids.length);
     acc = foldU32(acc, Math.floor(this.rating * 100));
     acc = foldU32(acc, this.loan);
     acc = foldU32(acc, this.paxToday);
     for (const a of this.airlines) acc = foldU32(foldU32(acc, a.rotations), a.pax);
-    for (const t of this.terminals) {
-      acc = foldU32(acc, t.id);
-      for (const k of Object.keys(t.modules) as ModuleKind[]) acc = foldU32(acc, t.modules[k]);
+    for (const g of this.grids) {
+      acc = foldU32(foldU32(acc, g.id), cellCount(g));
+      for (let i = 0; i < g.fixture.length; i++) if (g.fixture[i] !== 0) acc = foldU32(acc, i * 16 + g.fixture[i]);
     }
     return foldU32(acc, this.weather.length);
   }
@@ -655,11 +612,38 @@ function dayStartOffset(): number {
   return (24 * 60 - 6 * 60) * TICKS_PER_MINUTE;
 }
 
-function distToRunway(r: { x1: number; y1: number; x2: number; y2: number }, x: number, y: number): number {
-  const dx = r.x2 - r.x1;
-  const dy = r.y2 - r.y1;
-  const len2 = dx * dx + dy * dy;
-  let t = len2 === 0 ? 0 : ((x - r.x1) * dx + (y - r.y1) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(x - (r.x1 + dx * t), y - (r.y1 + dy * t));
+const argsOf = (args?: Record<string, string | number>): string => {
+  if (!args) return '';
+  let out = '';
+  for (const k of Object.keys(args).sort()) out += `|${k}=${args[k]}`;
+  return out;
+};
+
+interface SavedGrid {
+  id: number;
+  ox: number;
+  oy: number;
+  headingDeg: number;
+  floor: string;
+  fixture: string;
+  hWall: string;
+  vWall: string;
+  leased: string;
+  cost: number;
 }
+
+function saveGrid(g: TerminalGrid): SavedGrid {
+  return { id: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, floor: packTyped(g.floor), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+}
+
+function loadGrid(sg: SavedGrid): TerminalGrid {
+  const g = newGrid(sg.id, sg.ox, sg.oy, sg.headingDeg);
+  unpackInto(sg.floor, g.floor, Uint8Array);
+  unpackInto(sg.fixture, g.fixture, Uint8Array);
+  unpackInto(sg.hWall, g.hWall, Uint8Array);
+  unpackInto(sg.vWall, g.vWall, Uint8Array);
+  unpackInto(sg.leased, g.leased, Uint8Array);
+  g.cost = sg.cost;
+  return g;
+}
+

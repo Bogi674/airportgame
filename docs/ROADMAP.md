@@ -35,7 +35,7 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ## MVP 1 status
 
-A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, sign airlines, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. The checklists below record what is done and what is simplified or missing. The terminal interior, passengers on screen, ground vehicles and the full aircraft sprite port are not built, so MVP 1 is playable but not complete.
+A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, sign airlines, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. The checklists below record what is done and what is simplified or missing. Terminal rooms and room checks, passengers on screen, ground vehicles and the full aircraft sprite port are not built, so MVP 1 is playable but not complete.
 
 ## MVP 1 milestones
 
@@ -90,9 +90,9 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 
 ### M4. Terminal and departures
 
-* [ ] Building shell placement with local grid and rotation (terminals are rectangles with a heading, not a gridded shell)
-* [ ] Walls, doors, floors, rooms with types, room validation (not built, the terminal has modules instead of rooms)
-* [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in, security, baggage belt, seating and toilets as counted modules, no kiosks, bag drop, passport or gate desks)
+* [x] Building shell placement with local grid and rotation (the player lays foundation cells on a local 2 m grid, rotated in steps with R, a new building starts with the first foundation)
+* [ ] Walls, doors, floors, rooms with types, room validation (foundations, flooring (concrete, tile, carpet), walls, glass walls and doors on grid lines are built, rooms with types and room validation are not)
+* [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in desk, security lane, baggage belt, seating, toilets and six shop types are placed cell by cell, kiosks, bag drop, passport booth and gate desks are missing)
 * [ ] Walking graph with cached distances and regional rebuild (not built)
 * [ ] Service nodes and queues (a terminal load model replaces queues)
 * [ ] Cohorts and the departure journey from curb to aircraft (passengers are aggregated per flight and limited by terminal capacity, no cohorts)

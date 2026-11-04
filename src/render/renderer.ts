@@ -4,7 +4,7 @@ import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
 import type { AirfieldPayload } from '@shared/airfield';
 import type { Ghost } from '@shared/ghost';
-import type { Terminal } from '@shared/business';
+import type { TerminalGrid } from '@shared/business';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
@@ -68,7 +68,7 @@ export class Renderer {
     this.chunks.markAllDirty();
   }
 
-  setTerminals(terminals: Terminal[]): void {
+  setTerminals(terminals: TerminalGrid[]): void {
     this.baker.setTerminals(terminals);
     this.chunks.markAllDirty();
   }

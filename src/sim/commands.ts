@@ -1,5 +1,6 @@
 import type { Approach, CodeLetter, StandType, Surface } from '@shared/airfield';
-import type { FeeLevel, ModuleKind, ShopKind } from '@shared/business';
+import type { FeeLevel } from '@shared/business';
+import type { TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
 
 /**
@@ -21,10 +22,7 @@ export type Command =
   | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
   | { type: 'resurface'; kind: 'runway' | 'taxiway' | 'apron'; id: number; surface: Surface; tier: number }
-  | { type: 'buildTerminal'; cx: number; cy: number; w: number; d: number; headingDeg: number }
-  | { type: 'addModule'; terminalId: number; kind: ModuleKind; count: number }
-  | { type: 'addShop'; terminalId: number; kind: ShopKind }
-  | { type: 'removeShop'; terminalId: number; index: number }
+  | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
   | { type: 'signAirline'; airlineId: number; rotations: number }
   | { type: 'setAirlineFee'; airlineId: number; level: FeeLevel }
