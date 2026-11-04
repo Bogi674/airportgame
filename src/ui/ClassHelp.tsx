@@ -22,7 +22,7 @@ export function ClassHelp() {
             <div key={c} style="font-size:11px">
               <b>{c}</b>
               {' '}
-              {tFormat('classes.row', { span: SPAN[c], rw: row.runwayWidthM, tw: row.taxiwayWidthM, r: row.filletRadiusM })}
+              {tFormat('classes.row', { span: SPAN[c], rw: row.runwayWidthM, tw: row.taxiwayWidthM, r: row.turnRadiusM })}
               {names && <div style="color:var(--muted)">{names}</div>}
             </div>
           );

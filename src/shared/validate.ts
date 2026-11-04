@@ -1,4 +1,4 @@
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { cosLut, sinLut } from './trig';
 import { bounds, pointInPolygon, polylineLength, type Pt } from './geom';
 import { CELL_M, GRID_N, SITE_M } from './site';
@@ -145,10 +145,10 @@ export function unownedParcelsUnder(ctx: BuildContext, strip: { pts: readonly Pt
 }
 
 /** Estimated build cost of a pavement strip including grading, for previews. */
-export function estimateStripCost(ctx: BuildContext, pts: readonly Pt[], widthM: number, surface: keyof typeof AIRFIELD.surfaces, tier: number): number {
-  const tiers = AIRFIELD.surfaces[surface].pcrTiers;
+export function estimateStripCost(ctx: BuildContext, pts: readonly Pt[], widthM: number, surface: keyof typeof SURFACE_SPEC, tier: number): number {
+  const tiers = SURFACE_SPEC[surface].pcrTiers;
   const i = Math.max(0, Math.min(tiers.length - 1, Math.floor(tier)));
   let len = 0;
   for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
-  return Math.round(len * widthM * AIRFIELD.surfaces[surface].costPerM2 * (AIRFIELD.tierCostFactor[i] ?? 1)) + stripGradingCost(ctx, pts, widthM);
+  return Math.round(len * widthM * SURFACE_SPEC[surface].costPerM2 * (SURFACE_DATA.tierCostFactor[i] ?? 1)) + stripGradingCost(ctx, pts, widthM);
 }

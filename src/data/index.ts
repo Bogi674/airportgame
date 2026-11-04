@@ -1,11 +1,26 @@
 import airfieldCodesJson from './airfield_codes.json';
 import businessJson from './business.json';
 import gseJson from './gse.json';
-import { airfieldCodesSchema, businessSchema, type AirfieldCodes, type BusinessData } from './schemas';
+import standSizesJson from './stand_sizes.json';
+import surfacesJson from './surfaces.json';
+import {
+  airfieldCodesSchema,
+  businessSchema,
+  standSizesSchema,
+  surfacesSchema,
+  type AirfieldCodes,
+  type BusinessData,
+  type StandSizesData,
+  type SurfacesData,
+} from './schemas';
 
 /** Validated once at load, then trusted (docs/PERFORMANCE.md section 7). */
 export const AIRFIELD: AirfieldCodes = airfieldCodesSchema.parse(airfieldCodesJson);
 export const BUSINESS: BusinessData = businessSchema.parse(businessJson);
+export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
+/** Per surface rules, costs and look, keyed by surface name. */
+export const SURFACE_SPEC: SurfacesData['surfaces'] = SURFACE_DATA.surfaces;
+export const STAND_SIZES: StandSizesData['sizes'] = standSizesSchema.parse(standSizesJson).sizes;
 
 export interface GseSpec {
   id: string;

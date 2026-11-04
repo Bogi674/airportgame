@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "note": "Aircraft stand sizes (docs/DESIGN_REVISION_2.md tables 3.1 and 3.2). Meters. A type goes to the smallest size whose maxSpanM covers its wingspan. noseClearanceM is null where the size has no nose in marking.",
+  "sizes": {
+    "small": {
+      "codes": [
+        "A",
+        "B"
+      ],
+      "maxSpanM": 24,
+      "surfaces": [
+        "grass",
+        "dirt",
+        "gravel",
+        "asphalt",
+        "concrete"
+      ],
+      "widthM": 30,
+      "depthM": 24,
+      "forkRadiusM": 16.5,
+      "wingtipClearanceM": 3.0,
+      "noseClearanceM": null,
+      "mergeable": false
+    },
+    "medium": {
+      "codes": [
+        "C"
+      ],
+      "maxSpanM": 36,
+      "surfaces": [
+        "grass",
+        "dirt",
+        "gravel",
+        "asphalt",
+        "concrete"
+      ],
+      "widthM": 45,
+      "depthM": 52,
+      "forkRadiusM": 24.5,
+      "wingtipClearanceM": 4.5,
+      "noseClearanceM": 6.0,
+      "mergeable": false
+    },
+    "large": {
+      "codes": [
+        "D",
+        "E"
+      ],
+      "maxSpanM": 65,
+      "surfaces": [
+        "asphalt",
+        "concrete"
+      ],
+      "widthM": 80,
+      "depthM": 88,
+      "forkRadiusM": 42.5,
+      "wingtipClearanceM": 7.5,
+      "noseClearanceM": 6.0,
+      "mergeable": false
+    },
+    "xl": {
+      "codes": [
+        "F"
+      ],
+      "maxSpanM": 80,
+      "surfaces": [
+        "asphalt",
+        "concrete"
+      ],
+      "widthM": 95,
+      "depthM": 94,
+      "forkRadiusM": 50.5,
+      "wingtipClearanceM": 7.5,
+      "noseClearanceM": 6.0,
+      "mergeable": true
+    }
+  }
+}

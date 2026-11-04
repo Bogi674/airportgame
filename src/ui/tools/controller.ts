@@ -1,4 +1,4 @@
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Stand, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
@@ -646,7 +646,7 @@ export class ToolController {
     let problem: Problem | null = null;
     if (pts.length >= 2) {
       // Corners are rounded as they will be built, so the preview matches the pavement.
-      shapes.unshift({ k: 'strip', pts: smoothCorners(pts, AIRFIELD.codes[st.code].filletRadiusM), w: width });
+      shapes.unshift({ k: 'strip', pts: smoothCorners(pts, AIRFIELD.codes[st.code].turnRadiusM), w: width });
       problem = this.landProblem({ pts, widthM: width });
       if (!problem && prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 8) problem = { code: 'segmentTooShort', args: { min: 8 } };
     }
@@ -950,8 +950,8 @@ export class ToolController {
       area = polygonArea(pts);
       problem = area < 400 ? { code: 'apronTooSmall', args: { min: 400 } } : this.landProblem({ polygon: pts });
     }
-    const tierIdx = Math.min(st.tier, AIRFIELD.surfaces[st.surface].pcrTiers.length - 1);
-    const cost = Math.round(area * AIRFIELD.surfaces[st.surface].costPerM2 * (AIRFIELD.tierCostFactor[tierIdx] ?? 1));
+    const tierIdx = Math.min(st.tier, SURFACE_SPEC[st.surface].pcrTiers.length - 1);
+    const cost = Math.round(area * SURFACE_SPEC[st.surface].costPerM2 * (SURFACE_DATA.tierCostFactor[tierIdx] ?? 1));
     this.show({ valid: problem === null, shapes, label: { x: q.x, y: q.y, text: tFormat('ghost.apron', { area: Math.round(area), cost: formatMoney(cost) }) } }, problem, 'hint.apron');
   }
 

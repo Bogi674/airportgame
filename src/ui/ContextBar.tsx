@@ -1,4 +1,4 @@
-import { AIRFIELD } from '@data/index';
+import { SURFACE_SPEC } from '@data/index';
 import { APPROACHES, CODES, STAND_TYPES, SURFACES, type CodeLetter, type Surface } from '@shared/airfield';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
@@ -62,7 +62,7 @@ export function ContextBar({ send }: Props) {
   const bottom = s.menuOpen && s.category ? 214 : 12;
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
-  const tiers = AIRFIELD.surfaces[s.surface].pcrTiers;
+  const tiers = SURFACE_SPEC[s.surface].pcrTiers;
   const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal';
   const showCode = showPavement && s.tool !== 'apron';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;

@@ -299,7 +299,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
   const plan = emptyPlan();
   const cum = new Map<number, number[]>();
   for (const t of af.taxiways) {
-    const R = AIRFIELD.codes[t.code].filletRadiusM;
+    const R = AIRFIELD.codes[t.code].turnRadiusM;
     const sm = smoothCorners(t.points, R);
     plan.smooth.set(t.id, sm);
     cum.set(t.id, cumulative(sm));
@@ -387,7 +387,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
     const c = j.c;
     const sm = plan.smooth.get(c.id) ?? c.points;
     const hC = c.widthM / 2;
-    const codeR = AIRFIELD.codes[c.code].filletRadiusM;
+    const codeR = AIRFIELD.codes[c.code].turnRadiusM;
     // Pavement fillets stay small, the lead-on centerline sweeps wider (FAA AC 150/5340-1 style).
     const Rf0 = codeR * 0.5;
     const E = j.end === 0 ? sm[0] : sm[sm.length - 1];
@@ -621,7 +621,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
     const cdx = -bd.x;
     const cdy = -bd.y;
     const dist = len(P.x - s.x, P.y - s.y);
-    const R = Math.min(AIRFIELD.codes[s.code].filletRadiusM * 0.6, dist * 0.4);
+    const R = Math.min(AIRFIELD.codes[s.code].turnRadiusM * 0.6, dist * 0.4);
     const tx = best.hit.tx;
     const ty = best.hit.ty;
     const cos = Math.abs(cdx * tx + cdy * ty);

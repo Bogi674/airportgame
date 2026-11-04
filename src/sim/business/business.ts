@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState } from '../ops/traffic';
 import { maxStageKm, takeoffWeight } from '../ops/performance';
-import { BUSINESS, AIRFIELD } from '@data/index';
+import { BUSINESS, SURFACE_SPEC } from '@data/index';
 import {
   LEDGER_CATEGORIES,
   LEDGER_DAYS,
@@ -532,9 +532,9 @@ export class Business {
     // Upkeep: surface percentage of build cost per year, spread over days.
     let upkeep = 0;
     const af = this.airfield.data;
-    for (const r of af.runways) upkeep += (r.cost * AIRFIELD.surfaces[r.surface].upkeepPct) / 100 / 365;
-    for (const t of af.taxiways) upkeep += (t.cost * AIRFIELD.surfaces[t.surface].upkeepPct) / 100 / 365;
-    for (const a of af.aprons) upkeep += (a.cost * AIRFIELD.surfaces[a.surface].upkeepPct) / 100 / 365;
+    for (const r of af.runways) upkeep += (r.cost * SURFACE_SPEC[r.surface].upkeepPct) / 100 / 365;
+    for (const t of af.taxiways) upkeep += (t.cost * SURFACE_SPEC[t.surface].upkeepPct) / 100 / 365;
+    for (const a of af.aprons) upkeep += (a.cost * SURFACE_SPEC[a.surface].upkeepPct) / 100 / 365;
     for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
     for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
     this.host.book('upkeep', -Math.round(upkeep));

@@ -1,4 +1,4 @@
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, SURFACE_SPEC } from '@data/index';
 import { FIXTURE_KEYS } from '@shared/business';
 import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import { ClassHelp } from './ClassHelp';
@@ -16,8 +16,8 @@ interface Props {
 function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
   const [code, setCode] = useState<CodeLetter>(x.code);
   const [surface, setSurface] = useState<Surface>(x.surface);
-  const tiers = AIRFIELD.surfaces[surface].pcrTiers;
-  const [tier, setTier] = useState(Math.max(0, AIRFIELD.surfaces[x.surface].pcrTiers.indexOf(x.pcr)));
+  const tiers = SURFACE_SPEC[surface].pcrTiers;
+  const [tier, setTier] = useState(Math.max(0, SURFACE_SPEC[x.surface].pcrTiers.indexOf(x.pcr)));
   const mode = (m: 'extend' | 'trim' | 'cut'): void => {
     useToolStore.getState().set({ tool: x.kind === 'taxilane' ? 'taxilane' : 'taxiway', taxiMode: m, category: 'taxiway', menuTab: 'build', menuOpen: true, selection: null, hint: null, problem: null });
   };
@@ -82,10 +82,10 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
 function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
   const [code, setCode] = useState<CodeLetter>(r.code);
   const [approach, setApproach] = useState<Approach>(r.approach);
-  const tiers = AIRFIELD.surfaces[r.surface].pcrTiers;
+  const tiers = SURFACE_SPEC[r.surface].pcrTiers;
   const [tier, setTier] = useState(Math.max(0, tiers.indexOf(r.pcr)));
   const [surface, setSurface] = useState<Surface>(r.surface);
-  const surfTiers = AIRFIELD.surfaces[surface].pcrTiers;
+  const surfTiers = SURFACE_SPEC[surface].pcrTiers;
   const paved = surface === 'asphalt' || surface === 'concrete';
   const apply = (): void => {
     if (code !== r.code || approach !== r.approach) send({ type: 'reclassRunway', id: r.id, code, approach });
@@ -285,7 +285,7 @@ export function ObjectPanel({ send }: Props) {
     return null;
   };
   const cur = surfaceOf();
-  const tiers = cur ? AIRFIELD.surfaces[cur.surface].pcrTiers : [];
+  const tiers = cur ? SURFACE_SPEC[cur.surface].pcrTiers : [];
   const tierIdx = cur ? Math.max(0, tiers.indexOf(cur.pcr)) : 0;
   return (
     <div
