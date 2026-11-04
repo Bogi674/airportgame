@@ -12,9 +12,18 @@ interface Held {
   receivedAt: number;
 }
 
+export interface CrashReport {
+  message: string;
+  tick: number;
+  seed: string;
+  commands: unknown[];
+}
+
 export interface ClientEvents {
   onPerf?(report: PerfReport): void;
   onError?(message: string): void;
+  /** The sim stopped: the tick, seed, error and the last commands, for the crash panel and the copied report. */
+  onCrash?(report: CrashReport): void;
   onSite?(site: SitePayload): void;
   onOwnership?(ownership: OwnershipPayload): void;
   onEvents?(list: string[]): void;
@@ -36,7 +45,10 @@ export class SimClient {
     // Inline workers run from a blob URL, so the built game also runs from a single file on disk.
     this.worker = new SimWorker();
     this.worker.onmessage = (e: MessageEvent<FromSimMessage>) => this.handle(e.data);
-    this.worker.onerror = (e) => this.events.onError?.(e.message);
+    this.worker.onerror = (e) => {
+      this.events.onError?.(e.message);
+      this.events.onCrash?.({ message: e.message, tick: this.tick, seed: '', commands: [] });
+    };
   }
 
   private post(msg: ToSimMessage, transfer: Transferable[] = []): void {
@@ -98,6 +110,7 @@ export class SimClient {
         break;
       case 'error':
         this.events.onError?.(msg.message);
+        this.events.onCrash?.({ message: msg.message, tick: msg.tick, seed: msg.seed, commands: msg.commands });
         break;
       default:
         break;

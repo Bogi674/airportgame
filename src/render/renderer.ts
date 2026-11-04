@@ -10,6 +10,7 @@ import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
 import { SpriteCache, tierForZoom } from './sprites/aircraftSprite';
 import { People } from './people';
+import { QualityGovernor, type QualityPreset } from './quality';
 import { vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
 
@@ -31,6 +32,8 @@ export class Renderer {
   private readonly people = new People();
   private lastFrame = 0;
   private debug = false;
+  private readonly governor = new QualityGovernor();
+  private lastRender = 0;
   private speed = 1;
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
@@ -52,7 +55,23 @@ export class Renderer {
     return this.chunks.size;
   }
 
+  setQualityPreset(p: QualityPreset): void {
+    this.governor.setPreset(p);
+    this.applyQuality();
+  }
+
+  get qualityLevel(): number {
+    return this.governor.level;
+  }
+
+  private applyQuality(): void {
+    const level = this.governor.level;
+    this.people.setCap(level >= 1 ? 1500 : 3000);
+    this.setQualityDprCap(level >= 3 ? 1 : 2);
+  }
+
   setQualityDprCap(cap: number): void {
+    if (cap === this.qualityDprCap) return;
     this.qualityDprCap = cap;
     this.resize();
   }
@@ -143,6 +162,9 @@ export class Renderer {
    * `prev` may be null before the second snapshot arrives.
    */
   render(prev: SnapshotViews | null, curr: SnapshotViews | null, alpha: number): void {
+    const t0 = performance.now();
+    if (this.lastRender > 0 && this.governor.frame(t0 - this.lastRender, t0)) this.applyQuality();
+    this.lastRender = t0;
     const ctx = this.ctx;
     const cam = this.camera;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -269,7 +291,7 @@ export class Renderer {
     const ctx = this.ctx;
     const n = curr.header[SnapHeader.AircraftCount];
     const pn = prev ? prev.header[SnapHeader.AircraftCount] : 0;
-    const tier = tierForZoom(this.camera.zoom);
+    const tier = Math.max(0, tierForZoom(this.camera.zoom) - (this.governor.level >= 2 ? 1 : 0));
     let pi = 0;
     for (let i = 0; i < n; i++) {
       const sprite = this.sprites.get(curr.aircraftType[i], curr.aircraftLivery[i], tier);

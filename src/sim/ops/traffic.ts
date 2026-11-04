@@ -179,7 +179,7 @@ export class Traffic {
 
   setTestTraffic(perHour: number, turnScale: number): void {
     this.testPerHour = Math.max(0, Math.min(240, perHour));
-    this.testTurnScale = Math.max(0.05, Math.min(2, turnScale));
+    this.testTurnScale = Math.max(0.05, Math.min(6, turnScale));
   }
 
   get nowTick(): number {

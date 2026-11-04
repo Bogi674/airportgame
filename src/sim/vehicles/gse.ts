@@ -61,6 +61,15 @@ export class Gse {
   // hot
   update(): void {
     const t = this.traffic;
+    // Crews only change when an aircraft changes state, so look for that twice a second.
+    if (this.phase++ % 5 === 0) this.scan(t);
+    if (this.count === 0) return;
+    this.move(t);
+  }
+
+  private phase = 0;
+
+  private scan(t: Traffic): void {
     for (let a = 0; a < MAX_AIRCRAFT; a++) {
       const st = t.state[a];
       const f = t.flight[a];
@@ -79,6 +88,9 @@ export class Gse {
         this.release(a, true);
       }
     }
+  }
+
+  private move(t: Traffic): void {
     for (let v = 0; v < MAX_VEHICLES; v++) {
       if (this.active[v] === 0) continue;
       const s = this.state[v];

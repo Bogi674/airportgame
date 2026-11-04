@@ -34,6 +34,10 @@ interface GameState extends PerfReport {
   pauseOpen: boolean;
   guideHidden: boolean;
   debugOverlay: boolean;
+  quality: 'auto' | 'low' | 'medium' | 'high';
+  setQuality(q: 'auto' | 'low' | 'medium' | 'high'): void;
+  crash: { message: string; tick: number; seed: string; commands: unknown[] } | null;
+  setCrash(c: { message: string; tick: number; seed: string; commands: unknown[] } | null): void;
   toggleDebugOverlay(): void;
   game: { seed: string; preset: Preset };
   setScreen(screen: 'menu' | 'game'): void;
@@ -80,6 +84,24 @@ export const useGameStore = create<GameState>((set) => ({
   pauseOpen: false,
   guideHidden: false,
   debugOverlay: false,
+  quality: ((): 'auto' | 'low' | 'medium' | 'high' => {
+    try {
+      const v = localStorage.getItem('airfield.quality');
+      return v === 'low' || v === 'medium' || v === 'high' ? v : 'auto';
+    } catch {
+      return 'auto';
+    }
+  })(),
+  setQuality: (quality) => {
+    try {
+      localStorage.setItem('airfield.quality', quality);
+    } catch {
+      /* the choice then lasts for this session */
+    }
+    set({ quality });
+  },
+  crash: null,
+  setCrash: (crash) => set({ crash }),
   toggleDebugOverlay: () => set((s) => ({ debugOverlay: !s.debugOverlay })),
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
   simMsPerTick: 0,

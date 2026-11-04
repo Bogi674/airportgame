@@ -55,7 +55,7 @@ function prevailingWind(freq: Float32Array, mean: Float32Array): { deg: number; 
 
 /** Floating HUD: information chips at the top left, game controls at the top right. No bar. */
 export function TopBar({ onSpeed, onMenu }: Props) {
-  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay } = useGameStore();
+  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, quality, setQuality } = useGameStore();
   const [settings, setSettings] = useState(false);
   const rating = business ? business.rating : 0;
   const rate = Math.max(0, Math.min(100, rating));
@@ -128,6 +128,16 @@ export function TopBar({ onSpeed, onMenu }: Props) {
           {settings && (
             <div class="panel" data-testid="settings-panel" style="position:absolute;right:0;top:44px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:190px;z-index:30">
               <div class="section">{t('top.settings')}</div>
+              <label style="font-size:12px;display:flex;flex-direction:column;gap:4px">
+                {t('settings.quality')}
+                <select data-testid="quality-select" value={quality} onChange={(e) => setQuality((e.target as HTMLSelectElement).value as 'auto' | 'low' | 'medium' | 'high')}>
+                  {(['auto', 'low', 'medium', 'high'] as const).map((q) => (
+                    <option key={q} value={q}>
+                      {tDynamic(`settings.quality.${q}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button data-testid="theme-toggle" onClick={toggleTheme} style="display:inline-flex;gap:8px;align-items:center;justify-content:center">
                 <Icon name={light ? 'moon' : 'sun'} size={15} />
                 {light ? t('settings.dark') : t('settings.light')}

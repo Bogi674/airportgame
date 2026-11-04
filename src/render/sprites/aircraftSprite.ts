@@ -20,8 +20,8 @@ export const LIVERIES: readonly Livery[] = [
 ];
 
 /** Pixels per meter for the three detail tiers. */
-export const TIER_PPM = [1.5, 4, 9] as const;
-export const tierForZoom = (zoom: number): number => (zoom < 0.5 ? 0 : zoom < 3 ? 1 : 2);
+export const TIER_PPM = [1.5, 4, 9, 18] as const;
+export const tierForZoom = (zoom: number): number => (zoom < 0.5 ? 0 : zoom < 3 ? 1 : zoom < 8 ? 2 : 3);
 
 export interface Sprite {
   canvas: HTMLCanvasElement;
@@ -172,6 +172,42 @@ export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: num
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     for (const d of doors) for (const side of [-1, 1]) ctx.fillRect(X(d + 0.4), Y(side * g.base.fw * 0.5 - 0.1), 0.8, 0.2);
   }
+  if (tier >= 3) {
+    // Close detail: fuselage panel seams, window strips under the cheat line, flap tracks and engine pylons.
+    const fw = g.base.fw;
+    ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+    ctx.lineWidth = 0.03;
+    ctx.beginPath();
+    for (let u = g.base.nose; u < L - g.base.tail; u += 2.6) {
+      ctx.moveTo(X(u), Y(-fw * 0.48));
+      ctx.lineTo(X(u), Y(fw * 0.48));
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(38,50,58,0.55)';
+    for (const side of [-1, 1]) {
+      for (let u = g.base.nose + 2; u < L - g.base.tail - 2; u += 0.75) ctx.fillRect(X(u), Y(side * fw * 0.42 - 0.09), 0.38, 0.18);
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 0.04;
+    for (const w of g.wings) {
+      const a = w[3];
+      const b = w[4];
+      for (const k of [0.3, 0.55, 0.8]) {
+        ctx.beginPath();
+        ctx.moveTo(X(a.u + (b.u - a.u) * k), Y(a.v + (b.v - a.v) * k));
+        ctx.lineTo(X(a.u + (b.u - a.u) * k - 0.9), Y(a.v + (b.v - a.v) * k));
+        ctx.stroke();
+      }
+    }
+    for (const e of g.engines) {
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(X(e.u), Y(e.v * side));
+        ctx.lineTo(X(e.u - 1.2), Y(e.v * side * 0.85));
+        ctx.stroke();
+      }
+    }
+  }
   return { canvas, ppm, width, height };
 }
 
@@ -183,12 +219,12 @@ function shade(hex: string, k: number): string {
   return `rgb(${r},${gg},${b})`;
 }
 
-/** Sprite cache keyed by type, livery and tier. At most 10 types by 8 liveries by 3 tiers. */
+/** Sprite cache keyed by type, livery and tier. At most 10 types by 8 liveries by 4 tiers. */
 export class SpriteCache {
   private readonly sprites: (Sprite | undefined)[] = [];
 
   get(typeIdx: number, liveryIdx: number, tier: number): Sprite {
-    const key = (typeIdx * 8 + (liveryIdx & 7)) * 3 + tier;
+    const key = (typeIdx * 8 + (liveryIdx & 7)) * 4 + tier;
     let s = this.sprites[key];
     if (!s) {
       s = bakeAircraftSprite(typeIdx, liveryIdx & 7, tier);

@@ -77,26 +77,26 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 ### M3. Aircraft and movement
 
 * [x] Aircraft data loader with zod schema for the 10 MVP 1 types, derived code, wake and approach category tests
-* [ ] Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3 (simplified: geometry based top down sprites with tiers 0 to 2 (silhouette, engines and livery, panel lines), not a full port of the prototype renderer)
+* [ ] Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3 (geometry based top down sprites with tiers 0 to 3: silhouette, engines and livery, panel lines, then seams, window strips and flap tracks, not a full port of the prototype renderer)
 * [ ] Calibration overlays saved for all 10 types within tolerance (a test checks length and span of all 10 types against the data (2 and 4 percent), overlays against photos are not saved)
 * [ ] Taxi network builder with samples, blocks and conflict sets, property tests (built with 2 m samples and per taxiway blocks, conflict sets and property tests are missing)
-* [ ] Routing with direction, closures, max code, congestion cost and preferred flows (direction, closures, max code, strength and congestion cost are done, preferred flows are missing)
+* [x] Routing with direction, closures, max code, congestion cost and preferred flows (direction, closures, max code, strength, congestion cost and a per taxiway preferred flow that costs three times as much against it)
 * [ ] Reservations, following gaps, junction priority, holding points, runway exclusivity with wake separation (node and block reservations, following gaps, holding points, runway exclusivity and wake separation work, junction priority is first come)
 * [ ] Push back with direction per stand (straight push back only)
-* [ ] Deadlock detection and resolution with debug overlay (wait cycles are found and broken by a yield, no debug overlay)
-* [ ] Runway length, payload and range, ACR and PCR checks with the limiting factor shown (runway length, ACR and PCR checks name the limiting factor, payload and range are not modelled)
+* [x] Deadlock detection and resolution with debug overlay (wait cycles are found and broken by a yield, and a traffic overlay ringing waiting aircraft in amber and deadlocked ones in red)
+* [x] Runway length, payload and range, ACR and PCR checks with the limiting factor shown (stage lengths per rotation, takeoff weight from empty weight, passengers and fuel, payload cut at MTOW, runway need grows with weight, refusals name the limiting factor)
 * [x] Test flight generator for arrivals and departures
-* [ ] Stress: 50 aircraft under the medium budget (budgets hold with a peak of 14 aircraft on one runway, 50 simultaneous aircraft were not reached)
+* [x] Stress: 50 aircraft under the medium budget (scenario busy50 reaches 60 aircraft with 60 stands under the 4 ms budget, see `npm run stress`)
 
 ### M4. Terminal and departures
 
 * [x] Building shell placement with local grid and rotation (the player lays foundation cells on a local 2 m grid, rotated in steps with R, a new building starts with the first foundation)
-* [ ] Walls, doors, floors, rooms with types, room validation (foundations, flooring (concrete, tile, carpet), walls, glass walls and doors on grid lines are built, rooms with types and room validation are not)
+* [x] Walls, doors, floors, rooms with types, room validation (foundations, flooring, walls, glass, doors, painted zones and room validation: passengers must be able to walk from check in through a security lane into secure floor with seats, a gap in the wall is a security bypass and stops departures)
 * [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in desk, security lane, baggage belt, seating, toilets and six shop types are placed cell by cell, kiosks, bag drop, passport booth and gate desks are missing)
 * [ ] Walking graph with cached distances and regional rebuild (not built)
 * [ ] Service nodes and queues (a terminal load model replaces queues)
 * [ ] Cohorts and the departure journey from curb to aircraft (passengers are aggregated per flight and limited by terminal capacity, no cohorts)
-* [ ] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap (not built)
+* [ ] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap (a render sample of up to 3 000 dots, 1 500 under the governor, walks between the fixtures laid, no atlas, recipes or walk cycle)
 * [ ] Density, queue and walking distance overlays (not built)
 * [ ] Satisfaction and airport rating (rating from on time share, satisfaction, facilities and infrastructure)
 * [ ] Stress: 20 000 cohorts under the medium budget (not applicable, no cohorts)
@@ -105,7 +105,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 
 * [ ] Arrival journey with immigration, baggage claim and customs (not built)
 * [ ] Simple baggage network (belts with capacity and transit time) and carousels (belts add arrival capacity only)
-* [ ] GSE data and sprites for tug, tractor and carts, belt loader, refueller, hydrant dispenser, GPU, apron bus (not built)
+* [x] GSE data and sprites for tug, tractor and carts, belt loader, refueller, hydrant dispenser, GPU, apron bus (tug, tractor, cart, belt loader, refueller, GPU, catering and stairs run each turnaround from true size catalog sprites, hydrant dispenser and apron bus are not spawned yet)
 * [ ] Turnaround task lists for the 10 types with dependencies (a fixed turnaround time per role)
 * [ ] Service points per type, docking poses, service roads and apron lanes with reservations (not built)
 * [ ] Trailer kinematics and free rotation (not built)
@@ -128,9 +128,9 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [ ] Main menu, new game wizard, load screen, settings, pause menu per `docs/UI_DESIGN.md` (simplified compared to UI_DESIGN.md)
 * [ ] HUD: top bar, left rail with flyouts, context bar, inspector, alert center, toasts, overlays (top bar, tool rail, context bar, inspectors, toasts and sheets exist, the left rail has no flyouts and there is no alert center)
 * [x] Saves to IndexedDB with autosave, export and import, migrations scaffold (gzip, three autosave slots, file export and import, version and migration scaffold, replay safe determinism test)
-* [ ] Page lifecycle, crash recovery and copy report per `docs/BROWSER.md` (pause and autosave on a hidden tab, no crash recovery panel or copy report)
+* [x] Page lifecycle, crash recovery and copy report per `docs/BROWSER.md` (pause and autosave on a hidden tab, crash panel with back to menu, restart and copy report with version, browser, seed and the last 500 commands)
 * [x] Short guided start (build a strip, a stand, a terminal, sign the first airline) (a checklist that ticks itself)
-* [ ] Quality governor and quality presets (not built)
+* [x] Quality governor and quality presets (automatic governor with 3 steps and restore, plus Low, Medium and High presets in settings)
 * [ ] Playwright smoke tests in three engines (configured for three engines, run in Chromium only so far)
 * [ ] All MVP 1 criteria above checked, a 3 hour play session at 4x without errors or budget breaches (not all criteria are met, see the notes above)
 

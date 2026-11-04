@@ -7,6 +7,7 @@ import type { Speed } from '@shared/time';
 import { SimClient } from '../worker/client';
 import { alertText, ALERT_CODES, parseEvent } from './alerts';
 import { ContextBar } from './ContextBar';
+import { CrashPanel } from './CrashPanel';
 import { Guide } from './Guide';
 import { MapView } from './MapView';
 import { Menu } from './Menu';
@@ -56,6 +57,7 @@ export function App() {
       new SimClient({
         onPerf: (report) => useGameStore.getState().setPerf(report, client.tick),
         onError: (message) => useGameStore.getState().setError(message),
+        onCrash: (c) => useGameStore.getState().setCrash(c),
         onSite: (site) => useGameStore.getState().setSite(site),
         onOwnership: (o) => useGameStore.getState().setOwnership(o.owner, o.cash),
         onAirfield: (m) => useGameStore.getState().setAirfield(m.airfield, m.canUndo, m.canRedo),
@@ -181,6 +183,10 @@ export function App() {
   }, [renderer, store.airfield]);
 
   useEffect(() => {
+    renderer?.setQualityPreset(store.quality);
+  }, [renderer, store.quality]);
+
+  useEffect(() => {
     renderer?.setDebugOverlay(store.debugOverlay);
   }, [renderer, store.debugOverlay]);
 
@@ -293,7 +299,14 @@ export function App() {
           <Toasts />
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
-          {store.error && (
+          <CrashPanel onMenu={() => {
+            useGameStore.getState().setCrash(null);
+            useGameStore.getState().setError(null);
+            useGameStore.getState().setPauseOpen(false);
+            useGameStore.getState().setScreen('menu');
+            client.setSpeed(0);
+          }} />
+          {store.error && !store.crash && (
             <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#4a1515;border:1px solid #a33;border-radius:10px;z-index:60">
               {t('error.title')}: {store.error}
             </div>

@@ -47,7 +47,10 @@ export function buildTestAirport(sim: Sim, o: AirportOptions = {}): void {
   go({ type: 'buildRapidExit', runwayId: 1, distM: Math.min(1300, len - 300), side: 'right', angleDeg: 30, code: 'C', surface: 'asphalt', tier: 2 });
   const span = spacing * per + 100;
   go({ type: 'buildApron', polygon: [{ x: x0 + 800, y: 5260 }, { x: x0 + 800 + span, y: 5260 }, { x: x0 + 800 + span, y: 5400 }, { x: x0 + 800, y: 5400 }], surface: 'concrete', tier: 2 });
-  go({ type: 'buildStands', x: x0 + 800 + span - 50, y: 5330, headingDeg: 180, count: per, spacingM: spacing, standType: type, code });
+  // One command places at most 30 stands, so larger rows are laid in batches along the same apron.
+  for (let placed = 0; placed < per; placed += 30) {
+    go({ type: 'buildStands', x: x0 + 800 + span - 50 - placed * spacing, y: 5330, headingDeg: 180, count: Math.min(30, per - placed), spacingM: spacing, standType: type, code });
+  }
   if (errors.length > 0) throw new Error(`test airport failed: ${errors.join(', ')}`);
 }
 

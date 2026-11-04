@@ -20,12 +20,19 @@ interface Scenario {
   stands: number;
   perHour: number;
   budgetMsPerTick: number;
+  /** Turnaround length scale, higher keeps aircraft on stands longer. */
+  turnScale?: number;
+  standCode?: 'A' | 'B' | 'C';
+  ticks?: number;
+  /** Aircraft that must be on the airport at once at some point. */
+  minPeak?: number;
 }
 
 const SCENARIOS: Scenario[] = [
   { name: 'small', seed: 'STRESS-SMALL', stands: 8, perHour: 40, budgetMsPerTick: 1 },
   { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4 },
   { name: 'large', seed: 'STRESS-LARGE', stands: 30, perHour: 240, budgetMsPerTick: 8 },
+  { name: 'busy50', seed: 'STRESS-BUSY', stands: 60, standCode: 'B', perHour: 720, budgetMsPerTick: 4, turnScale: 4, ticks: 60_000, minPeak: 50 },
 ];
 
 interface Stat {
@@ -39,25 +46,27 @@ function percentile(sorted: Float64Array, p: number): number {
 }
 
 const peaks: Record<string, string> = {};
+const peakCounts: Record<string, number> = {};
 
 function runScenario(s: Scenario): Record<string, Stat> {
   const sim = new Sim(s.seed, { preset: 'flatCoastal' });
   sim.parcelOwner.fill(1);
   // Plenty of cash: the benchmark builds a big airport and is not about money.
   sim.cash = 500_000_000;
-  buildTestAirport(sim, { standsPerRow: s.stands });
-  sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: 0.08 });
+  buildTestAirport(sim, { standsPerRow: s.stands, standCode: s.standCode });
+  sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.08 });
   const n = sim.subsystemCount;
+  const ticks = s.ticks ?? TICKS;
   const samples: Float64Array[] = [];
-  for (let i = 0; i < n; i++) samples.push(new Float64Array(TICKS));
-  const total = new Float64Array(TICKS);
+  for (let i = 0; i < n; i++) samples.push(new Float64Array(ticks));
+  const total = new Float64Array(ticks);
 
   // Warm up so the JIT does not skew the first ticks.
   const warm = new Sim(s.seed, { preset: 'flatCoastal' });
   for (let i = 0; i < 2000; i++) warm.step();
 
   let peak = 0;
-  for (let t = 0; t < TICKS; t++) {
+  for (let t = 0; t < ticks; t++) {
     if (sim.traffic.count > peak) peak = sim.traffic.count;
     let tickNs = 0n;
     for (let i = 0; i < n; i++) {
@@ -71,6 +80,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     total[t] = Number(tickNs) / 1e6;
   }
 
+  peakCounts[s.name] = peak;
   peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.deadlocks} deadlocks`;
   const out: Record<string, Stat> = {};
   const addStat = (name: string, arr: Float64Array): void => {
@@ -99,11 +109,15 @@ function main(): void {
 
   for (const s of SCENARIOS) {
     const r = results[s.name];
-    console.log(`\nScenario ${s.name}: ${s.stands} stands, ${s.perHour} flights per hour, ${TICKS} ticks, budget ${s.budgetMsPerTick} ms/tick`);
+    console.log(`\nScenario ${s.name}: ${s.stands} stands, ${s.perHour} flights per hour, ${s.ticks ?? TICKS} ticks, budget ${s.budgetMsPerTick} ms/tick`);
     console.log(`  ${peaks[s.name]}`);
     console.log('  subsystem      mean ms     p99 ms');
     for (const [name, stat] of Object.entries(r)) {
       console.log(`  ${name.padEnd(12)} ${stat.mean.toFixed(5).padStart(9)} ${stat.p99.toFixed(5).padStart(10)}`);
+    }
+    if (s.minPeak !== undefined && peakCounts[s.name] < s.minPeak) {
+      console.error(`  PEAK TOO LOW: ${peakCounts[s.name]} aircraft, the scenario must reach ${s.minPeak}`);
+      failed = true;
     }
     if (r.total.mean > s.budgetMsPerTick) {
       console.error(`  BUDGET BREACH: mean ${r.total.mean.toFixed(4)} ms exceeds ${s.budgetMsPerTick} ms`);

@@ -40,10 +40,16 @@ export class People {
   private readonly grid = new Uint8Array(MAX_PEOPLE);
   private readonly color = new Uint8Array(MAX_PEOPLE);
   private count = 0;
+  private cap = MAX_PEOPLE;
   private anchors: Anchors[] = [];
   private lastPax = -1;
   private pending = 0;
   private seed = 0x9e3779b9;
+
+  setCap(cap: number): void {
+    this.cap = Math.min(MAX_PEOPLE, cap);
+    if (this.count > this.cap) this.count = this.cap;
+  }
 
   get size(): number {
     return this.count;
@@ -99,7 +105,7 @@ export class People {
   }
 
   private spawn(): void {
-    if (this.count >= MAX_PEOPLE || this.anchors.length === 0) return;
+    if (this.count >= this.cap || this.anchors.length === 0) return;
     const gi = Math.floor(this.rnd() * this.anchors.length);
     const a = this.anchors[gi];
     const arriving = this.rnd() < 0.4 ? 1 : 0;
