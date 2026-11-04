@@ -181,6 +181,10 @@ export function App() {
   }, [renderer, store.airfield]);
 
   useEffect(() => {
+    renderer?.setFlow(store.business?.paxToday ?? 0, store.speed);
+  }, [renderer, store.business?.paxToday, store.speed]);
+
+  useEffect(() => {
     renderer?.setTerminals(store.terminalGrids);
   }, [renderer, store.terminalGrids]);
 
