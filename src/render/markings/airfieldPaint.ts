@@ -1,31 +1,18 @@
-import { AIRFIELD } from '@data/index';
-import { compassVector, type AirfieldPayload, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
+import { AIRFIELD, SURFACE_SPEC } from '@data/index';
+import { compassVector, type AirfieldPayload, type Runway, type Stand, type Surface } from '@shared/airfield';
 
 import { FLOOR, TERMINAL_CELL_M, TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
 import { worldToCell } from '@shared/terminalOps';
 import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
-import { planFor, type HoldMark, type Line, type Plan } from './taxiPlan';
+import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
-const PAVEMENT: Record<Surface, string> = {
-  asphalt: '#4a4c52',
-  concrete: '#a8a8a2',
-  grass: '#86a85e',
-  gravel: '#a39b8b',
-  dirt: '#8a6f4d',
-};
-const SHOULDER: Record<Surface, string> = {
-  asphalt: '#5d5f64',
-  concrete: '#bdbdb7',
-  grass: '#86a85e',
-  gravel: '#a39b8b',
-  dirt: '#8a6f4d',
-};
+const shoulderColor = (s: Surface): string => SURFACE_SPEC[s].shoulderColor ?? SURFACE_SPEC[s].color;
 const WHITE = '#f1f1ec';
-const YELLOW = '#f2c318';
+const YELLOW = '#f2c230';
 const RED = '#d8362f';
 const THRESHOLD_STRIPES: Record<number, number> = { 18: 4, 23: 6, 30: 8, 45: 12, 60: 16 };
 
@@ -42,8 +29,8 @@ interface Window {
 const overlaps = (w: Window, minX: number, minY: number, maxX: number, maxY: number): boolean =>
   maxX >= w.minX && minX <= w.maxX && maxY >= w.minY && minY <= w.maxY;
 
-/** A line width that never falls below one device pixel at the bake scale. */
-const lineM = (w: Window, meters: number): number => Math.max(meters, 0.9 / w.scale);
+/** A line width in meters that never falls below `minPx` device pixels at the bake scale. */
+const lineM = (w: Window, meters: number, minPx = 0.9): number => Math.max(meters, minPx / w.scale);
 
 /** Paints the airfield pavement and markings of one chunk into its canvas context. */
 export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly TerminalGrid[], band: number, cx: number, cy: number): void {
@@ -57,6 +44,9 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
 
   paintGroundContact(ctx, af, terminals, win);
 
+  const plan = planFor(af);
+  // Shoulders go under the aprons, so a taxiway entering an apron shows no shoulder band on it.
+  paintAreas(ctx, plan.shoulders, win);
   for (const a of af.aprons) {
     let minX = Infinity;
     let minY = Infinity;
@@ -69,7 +59,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
       maxY = Math.max(maxY, p.y);
     }
     if (!overlaps(win, minX, minY, maxX, maxY)) continue;
-    ctx.fillStyle = PAVEMENT[a.surface];
+    ctx.fillStyle = pavementColor(a.surface);
     ctx.beginPath();
     ctx.moveTo(a.polygon[0].x, a.polygon[0].y);
     for (let i = 1; i < a.polygon.length; i++) ctx.lineTo(a.polygon[i].x, a.polygon[i].y);
@@ -77,8 +67,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     ctx.fill();
   }
 
-  const plan = planFor(af);
-  for (const t of af.taxiways) paintTaxiwayPavement(ctx, t, win, plan);
+  paintAreas(ctx, plan.areas, win);
   for (const r of af.runways) paintRunwayPavement(ctx, r, win);
   paintTaxiPlan(ctx, af, plan, win);
   for (const h of plan.holds) paintHold(ctx, h, win);
@@ -163,27 +152,18 @@ function runwayBounds(r: Runway): [number, number, number, number] {
   return [Math.min(r.x1, r.x2) - m, Math.min(r.y1, r.y2) - m, Math.max(r.x1, r.x2) + m, Math.max(r.y1, r.y2) + m];
 }
 
-function paintTaxiwayPavement(ctx: Ctx, t: Taxiway, win: Window, plan: Plan): void {
-  const pts = plan.smooth.get(t.id) ?? t.points;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of pts) {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
+function paintAreas(ctx: Ctx, areas: readonly Area[], win: Window): void {
+  for (const a of areas) {
+    if (!overlaps(win, a.minX, a.minY, a.maxX, a.maxY)) continue;
+    ctx.fillStyle = a.color;
+    ctx.beginPath();
+    for (const r of a.rings) {
+      ctx.moveTo(r[0].x, r[0].y);
+      for (let i = 1; i < r.length; i++) ctx.lineTo(r[i].x, r[i].y);
+      ctx.closePath();
+    }
+    ctx.fill('evenodd');
   }
-  if (!overlaps(win, minX - t.widthM, minY - t.widthM, maxX + t.widthM, maxY + t.widthM)) return;
-  ctx.strokeStyle = PAVEMENT[t.surface];
-  ctx.lineWidth = t.widthM;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'butt';
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.stroke();
 }
 
 function drawLines(ctx: Ctx, lines: readonly Line[], win: Window): void {
@@ -199,7 +179,7 @@ function drawLines(ctx: Ctx, lines: readonly Line[], win: Window): void {
 /** Taxiway paint from the plan: fillets, centerlines with lead-on curves, double edge lines, enhanced centerlines. */
 function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): void {
   const surface = af.taxiways[0]?.surface ?? 'asphalt';
-  ctx.fillStyle = PAVEMENT[surface];
+  ctx.fillStyle = pavementColor(surface);
   for (const patch of plan.patches) {
     const first = patch[0];
     if (!overlaps(win, first.x - 80, first.y - 80, first.x + 80, first.y + 80)) continue;
@@ -212,14 +192,15 @@ function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'butt';
   ctx.strokeStyle = YELLOW;
-  ctx.lineWidth = lineM(win, 0.3);
+  // Taxiway centerline 0.15 m wide, at least 1.6 px (docs/DESIGN_REVISION_2.md section 2.4).
+  ctx.lineWidth = lineM(win, 0.15, 1.6);
   drawLines(ctx, plan.centerlines, win);
   drawLines(ctx, plan.leadIns, win);
   ctx.strokeStyle = RED;
   drawLines(ctx, plan.redCenterlines, win);
   if (win.scale >= 1) {
     ctx.strokeStyle = YELLOW;
-    ctx.lineWidth = lineM(win, 0.15);
+    ctx.lineWidth = lineM(win, 0.15, 1.3);
     drawLines(ctx, plan.edges, win);
     ctx.lineWidth = lineM(win, 0.18);
     ctx.setLineDash([1.2, 1.2]);
@@ -304,10 +285,10 @@ function paintRunwayPavement(ctx: Ctx, r: Runway, win: Window): void {
   ctx.rotate((r.headingDeg * Math.PI) / 180 - Math.PI / 2);
   const half = r.widthM / 2;
   if (r.shoulderM > 0) {
-    ctx.fillStyle = SHOULDER[r.surface];
+    ctx.fillStyle = shoulderColor(r.surface);
     ctx.fillRect(0, -half - r.shoulderM, r.lengthM, r.widthM + 2 * r.shoulderM);
   }
-  ctx.fillStyle = PAVEMENT[r.surface];
+  ctx.fillStyle = pavementColor(r.surface);
   ctx.fillRect(0, -half, r.lengthM, r.widthM);
   ctx.restore();
 }

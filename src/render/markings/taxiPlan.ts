@@ -1,13 +1,16 @@
-import { AIRFIELD } from '@data/index';
-import { compassVector, type AirfieldPayload, type Runway, type Taxiway } from '@shared/airfield';
+import { AIRFIELD, SURFACE_SPEC } from '@data/index';
+import { compassVector, type AirfieldPayload, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
+import { taxiGraph } from '@shared/pavement/fromAirfield';
+import { buildPavement, type EndTrim } from '@shared/pavement/pavement';
 
 /**
  * Plans taxiway and runway paint from the built geometry. Everything the player builds is turned
- * into marking geometry automatically: smoothed taxiway corners with fillets, curved lead-on lines
- * where a taxiway meets another taxiway or a runway, edge lines that open at junctions, runway
- * holding positions with their signs, enhanced centerlines and stand lead-in lines. The plan is
- * computed once per airfield change and drawn per chunk.
+ * into marking geometry automatically. Taxiway pavement, bends, junctions, shoulders, centerlines
+ * and edge lines come from the node based generator in @shared/pavement (docs/DESIGN_REVISION_2.md
+ * section 2). This module adds what meets the runways: fillets, lead-on curves, edge stripe
+ * openings, holding positions with their signs and enhanced centerlines, plus stand lead-in lines.
+ * The plan is computed once per airfield change and drawn per chunk.
  */
 
 export interface Line {
@@ -30,9 +33,23 @@ export interface HoldMark {
   instrument: boolean;
 }
 
+/** A filled pavement shape: rings drawn with the even odd rule, so holes stay open. */
+export interface Area {
+  color: string;
+  rings: Pt[][];
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 export interface Plan {
-  /** Smoothed centerlines per taxiway id, used for the pavement too. */
+  /** Smoothed centerlines per taxiway id, for features placed along a taxiway. */
   smooth: Map<number, Pt[]>;
+  /** Taxiway shoulders, drawn under the pavement. */
+  shoulders: Area[];
+  /** Taxiway pavement. */
+  areas: Area[];
   patches: Pt[][];
   centerlines: Line[];
   redCenterlines: Line[];
@@ -63,6 +80,14 @@ const mkLine = (pts: Pt[]): Line => {
 };
 
 const len = (x: number, y: number): number => Math.hypot(x, y);
+
+/** Pavement fill color of a surface, from surfaces.json. */
+export const pavementColor = (s: Surface): string => SURFACE_SPEC[s].color;
+
+function mkArea(color: string, rings: Pt[][]): Area {
+  const b = mkLine(rings[0]);
+  return { color, rings, minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY };
+}
 
 /** Points along an arc from angle a0 to a1 taking the short way round. */
 function arc(cx: number, cy: number, r: number, a0: number, a1: number): Pt[] {
@@ -177,92 +202,39 @@ function pointAlong(pts: readonly Pt[], cum: readonly number[], s: number): { x:
   return null;
 }
 
-/** Offsets a polyline sideways with mitred corners. */
-export function offsetPolyline(pts: readonly Pt[], d: number): Pt[] {
-  const out: Pt[] = [];
-  const n = pts.length;
-  for (let i = 0; i < n; i++) {
-    const p = pts[i];
-    let nx0 = 0;
-    let ny0 = 0;
-    let nx1 = 0;
-    let ny1 = 0;
-    if (i > 0) {
-      const l = len(p.x - pts[i - 1].x, p.y - pts[i - 1].y) || 1;
-      nx0 = -(p.y - pts[i - 1].y) / l;
-      ny0 = (p.x - pts[i - 1].x) / l;
-    }
-    if (i < n - 1) {
-      const l = len(pts[i + 1].x - p.x, pts[i + 1].y - p.y) || 1;
-      nx1 = -(pts[i + 1].y - p.y) / l;
-      ny1 = (pts[i + 1].x - p.x) / l;
-    }
-    if (i === 0) {
-      nx0 = nx1;
-      ny0 = ny1;
-    }
-    if (i === n - 1) {
-      nx1 = nx0;
-      ny1 = ny0;
-    }
-    const dot = nx0 * nx1 + ny0 * ny1;
-    const k = 1 / Math.max(0.5, 1 + dot);
-    out.push({ x: p.x + (nx0 + nx1) * k * d, y: p.y + (ny0 + ny1) * k * d });
-  }
-  return out;
-}
-
-/** Resamples a polyline every `step` meters. */
-function resample(pts: readonly Pt[], step: number): { pts: Pt[]; s: number[] } {
-  const out: Pt[] = [];
-  const s: number[] = [];
-  let acc = 0;
+/** Resamples a polyline every `step` meters at most, keeping its first and last point. */
+function resample(pts: readonly Pt[], step: number): Pt[] {
+  const out: Pt[] = pts.length > 0 ? [{ x: pts[0].x, y: pts[0].y }] : [];
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1];
     const b = pts[i];
     const l = len(b.x - a.x, b.y - a.y);
     if (l === 0) continue;
     const n = Math.max(1, Math.ceil(l / step));
-    for (let k = i === 1 ? 0 : 1; k <= n; k++) {
-      out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
-      s.push(acc + (l * k) / n);
-    }
-    acc += l;
+    for (let k = 1; k <= n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
   }
-  return { pts: out, s };
+  return out;
 }
 
-interface Cut {
-  /** Which side of the taxiway: +1 left of travel, -1 right, 0 both. */
-  side: number;
-  s0: number;
-  s1: number;
-}
-
-/** Splits samples into runs, dropping samples that fall in a cut or in an excluded area. */
-function runsOf(samples: { pts: Pt[]; s: number[] }, side: number, cuts: readonly Cut[], total: number, endCut: { start: number; end: number }, excluded: (x: number, y: number) => boolean): Pt[][] {
+/** Resamples a polyline and splits it into runs, dropping the samples that fall in an excluded area. */
+function runsOutside(pts: readonly Pt[], excluded: (x: number, y: number) => boolean): Pt[][] {
   const runs: Pt[][] = [];
   let cur: Pt[] | null = null;
-  for (let i = 0; i < samples.pts.length; i++) {
-    const p = samples.pts[i];
-    const s = samples.s[i];
-    let drop = s < endCut.start || s > total - endCut.end;
-    if (!drop) for (const c of cuts) if ((c.side === 0 || c.side === side) && s >= c.s0 && s <= c.s1) drop = true;
-    if (!drop && excluded(p.x, p.y)) drop = true;
-    if (drop) {
+  for (const p of resample(pts, STEP)) {
+    if (excluded(p.x, p.y)) {
       cur = null;
-    } else {
-      if (!cur) {
-        cur = [];
-        runs.push(cur);
-      }
-      cur.push(p);
+      continue;
     }
+    if (!cur) {
+      cur = [];
+      runs.push(cur);
+    }
+    cur.push(p);
   }
   return runs;
 }
 
-const emptyPlan = (): Plan => ({ smooth: new Map(), patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], leadIns: [], holds: [], runwayBreaks: new Map() });
+const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], leadIns: [], holds: [], runwayBreaks: new Map() });
 
 const cache = new WeakMap<AirfieldPayload, Plan>();
 
@@ -285,13 +257,12 @@ interface Junction {
   /** Unit direction of the arriving taxiway toward the junction. */
   cx: number;
   cy: number;
-  /** Through feature direction (unit), its half width incl. shoulder, and the id for cuts. */
+  /** Runway direction (unit), its half width with shoulders, and the runway. */
   tx: number;
   ty: number;
   hT: number;
-  throughTaxi: Taxiway | null;
-  throughRunway: Runway | null;
-  /** Arc length position of the junction along the through feature. */
+  throughRunway: Runway;
+  /** Arc length position of the junction along the runway. */
   along: number;
 }
 
@@ -304,17 +275,11 @@ export function buildPlan(af: AirfieldPayload): Plan {
     plan.smooth.set(t.id, sm);
     cum.set(t.id, cumulative(sm));
   }
-  const cutsByTaxi = new Map<number, Cut[]>();
   const endCuts = new Map<number, { start: number; end: number }>();
   const centerCuts = new Map<number, { start: number; end: number }>();
   /** Edge line cuts at an end of an arriving taxiway, per side, from where each fillet arc leaves the straight edge. */
   const sideCuts = new Map<number, { start: Map<number, number>; end: Map<number, number> }>();
   const extraCenter: Pt[][] = [];
-  const addCut = (id: number, c: Cut): void => {
-    const l = cutsByTaxi.get(id);
-    if (l) l.push(c);
-    else cutsByTaxi.set(id, [c]);
-  };
   const bump = (m: Map<number, { start: number; end: number }>, id: number, end: 0 | 1, v: number): void => {
     const cur = m.get(id) ?? { start: 0, end: 0 };
     if (end === 0) cur.start = Math.max(cur.start, v);
@@ -335,19 +300,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
       cx /= cl;
       cy /= cl;
       let found: Junction | null = null;
-      for (const t of af.taxiways) {
-        if (t.id === c.id) continue;
-        const tsm = plan.smooth.get(t.id) ?? t.points;
-        const hit = closestOnPolyline(tsm, cum.get(t.id) ?? [], E.x, E.y);
-        if (!hit || hit.dist > 1.5) continue;
-        const total = (cum.get(t.id) ?? [0])[tsm.length - 1] ?? 0;
-        if (hit.along < 3 || hit.along > total - 3) continue;
-        const cross = Math.abs(cx * hit.ty - cy * hit.tx);
-        if (cross < 0.3) continue;
-        found = { c, end, px: hit.x, py: hit.y, cx, cy, tx: hit.tx, ty: hit.ty, hT: t.widthM / 2, throughTaxi: t, throughRunway: null, along: hit.along };
-        break;
-      }
-      if (!found) {
+      {
         for (const r of af.runways) {
           const rd = compassVector(r.headingDeg);
           const rel = { x: E.x - r.x1, y: E.y - r.y1 };
@@ -361,25 +314,11 @@ export function buildPlan(af: AirfieldPayload): Plan {
           const k = (rd.y * (E.x - r.x1) - rd.x * (E.y - r.y1)) / (cy * rd.x - cx * rd.y || 1);
           const px = E.x + cx * k;
           const py = E.y + cy * k;
-          found = { c, end, px, py, cx, cy, tx: rd.x, ty: rd.y, hT: edge, throughTaxi: null, throughRunway: r, along: (px - r.x1) * rd.x + (py - r.y1) * rd.y };
+          found = { c, end, px, py, cx, cy, tx: rd.x, ty: rd.y, hT: edge, throughRunway: r, along: (px - r.x1) * rd.x + (py - r.y1) * rd.y };
           break;
         }
       }
       if (found) junctions.push(found);
-    }
-  }
-
-  // Two taxiways that meet the same through taxiway from opposite sides at one point form a crossing:
-  // their centerlines run straight across instead of forking into the through line.
-  const crossing = new Set<Junction>();
-  for (let a = 0; a < junctions.length; a++) {
-    for (let b = a + 1; b < junctions.length; b++) {
-      const p = junctions[a];
-      const q = junctions[b];
-      if (!p.throughTaxi || !q.throughTaxi || p.throughTaxi.id !== q.throughTaxi.id || p.c.id === q.c.id) continue;
-      if (len(p.px - q.px, p.py - q.py) > 4 || p.cx * q.cx + p.cy * q.cy > -0.94) continue;
-      crossing.add(p);
-      crossing.add(q);
     }
   }
 
@@ -449,12 +388,8 @@ export function buildPlan(af: AirfieldPayload): Plan {
       perSide.set(sideSign, Math.max(perSide.get(sideSign) ?? 0, (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy));
       tfMax = Math.max(tfMax, len(Cpt.x - j.px, Cpt.y - j.py) * 0 + (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy);
       cutIntervals.push((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty);
-      // Lead-on centerline arc: concentric with the fillet where the widths match.
-      // Between two taxiways the centerline runs straight almost to the junction and forks into two tight
-      // curves, each tangent to the through centerline. The radius is about half the taxiway width, so
-      // the fork keeps the same look at any angle: the tangent length grows as the angle gets shallower.
-      // Runway entries keep the wider sweep.
-      const Rc = j.throughRunway ? Math.min(codeR * 2.2, 3.4 * hC + R, 0.45 * (lenC + eDist) * tanH) : Math.min(hC * 1.05, 0.45 * (lenC + eDist) * tanH);
+      // Lead-on centerline arc onto the runway centerline, with a wide sweep.
+      const Rc = Math.min(codeR * 2.2, 3.4 * hC + R, 0.45 * (lenC + eDist) * tanH);
       const tc = Rc / tanH;
       const A = { x: j.px + r2x * tc, y: j.py + r2y * tc };
       const B = { x: j.px + r1x * tc, y: j.py + r1y * tc };
@@ -462,10 +397,8 @@ export function buildPlan(af: AirfieldPayload): Plan {
       const ccx = j.px + (bx / bl) * bc;
       const ccy = j.py + (by / bl) * bc;
       const arcPts = arc(ccx, ccy, Rc, Math.atan2(A.y - ccy, A.x - ccx), Math.atan2(B.y - ccy, B.x - ccx));
-      if (!crossing.has(j)) {
-        extraCenter.push(arcPts);
-        tcMax = Math.max(tcMax, tc);
-      }
+      extraCenter.push(arcPts);
+      tcMax = Math.max(tcMax, tc);
     }
     // Opening in the through feature's edge: from the first to the last fillet tangent point.
     if (cutIntervals.length > 0) {
@@ -473,12 +406,9 @@ export function buildPlan(af: AirfieldPayload): Plan {
       // and it is only on the side the arriving taxiway comes from.
       const lo = Math.min(...cutIntervals) + j.along;
       const hi = Math.max(...cutIntervals) + j.along;
-      if (j.throughTaxi) addCut(j.throughTaxi.id, { side: nx * -j.ty + ny * j.tx > 0 ? 1 : -1, s0: lo, s1: hi });
-      else if (j.throughRunway) {
-        const l = plan.runwayBreaks.get(j.throughRunway.id) ?? [];
-        l.push([lo, hi, -(nx * j.ty - ny * j.tx > 0 ? 1 : -1)]);
-        plan.runwayBreaks.set(j.throughRunway.id, l);
-      }
+      const l = plan.runwayBreaks.get(j.throughRunway.id) ?? [];
+      l.push([lo, hi, -(nx * j.ty - ny * j.tx > 0 ? 1 : -1)]);
+      plan.runwayBreaks.set(j.throughRunway.id, l);
     }
     // The arriving taxiway's own edge lines start at the fillets, its centerline at the lead-on arcs.
     const edgeFromEnd = Math.max(0, tfMax - eDist);
@@ -497,60 +427,48 @@ export function buildPlan(af: AirfieldPayload): Plan {
     }
   }
 
-  // Taxiway lines.
+  // Taxiway pavement and lines from the node generator, with the runway trims at taxiway ends.
+  const { graph, edgesOf } = taxiGraph(af.taxiways);
+  const trims = new Map<string, EndTrim>();
   for (const t of af.taxiways) {
-    const sm = plan.smooth.get(t.id) ?? t.points;
-    const cm = cum.get(t.id) ?? [0];
-    const total = cm[sm.length - 1] ?? 0;
-    const cc = centerCuts.get(t.id) ?? { start: 0, end: 0 };
-    const centerSamples = resample(sm, STEP);
-    const onRunway = (x: number, y: number): boolean => {
-      for (const r of af.runways) {
-        const dx = r.x2 - r.x1;
-        const dy = r.y2 - r.y1;
-        const l2 = dx * dx + dy * dy;
-        let k = ((x - r.x1) * dx + (y - r.y1) * dy) / l2;
-        k = k < 0 ? 0 : k > 1 ? 1 : k;
-        if (len(x - (r.x1 + dx * k), y - (r.y1 + dy * k)) <= r.widthM / 2 + r.shoulderM + 0.3) return true;
-      }
-      return false;
-    };
-    // The centerline is one continuous line, cut only for the lead-on arcs and where it would enter a runway.
-    const center = runsOf(centerSamples, 0, [], total, cc, onRunway);
-    for (const run of center) if (run.length >= 2) (t.closed ? plan.redCenterlines : plan.centerlines).push(mkLine(run));
-    if (t.kind === 'taxilane' || !(t.surface === 'asphalt' || t.surface === 'concrete')) continue;
-    const ec = endCuts.get(t.id) ?? { start: 0, end: 0 };
-    const cuts = cutsByTaxi.get(t.id) ?? [];
-    const inOtherPavement = (x: number, y: number): boolean => {
-      if (onRunway(x, y)) return true;
-      for (const o of af.taxiways) {
-        if (o.id === t.id) continue;
-        const reach = o.widthM / 2 + 0.2;
-        const osm = plan.smooth.get(o.id) ?? o.points;
-        for (let i = 1; i < osm.length; i++) {
-          const a = osm[i - 1];
-          const b = osm[i];
-          if (x < Math.min(a.x, b.x) - reach || x > Math.max(a.x, b.x) + reach || y < Math.min(a.y, b.y) - reach || y > Math.max(a.y, b.y) + reach) continue;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const l2 = dx * dx + dy * dy || 1;
-          const k = ((x - a.x) * dx + (y - a.y) * dy) / l2;
-          if (k < 0 || k > 1) continue;
-          if (len(x - (a.x + dx * k), y - (a.y + dy * k)) <= reach) return true;
-        }
-      }
-      for (const ap of af.aprons) if (insidePoly(x, y, ap.polygon)) return true;
-      return false;
-    };
-    for (const side of [1, -1] as const) {
-      for (const inset of EDGE_INSETS) {
-        const off = offsetPolyline(sm, side * (t.widthM / 2 - inset));
-        const samples = resample(off, STEP);
-        const sc = sideCuts.get(t.id);
-        const ecSide = sc ? { start: sc.start.get(side) ?? ec.start, end: sc.end.get(side) ?? ec.end } : ec;
-        for (const run of runsOf(samples, side, cuts, total, ecSide, inOtherPavement)) if (run.length >= 2) plan.edges.push(mkLine(run));
-      }
+    const own = edgesOf.get(t.id) ?? [];
+    if (own.length === 0) continue;
+    const ec = endCuts.get(t.id);
+    const sc = sideCuts.get(t.id);
+    const cc = centerCuts.get(t.id);
+    for (const end of [0, 1] as const) {
+      const both = (end === 0 ? ec?.start : ec?.end) ?? 0;
+      const perSide = end === 0 ? sc?.start : sc?.end;
+      const center = (end === 0 ? cc?.start : cc?.end) ?? 0;
+      if (both === 0 && center === 0 && (perSide?.size ?? 0) === 0) continue;
+      trims.set(`${end === 0 ? own[0] : own[own.length - 1]}:${end}`, { center, left: perSide?.get(1) ?? both, right: perSide?.get(-1) ?? both });
     }
+  }
+  const pave = buildPavement(graph, trims);
+  for (const sp of pave.shoulders) for (const poly of sp.polys) plan.shoulders.push(mkArea(SURFACE_SPEC[sp.surface].shoulderColor ?? SURFACE_SPEC[sp.surface].color, poly));
+  for (const f of pave.fills) for (const poly of f.polys) plan.areas.push(mkArea(pavementColor(f.surface), poly));
+  const onRunway = (x: number, y: number): boolean => {
+    for (const r of af.runways) {
+      const dx = r.x2 - r.x1;
+      const dy = r.y2 - r.y1;
+      const l2 = dx * dx + dy * dy;
+      let k = ((x - r.x1) * dx + (y - r.y1) * dy) / l2;
+      k = k < 0 ? 0 : k > 1 ? 1 : k;
+      if (len(x - (r.x1 + dx * k), y - (r.y1 + dy * k)) <= r.widthM / 2 + r.shoulderM + 0.3) return true;
+    }
+    return false;
+  };
+  const onRunwayOrApron = (x: number, y: number): boolean => {
+    if (onRunway(x, y)) return true;
+    for (const ap of af.aprons) if (insidePoly(x, y, ap.polygon)) return true;
+    return false;
+  };
+  // Lines stop where they would enter a runway; edge lines also stop on aprons.
+  for (const c of pave.centerlines) {
+    for (const run of runsOutside(c.pts, onRunway)) if (run.length >= 2) (c.closed ? plan.redCenterlines : plan.centerlines).push(mkLine(run));
+  }
+  for (const e of pave.edgeLines) {
+    for (const run of runsOutside(e, onRunwayOrApron)) if (run.length >= 2) plan.edges.push(mkLine(run));
   }
   for (const pts of extraCenter) plan.centerlines.push(mkLine(pts));
 
