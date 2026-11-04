@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Sim } from '../src/sim/sim';
 import { buildTestAirport } from '../tests/helpers';
+import { originFor, type TerminalEdit } from '../src/shared/terminalOps';
 
 const TICKS = 20_000;
 const BASELINE_PATH = fileURLToPath(new URL('../perf-baseline.json', import.meta.url));
@@ -26,6 +27,8 @@ interface Scenario {
   ticks?: number;
   /** Aircraft that must be on the airport at once at some point. */
   minPeak?: number;
+  /** Adds a 640 by 120 m terminal with fixtures (docs/DESIGN_REVISION_2.md section 5). */
+  bigTerminal?: boolean;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -33,7 +36,25 @@ const SCENARIOS: Scenario[] = [
   { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4 },
   { name: 'large', seed: 'STRESS-LARGE', stands: 30, perHour: 240, budgetMsPerTick: 8 },
   { name: 'busy50', seed: 'STRESS-BUSY', stands: 60, standCode: 'B', perHour: 720, budgetMsPerTick: 4, turnScale: 4, ticks: 60_000, minPeak: 50 },
+  { name: 'terminal640', seed: 'STRESS-TERMINAL', stands: 20, perHour: 120, budgetMsPerTick: 4, bigTerminal: true },
 ];
+
+/** A 640 by 120 m terminal south of the stands, with check in, security, seating and shops laid in it. */
+function buildBigTerminal(sim: Sim): void {
+  const { ox, oy } = originFor(3200, 5600, 90);
+  const edit = (building: number, e: TerminalEdit): void => sim.enqueue({ type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e });
+  edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 360, y1: 100, variant: 0 });
+  sim.step();
+  const id = sim.business.grids[0]?.id ?? -1;
+  if (id < 0) throw new Error('big terminal was not built');
+  edit(id, { op: 'floor', x0: 40, y0: 40, x1: 360, y1: 100, variant: 2 });
+  edit(id, { op: 'fixture', x0: 50, y0: 44, x1: 110, y1: 45, variant: 1 });
+  edit(id, { op: 'fixture', x0: 150, y0: 60, x1: 170, y1: 61, variant: 2 });
+  edit(id, { op: 'zone', x0: 172, y0: 40, x1: 360, y1: 100, variant: 3 });
+  edit(id, { op: 'fixture', x0: 200, y0: 60, x1: 340, y1: 64, variant: 4 });
+  edit(id, { op: 'wall', x0: 40, y0: 40, x1: 360, y1: 40, variant: 1 });
+  sim.step();
+}
 
 interface Stat {
   mean: number;
@@ -54,6 +75,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
   // Plenty of cash: the benchmark builds a big airport and is not about money.
   sim.cash = 500_000_000;
   buildTestAirport(sim, { standsPerRow: s.stands, standCode: s.standCode });
+  if (s.bigTerminal) buildBigTerminal(sim);
   sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.08 });
   const n = sim.subsystemCount;
   const ticks = s.ticks ?? TICKS;
@@ -81,7 +103,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
   }
 
   peakCounts[s.name] = peak;
-  peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.deadlocks} deadlocks`;
+  peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.deadlocks} deadlocks${s.bigTerminal ? `, terminal ${(sim.business.terminals[0]?.cells ?? 0) * 4} m2` : ''}`;
   const out: Record<string, Stat> = {};
   const addStat = (name: string, arr: Float64Array): void => {
     let sum = 0;
