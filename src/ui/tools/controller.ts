@@ -62,6 +62,28 @@ export class ToolController {
     return useGameStore.getState().site;
   }
 
+  /**
+   * True while a drag gesture is waiting for its end point. The runway and terminal tools take a
+   * start click and an end click, or a press and drag, so the player does not have to hold the mouse.
+   */
+  get armed(): boolean {
+    const st = useToolStore.getState();
+    if (st.tool === 'runway') return this.dragging && this.start !== null;
+    if (st.tool === 'terminal') return this.dragging && this.tStart !== null;
+    return false;
+  }
+
+  /** True for the tools where a plain click only sets the start point. */
+  get twoClick(): boolean {
+    const st = useToolStore.getState();
+    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door');
+  }
+
+  /** True while any gesture is in progress, so the map should scroll when the pointer reaches an edge. */
+  get gestureActive(): boolean {
+    return this.armed || this.dragging || this.pts.length > 0;
+  }
+
   reset(): void {
     this.start = null;
     this.pts = [];

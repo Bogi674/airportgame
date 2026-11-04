@@ -80,6 +80,7 @@ export class Renderer {
   setSite(site: SitePayload): void {
     this.site = site;
     this.pendingOwner = null;
+    this.prevOwner = null;
     this.baker.setSite({ seed: site.seed, heights: site.heights, landClass: site.landClass, parcelId: site.parcelId });
     this.chunks.clear();
     this.overlay = new ParcelOverlay(site);
@@ -114,10 +115,47 @@ export class Renderer {
     return this.people.size;
   }
 
+  private prevOwner: Uint8Array | null = null;
+
+  /**
+   * Only chunks that touch a parcel whose owner changed need a new bake. Re-baking everything after
+   * every purchase made the map go blank for a long time on big screens.
+   */
+  private markOwnershipDirty(owner: Uint8Array): void {
+    const prev = this.prevOwner;
+    this.prevOwner = owner.slice();
+    if (!prev || prev.length !== owner.length || !this.site) {
+      this.chunks.markAllDirty();
+      return;
+    }
+    const changed = new Uint8Array(owner.length);
+    let any = false;
+    for (let i = 0; i < owner.length; i++) {
+      if (owner[i] !== prev[i]) {
+        changed[i] = 1;
+        any = true;
+      }
+    }
+    if (!any) return;
+    const pid = this.site.parcelId;
+    const seen = new Set<number>();
+    for (let j = 0; j < GRID_N; j++) {
+      for (let i = 0; i < GRID_N; i++) {
+        if (changed[pid[j * GRID_N + i]] === 0) continue;
+        const cx = Math.floor((i * CELL_M) / CHUNK_SIZE_M);
+        const cy = Math.floor((j * CELL_M) / CHUNK_SIZE_M);
+        const key = cy * CHUNKS_PER_SIDE + cx;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        this.chunks.markDirty(cx, cy);
+      }
+    }
+  }
+
   setOwnership(owner: Uint8Array): void {
     this.pendingOwner = owner;
     this.baker.setOwner(owner);
-    this.chunks.markAllDirty();
+    this.markOwnershipDirty(owner);
     this.overlay?.setOwner(owner);
   }
 
