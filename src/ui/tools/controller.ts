@@ -1,5 +1,5 @@
 import { AIRFIELD } from '@data/index';
-import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Taxiway } from '@shared/airfield';
+import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Stand, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -19,7 +19,7 @@ import { TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
 import { cellAtWorld, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
-import { planFor, smoothCorners } from '@render/markings/taxiPlan';
+import { buildPlan, planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { formatMoney } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
@@ -569,10 +569,37 @@ export class ToolController {
     const band = site ? windBand(g.heading % 180, site.idealHeadingDeg) : 'acceptable';
     const ctx = this.ctx();
     const cost = ctx ? estimateStripCost(ctx, shape.pts, shape.width, st.surface, st.tier) : 0;
+    // The runway as it will be built: pavement, shoulders and markings, with only the safety strip outlined.
+    const paved = st.surface === 'asphalt' || st.surface === 'concrete';
+    const row = AIRFIELD.codes[st.code];
+    const end = shape.pts[1];
+    const tmp: Runway = {
+      id: -1,
+      cost: 0,
+      x1: this.start.x,
+      y1: this.start.y,
+      x2: end.x,
+      y2: end.y,
+      headingDeg: g.heading,
+      lengthM: g.length,
+      widthM: row.runwayWidthM,
+      shoulderM: paved ? row.runwayShoulderM : 0,
+      code: st.code,
+      approach: st.approach,
+      surface: st.surface,
+      pcr: 0,
+      condition: 100,
+      nameA: '',
+      nameB: '',
+    };
+    const des = (h: number): string => String(Math.round((((h % 360) + 360) % 360) / 10) % 36 || 36).padStart(2, '0');
+    tmp.nameA = des(g.heading);
+    tmp.nameB = des(g.heading + 180);
     this.show(
       {
         valid: problem === null,
-        shapes: shape.shapes,
+        shapes: shape.shapes.slice(0, 1),
+        preview: g.length >= 50 ? { runway: tmp } : undefined,
         label: {
           x: p.x,
           y: p.y,
@@ -970,12 +997,26 @@ export class ToolController {
     const perp = { x: -d.y, y: d.x };
     const row = AIRFIELD.codes[plan.code];
     const shapes: GhostShape[] = [];
+    // The stands as they will be built: lead-in lines and curves to the taxiway, stop bars, boxes and numbers.
+    const st = useToolStore.getState();
+    const cands: Stand[] = [];
     for (let i = 0; i < plan.count; i++) {
-      const sx = plan.x + perp.x * plan.spacing * i;
-      const sy = plan.y + perp.y * plan.spacing * i;
-      // The aircraft box extends backward from the nose stop position.
-      shapes.push({ k: 'box', x: sx - d.x * row.standLengthM, y: sy - d.y * row.standLengthM, headingDeg: plan.heading, len: row.standLengthM, w: row.spanM });
+      cands.push({
+        id: -1 - i,
+        cost: 0,
+        number: String(this.af.stands.length + i + 1),
+        x: plan.x + perp.x * plan.spacing * i,
+        y: plan.y + perp.y * plan.spacing * i,
+        headingDeg: plan.heading,
+        type: plan.ga ? 'gaTieDown' : st.standType,
+        code: plan.code,
+        surface: plan.ga ? 'gravel' : 'concrete',
+        pushback: 'straight',
+      });
     }
+    const base = planFor(this.af).leadIns.length;
+    const full = buildPlan({ ...this.af, stands: [...this.af.stands, ...cands] });
+    const leadIns = full.leadIns.slice(base).map((l) => l.pts);
     let problem: Problem | null = null;
     if (this.ctx()) {
       const last = { x: plan.x + perp.x * plan.spacing * (plan.count - 1), y: plan.y + perp.y * plan.spacing * (plan.count - 1) };
@@ -990,7 +1031,7 @@ export class ToolController {
         if (!onApron) problem = { code: 'standNeedsApron' };
       }
     }
-    this.show({ valid: problem === null, shapes, label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0') }) } }, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
+    this.show({ valid: problem === null, shapes, preview: { stands: cands, leadIns }, label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0') }) } }, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
   }
 
   private commitStands(p: Pt): void {

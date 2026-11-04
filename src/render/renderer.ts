@@ -2,7 +2,9 @@ import { CHUNK_SIZE_M } from '@shared/math';
 import { CELL_M, GRID_N } from '@shared/site';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
-import type { AirfieldPayload } from '@shared/airfield';
+import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
+import { AIRFIELD } from '@data/index';
+import { paintGhostObjects } from './markings/airfieldPaint';
 import type { Ghost, GhostShape } from '@shared/ghost';
 import type { TerminalGrid } from '@shared/business';
 import { Camera } from './camera';
@@ -92,7 +94,10 @@ export class Renderer {
   }
 
   /** New airfield geometry: send it to the baker and re-bake visible chunks. */
+  private af: AirfieldPayload = EMPTY_AIRFIELD;
+
   setAirfield(airfield: AirfieldPayload): void {
+    this.af = airfield;
     this.baker.setAirfield(airfield);
     this.chunks.markAllDirty();
   }
@@ -309,6 +314,23 @@ export class Renderer {
   /** Build tool preview. A handful of shapes per frame, so plain path drawing is fine here. */
   private drawGhost(g: Ghost, a: number, b: number, cc: number, d: number, e: number, f: number): void {
     const ctx = this.ctx;
+    if (g.preview) {
+      // The object as it will be built, half transparent, with a red wash when it cannot be built.
+      ctx.setTransform(a, b, cc, d, e, f);
+      ctx.globalAlpha = 0.6;
+      paintGhostObjects(ctx, this.af, g.preview, this.camera.zoom * this.dpr);
+      ctx.globalAlpha = 1;
+      if (!g.valid) {
+        ctx.fillStyle = 'rgba(255,70,60,0.28)';
+        for (const s of g.preview.stands ?? []) {
+          const row = AIRFIELD.codes[s.code];
+          ctx.setTransform(a, b, cc, d, e, f);
+          ctx.translate(s.x, s.y);
+          ctx.rotate((s.headingDeg * Math.PI) / 180 - Math.PI / 2);
+          ctx.fillRect(-row.standLengthM - 6, -row.spanM / 2 - 3, row.standLengthM + 10, row.spanM + 6);
+        }
+      }
+    }
     const fill = g.valid ? 'rgba(120,210,255,0.35)' : 'rgba(255,90,80,0.40)';
     const stroke = g.valid ? 'rgba(160,230,255,0.95)' : 'rgba(255,120,110,0.95)';
     const zoom = this.camera.zoom;

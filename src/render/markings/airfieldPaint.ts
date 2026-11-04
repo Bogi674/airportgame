@@ -5,6 +5,7 @@ import { FLOOR, TERMINAL_CELL_M, TERMINAL_GRID, WALL, type TerminalGrid } from '
 import { worldToCell } from '@shared/terminalOps';
 import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
+import type { GhostPreview } from '@shared/ghost';
 import { planFor, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -488,6 +489,31 @@ function paintStand(ctx: Ctx, s: Stand, win: Window): void {
     ctx.fillText(s.number, 0, -(s.type === 'gaTieDown' ? 2 : 9));
   }
   ctx.restore();
+}
+
+/**
+ * Draws not yet built objects with the same painting as the finished ones, so a preview shows the
+ * real shape: runway with its markings, stands with lead-in curves, stop bars and restraint boxes.
+ * The caller sets the world transform and the alpha. `scale` is pixels per meter.
+ */
+export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostPreview, scale: number): void {
+  const win: Window = { minX: -1e9, minY: -1e9, maxX: 1e9, maxY: 1e9, scale };
+  if (preview.runway) {
+    paintRunwayPavement(ctx, preview.runway, win);
+    paintRunwayMarks(ctx, preview.runway, win, planFor(af));
+  }
+  if (preview.leadIns && preview.leadIns.length > 0) {
+    ctx.strokeStyle = YELLOW;
+    ctx.lineWidth = lineM(win, 0.3);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (const l of preview.leadIns) {
+      ctx.moveTo(l[0].x, l[0].y);
+      for (let i = 1; i < l.length; i++) ctx.lineTo(l[i].x, l[i].y);
+    }
+    ctx.stroke();
+  }
+  for (const s of preview.stands ?? []) paintStand(ctx, s, win);
 }
 
 const FLOOR_COLOR = ['', '#a9aeb3', '#d3dadd', '#7f90a8'];
