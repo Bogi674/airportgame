@@ -495,6 +495,8 @@ const FIXTURE_COLOR = ['', '#3f7fd8', '#e08a2e', '#8b95a0', '#3aa89a', '#9a5cc8'
 const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk', 'Rx'];
 
 /** Draws one terminal building as a cutaway: floors, walls, doors and fixtures. */
+const ZONE_TINT = ['', 'rgba(70,140,230,0.22)', 'rgba(235,170,50,0.26)', 'rgba(70,190,120,0.24)', 'rgba(220,80,80,0.26)'];
+
 function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   const N = TERMINAL_GRID;
   const C = TERMINAL_CELL_M;
@@ -568,6 +570,22 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   if (!any) {
     ctx.restore();
     return;
+  }
+  // Zone tint, merged along rows: public blue, commercial amber, secure green, staff red.
+  for (let cy = y0; cy <= y1; cy++) {
+    let runStart = -1;
+    let runZone = 0;
+    for (let cx = x0; cx <= x1 + 1; cx++) {
+      const z = cx <= x1 && g.floor[cy * N + cx] > 0 ? g.zone[cy * N + cx] : 0;
+      if (z !== runZone) {
+        if (runZone !== 0) {
+          ctx.fillStyle = ZONE_TINT[runZone];
+          ctx.fillRect(runStart * C, cy * C, (cx - runStart) * C, C);
+        }
+        runStart = cx;
+        runZone = z;
+      }
+    }
   }
   if (win.scale >= 2) {
     ctx.strokeStyle = 'rgba(0,0,0,0.08)';

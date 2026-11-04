@@ -58,6 +58,8 @@ export interface TerminalOptions {
   seating?: number;
   toilet?: number;
   shop?: boolean;
+  /** Set false to leave out the control room. */
+  atc?: boolean;
 }
 
 /**
@@ -67,7 +69,7 @@ export interface TerminalOptions {
 export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   const { ox, oy } = originFor(3960, 5440, 90);
   const problems: string[] = [];
-  const edit = (building: number, e: { op: 'foundation' | 'floor' | 'erase' | 'wall' | 'removeWall' | 'fixture'; x0: number; y0: number; x1: number; y1: number; variant: number }): void => {
+  const edit = (building: number, e: { op: 'foundation' | 'floor' | 'erase' | 'wall' | 'removeWall' | 'fixture' | 'zone'; x0: number; y0: number; x1: number; y1: number; variant: number }): void => {
     problems.push(...run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e }));
   };
   edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });
@@ -85,5 +87,6 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   row(4, o.seating ?? 6, 70, 46);
   row(5, o.toilet ?? 2, 80, 46);
   if (o.shop) row(6, 1, 84, 46);
+  if (o.atc !== false) edit(id, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
   return problems;
 }

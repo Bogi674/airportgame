@@ -5,13 +5,13 @@ import type { Command } from '@sim/commands';
 import { Icon } from './icons';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
 import { useGameStore } from './stores/gameStore';
-import { t, tDynamic, tFormat } from './strings';
+import { t, tDynamic, tFormat, type StringKey } from './strings';
 
 interface Props {
   send(cmd: Command): void;
 }
 
-const TABS = ['airlines', 'finance', 'flights', 'site'] as const;
+const TABS = ['airlines', 'slots', 'flights', 'finance', 'site'] as const;
 
 function Sheet({ title, children, testId }: { title: string; children: preact.ComponentChildren; testId: string }) {
   const setSheet = useGameStore((s) => s.setSheet);
@@ -27,7 +27,7 @@ function Sheet({ title, children, testId }: { title: string; children: preact.Co
       <div class="tabs" role="tablist">
         {TABS.map((k) => (
           <button key={k} role="tab" class="tab" data-testid={`tab-${k}`} aria-pressed={current === k} onClick={() => setSheet(k)}>
-            {t(`top.${k === 'site' ? 'sites' : k}`)}
+            {t(`top.${k === 'site' ? 'sites' : k}` as StringKey)}
           </button>
         ))}
       </div>
@@ -158,6 +158,63 @@ function FinanceSheet({ send }: Props) {
   );
 }
 
+const clock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const SLOT_OPTIONS: number[] = [];
+for (let m = 6 * 60; m <= 21 * 60; m += 15) SLOT_OPTIONS.push(m);
+
+/** Slot manager: every signed rotation has an arrival slot the player can move. Busy hours are flagged. */
+function SlotsSheet({ send }: Props) {
+  const b = useGameStore((s) => s.business);
+  const af = useGameStore((s) => s.airfield);
+  if (!b) return null;
+  const signed = b.airlines.filter((a) => a.rotations > 0);
+  const perHour = new Array<number>(24).fill(0);
+  for (const a of signed) for (const m of a.slots) perHour[Math.floor(m / 60)]++;
+  const cap = Math.max(2, af.runways.length * 4);
+  const peak = Math.max(1, ...perHour);
+  return (
+    <Sheet title={t('slots.title')} testId="sheet-slots">
+      <div style="color:var(--muted);font-size:12px;margin-bottom:8px">{tFormat('slots.help', { cap })}</div>
+      <div class="section">{t('slots.load')}</div>
+      <div style="display:grid;grid-template-columns:repeat(16,1fr);gap:3px;align-items:end;height:64px;margin-bottom:12px" data-testid="slot-load">
+        {perHour.slice(6, 22).map((n, i) => (
+          <div key={i} title={`${String(i + 6).padStart(2, '0')}:00, ${n}`} style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10px;color:var(--muted)">
+            <div style={`width:100%;height:${Math.round((n / peak) * 40)}px;background:${n > cap ? 'var(--bad)' : 'var(--accent)'};border-radius:2px`} />
+            {String(i + 6).padStart(2, '0')}
+          </div>
+        ))}
+      </div>
+      {signed.length === 0 && <div>{t('slots.empty')}</div>}
+      <div style="display:grid;gap:8px">
+        {signed.map((a) => (
+          <div key={a.id} data-testid={`slots-${a.id}`} style="padding:8px;border:1px solid var(--line);border-radius:10px">
+            <div style="font-weight:600;margin-bottom:6px">{a.name}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              {a.slots.map((m, i) => (
+                <label key={i} style="font-size:12px;display:flex;gap:6px;align-items:center">
+                  {i + 1}
+                  <select
+                    data-testid={`slot-${a.id}-${i}`}
+                    value={m}
+                    style={perHour[Math.floor(m / 60)] > cap ? 'border-color:var(--bad)' : ''}
+                    onChange={(e) => send({ type: 'setSlot', airlineId: a.id, index: i, minute: Number((e.target as HTMLSelectElement).value) })}
+                  >
+                    {(SLOT_OPTIONS.includes(m) ? SLOT_OPTIONS : [...SLOT_OPTIONS, m].sort((x, y) => x - y)).map((o) => (
+                      <option key={o} value={o}>
+                        {clock(o)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
 function FlightsSheet() {
   const b = useGameStore((s) => s.business);
   const rows = b?.board ?? [];
@@ -228,6 +285,7 @@ function SiteSheet() {
 export function Sheets({ send }: Props) {
   const sheet = useGameStore((s) => s.sheet);
   if (sheet === 'airlines') return <AirlinesSheet send={send} />;
+  if (sheet === 'slots') return <SlotsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;
   if (sheet === 'site') return <SiteSheet />;

@@ -23,7 +23,7 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * 150));
     expect(sim.business.arrCapacity()).toBe(2 * 260);
     // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
-    const expected = cells * (2000 + 480) + 120 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
+    const expected = cells * (2000 + 480) + 120 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000 + 4 * 90000);
     expect(g.cost).toBe(expected);
   });
 
@@ -149,5 +149,50 @@ describe('determinism with business', () => {
       return sim.stateHash();
     };
     expect(make()).toBe(make());
+  });
+});
+
+describe('zones, control room and slots', () => {
+  it('fixtures take the zone they belong in and refuse a conflicting one', () => {
+    const { sim, id } = airportWithTerminal();
+    const g = sim.business.grids[0];
+    const N = 160;
+    expect(g.zone[42 * N + 42]).toBe(1);
+    expect(g.zone[46 * N + 70]).toBe(3);
+    const at = (e: object) => run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: e as never });
+    expect(at({ op: 'zone', x0: 60, y0: 44, x1: 64, y1: 46, variant: 2 })).toEqual([]);
+    expect(g.zone[44 * N + 60]).toBe(2);
+    // A check in desk does not fit the commercial zone.
+    expect(at({ op: 'fixture', x0: 60, y0: 44, x1: 61, y1: 45, variant: 1 })[0]).toBe('wrongZone');
+    // Painting staff only over a check in desk is refused.
+    expect(at({ op: 'zone', x0: 42, y0: 42, x1: 43, y1: 43, variant: 4 })[0]).toBe('zoneHasFixture');
+  });
+
+  it('flights need a control room in range, and zones decide capacity', () => {
+    const a = ownedSim();
+    a.cash = 100_000_000;
+    buildTestAirport(a, { standsPerRow: 4 });
+    buildTestTerminal(a, { atc: false });
+    expect(a.business.readiness()).toContain('noAtc');
+    const full = a.business.depCapacity();
+    expect(full).toBeGreaterThan(0);
+    const b = ownedSim();
+    b.cash = 100_000_000;
+    buildTestAirport(b, { standsPerRow: 4 });
+    buildTestTerminal(b);
+    expect(b.business.readiness()).toEqual([]);
+    expect(b.business.atcOk).toBe(true);
+  });
+
+  it('slots default across the day, can be moved, and survive fewer rotations', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    const al = sim.business.airlines[0];
+    expect(al.slots).toHaveLength(2);
+    expect(al.slots[0]).toBeLessThan(al.slots[1]);
+    run(sim, { type: 'setSlot', airlineId: 0, index: 0, minute: 13 * 60 + 15 });
+    expect(sim.business.airlines[0].slots[0]).toBe(13 * 60 + 15);
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 1 });
+    expect(sim.business.airlines[0].slots).toEqual([13 * 60 + 15]);
   });
 });

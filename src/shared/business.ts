@@ -13,15 +13,37 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
-export const isShopFixture = (id: number): boolean => id >= 6;
+export const isShopFixture = (id: number): boolean => id >= 6 && id <= 11;
+/** Cells of control room a tower needs before it counts (a 2 by 2 cab). */
+export const ATC_MIN_CELLS = 4;
 export const fixtureKey = (id: number): FixtureKey => FIXTURE_KEYS[id - 1];
 export type ShopKind = FixtureKey;
 
 export const FLOOR = { None: 0, Concrete: 1, Tile: 2, Carpet: 3 } as const;
+/** Zones a player paints on terminal floor. 0 is unzoned. */
+export const ZONES = ['none', 'public', 'commercial', 'secure', 'staff'] as const;
+export type ZoneKey = (typeof ZONES)[number];
+export const ZONE = { None: 0, Public: 1, Commercial: 2, Secure: 3, Staff: 4 } as const;
+/** Zones each fixture may sit in, the first is what an unzoned cell becomes when the fixture is placed. */
+export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
+  checkIn: [1],
+  security: [1, 3],
+  belt: [1, 4],
+  seating: [3, 1],
+  toilet: [3, 1, 4],
+  convenience: [2, 3],
+  quickFood: [2, 3],
+  cafe: [2, 3],
+  dutyFree: [2, 3],
+  booksGifts: [2, 3],
+  pharmacy: [2, 3],
+  atc: [4],
+};
+
 export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
 
 /** Terminal grid: 160 by 160 cells of 2 m in the local frame of a building. */
@@ -38,6 +60,8 @@ export interface TerminalGrid {
   oy: number;
   headingDeg: number;
   floor: Uint8Array;
+  /** Painted zone per cell, see ZONE. */
+  zone: Uint8Array;
   fixture: Uint8Array;
   /** Horizontal wall edges, (grid + 1) rows of grid columns. Index y * grid + x. */
   hWall: Uint8Array;
@@ -54,6 +78,8 @@ export interface Terminal {
   id: number;
   cells: number;
   counts: Record<FixtureKey, number>;
+  /** Cells per zone, indexed by ZONE. */
+  zones: number[];
   leased: number;
 }
 
@@ -70,6 +96,8 @@ export interface Airline {
   minRating: number;
   /** Rotations per day under contract, 0 when not signed. */
   rotations: number;
+  /** Arrival slot of each rotation, minute of the day, in the order the player sees them. */
+  slots: number[];
   feeLevel: FeeLevel;
   flights: number;
   pax: number;
@@ -102,6 +130,8 @@ export interface BusinessPayload {
   loan: number;
   staff: number;
   weather: WeatherKind;
+  /** Missing parts that stop flights, keys for the UI checklist. Empty when ready. */
+  readiness: string[];
   depCapacity: number;
   arrCapacity: number;
   /** Ledger history, newest day last, one row of LEDGER_CATEGORIES.length numbers per day, plus today. */

@@ -2,7 +2,7 @@ import { tDynamic, tFormat, type StringKey } from './strings';
 import { formatInt } from './format';
 
 /** Event codes that become alerts, as opposed to build notices. */
-export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock']);
+export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'noAtc', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock']);
 
 export function parseEvent(code: string): { name: string; args: Record<string, string> } {
   const parts = code.split('|');
@@ -28,6 +28,8 @@ export function alertText(code: string): { text: string; tone: 'info' | 'warn' }
       return { text: tFormat('alert.airlineSigned', { name: args.name ?? '' }), tone: 'info' };
     case 'airlineIdle':
       return { text: tFormat('alert.airlineIdle', { name: args.name ?? '' }), tone: 'warn' };
+    case 'noAtc':
+      return { text: tFormat('alert.noAtc', { name: args.name ?? '' }), tone: 'warn' };
     case 'weatherStart':
       return { text: tFormat('alert.weatherStart', { kind: tDynamic(`weather.${args.kind}`) }), tone: 'warn' };
     case 'weatherEnd':

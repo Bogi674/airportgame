@@ -8,7 +8,7 @@ export function Toasts() {
   const dismiss = useGameStore((s) => s.dismissAlert);
   const shown = alerts.slice(-4);
   return (
-    <div data-testid="toasts" style="position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;max-width:420px;z-index:10">
+    <div data-testid="toasts" style="position:absolute;left:50%;transform:translateX(-50%);top:104px;display:flex;flex-direction:column;gap:4px;max-width:420px;z-index:10">
       {notice && (
         <div role="alert" data-testid="notice" style="padding:6px 10px;background:#3a1515f2;border:1px solid #7a2a2a;border-radius:10px;font-size:12px">
           {noticeText(notice.code, notice.args)}

@@ -3,7 +3,7 @@ import type { ComponentChildren } from 'preact';
 export type IconName =
   | 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish'
   | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close' | 'settings' | 'options'
-  | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase';
+  | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
 const P: Record<IconName, ComponentChildren> = {
   select: <path d="M6 4l12 7-5.5 1.5L10 18z" />,
@@ -37,6 +37,7 @@ const P: Record<IconName, ComponentChildren> = {
   wall: (<><path d="M3 6h18v12H3z" /><path d="M3 12h18M9 6v6M15 12v6" /></>),
   door: (<><path d="M6 20V5h12v15M4 20h16" /><circle cx="15" cy="13" r=".8" /></>),
   fixture: (<><rect x="4" y="9" width="16" height="7" rx="1" /><path d="M7 9V6h10v3M7 16v2M17 16v2" /></>),
+  zone: (<><rect x="4" y="4" width="7" height="7" /><rect x="13" y="4" width="7" height="7" strokeDasharray="2 2" /><rect x="4" y="13" width="7" height="7" strokeDasharray="2 2" /><rect x="13" y="13" width="7" height="7" /></>),
   erase: <path d="M4 16l8-9 8 7-5 5H8zM9 21h11" />,
 };
 

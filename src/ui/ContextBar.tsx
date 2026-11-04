@@ -122,7 +122,7 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'terminal' && (
           <>
-            {(['foundation', 'floor', 'wall', 'door', 'fixture', 'erase'] as TerminalSub[]).map((sub) => (
+            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as TerminalSub[]).map((sub) => (
               <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
                 <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
@@ -130,6 +130,9 @@ export function ContextBar({ send }: Props) {
             ))}
             {s.tSub === 'floor' && (
               <Select label={t('opt.floorType')} value={s.floorType} options={[1, 2, 3].map((f) => ({ v: f, text: tDynamic(`terminal.floor.${f}`) }))} onChange={(v) => s.set({ floorType: v as 1 | 2 | 3 })} />
+            )}
+            {s.tSub === 'zone' && (
+              <Select label={t('opt.zone')} value={s.zoneType} testId="opt-zone" options={[1, 2, 3, 4].map((z) => ({ v: z, text: tDynamic(`zone.${z}`) }))} onChange={(v) => s.set({ zoneType: v as 1 | 2 | 3 | 4 })} />
             )}
             {s.tSub === 'wall' && (
               <Select label={t('opt.wallType')} value={s.wallType} options={[1, 2].map((f) => ({ v: f, text: tDynamic(`terminal.wall.${f}`) }))} onChange={(v) => s.set({ wallType: v as 1 | 2 })} />

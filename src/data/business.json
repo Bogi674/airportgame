@@ -18,7 +18,8 @@
     "wallPerEdge": 300,
     "glassPerEdge": 700,
     "doorPerEdge": 1500,
-    "contactReachM": 90
+    "contactReachM": 90,
+    "atcRangeM": 3500
   },
   "modules": {
     "checkIn": {
@@ -45,6 +46,11 @@
       "cost": 20000,
       "capacityPerHour": 0,
       "staff": 0.5
+    },
+    "atc": {
+      "cost": 90000,
+      "capacityPerHour": 0,
+      "staff": 1.5
     }
   },
   "shops": {

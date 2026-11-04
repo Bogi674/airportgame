@@ -21,7 +21,7 @@ import {
   type WeatherKind,
 } from '@shared/business';
 import { cellCount, cornerWorld, newGrid, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
-import { isShopFixture, fixtureKey } from '@shared/business';
+import { isShopFixture, fixtureKey, ATC_MIN_CELLS, ZONE } from '@shared/business';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -49,6 +49,10 @@ export class Business {
   /** Counts per building, rebuilt after every edit. */
   terminals: Terminal[] = [];
   terminalVersion = 0;
+    atcCells = 0;
+  private atcX = 0;
+  private atcY = 0;
+  secureSeating = 0;
   private totals: Record<FixtureKey, number> = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
   /** Sample of foundation cell centres, for the contact stand reach test. */
   private reach: number[] = [];
@@ -116,7 +120,7 @@ export class Business {
         const t = pool[this.marketRng.int(0, pool.length - 1)];
         if (!fleet.includes(t)) fleet.push(t);
       }
-      return { id, name, scope, livery: id % 8, fleet, minRating, rotations: 0, feeLevel: 1, flights: 0, pax: 0 };
+      return { id, name, scope, livery: id % 8, fleet, minRating, rotations: 0, slots: [], feeLevel: 1, flights: 0, pax: 0 };
     };
     this.airlines.push(mk('regional', regionalPool, 0, 0), mk('regional', regionalPool, 0, 1), mk('regional', regionalPool, 10, 2));
     this.airlines.push(mk('national', nationalPool, 25, 3), mk('national', nationalPool, 35, 4), mk('national', nationalPool, 45, 5));
@@ -132,12 +136,21 @@ export class Business {
     if (r > 0 && this.rating < a.minRating) return `ratingTooLow|need=${a.minRating}`;
     const before = a.rotations;
     a.rotations = r;
+    a.slots = fitSlots(a.slots, r, a.id);
     this.version++;
     if (before === 0 && r > 0) {
       this.host.emit(`airlineSigned|name=${a.name}`);
       this.scheduleToday(a);
     }
     return null;
+  }
+
+  /** Moves one rotation to another arrival minute. It applies to the next day's schedule, and today's if still ahead. */
+  setSlot(id: number, index: number, minute: number): void {
+    const a = this.airlines.find((x) => x.id === id);
+    if (!a || index < 0 || index >= a.slots.length) return;
+    a.slots[index] = Math.max(SLOT_FIRST, Math.min(SLOT_LAST, Math.round(minute / 5) * 5));
+    this.version++;
   }
 
   setFee(id: number, level: FeeLevel): void {
@@ -174,8 +187,59 @@ export class Business {
         }
       }
     }
+    this.computeFacilities();
     this.terminalVersion++;
     this.version++;
+  }
+
+  private computeFacilities(): void {
+    let cells = 0;
+    let sx = 0;
+    let sy = 0;
+    this.secureSeating = 0;
+    for (const g of this.grids) {
+      for (let cy = 0; cy < TERMINAL_GRID; cy++) {
+        for (let cx = 0; cx < TERMINAL_GRID; cx++) {
+          const i = cy * TERMINAL_GRID + cx;
+          const f = g.fixture[i];
+          if (f === 0) continue;
+          const k = fixtureKey(f);
+          if (k === 'atc') {
+            const w = cornerWorld(g, cx + 0.5, cy + 0.5);
+            cells++;
+            sx += w.x;
+            sy += w.y;
+          } else if (k === 'seating' && g.zone[i] === ZONE.Secure) this.secureSeating++;
+        }
+      }
+    }
+    this.atcCells = cells;
+    this.atcX = cells > 0 ? sx / cells : 0;
+    this.atcY = cells > 0 ? sy / cells : 0;
+  }
+
+  /** True when the control tower cab is big enough and within range of every runway. */
+  get atcOk(): boolean {
+    if (this.atcCells < ATC_MIN_CELLS || this.airfield.data.runways.length === 0) return false;
+    for (const r of this.airfield.data.runways) {
+      if (Math.hypot((r.x1 + r.x2) / 2 - this.atcX, (r.y1 + r.y2) / 2 - this.atcY) > BUSINESS.terminal.atcRangeM) return false;
+    }
+    return true;
+  }
+
+  /** What still stops flights from working, as string keys for the UI checklist. */
+  readiness(): string[] {
+    const out: string[] = [];
+    if (this.terminals.length === 0) out.push('noTerminal');
+    else {
+      if (this.totals.checkIn === 0) out.push('noCheckIn');
+      if (this.totals.security === 0) out.push('noSecurity');
+      if (this.secureSeating === 0) out.push('noSeating');
+      if (this.totals.belt === 0) out.push('noBelt');
+    }
+    if (this.atcCells < ATC_MIN_CELLS) out.push('noAtc');
+    else if (!this.atcOk) out.push('atcRange');
+    return out;
   }
 
   /**
@@ -216,7 +280,9 @@ export class Business {
 
   /** Departing passengers the terminals can process per hour. */
   depCapacity(): number {
-    return Math.min(this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour, this.totals.security * BUSINESS.modules.security.capacityPerHour);
+    const base = Math.min(this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour, this.totals.security * BUSINESS.modules.security.capacityPerHour);
+    // Without seats in the secure zone passengers wait standing and the lounge backs up.
+    return this.secureSeating > 0 ? base : Math.floor(base / 2);
   }
 
   arrCapacity(): number {
@@ -232,7 +298,7 @@ export class Business {
 
   staffCount(): number {
     let s = 0;
-    for (const k of ['checkIn', 'security', 'belt', 'toilet'] as const) s += this.totals[k] * BUSINESS.modules[k].staff;
+    for (const k of ['checkIn', 'security', 'belt', 'toilet', 'atc'] as const) s += this.totals[k] * BUSINESS.modules[k].staff;
     s += this.airfield.data.stands.length * 1.5;
     if (this.airfield.data.runways.length > 0) s += 4 + this.airfield.data.runways.length * 2;
     return Math.round(s);
@@ -347,10 +413,10 @@ export class Business {
     const nowMin = minuteOfDay(now);
     this.usableTypesFor(a);
     if (this.usableScratch.length === 0) return;
+    if (!this.atcOk) return;
     for (let r = 0; r < a.rotations; r++) {
-      const earliest = Math.max(nowMin + 45, 6 * 60);
-      if (earliest > 21 * 60) break;
-      const minute = this.rng.int(earliest, 21 * 60);
+      const minute = a.slots[r] ?? SLOT_FIRST;
+      if (minute < nowMin + 45) continue;
       const t = this.usableScratch[this.rng.int(0, this.usableScratch.length - 1)];
       this.traffic.scheduleArrival(t, now + (minute - nowMin) * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id);
     }
@@ -395,8 +461,12 @@ export class Business {
         this.host.emit(`airlineIdle|name=${a.name}`);
         continue;
       }
+      if (!this.atcOk) {
+        this.host.emit(`noAtc|name=${a.name}`);
+        continue;
+      }
       for (let k = 0; k < a.rotations; k++) {
-        const minute = this.rng.int(6 * 60, 21 * 60);
+        const minute = a.slots[k] ?? SLOT_FIRST;
         const t = this.usableScratch[this.rng.int(0, this.usableScratch.length - 1)];
         // Arrival times are relative to the midnight that starts this day, in ticks.
         const midnight = tick - minuteOfDay(tick) * TICKS_PER_MINUTE;
@@ -534,6 +604,7 @@ export class Business {
       staff: this.staffCount(),
       weather: this.weather,
       depCapacity: dep,
+      readiness: this.readiness(),
       arrCapacity: this.arrCapacity(),
       history: this.history.map((h) => Array.from(h)),
       today: Array.from(this.today),
@@ -565,7 +636,7 @@ export class Business {
     this.grids.length = 0;
     for (const sg of o.grids) this.grids.push(loadGrid(sg));
     this.airlines.length = 0;
-    this.airlines.push(...o.airlines);
+    this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id) })));
     this.rating = o.rating;
     this.satisfaction = o.satisfaction;
     this.onTime = o.onTime;
@@ -625,6 +696,7 @@ interface SavedGrid {
   oy: number;
   headingDeg: number;
   floor: string;
+  zone?: string;
   fixture: string;
   hWall: string;
   vWall: string;
@@ -632,13 +704,28 @@ interface SavedGrid {
   cost: number;
 }
 
+const SLOT_FIRST = 6 * 60;
+const SLOT_LAST = 21 * 60;
+
+/** Keeps the slots the player set, drops extras and spreads new ones over the day without using random numbers. */
+function fitSlots(old: number[], rotations: number, id: number): number[] {
+  const out = old.slice(0, rotations);
+  const span = SLOT_LAST - SLOT_FIRST;
+  for (let i = out.length; i < rotations; i++) {
+    const base = SLOT_FIRST + Math.floor(((i + 0.5) * span) / Math.max(1, rotations));
+    out.push(Math.max(SLOT_FIRST, Math.min(SLOT_LAST, Math.round((base + ((id * 35) % 60) - 30) / 5) * 5)));
+  }
+  return out;
+}
+
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, floor: packTyped(g.floor), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
   const g = newGrid(sg.id, sg.ox, sg.oy, sg.headingDeg);
   unpackInto(sg.floor, g.floor, Uint8Array);
+  if (sg.zone) unpackInto(sg.zone, g.zone, Uint8Array);
   unpackInto(sg.fixture, g.fixture, Uint8Array);
   unpackInto(sg.hWall, g.hWall, Uint8Array);
   unpackInto(sg.vWall, g.vWall, Uint8Array);

@@ -50,6 +50,7 @@ export async function playSmallAirport(page: Page): Promise<void> {
   await edit(1, { op: 'fixture', x0: 42, y0: 42, x1: 50, y1: 43, variant: 1 });
   await edit(1, { op: 'fixture', x0: 54, y0: 42, x1: 57, y1: 43, variant: 2 });
   await edit(1, { op: 'fixture', x0: 62, y0: 42, x1: 64, y1: 43, variant: 3 });
+  await edit(1, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
   await send({ type: 'signAirline', airlineId: 0, rotations: 2 });
   await send({ type: 'signAirline', airlineId: 1, rotations: 2 });
   await expect.poll(() => page.evaluate(() => window.__store?.getState().airfield.runways.length ?? 0)).toBe(1);

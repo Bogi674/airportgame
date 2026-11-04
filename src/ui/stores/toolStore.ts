@@ -4,7 +4,7 @@ import type { Problem } from '@shared/validate';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
 
-export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase';
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
 export interface Selection {
   kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal';
@@ -32,6 +32,7 @@ interface ToolState {
   floorType: 1 | 2 | 3;
   wallType: 1 | 2;
   fixtureId: number;
+  zoneType: 1 | 2 | 3 | 4;
   selection: Selection | null;
   /** What the active tool wants the player to do next. */
   hint: string | null;
@@ -59,6 +60,7 @@ export const useToolStore = create<ToolState>((set) => ({
   floorType: 2,
   wallType: 1,
   fixtureId: 1,
+  zoneType: 1,
   selection: null,
   hint: null,
   problem: null,

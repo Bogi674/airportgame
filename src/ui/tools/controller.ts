@@ -650,6 +650,7 @@ export class ToolController {
     if (sub === 'foundation') return { op: 'foundation', x0, y0, x1, y1, variant: 0 };
     if (sub === 'floor') return { op: 'floor', x0, y0, x1, y1, variant: st.floorType };
     if (sub === 'erase') return { op: 'erase', x0, y0, x1, y1, variant: 0 };
+    if (sub === 'zone') return { op: 'zone', x0, y0, x1, y1, variant: st.zoneType };
     return { op: 'fixture', x0, y0, x1, y1, variant: st.fixtureId };
   }
 

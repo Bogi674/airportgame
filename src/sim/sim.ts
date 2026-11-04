@@ -177,6 +177,9 @@ export class Sim {
       case 'signAirline':
         this.report(this.business.signAirline(cmd.airlineId, cmd.rotations));
         break;
+      case 'setSlot':
+        this.business.setSlot(cmd.airlineId, cmd.index, cmd.minute);
+        break;
       case 'setAirlineFee':
         this.business.setFee(cmd.airlineId, cmd.level);
         break;
@@ -245,6 +248,7 @@ export class Sim {
     return this.business.grids.map((g) => ({
       ...g,
       floor: g.floor.slice(),
+      zone: g.zone.slice(),
       fixture: g.fixture.slice(),
       hWall: g.hWall.slice(),
       vWall: g.vWall.slice(),

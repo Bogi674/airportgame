@@ -8,6 +8,7 @@ import {
   TERMINAL_GRID,
   TERMINAL_MARGIN,
   WALL,
+  FIXTURE_ZONES,
   isShopFixture,
   fixtureKey,
   type FixtureKey,
@@ -22,7 +23,7 @@ const N = TERMINAL_GRID;
 const CELL = TERMINAL_CELL_M;
 const DEG = Math.PI / 180;
 
-export type TerminalOp = 'foundation' | 'floor' | 'erase' | 'wall' | 'removeWall' | 'fixture';
+export type TerminalOp = 'foundation' | 'floor' | 'erase' | 'wall' | 'removeWall' | 'fixture' | 'zone';
 
 export interface TerminalEdit {
   op: TerminalOp;
@@ -50,6 +51,7 @@ export function newGrid(id: number, ox: number, oy: number, headingDeg: number):
     oy,
     headingDeg,
     floor: new Uint8Array(N * N),
+    zone: new Uint8Array(N * N),
     fixture: new Uint8Array(N * N),
     hWall: new Uint8Array((N + 1) * N),
     vWall: new Uint8Array(N * (N + 1)),
@@ -92,6 +94,8 @@ export function cellCount(g: TerminalGrid): number {
 export function summarize(g: TerminalGrid): Terminal {
   const counts = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
   let leased = 0;
+  const zones = [0, 0, 0, 0, 0];
+  for (let i = 0; i < g.zone.length; i++) if (g.floor[i] > 0) zones[g.zone[i]]++;
   for (let i = 0; i < g.fixture.length; i++) {
     const f = g.fixture[i];
     if (f > 0) {
@@ -99,7 +103,7 @@ export function summarize(g: TerminalGrid): Terminal {
       if (g.leased[i] === 1) leased++;
     }
   }
-  return { id: g.id, cells: cellCount(g), counts, leased };
+  return { id: g.id, cells: cellCount(g), counts, zones, leased };
 }
 
 const FIXTURE_COST = (id: number): number => (isShopFixture(id) ? BUSINESS.shops[fixtureKey(id) as keyof typeof BUSINESS.shops].cost : BUSINESS.modules[fixtureKey(id) as keyof typeof BUSINESS.modules].cost);
@@ -157,7 +161,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
   const y0 = Math.min(e.y0, e.y1);
   const y1 = Math.max(e.y0, e.y1);
 
-  const area = e.op === 'foundation' || e.op === 'floor' || e.op === 'erase' || e.op === 'fixture';
+  const area = e.op === 'foundation' || e.op === 'floor' || e.op === 'erase' || e.op === 'fixture' || e.op === 'zone';
   if (area) {
     if (x0 < 0 || y0 < 0 || x1 > N || y1 > N || x1 <= x0 || y1 <= y0) return none({ code: 'terminalBounds' });
     if ((x1 - x0) * (y1 - y0) > 4000) return none({ code: 'terminalTooLarge' });
@@ -193,16 +197,32 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
           });
         } else if (e.op === 'fixture') {
           if (g.floor[i] === 0 || g.fixture[i] !== 0) continue;
+          const allowed = FIXTURE_ZONES[fixtureKey(e.variant)] ?? [];
+          if (g.zone[i] !== 0 && !allowed.includes(g.zone[i])) {
+            blocked = blocked ?? { code: 'wrongZone', args: {} };
+            continue;
+          }
           cost += FIXTURE_COST(e.variant);
           writes.push(() => {
             g.fixture[i] = e.variant;
             g.leased[i] = 0;
+            if (g.zone[i] === 0) g.zone[i] = allowed[0] ?? 0;
+          });
+        } else if (e.op === 'zone') {
+          if (g.floor[i] === 0 || g.zone[i] === e.variant) continue;
+          if (g.fixture[i] !== 0 && e.variant !== 0 && !(FIXTURE_ZONES[fixtureKey(g.fixture[i])] ?? []).includes(e.variant)) {
+            blocked = blocked ?? { code: 'zoneHasFixture', args: {} };
+            continue;
+          }
+          writes.push(() => {
+            g.zone[i] = e.variant;
           });
         } else {
           // Erase clears floor, fixture and any wall that no longer has a floor beside it.
           if (g.floor[i] === 0 && g.fixture[i] === 0) continue;
           writes.push(() => {
             g.floor[i] = 0;
+            g.zone[i] = 0;
             g.fixture[i] = 0;
             g.leased[i] = 0;
           });
@@ -211,8 +231,9 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
     }
     if (blocked && writes.length === 0) return none(blocked);
     if (e.op === 'fixture' && (e.variant < 1 || e.variant > FIXTURE_COUNT)) return none({ code: 'nothingThere' });
+    if (e.op === 'zone' && (e.variant < 0 || e.variant > 4)) return none({ code: 'nothingThere' });
     if (e.op === 'floor' && e.variant !== FLOOR.Concrete && e.variant !== FLOOR.Tile && e.variant !== FLOOR.Carpet) return none({ code: 'nothingThere' });
-    if (writes.length === 0) return none({ code: e.op === 'fixture' || e.op === 'floor' ? 'terminalNeedsFoundation' : 'nothingThere' });
+    if (writes.length === 0) return none({ code: e.op === 'fixture' || e.op === 'floor' || e.op === 'zone' ? 'terminalNeedsFoundation' : 'nothingThere' });
     const plan: Plan = {
       problem: blocked,
       cost,
