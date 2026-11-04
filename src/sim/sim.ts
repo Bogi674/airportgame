@@ -1,6 +1,7 @@
 import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
 import type { GameOptions } from '@shared/protocol';
+import { Gse, MAX_VEHICLES } from './vehicles/gse';
 import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
@@ -15,7 +16,7 @@ import { packTyped, unpackInto } from './save/pack';
 import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 
 /** Subsystems in execution order. The stress tool times each one separately. */
-const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'flights', 'aircraft'] as const;
+const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'flights', 'aircraft', 'vehicles'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
 
 /**
@@ -31,6 +32,7 @@ export class Sim {
   readonly airfield = new Airfield();
   readonly traffic: Traffic;
   readonly business: Business;
+  readonly gse: Gse;
   private businessSent = -1;
   private gridsSent = -1;
   private businessSentTick = -1000000;
@@ -66,6 +68,7 @@ export class Sim {
         this.eventQueue.push(code);
       },
     };
+    this.gse = new Gse(this.traffic);
     this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
     this.traffic.hooks = { ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }), contactOk: (x, y) => this.business.hasTerminalNear(x, y) };
   }
@@ -127,6 +130,9 @@ export class Sim {
         break;
       case 5:
         this.traffic.update(this.tick);
+        break;
+      case 6:
+        this.gse.update();
         break;
     }
   }
@@ -351,5 +357,17 @@ export class Sim {
     views.header[SnapHeader.Version] = SNAPSHOT_VERSION;
     views.header[SnapHeader.Tick] = this.tick;
     this.traffic.writeSnapshot(views);
+    const g = this.gse;
+    let n = 0;
+    for (let v = 0; v < MAX_VEHICLES; v++) {
+      if (g.active[v] === 0) continue;
+      views.vehicleId[n] = v;
+      views.vehicleX[n] = g.x[v];
+      views.vehicleY[n] = g.y[v];
+      views.vehicleHeading[n] = g.heading[v];
+      views.vehicleKind[n] = g.kind[v];
+      n++;
+    }
+    views.header[SnapHeader.VehicleCount] = n;
   }
 }

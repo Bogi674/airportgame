@@ -9,6 +9,7 @@ import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
 import { SpriteCache, tierForZoom } from './sprites/aircraftSprite';
+import { vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
 
 const MAX_BACKING = 4096;
@@ -139,6 +140,7 @@ export class Renderer {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
+    if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
   }
 
@@ -269,6 +271,32 @@ export class Renderer {
           }
         }
       }
+      const ch = Math.cos(h);
+      const sh = Math.sin(h);
+      const k = 1 / sprite.ppm;
+      const ma = (a * ch + cc * sh) * k;
+      const mb = (b * ch + d * sh) * k;
+      const mc = (-a * sh + cc * ch) * k;
+      const md = (-b * sh + d * ch) * k;
+      const wx = a * x + cc * y + e;
+      const wy = b * x + d * y + f;
+      ctx.setTransform(ma, mb, mc, md, wx - (ma + mc) * (sprite.width / 2), wy - (mb + md) * (sprite.height / 2));
+      ctx.drawImage(sprite.canvas, 0, 0);
+    }
+  }
+
+  /** Ground vehicles, drawn under the aircraft. Skipped when zoomed out where they are a pixel. */
+  private drawVehicles(curr: SnapshotViews, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    if (this.camera.zoom < 0.6) return;
+    const ctx = this.ctx;
+    const n = curr.header[SnapHeader.VehicleCount];
+    this.camera.visibleBounds(this.bounds);
+    for (let i = 0; i < n; i++) {
+      const x = curr.vehicleX[i];
+      const y = curr.vehicleY[i];
+      if (x < this.bounds[0] - 20 || x > this.bounds[2] + 20 || y < this.bounds[1] - 20 || y > this.bounds[3] + 20) continue;
+      const sprite = vehicleSprite(curr.vehicleKind[i]);
+      const h = curr.vehicleHeading[i];
       const ch = Math.cos(h);
       const sh = Math.sin(h);
       const k = 1 / sprite.ppm;
