@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 
 export type IconName =
   | 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish'
-  | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close'
+  | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close' | 'settings' | 'options'
   | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase';
 
 const P: Record<IconName, ComponentChildren> = {
@@ -29,6 +29,8 @@ const P: Record<IconName, ComponentChildren> = {
   play: <path d="M8 5l11 7-11 7z" />,
   sun: (<><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.600 5.600l1.400 1.400M17 17l1.400 1.400M5.600 18.400L7 17M17 7l1.400-1.400" /></>),
   moon: <path d="M20 14.500A8 8 0 019.500 4 8 8 0 1020 14.500z" />,
+  settings: (<><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.600 5.600l2.100 2.100M16.300 16.300l2.100 2.100M5.600 18.400l2.100-2.100M16.300 7.700l2.100-2.100" /></>),
+  options: <path d="M4 8h10M18 8h2M4 16h2M10 16h10M14 6v4M6 14v4" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   foundation: (<><path d="M3 16l9-5 9 5-9 5z" /><path d="M3 12l9-5 9 5" /></>),
   floor: (<><rect x="4" y="4" width="16" height="16" /><path d="M4 12h16M12 4v16" /></>),

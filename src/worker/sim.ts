@@ -143,6 +143,7 @@ function loop(): void {
         simMsPerTick: ticksMeasured > 0 ? msAccumulator / ticksMeasured : 0,
         tickBacklog: backlog,
         aircraftCount: sim.aircraftCount,
+        standsFree: sim.standsFree,
       },
     });
     msAccumulator = 0;

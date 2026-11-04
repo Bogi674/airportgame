@@ -156,6 +156,9 @@ export function Minimap({ renderer, site, owner }: Props) {
   return (
     <div
       data-testid="minimap"
+      class="minimap"
+      onPointerDown={(e) => (e.currentTarget as HTMLElement).classList.add('active')}
+      onPointerUp={(e) => (e.currentTarget as HTMLElement).classList.remove('active')}
       style={`position:absolute;right:12px;bottom:12px;width:${SIZE}px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px`}
     >
       <canvas ref={canvasRef} width={SIZE} height={SIZE} aria-label={t('map.minimap')} style={`display:block;width:${SIZE}px;height:${SIZE}px;cursor:crosshair`} />

@@ -18,7 +18,7 @@ export function Guide() {
   ];
   const all = steps.every((s) => s.done);
   return (
-    <div data-testid="guide" style="position:absolute;left:112px;top:54px;width:260px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.6">
+    <div data-testid="guide" style="position:absolute;left:76px;top:96px;width:260px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.6">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <strong>{t('guide.title')}</strong>
         <button style="padding:0 6px" onClick={() => hide(true)}>

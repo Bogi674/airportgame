@@ -127,6 +127,14 @@ export class Traffic {
   private blockDir = new Int8Array(0);
   private blockLast = new Int32Array(0);
   private standOwner = new Int32Array(0);
+
+  /** Stands with no aircraft assigned. */
+  get standsFree(): number {
+    let n = 0;
+    for (let i = 0; i < this.standOwner.length; i++) if (this.standOwner[i] === -1) n++;
+    return n;
+  }
+
   /** Arrivals assigned to each runway entry and departures queued for it, so they never share a connector. */
   private entryInbound = new Int32Array(0);
   private entryDeparting = new Int32Array(0);

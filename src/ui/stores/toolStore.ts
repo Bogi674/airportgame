@@ -13,6 +13,8 @@ export interface Selection {
 
 interface ToolState {
   tool: Tool;
+  /** Whether the bottom options panel is shown. The left rail toggles it. */
+  barOpen: boolean;
   code: CodeLetter;
   surface: Surface;
   tier: number;
@@ -41,6 +43,7 @@ interface ToolState {
 
 export const useToolStore = create<ToolState>((set) => ({
   tool: 'select',
+  barOpen: true,
   code: 'C',
   surface: 'asphalt',
   tier: 1,

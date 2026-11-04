@@ -37,6 +37,7 @@ export interface PerfReport {
   simMsPerTick: number;
   tickBacklog: number;
   aircraftCount: number;
+  standsFree: number;
 }
 
 /** Sim worker to main thread. */

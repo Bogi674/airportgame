@@ -81,6 +81,7 @@ export const useGameStore = create<GameState>((set) => ({
   simMsPerTick: 0,
   tickBacklog: 0,
   aircraftCount: 0,
+  standsFree: 0,
   setScreen: (screen) => set({ screen }),
   setPerf: (report, tick) => set({ ...report, tick }),
   setSpeed: (speed) => set({ speed }),

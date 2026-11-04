@@ -85,6 +85,10 @@ export class Sim {
     return SUBSYSTEMS[index];
   }
 
+  get standsFree(): number {
+    return this.traffic.standsFree;
+  }
+
   get aircraftCount(): number {
     return this.traffic.count;
   }

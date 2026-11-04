@@ -352,7 +352,9 @@ export function buildPlan(af: AirfieldPayload): Plan {
     const c = j.c;
     const sm = plan.smooth.get(c.id) ?? c.points;
     const hC = c.widthM / 2;
-    const Rf0 = AIRFIELD.codes[c.code].filletRadiusM;
+    const codeR = AIRFIELD.codes[c.code].filletRadiusM;
+    // Pavement fillets stay small, the lead-on centerline sweeps wider (FAA AC 150/5340-1 style).
+    const Rf0 = codeR * 0.5;
     const E = j.end === 0 ? sm[0] : sm[sm.length - 1];
     const lenC = (cum.get(c.id) ?? [0])[sm.length - 1] ?? 0;
     const eDist = len(E.x - j.px, E.y - j.py);
@@ -409,7 +411,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
       tfMax = Math.max(tfMax, len(Cpt.x - j.px, Cpt.y - j.py) * 0 + (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy);
       cutIntervals.push(sigma * ((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty));
       // Lead-on centerline arc: concentric with the fillet where the widths match.
-      const Rc = Math.min(R + hC, 0.45 * (lenC + eDist) * tanH);
+      const Rc = Math.min(codeR * 2.2, 3.4 * hC + R, 0.45 * (lenC + eDist) * tanH);
       const tc = Rc / tanH;
       const A = { x: j.px + r2x * tc, y: j.py + r2y * tc };
       const B = { x: j.px + r1x * tc, y: j.py + r1y * tc };

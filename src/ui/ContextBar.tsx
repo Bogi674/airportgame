@@ -63,6 +63,23 @@ export function ContextBar({ send }: Props) {
   const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal';
   const showCode = showPavement && s.tool !== 'apron';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
+  const problemBlock = problemText ? (
+    <div data-testid="problem" role="status" style="color:var(--bad);font-size:12px;display:flex;gap:8px;align-items:center">
+      <span>{problemText}</span>
+      {s.problem?.code === 'notOwned' && s.buy && s.buy.ids.length > 0 && (
+        <button data-testid="buy-land" onClick={() => send({ type: 'buyParcels', ids: s.buy?.ids ?? [] })}>
+          {tFormat('buy.land', { n: s.buy.ids.length, cost: formatMoney(s.buy.cost) })}
+        </button>
+      )}
+    </div>
+  ) : null;
+  if (!s.barOpen) {
+    return problemBlock ? (
+      <div class="panel" style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 12px">
+        {problemBlock}
+      </div>
+    ) : null;
+  }
   return (
     <div
       data-testid="context-bar"
@@ -131,16 +148,7 @@ export function ContextBar({ send }: Props) {
         {s.tool === 'gaBlock' && <Num label={t('opt.standCount')} value={s.gaCount} min={1} max={20} onChange={(v) => s.set({ gaCount: v })} />}
       </div>
       {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
-      {problemText && (
-        <div data-testid="problem" role="status" style="color:var(--bad);font-size:12px;display:flex;gap:8px;align-items:center">
-          <span>{problemText}</span>
-          {s.problem?.code === 'notOwned' && s.buy && s.buy.ids.length > 0 && (
-            <button data-testid="buy-land" onClick={() => send({ type: 'buyParcels', ids: s.buy?.ids ?? [] })}>
-              {tFormat('buy.land', { n: s.buy.ids.length, cost: formatMoney(s.buy.cost) })}
-            </button>
-          )}
-        </div>
-      )}
+      {problemBlock}
     </div>
   );
 }

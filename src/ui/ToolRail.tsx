@@ -28,9 +28,13 @@ export function ToolRail({ onUndo, onRedo }: Props) {
   const set = useToolStore((s) => s.set);
   const canUndo = useGameStore((s) => s.canUndo);
   const canRedo = useGameStore((s) => s.canRedo);
+  const barOpen = useToolStore((s) => s.barOpen);
+  const pick = (next: Tool): void => {
+    if (tool === next && next !== 'select') set({ barOpen: !barOpen });
+    else set({ tool: next, barOpen: true, selection: null, hint: null, problem: null, buy: null });
+  };
   return (
     <div data-testid="tool-rail" class="panel rail">
-      <div class="section" style="margin:0 0 2px;text-align:center;border:0;white-space:nowrap;letter-spacing:0.1em">{t('rail.build')}</div>
       {TOOLS.map((x) => (
         <button
           key={x.tool}
@@ -39,21 +43,22 @@ export function ToolRail({ onUndo, onRedo }: Props) {
           title={tDynamic(`tool.${x.tool}`)}
           aria-label={tDynamic(`tool.${x.tool}`)}
           aria-pressed={tool === x.tool}
-          onClick={() => set({ tool: x.tool, selection: null, hint: null, problem: null, buy: null })}
+          onClick={() => pick(x.tool)}
         >
           <Icon name={x.icon} />
           {x.key && <span class="kbd">{x.key}</span>}
         </button>
       ))}
       <div class="sep" />
-      <div style="display:flex;gap:6px;justify-content:center">
-        <button class="round" style="width:30px;height:30px" data-testid="undo" title={t('tool.undo')} aria-label={t('tool.undo')} disabled={!canUndo} onClick={onUndo}>
-          <Icon name="undo" size={15} />
-        </button>
-        <button class="round" style="width:30px;height:30px" data-testid="redo" title={t('tool.redo')} aria-label={t('tool.redo')} disabled={!canRedo} onClick={onRedo}>
-          <Icon name="redo" size={15} />
-        </button>
-      </div>
+      <button class="round" data-testid="toggle-options" title={t('tool.options')} aria-label={t('tool.options')} aria-pressed={barOpen && tool !== 'select'} disabled={tool === 'select'} onClick={() => set({ barOpen: !barOpen })}>
+        <Icon name="options" />
+      </button>
+      <button class="round" data-testid="undo" title={t('tool.undo')} aria-label={t('tool.undo')} disabled={!canUndo} onClick={onUndo}>
+        <Icon name="undo" size={16} />
+      </button>
+      <button class="round" data-testid="redo" title={t('tool.redo')} aria-label={t('tool.redo')} disabled={!canRedo} onClick={onRedo}>
+        <Icon name="redo" size={16} />
+      </button>
     </div>
   );
 }

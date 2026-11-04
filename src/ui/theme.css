@@ -34,10 +34,20 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .tab { border: 0; border-radius: 0; border-bottom: 2px solid transparent; padding: 6px 14px; font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); background: transparent; }
 .tab:hover:not(:disabled) { background: transparent; color: var(--text); border-bottom-color: var(--line); }
 .tab[aria-pressed='true'] { background: transparent; color: var(--accent); border-bottom-color: var(--accent); }
-.rail { position: absolute; left: 10px; top: 54px; display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.rail { position: absolute; left: 10px; top: 96px; display: flex; flex-direction: column; gap: 6px; padding: 8px; }
 .rail .round[aria-pressed='true'] { box-shadow: 0 0 0 3px var(--accent-soft); }
 .rail .sep { height: 1px; background: var(--line-soft); margin: 2px 4px; }
 .topbar { position: absolute; top: 0; left: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 13px; z-index: 5; }
 .topbar .brand { font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--accent); }
 .topbar .round { width: 30px; height: 30px; }
 .sheet-title { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
+
+.hud { position: absolute; top: 10px; display: flex; gap: 6px; align-items: center; z-index: 5; pointer-events: none; }
+.hud > *, .hud button, .hud .chip { pointer-events: auto; }
+.hud-left { left: 10px; right: 520px; flex-wrap: wrap; }
+.hud-right { right: 10px; gap: 8px; }
+.cluster { display: inline-flex; gap: 4px; align-items: center; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); }
+.cluster .round { width: 30px; height: 30px; }
+.hud .chip { box-shadow: var(--shadow); background: var(--panel); }
+.minimap { opacity: 0.42; transition: opacity 0.18s; }
+.minimap:hover, .minimap:focus-within, .minimap.active { opacity: 1; }
