@@ -19,7 +19,8 @@ export interface SaveHeader {
 }
 
 interface SaveRecord extends SaveHeader {
-  blob: Blob | string;
+  /** Stored as bytes: WebKit refuses Blobs in IndexedDB in some contexts. Older saves hold a Blob or a string. */
+  blob: ArrayBuffer | Blob | string;
 }
 
 function open(): Promise<IDBDatabase> {
@@ -67,7 +68,7 @@ export async function decompress(blob: Blob, compressed: boolean): Promise<strin
 
 export async function putSave(header: Omit<SaveHeader, 'compressed'>, json: string): Promise<void> {
   const { blob, compressed } = await compress(json);
-  const rec: SaveRecord = { ...header, compressed, blob };
+  const rec: SaveRecord = { ...header, compressed, blob: await blob.arrayBuffer() };
   await tx('readwrite', (s) => s.put(rec));
 }
 
@@ -85,7 +86,7 @@ export async function listSaves(): Promise<SaveHeader[]> {
 export async function loadSave(id: string): Promise<unknown> {
   const rec = (await tx('readonly', (s) => s.get(id))) as SaveRecord | undefined;
   if (!rec) throw new Error('Save not found');
-  const text = typeof rec.blob === 'string' ? rec.blob : await decompress(rec.blob, rec.compressed);
+  const text = typeof rec.blob === 'string' ? rec.blob : await decompress(rec.blob instanceof Blob ? rec.blob : new Blob([rec.blob]), rec.compressed);
   return JSON.parse(text);
 }
 
