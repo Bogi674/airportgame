@@ -87,7 +87,7 @@
   "wind.acceptable": "Acceptable wind",
   "wind.poor": "Poor wind",
   "ghost.runway": "{len} m, {hdg}\u00b0, {band}, {cost}",
-  "ghost.taxiway": "Code {code}, {w} m wide, {cost}",
+  "ghost.taxiway": "{seg} m, total {total} m. Code {code}, {w} m wide, {cost}",
   "ghost.exit": "Exit at {dist} m, {angle}\u00b0, suggested {suggest} m",
   "ghost.parallel": "Offset {offset} m, max code {cap}",
   "ghost.apron": "{area} m2, {cost}",

@@ -603,7 +603,7 @@ export class ToolController {
     const ctx = this.ctx();
     const cost = ctx && pts.length >= 2 ? estimateStripCost(ctx, pts, width, st.surface, st.tier) : 0;
     this.show(
-      { valid: problem === null, shapes, label: { x: q.x, y: q.y, text: tFormat('ghost.taxiway', { code: st.code, w: width, cost: formatMoney(cost) }) } },
+      { valid: problem === null, shapes, label: { x: q.x, y: q.y, text: tFormat('ghost.taxiway', { seg: prev ? Math.round(Math.hypot(q.x - prev.x, q.y - prev.y)) : 0, total: Math.round(pts.reduce((l, pt, i) => (i > 0 ? l + Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y) : l), 0)), code: st.code, w: width, cost: formatMoney(cost) }) } },
       problem,
       lane ? 'hint.taxilane' : 'hint.taxiway',
     );
