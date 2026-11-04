@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
+import { buildTestAirport } from './helpers';
 import { EdgeKind, TaxiNetwork } from '@sim/airfield/network';
 
 function ownedSim(): Sim {
@@ -84,5 +85,17 @@ describe('TaxiNetwork', () => {
       net.pointAt(e, net.edgeLen[e], out);
       expect(Math.hypot(out.x - net.nodeX[net.edgeTo[e]], out.y - net.nodeY[net.edgeTo[e]])).toBeLessThan(0.01);
     }
+  });
+});
+
+describe('preferred flow', () => {
+  it('is stored per taxiway and reaches the routing edges', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim, { standsPerRow: 2 });
+    const t = sim.airfield.data.taxiways[0];
+    run(sim, { type: 'setTaxiwayProps', id: t.id, preferred: -1 });
+    expect(sim.airfield.data.taxiways[0].preferred).toBe(-1);
+    sim.step();
+    expect(Array.from(sim.traffic.net.edgePreferred).includes(-1)).toBe(true);
   });
 });

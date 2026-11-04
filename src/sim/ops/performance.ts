@@ -7,12 +7,36 @@ const DEFAULT_TAKEOFF_WEIGHT = 0.9;
 const DEFAULT_LANDING_WEIGHT = 0.85;
 
 /** Required takeoff run in meters (docs/GAME_DESIGN.md section 5). */
-export function requiredTakeoffM(a: AircraftSpec, climate: Climate, windBandFactor: number): number {
+export function requiredTakeoffM(a: AircraftSpec, climate: Climate, windBandFactor: number, share = DEFAULT_TAKEOFF_WEIGHT): number {
   const temp = 1 + (0.07 * (climate.tempMaxC - 15)) / 10;
   const alt = 1 + (0.07 * climate.elevationM) / 300;
-  const weight = DEFAULT_TAKEOFF_WEIGHT * DEFAULT_TAKEOFF_WEIGHT;
+  const weight = share * share;
   return a.performance.takeoffFieldM * Math.max(0.8, temp) * alt * weight * windBandFactor;
 }
+
+/** Passenger plus bags weight per seat in kg. */
+const KG_PER_PAX = 100;
+
+/**
+ * Takeoff weight as a share of MTOW for a stage length: empty weight, passengers and the fuel the
+ * stage needs. When that exceeds MTOW the payload is cut, so `payloadFactor` falls below 1.
+ * Longer stages and fuller cabins need longer runways.
+ */
+export function takeoffWeight(a: AircraftSpec, stageKm: number, loadFactor: number): { share: number; payloadFactor: number } {
+  const mtow = a.weights.mtowKg;
+  const payload = a.capacity.seatsTypical * loadFactor * KG_PER_PAX;
+  const fuel = mtow * Math.min(0.4, 0.03 + 0.32 * Math.min(1, stageKm / a.performance.rangeKm));
+  let share = (a.weights.oewKg + payload + fuel) / mtow;
+  let payloadFactor = 1;
+  if (share > 1 && payload > 0) {
+    payloadFactor = Math.max(0, (payload - (share - 1) * mtow) / payload);
+    share = 1;
+  }
+  return { share: Math.max(0.55, share), payloadFactor };
+}
+
+/** Longest stage an airline flies with this type: 85 percent of its range. */
+export const maxStageKm = (a: AircraftSpec): number => Math.floor(a.performance.rangeKm * 0.85);
 
 export function requiredLandingM(a: AircraftSpec, windBandFactor: number): number {
   return a.performance.landingFieldM * DEFAULT_LANDING_WEIGHT * DEFAULT_LANDING_WEIGHT * windBandFactor;
@@ -40,10 +64,10 @@ export function checkLanding(a: AircraftSpec, r: Runway, windBandFactor: number)
 }
 
 /** Takeoff check from an entry with the given takeoff distance available. */
-export function checkTakeoff(a: AircraftSpec, r: Runway, toda: number, climate: Climate, windBandFactor: number): Limit {
+export function checkTakeoff(a: AircraftSpec, r: Runway, toda: number, climate: Climate, windBandFactor: number, share = DEFAULT_TAKEOFF_WEIGHT): Limit {
   const p = checkPavement(a, r.surface, r.pcr);
   if (!p.ok) return p;
-  const need = requiredTakeoffM(a, climate, windBandFactor);
+  const need = requiredTakeoffM(a, climate, windBandFactor, share);
   if (toda < need) return { ok: false, reason: 'takeoffLength', needed: Math.ceil(need), available: Math.floor(toda) };
   return { ok: true };
 }

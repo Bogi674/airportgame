@@ -7,7 +7,7 @@ import { foldF64, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
-import { checkLanding, checkTakeoff, requiredTakeoffM } from './performance';
+import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
 
 export const MAX_AIRCRAFT = 256;
 const MAX_ROUTE = 40;
@@ -87,6 +87,8 @@ export class Traffic {
   readonly waitingFor = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly ignoreLocks = new Int32Array(MAX_AIRCRAFT);
   readonly yieldUntil = new Int32Array(MAX_AIRCRAFT);
+  /** Until this tick the aircraft shows in the deadlock overlay. Not saved, it only feeds the overlay. */
+  private readonly deadlockUntil = new Int32Array(MAX_AIRCRAFT);
   readonly standId = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly rwyIdx = new Int32Array(MAX_AIRCRAFT).fill(-1);
   /** +1 when moving from threshold A toward B on the runway, -1 for the other way. */
@@ -114,6 +116,8 @@ export class Traffic {
   readonly fAirline = new Int8Array(MAX_FLIGHTS).fill(-1);
   /** How late the arrival touched down against its schedule, in ticks. */
   readonly fLate = new Int32Array(MAX_FLIGHTS);
+  /** Stage length in km a flight departs on, 0 for the default weight. */
+  readonly fStage = new Int32Array(MAX_FLIGHTS);
   /** Arrival delay in ticks, kept for statistics when the flight completes. */
   completedFlights = 0;
   divertedFlights = 0;
@@ -364,7 +368,7 @@ export class Traffic {
   // Flights ----------------------------------------------------------------
 
   /** Schedules an arriving flight. Its turnaround and departure follow automatically. */
-  scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number, airline = -1): number {
+  scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number, airline = -1, stageKm = 0): number {
     let f = -1;
     for (let k = 0; k < MAX_FLIGHTS; k++) {
       if (this.fState[k] === FlState.Free || this.fState[k] === FlState.Done) {
@@ -383,6 +387,7 @@ export class Traffic {
     this.fRetryAt[f] = 0;
     this.fAirline[f] = airline;
     this.fLate[f] = 0;
+    this.fStage[f] = stageKm;
     return f;
   }
 
@@ -1135,7 +1140,7 @@ export class Traffic {
       for (const dir of [1, -1] as const) {
         const toda = dir === 1 ? en.todaTowardB : en.todaTowardA;
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;
-        const lim = checkTakeoff(a, rw, toda, this.site.climate, this.lengthFactor(rw, dir));
+        const lim = checkTakeoff(a, rw, toda, this.site.climate, this.lengthFactor(rw, dir), this.shareFor(i));
         if (!lim.ok) {
           // Report the best an entry could offer, not the first entry that failed.
           if (!firstFail || lim.available > failAvail) {
@@ -1200,13 +1205,20 @@ export class Traffic {
     this.standOwner[s] = i;
   }
 
+  /** Takeoff weight share of the flight on aircraft i, from its stage length. */
+  private shareFor(i: number): number {
+    const f = this.flight[i];
+    if (f < 0 || this.fStage[f] === 0) return 0.9;
+    return takeoffWeight(AIRCRAFT[this.type[i]], this.fStage[f], 0.75).share;
+  }
+
   private tryClearDeparture(i: number): void {
     const r = this.rwyIdx[i];
     if (r < 0) return;
     const t = this.type[i];
     const a = AIRCRAFT[t];
     const rw = this.af.runways[r];
-    const roll = requiredTakeoffM(a, this.site.climate, rw ? this.lengthFactor(rw, this.rwyDir[i]) : 1) * 0.8;
+    const roll = requiredTakeoffM(a, this.site.climate, rw ? this.lengthFactor(rw, this.rwyDir[i]) : 1, this.shareFor(i)) * 0.8;
     const vLof = a.performance.vrefKt * KT * 1.05;
     const rollTicks = Math.round(((2 * roll) / vLof) * 10);
     const start = this.tick;
@@ -1242,7 +1254,7 @@ export class Traffic {
       this.removeAircraft(i, 'departed');
       return;
     }
-    const roll = requiredTakeoffM(a, this.site.climate, this.lengthFactor(rw, this.rwyDir[i])) * 0.8;
+    const roll = requiredTakeoffM(a, this.site.climate, this.lengthFactor(rw, this.rwyDir[i]), this.shareFor(i)) * 0.8;
     const vLof = a.performance.vrefKt * KT * 1.05;
     const acc = (vLof * vLof) / (2 * roll);
     this.speed[i] += acc * DT;
@@ -1302,6 +1314,13 @@ export class Traffic {
         this.releaseAll(victim);
         this.yieldUntil[victim] = this.tick + 400;
         this.deadlocks++;
+        // Mark the whole cycle for the debug overlay.
+        let w = i;
+        for (let n = 0; n < 10 && w >= 0; n++) {
+          this.deadlockUntil[w] = this.tick + 600;
+          w = this.waitingFor[w];
+          if (w === i) break;
+        }
         this.emit('deadlock');
         return;
       }
@@ -1334,7 +1353,7 @@ export class Traffic {
       standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
-      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate,
+      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage,
       nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
     };
@@ -1392,6 +1411,7 @@ export class Traffic {
       views.aircraftType[k] = this.type[i];
       views.aircraftState[k] = this.state[i];
       views.aircraftLivery[k] = this.livery[i];
+      views.aircraftFlags[k] = (this.waitingFor[i] >= 0 ? 1 : 0) | (this.deadlockUntil[i] > this.tick ? 2 : 0);
     }
   }
 

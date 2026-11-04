@@ -90,6 +90,14 @@ export function ObjectPanel({ send }: Props) {
         <label style="display:block">
           <input data-testid="prop-oneway" type="checkbox" checked={x.oneWay} onChange={(e) => send({ type: 'setTaxiwayProps', id, oneWay: (e.target as HTMLInputElement).checked })} /> {t('inspector.oneWay')}
         </label>
+        <label style="display:flex;gap:6px;align-items:center">
+          {t('inspector.preferred')}
+          <select data-testid="prop-preferred" value={x.preferred ?? 0} onChange={(e) => send({ type: 'setTaxiwayProps', id, preferred: Number((e.target as HTMLSelectElement).value) })}>
+            <option value={0}>{t('inspector.preferred.none')}</option>
+            <option value={1}>{t('inspector.preferred.forward')}</option>
+            <option value={-1}>{t('inspector.preferred.reverse')}</option>
+          </select>
+        </label>
         <label style="display:block">
           <input data-testid="prop-closed" type="checkbox" checked={x.closed} onChange={(e) => send({ type: 'setTaxiwayProps', id, closed: (e.target as HTMLInputElement).checked })} /> {t('inspector.closed')}
         </label>

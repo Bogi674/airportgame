@@ -15,6 +15,7 @@ interface Line {
   sourceId: number;
   pts: Pt[];
   oneWay: boolean;
+  preferred: number;
   closed: boolean;
   maxCode: number;
   speedMs: number;
@@ -56,6 +57,7 @@ export class TaxiNetwork {
   edgeSpeed = new Float64Array(0);
   edgeMaxCode = new Uint8Array(0);
   edgeOneWay = new Uint8Array(0);
+  edgePreferred = new Int8Array(0);
   edgeClosed = new Uint8Array(0);
   edgeKind = new Uint8Array(0);
   edgePcr = new Float32Array(0);
@@ -111,6 +113,7 @@ export class TaxiNetwork {
         sourceId: t.id,
         pts: t.points.map((p) => ({ x: p.x, y: p.y })),
         oneWay: t.oneWay,
+        preferred: t.preferred ?? 0,
         closed: t.closed,
         maxCode: codeIndex(t.maxCode),
         speedMs: t.speedKmh / 3.6,
@@ -139,6 +142,7 @@ export class TaxiNetwork {
         sourceId: r.id,
         pts: [{ x: r.x1, y: r.y1 }, { x: r.x2, y: r.y2 }],
         oneWay: false,
+        preferred: 0,
         closed: false,
         maxCode: 5,
         speedMs: 100,
@@ -187,6 +191,7 @@ export class TaxiNetwork {
         // From the pavement to the stand, so forward is the way an arriving aircraft drives.
         pts: [hit, { x: s.x, y: s.y }],
         oneWay: false,
+        preferred: 0,
         closed: false,
         maxCode: codeIndex(s.code),
         speedMs: 4,
@@ -355,6 +360,7 @@ export class TaxiNetwork {
     this.edgeSpeed = new Float64Array(E);
     this.edgeMaxCode = new Uint8Array(E);
     this.edgeOneWay = new Uint8Array(E);
+    this.edgePreferred = new Int8Array(E);
     this.edgeClosed = new Uint8Array(E);
     this.edgeKind = new Uint8Array(E);
     this.edgePcr = new Float32Array(E);
@@ -374,6 +380,7 @@ export class TaxiNetwork {
       this.edgeSpeed[e] = r.line.speedMs;
       this.edgeMaxCode[e] = r.line.maxCode;
       this.edgeOneWay[e] = r.line.oneWay ? 1 : 0;
+      this.edgePreferred[e] = r.line.preferred;
       this.edgeClosed[e] = r.line.closed ? 1 : 0;
       this.edgeKind[e] = r.line.edgeKind;
       this.edgePcr[e] = r.line.pcr;
@@ -599,7 +606,9 @@ export class TaxiNetwork {
         if (this.closed[m] === 1) continue;
         // Stand lead ins are dead ends: only the start or goal may sit on one.
         if (kind === EdgeKind.StandLeadIn && n !== from && m !== to) continue;
-        const cost = this.g[n] + this.edgeLen[e] / Math.max(1, this.edgeSpeed[e]) + this.congestion[e];
+        // Against a preferred flow the edge costs three times as much, so it is the last choice but not closed.
+        const against = this.edgePreferred[e] !== 0 && this.edgePreferred[e] !== dir ? 3 : 1;
+        const cost = this.g[n] + (this.edgeLen[e] / Math.max(1, this.edgeSpeed[e])) * against + this.congestion[e];
         if (cost < this.g[m]) {
           const wasIn = this.g[m] !== Infinity && this.heapPos[m] > 0 && this.heapPos[m] <= this.heapSize && this.heap[this.heapPos[m]] === m;
           this.g[m] = cost;

@@ -48,8 +48,13 @@ export async function playSmallAirport(page: Page): Promise<void> {
   await edit(1, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
   await edit(1, { op: 'wall', x0: 70, y0: 40, x1: 72, y1: 40, variant: 3 });
   await edit(1, { op: 'fixture', x0: 42, y0: 42, x1: 50, y1: 43, variant: 1 });
-  await edit(1, { op: 'fixture', x0: 54, y0: 42, x1: 57, y1: 43, variant: 2 });
+  await edit(1, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
+  await edit(1, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
+  await edit(1, { op: 'wall', x0: 72, y0: 45, x1: 72, y1: 52, variant: 1 });
+  await edit(1, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 45, variant: 2 });
+  await edit(1, { op: 'fixture', x0: 76, y0: 46, x1: 82, y1: 47, variant: 4 });
   await edit(1, { op: 'fixture', x0: 62, y0: 42, x1: 64, y1: 43, variant: 3 });
+  await edit(1, { op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 });
   await edit(1, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
   await send({ type: 'signAirline', airlineId: 0, rotations: 2 });
   await send({ type: 'signAirline', airlineId: 1, rotations: 2 });

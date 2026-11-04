@@ -23,7 +23,7 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * 150));
     expect(sim.business.arrCapacity()).toBe(2 * 260);
     // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
-    const expected = cells * (2000 + 480) + 120 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000 + 4 * 90000);
+    const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000 + 4 * 90000);
     expect(g.cost).toBe(expected);
   });
 
@@ -158,7 +158,7 @@ describe('zones, control room and slots', () => {
     const g = sim.business.grids[0];
     const N = 160;
     expect(g.zone[42 * N + 42]).toBe(1);
-    expect(g.zone[46 * N + 70]).toBe(3);
+    expect(g.zone[46 * N + 76]).toBe(3);
     const at = (e: object) => run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: e as never });
     expect(at({ op: 'zone', x0: 60, y0: 44, x1: 64, y1: 46, variant: 2 })).toEqual([]);
     expect(g.zone[44 * N + 60]).toBe(2);
@@ -194,5 +194,24 @@ describe('zones, control room and slots', () => {
     expect(sim.business.airlines[0].slots[0]).toBe(13 * 60 + 15);
     run(sim, { type: 'signAirline', airlineId: 0, rotations: 1 });
     expect(sim.business.airlines[0].slots).toEqual([13 * 60 + 15]);
+  });
+});
+
+describe('room validation', () => {
+  it('a lane in the wall opening works, a gap in the wall is a security bypass, no lane is a missing link', () => {
+    const { sim, id } = airportWithTerminal();
+    expect(sim.business.roomIssues).toEqual([]);
+    expect(sim.business.depCapacity()).toBeGreaterThan(0);
+    const g = sim.business.grids[0];
+    const at = (e: object) => run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: e as never });
+    // Open another gap in the wall beside the lanes: passengers can bypass security.
+    at({ op: 'removeWall', x0: 72, y0: 48, x1: 72, y1: 49, variant: 0 });
+    expect(sim.business.roomIssues).toContain('securityBypass');
+    expect(sim.business.depCapacity()).toBe(0);
+    at({ op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: 1 });
+    expect(sim.business.roomIssues).toEqual([]);
+    // Close the opening in the wall and the lanes can no longer be reached.
+    at({ op: 'wall', x0: 72, y0: 42, x1: 72, y1: 45, variant: 1 });
+    expect(sim.business.roomIssues).toContain('noSecurityLink');
   });
 });

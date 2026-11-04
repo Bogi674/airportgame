@@ -114,6 +114,8 @@ export interface BoardRow {
   /** Scheduled arrival, minute of the day. */
   eta: number;
   delayMin: number;
+  /** Stage length of the flight in km, 0 for test flights. */
+  stageKm: number;
 }
 
 export interface BusinessPayload {

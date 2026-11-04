@@ -231,6 +231,7 @@ function FlightsSheet() {
               <th>{t('flights.type')}</th>
               <th>{t('flights.status')}</th>
               <th>{t('flights.stand')}</th>
+              <th>{t('flights.stage')}</th>
               <th>{t('flights.eta')}</th>
             </tr>
           </thead>
@@ -241,6 +242,7 @@ function FlightsSheet() {
                 <td>{r.type}</td>
                 <td>{tDynamic(`status.${r.status}`)}</td>
                 <td>{r.stand}</td>
+                <td>{r.stageKm > 0 ? `${formatInt(r.stageKm)} km` : ''}</td>
                 <td>
                   {eta(r.eta)}
                   {r.delayMin > 0 ? ` (+${r.delayMin})` : ''}

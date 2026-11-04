@@ -81,12 +81,18 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   const row = (key: number, n: number, x: number, y: number): void => {
     if (n > 0) edit(id, { op: 'fixture', x0: x, y0: y, x1: x + n, y1: y + 1, variant: key });
   };
+  // A secure hall on the east side, closed by a wall with one opening that holds the security lanes.
+  edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
+  edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
+  edit(id, { op: 'wall', x0: 72, y0: 45, x1: 72, y1: 52, variant: 1 });
   row(1, o.checkIn ?? 8, 42, 42);
-  row(2, o.security ?? 3, 54, 42);
+  const lanes = o.security ?? 3;
+  if (lanes > 0) edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 42 + Math.min(3, lanes), variant: 2 });
   row(3, o.belt ?? 2, 62, 42);
-  row(4, o.seating ?? 6, 70, 46);
-  row(5, o.toilet ?? 2, 80, 46);
-  if (o.shop) row(6, 1, 84, 46);
+  row(4, o.seating ?? 6, 76, 46);
+  row(5, o.toilet ?? 2, 84, 46);
+  if (o.shop) row(6, 1, 86, 46);
+  if (o.atc !== false) edit(id, { op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 });
   if (o.atc !== false) edit(id, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
   return problems;
 }

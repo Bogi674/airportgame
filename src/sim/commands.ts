@@ -20,7 +20,7 @@ export type Command =
   | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; code: CodeLetter }
   | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number }
   | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
-  | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
+  | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
   | { type: 'resurface'; kind: 'runway' | 'taxiway' | 'apron'; id: number; surface: Surface; tier: number }
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }

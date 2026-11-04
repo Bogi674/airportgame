@@ -49,6 +49,8 @@ export interface Taxiway {
   pcr: number;
   condition: number;
   oneWay: boolean;
+  /** Preferred direction along the points: 0 none, 1 forward, -1 reverse. Routing avoids the other way but may use it. */
+  preferred?: number;
   closed: boolean;
   /** Player setting. */
   userMaxCode: CodeLetter;

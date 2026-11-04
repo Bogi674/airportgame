@@ -30,6 +30,7 @@ export class Renderer {
   private readonly sprites = new SpriteCache();
   private readonly people = new People();
   private lastFrame = 0;
+  private debug = false;
   private speed = 1;
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
@@ -83,6 +84,11 @@ export class Renderer {
   setFlow(paxToday: number, speed: number): void {
     this.people.setPassengers(paxToday);
     this.speed = speed;
+  }
+
+  /** Shows rings around aircraft that wait on a reservation or were part of a deadlock. */
+  setDebugOverlay(on: boolean): void {
+    this.debug = on;
   }
 
   get peopleCount(): number {
@@ -335,6 +341,22 @@ export class Renderer {
       const wy = b * x + d * y + f;
       ctx.setTransform(ma, mb, mc, md, wx - (ma + mc) * (sprite.width / 2), wy - (mb + md) * (sprite.height / 2));
       ctx.drawImage(sprite.canvas, 0, 0);
+    }
+    if (this.debug) this.drawFlags(curr, a, b, cc, d, e, f);
+  }
+
+  private drawFlags(curr: SnapshotViews, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const n = curr.header[SnapHeader.AircraftCount];
+    ctx.setTransform(a, b, cc, d, e, f);
+    ctx.lineWidth = Math.max(2 / this.camera.zoom, 0.8);
+    for (let i = 0; i < n; i++) {
+      const fl = curr.aircraftFlags[i];
+      if (fl === 0) continue;
+      ctx.strokeStyle = (fl & 2) !== 0 ? '#ff3b30' : '#ffb020';
+      ctx.beginPath();
+      ctx.arc(curr.aircraftX[i], curr.aircraftY[i], 28, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 

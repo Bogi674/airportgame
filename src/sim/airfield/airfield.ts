@@ -239,6 +239,7 @@ export class Airfield {
       pcr,
       condition: 100,
       oneWay: false,
+      preferred: 0,
       closed: false,
       userMaxCode: code,
       maxCode: code,
@@ -470,6 +471,7 @@ export class Airfield {
     const t = this.data.taxiways.find((x) => x.id === cmd.id);
     if (!t) return { code: 'nothingThere' };
     if (cmd.oneWay !== undefined) t.oneWay = cmd.oneWay;
+    if (cmd.preferred !== undefined) t.preferred = cmd.preferred === 0 ? 0 : cmd.preferred > 0 ? 1 : -1;
     if (cmd.closed !== undefined) t.closed = cmd.closed;
     if (cmd.userMaxCode !== undefined) t.userMaxCode = cmd.userMaxCode;
     if (cmd.speedKmh !== undefined) t.speedKmh = Math.max(5, Math.min(80, Math.round(cmd.speedKmh)));
@@ -558,7 +560,7 @@ export class Airfield {
     }
     for (const t of this.data.taxiways) {
       acc = foldU32(foldU32(acc, t.id), t.points.length);
-      acc = foldU32(foldU32(acc, codeIndex(t.maxCode)), (t.closed ? 1 : 0) + (t.oneWay ? 2 : 0));
+      acc = foldU32(foldU32(acc, codeIndex(t.maxCode)), (t.closed ? 1 : 0) + (t.oneWay ? 2 : 0) + ((t.preferred ?? 0) + 1) * 4);
       for (const p of t.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
     }
     for (const a of this.data.aprons) acc = foldU32(foldU32(acc, a.id), a.polygon.length);

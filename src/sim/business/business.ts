@@ -1,5 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { AcState, FlState } from '../ops/traffic';
+import { maxStageKm, takeoffWeight } from '../ops/performance';
 import { BUSINESS, AIRFIELD } from '@data/index';
 import {
   LEDGER_CATEGORIES,
@@ -20,6 +21,7 @@ import {
   type TerminalGrid,
   type WeatherKind,
 } from '@shared/business';
+import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cornerWorld, newGrid, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { isShopFixture, fixtureKey, ATC_MIN_CELLS, ZONE } from '@shared/business';
 import type { BuildContext } from '@shared/validate';
@@ -50,6 +52,8 @@ export class Business {
   terminals: Terminal[] = [];
   terminalVersion = 0;
     atcCells = 0;
+  /** Layout problems of the main terminal building, from the walls, doors and zones laid. */
+  roomIssues: string[] = [];
   private atcX = 0;
   private atcY = 0;
   secureSeating = 0;
@@ -214,6 +218,9 @@ export class Business {
       }
     }
     this.atcCells = cells;
+    let main: TerminalGrid | null = null;
+    for (const g of this.grids) if (main === null || cellCountOf(g) > cellCountOf(main)) main = g;
+    this.roomIssues = main ? terminalIssues(main) : [];
     this.atcX = cells > 0 ? sx / cells : 0;
     this.atcY = cells > 0 ? sy / cells : 0;
   }
@@ -235,6 +242,7 @@ export class Business {
       if (this.totals.checkIn === 0) out.push('noCheckIn');
       if (this.totals.security === 0) out.push('noSecurity');
       if (this.secureSeating === 0) out.push('noSeating');
+      for (const k of this.roomIssues) out.push(k);
       if (this.totals.belt === 0) out.push('noBelt');
     }
     if (this.atcCells < ATC_MIN_CELLS) out.push('noAtc');
@@ -282,6 +290,7 @@ export class Business {
   depCapacity(): number {
     const base = Math.min(this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour, this.totals.security * BUSINESS.modules.security.capacityPerHour);
     // Without seats in the secure zone passengers wait standing and the lounge backs up.
+    if (this.roomIssues.length > 0) return 0;
     return this.secureSeating > 0 ? base : Math.floor(base / 2);
   }
 
@@ -310,7 +319,9 @@ export class Business {
     const a = this.traffic.fAirline[f] >= 0 ? this.airlines[this.traffic.fAirline[f]] : null;
     const seats = AIRCRAFT[this.traffic.fType[f]].capacity.seatsTypical;
     const lf = a ? this.loadFactor(a) : 0.7;
-    return Math.max(0, Math.round(seats * lf));
+    const stage = this.traffic.fStage[f];
+    const cut = stage > 0 ? takeoffWeight(AIRCRAFT[this.traffic.fType[f]], stage, lf).payloadFactor : 1;
+    return Math.max(0, Math.round(seats * lf * cut));
   }
 
   private mult(f: number): number {
@@ -418,8 +429,14 @@ export class Business {
       const minute = a.slots[r] ?? SLOT_FIRST;
       if (minute < nowMin + 45) continue;
       const t = this.usableScratch[this.rng.int(0, this.usableScratch.length - 1)];
-      this.traffic.scheduleArrival(t, now + (minute - nowMin) * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id);
+      this.traffic.scheduleArrival(t, now + (minute - nowMin) * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t));
     }
+  }
+
+  /** Stage length of a rotation in km: regional flights are short, national ones longer, never beyond the type's range. */
+  private stageFor(a: Airline, type: number): number {
+    const raw = a.scope === 'regional' ? this.rng.int(250, 800) : this.rng.int(700, 2200);
+    return Math.max(100, Math.min(raw, maxStageKm(AIRCRAFT[type])));
   }
 
   private usableTypesFor(a: Airline): void {
@@ -470,7 +487,7 @@ export class Business {
         const t = this.usableScratch[this.rng.int(0, this.usableScratch.length - 1)];
         // Arrival times are relative to the midnight that starts this day, in ticks.
         const midnight = tick - minuteOfDay(tick) * TICKS_PER_MINUTE;
-        this.traffic.scheduleArrival(t, midnight + minute * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id);
+        this.traffic.scheduleArrival(t, midnight + minute * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t));
       }
     }
     this.version++;
@@ -569,6 +586,7 @@ export class Business {
         stand: stand ? stand.number : '',
         eta: f >= 0 ? minuteOfDay(t.fEta[f]) : 0,
         delayMin: f >= 0 ? Math.round(t.fDelay[f] / TICKS_PER_MINUTE) : 0,
+        stageKm: f >= 0 ? t.fStage[f] : 0,
       });
     }
     for (let f = 0; f < 1024 && rows.length < 60; f++) {
@@ -581,6 +599,7 @@ export class Business {
         stand: '',
         eta: minuteOfDay(t.fEta[f]),
         delayMin: Math.round(t.fDelay[f] / TICKS_PER_MINUTE),
+        stageKm: t.fStage[f],
       });
     }
     void tick;
@@ -703,6 +722,8 @@ interface SavedGrid {
   leased: string;
   cost: number;
 }
+
+const cellCountOf = (g: TerminalGrid): number => cellCount(g);
 
 const SLOT_FIRST = 6 * 60;
 const SLOT_LAST = 21 * 60;

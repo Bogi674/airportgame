@@ -181,6 +181,10 @@ export function App() {
   }, [renderer, store.airfield]);
 
   useEffect(() => {
+    renderer?.setDebugOverlay(store.debugOverlay);
+  }, [renderer, store.debugOverlay]);
+
+  useEffect(() => {
     renderer?.setFlow(store.business?.paxToday ?? 0, store.speed);
   }, [renderer, store.business?.paxToday, store.speed]);
 

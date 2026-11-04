@@ -33,6 +33,8 @@ interface GameState extends PerfReport {
   alerts: Alert[];
   pauseOpen: boolean;
   guideHidden: boolean;
+  debugOverlay: boolean;
+  toggleDebugOverlay(): void;
   game: { seed: string; preset: Preset };
   setScreen(screen: 'menu' | 'game'): void;
   setPerf(report: PerfReport, tick: number): void;
@@ -77,6 +79,8 @@ export const useGameStore = create<GameState>((set) => ({
   alerts: [],
   pauseOpen: false,
   guideHidden: false,
+  debugOverlay: false,
+  toggleDebugOverlay: () => set((s) => ({ debugOverlay: !s.debugOverlay })),
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
   simMsPerTick: 0,
   tickBacklog: 0,

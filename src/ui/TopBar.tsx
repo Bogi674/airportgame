@@ -55,7 +55,7 @@ function prevailingWind(freq: Float32Array, mean: Float32Array): { deg: number; 
 
 /** Floating HUD: information chips at the top left, game controls at the top right. No bar. */
 export function TopBar({ onSpeed, onMenu }: Props) {
-  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree } = useGameStore();
+  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay } = useGameStore();
   const [settings, setSettings] = useState(false);
   const rating = business ? business.rating : 0;
   const rate = Math.max(0, Math.min(100, rating));
@@ -110,6 +110,9 @@ export function TopBar({ onSpeed, onMenu }: Props) {
           {sheetBtn('finance', 'finance', t('top.finance'))}
           {sheetBtn('flights', 'flights', t('top.flights'))}
           {sheetBtn('site', 'site', t('top.sites'))}
+          <button class="round" data-testid="debug-toggle" title={t('hud.debug')} aria-label={t('hud.debug')} aria-pressed={debugOverlay} onClick={toggleDebugOverlay}>
+            <Icon name="overlay" size={16} />
+          </button>
           <button class="round" data-testid="parcel-toggle" title={t('hud.parcels')} aria-label={t('hud.parcels')} aria-pressed={parcelOverlay} onClick={toggleParcelOverlay}>
             <Icon name="parcels" size={16} />
             <span class="kbd">P</span>

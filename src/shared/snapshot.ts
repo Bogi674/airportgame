@@ -3,7 +3,7 @@
  * (docs/ARCHITECTURE.md section 1). Bump SNAPSHOT_VERSION on every layout change.
  */
 
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
 
@@ -25,6 +25,8 @@ export interface SnapshotViews {
   aircraftType: Uint8Array;
   aircraftState: Uint8Array;
   aircraftLivery: Uint8Array;
+  /** Bit 0 waiting on a reservation, bit 1 in or just out of a deadlock. */
+  aircraftFlags: Uint8Array;
   vehicleId: Int32Array;
   vehicleX: Float32Array;
   vehicleY: Float32Array;
@@ -45,8 +47,9 @@ const OFF_TYPE = OFF_HEADING + CAP * 4;
 const OFF_STATE = OFF_TYPE + align4(CAP);
 const OFF_LIVERY = OFF_STATE + align4(CAP);
 
+const OFF_FLAGS = OFF_LIVERY + align4(CAP);
 const VCAP = SNAPSHOT_VEHICLE_CAPACITY;
-const OFF_VID = OFF_LIVERY + align4(CAP);
+const OFF_VID = OFF_FLAGS + align4(CAP);
 const OFF_VX = OFF_VID + VCAP * 4;
 const OFF_VY = OFF_VX + VCAP * 4;
 const OFF_VH = OFF_VY + VCAP * 4;
@@ -69,6 +72,7 @@ export function createSnapshotViews(buffer: ArrayBuffer): SnapshotViews {
     aircraftType: new Uint8Array(buffer, OFF_TYPE, CAP),
     aircraftState: new Uint8Array(buffer, OFF_STATE, CAP),
     aircraftLivery: new Uint8Array(buffer, OFF_LIVERY, CAP),
+    aircraftFlags: new Uint8Array(buffer, OFF_FLAGS, CAP),
     vehicleId: new Int32Array(buffer, OFF_VID, VCAP),
     vehicleX: new Float32Array(buffer, OFF_VX, VCAP),
     vehicleY: new Float32Array(buffer, OFF_VY, VCAP),
