@@ -19,7 +19,7 @@ npm install
 npm run build:offline
 ```
 
-Then open `dist-offline/airfield-tycoon.html` (Chrome, Edge, Firefox or Safari). Saves stay in the browser. Use Menu, Export to file to keep a copy.
+Or play online at https://bogi674.github.io/airportgame/ once the pages workflow has run. To build it yourself, open `dist-offline/airfield-tycoon.html` (Chrome, Edge, Firefox or Safari). Saves stay in the browser. Use Menu, Export to file to keep a copy.
 
 ### First game, step by step
 
