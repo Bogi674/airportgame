@@ -10,7 +10,7 @@ export function Toasts() {
   return (
     <div data-testid="toasts" style="position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;max-width:420px;z-index:10">
       {notice && (
-        <div role="alert" data-testid="notice" style="padding:6px 10px;background:#3a1515f2;border:1px solid #7a2a2a;border-radius:6px;font-size:12px">
+        <div role="alert" data-testid="notice" style="padding:6px 10px;background:#3a1515f2;border:1px solid #7a2a2a;border-radius:10px;font-size:12px">
           {noticeText(notice.code, notice.args)}
         </div>
       )}
@@ -18,7 +18,7 @@ export function Toasts() {
         <div
           key={a.id}
           data-testid="alert"
-          style={`padding:6px 10px;border-radius:6px;font-size:12px;display:flex;gap:8px;justify-content:space-between;background:${a.tone === 'warn' ? '#3a2e12f2' : '#12303af2'};border:1px solid ${a.tone === 'warn' ? '#7a6422' : '#22627a'}`}
+          style={`padding:6px 10px;border-radius:10px;font-size:12px;display:flex;gap:8px;justify-content:space-between;background:${a.tone === 'warn' ? 'var(--panel)' : 'var(--panel)'};border:1px solid ${a.tone === 'warn' ? 'var(--warn)' : 'var(--accent)'}`}
         >
           <span>{a.text}</span>
           <button aria-label="Dismiss" style="padding:0 6px" onClick={() => dismiss(a.id)}>

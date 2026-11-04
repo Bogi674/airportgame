@@ -4,6 +4,7 @@ import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { FIXTURE_KEYS } from '@shared/business';
 import { useToolStore, type TerminalSub } from './stores/toolStore';
+import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
 
 interface Props {
@@ -65,7 +66,7 @@ export function ContextBar({ send }: Props) {
   return (
     <div
       data-testid="context-bar"
-      style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:760px;padding:8px 12px;background:#10161cf2;border:1px solid #2c3a45;border-radius:6px;display:flex;flex-direction:column;gap:6px"
+      style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:760px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px"
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
@@ -105,7 +106,8 @@ export function ContextBar({ send }: Props) {
         {s.tool === 'terminal' && (
           <>
             {(['foundation', 'floor', 'wall', 'door', 'fixture', 'erase'] as TerminalSub[]).map((sub) => (
-              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })}>
+              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
+                <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
               </button>
             ))}
@@ -128,9 +130,9 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'gaBlock' && <Num label={t('opt.standCount')} value={s.gaCount} min={1} max={20} onChange={(v) => s.set({ gaCount: v })} />}
       </div>
-      {s.hint && <div style="color:#9fb4c4;font-size:12px">{tDynamic(s.hint)}</div>}
+      {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
       {problemText && (
-        <div data-testid="problem" role="status" style="color:#ffb4ad;font-size:12px;display:flex;gap:8px;align-items:center">
+        <div data-testid="problem" role="status" style="color:var(--bad);font-size:12px;display:flex;gap:8px;align-items:center">
           <span>{problemText}</span>
           {s.problem?.code === 'notOwned' && s.buy && s.buy.ids.length > 0 && (
             <button data-testid="buy-land" onClick={() => send({ type: 'buyParcels', ids: s.buy?.ids ?? [] })}>

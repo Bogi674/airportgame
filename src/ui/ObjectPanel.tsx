@@ -22,7 +22,7 @@ export function ObjectPanel({ send }: Props) {
     if (!biz || !term) return null;
     const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k }));
     return (
-      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:#10161cf2;border:1px solid #2c3a45;border-radius:6px;line-height:1.5">
+      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
         <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
         <div>{tFormat('terminal.capacity', { dep: biz.depCapacity, arr: biz.arrCapacity })}</div>
@@ -35,7 +35,7 @@ export function ObjectPanel({ send }: Props) {
               <span data-testid={`count-${r.key}`}>{term.counts[r.key]}</span>
             </div>
           ))}
-        <div style="margin-top:4px;color:#9fb4c4;font-size:12px">{t('inspector.terminalHint')}</div>
+        <div style="margin-top:4px;color:var(--muted);font-size:12px">{t('inspector.terminalHint')}</div>
         <button
           data-testid="demolish"
           style="margin-top:8px"
@@ -128,7 +128,7 @@ export function ObjectPanel({ send }: Props) {
         <div>
           {tFormat('inspector.standInfo', { type: tDynamic(`standType.${x.type}`), code: x.code, surface: tDynamic(`surface.${x.surface}`), pb: x.pushback })}
         </div>
-        {x.type === 'contact' && <div style="color:#ffcf8f">{t('inspector.contactWarn')}</div>}
+        {x.type === 'contact' && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
       </>
     );
   }
@@ -145,7 +145,7 @@ export function ObjectPanel({ send }: Props) {
   return (
     <div
       data-testid="object-panel"
-      style="position:absolute;right:12px;top:52px;width:260px;padding:8px 10px;background:#10161cf2;border:1px solid #2c3a45;border-radius:6px;line-height:1.5"
+      style="position:absolute;right:12px;top:52px;width:260px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
     >
       <div style="font-weight:600">{tFormat('inspector.title', { kind: tDynamic(`inspector.${kind}`), name })}</div>
       {body}

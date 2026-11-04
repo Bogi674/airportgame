@@ -269,7 +269,7 @@ export function App() {
 
   const inGame = store.screen === 'game';
   return (
-    <div style="position:relative;width:100%;height:100%;font:13px system-ui,sans-serif;color:#dfe7ec">
+    <div style="position:relative;width:100%;height:100%;font:13px system-ui,sans-serif;color:var(--text)">
       <MapView client={client} onRenderer={onRenderer} onPick={onPick} />
       {inGame && (
         <>
@@ -286,7 +286,7 @@ export function App() {
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
           {store.error && (
-            <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#4a1515;border:1px solid #a33;border-radius:6px;z-index:60">
+            <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#4a1515;border:1px solid #a33;border-radius:10px;z-index:60">
               {t('error.title')}: {store.error}
             </div>
           )}

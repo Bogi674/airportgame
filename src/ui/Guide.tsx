@@ -18,7 +18,7 @@ export function Guide() {
   ];
   const all = steps.every((s) => s.done);
   return (
-    <div data-testid="guide" style="position:absolute;left:62px;top:52px;width:260px;padding:8px 10px;background:#10161cf2;border:1px solid #2c3a45;border-radius:6px;font-size:12px;line-height:1.6">
+    <div data-testid="guide" style="position:absolute;left:112px;top:54px;width:260px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.6">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <strong>{t('guide.title')}</strong>
         <button style="padding:0 6px" onClick={() => hide(true)}>
@@ -26,11 +26,11 @@ export function Guide() {
         </button>
       </div>
       {steps.map((s) => (
-        <div key={s.key} style={s.done ? 'color:#a8e6a1' : ''}>
+        <div key={s.key} style={s.done ? 'color:var(--ok)' : ''}>
           {s.done ? '✓' : '○'} {t(s.key)}
         </div>
       ))}
-      {all && <div style="color:#a8e6a1">{t('guide.done')}</div>}
+      {all && <div style="color:var(--ok)">{t('guide.done')}</div>}
     </div>
   );
 }

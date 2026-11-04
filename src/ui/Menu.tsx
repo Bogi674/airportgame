@@ -44,20 +44,20 @@ export function Menu({ onStart, onLoad, onImport, autosave, onAutosave, error }:
     void storageAvailable().then(setStorage);
   }, []);
 
-  const card = 'width:min(520px,92vw);padding:22px 26px;background:#10161cf2;border:1px solid #2c3a45;border-radius:10px;display:flex;flex-direction:column;gap:12px';
+  const card = 'width:min(520px,92vw);padding:22px 26px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:12px';
   return (
-    <div data-testid="menu" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#1d3a52,#0b0f14 70%);z-index:50">
+    <div data-testid="menu" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,var(--line),var(--bg) 70%);z-index:50">
       <div style={card}>
         <div>
           <div style="font-size:28px;font-weight:700">{t('menu.title')}</div>
-          <div style="color:#9fb4c4">{t('menu.tagline')}</div>
+          <div style="color:var(--muted)">{t('menu.tagline')}</div>
         </div>
         {error && (
-          <div role="alert" style="color:#ffb4ad">
+          <div role="alert" style="color:var(--bad)">
             {error}
           </div>
         )}
-        {!storage && <div style="color:#ffcf8f;font-size:12px">{t('menu.storageBlocked')}</div>}
+        {!storage && <div style="color:var(--warn);font-size:12px">{t('menu.storageBlocked')}</div>}
         {view === 'main' && (
           <>
             {saves.length > 0 && (
@@ -74,7 +74,7 @@ export function Menu({ onStart, onLoad, onImport, autosave, onAutosave, error }:
             <button data-testid="menu-settings" onClick={() => setView('settings')} style="padding:10px">
               {t('menu.settings')}
             </button>
-            <div style="color:#7d909f;font-size:12px">{t('menu.offline')}</div>
+            <div style="color:var(--muted);font-size:12px">{t('menu.offline')}</div>
           </>
         )}
         {view === 'new' && (
@@ -85,13 +85,13 @@ export function Menu({ onStart, onLoad, onImport, autosave, onAutosave, error }:
                 <input aria-label={t('site.seed')} data-testid="seed" value={seed} style="flex:1" onInput={(e) => setSeed((e.target as HTMLInputElement).value)} />
                 <button onClick={() => setSeed(randomSeed())}>{t('site.shuffle')}</button>
               </div>
-              <span style="color:#7d909f;font-size:12px">{t('menu.seedHint')}</span>
+              <span style="color:var(--muted);font-size:12px">{t('menu.seedHint')}</span>
             </label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               {PRESETS.map((p) => (
-                <button key={p} data-testid={`preset-${p}`} aria-pressed={preset === p} onClick={() => setPreset(p)} style={`text-align:left;padding:10px;${preset === p ? 'outline:2px solid #2d6cdf' : ''}`}>
+                <button key={p} data-testid={`preset-${p}`} aria-pressed={preset === p} onClick={() => setPreset(p)} style={`text-align:left;padding:10px;${preset === p ? 'outline:2px solid var(--accent)' : ''}`}>
                   <div style="font-weight:600">{tDynamic(`site.preset.${p}`)}</div>
-                  <div style="font-size:12px;color:#9fb4c4">{PRESET_BLURB[p]}</div>
+                  <div style="font-size:12px;color:var(--muted)">{PRESET_BLURB[p]}</div>
                 </button>
               ))}
             </div>
@@ -108,10 +108,10 @@ export function Menu({ onStart, onLoad, onImport, autosave, onAutosave, error }:
             {saves.length === 0 && <div>{t('menu.noSaves')}</div>}
             <div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow:auto">
               {saves.map((s) => (
-                <div key={s.id} data-testid="save-row" style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid #2c3a45;border-radius:6px">
+                <div key={s.id} data-testid="save-row" style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:10px">
                   <span style="font-size:13px">
                     {s.name}
-                    <span style="color:#7d909f"> {formatMoney(s.cash)}</span>
+                    <span style="color:var(--muted)"> {formatMoney(s.cash)}</span>
                   </span>
                   <span style="display:flex;gap:6px">
                     <button onClick={() => onLoad(s.id)}>{t('save.load')}</button>

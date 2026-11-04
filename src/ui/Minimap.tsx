@@ -156,7 +156,7 @@ export function Minimap({ renderer, site, owner }: Props) {
   return (
     <div
       data-testid="minimap"
-      style={`position:absolute;right:12px;bottom:12px;width:${SIZE}px;padding:6px;background:#10161ce6;border:1px solid #2c3a45;border-radius:6px`}
+      style={`position:absolute;right:12px;bottom:12px;width:${SIZE}px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px`}
     >
       <canvas ref={canvasRef} width={SIZE} height={SIZE} aria-label={t('map.minimap')} style={`display:block;width:${SIZE}px;height:${SIZE}px;cursor:crosshair`} />
       <div style="display:flex;gap:6px;margin-top:6px;align-items:center">

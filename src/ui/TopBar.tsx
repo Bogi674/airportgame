@@ -2,6 +2,8 @@ import { dayIndex, minuteOfDay } from '@shared/business';
 import { SPEEDS, type Speed } from '@shared/time';
 import { formatMoney } from './format';
 import { useGameStore } from './stores/gameStore';
+import { Icon } from './icons';
+import { currentTheme, setTheme } from './theme';
 import { t, tDynamic } from './strings';
 
 interface Props {
@@ -23,46 +25,64 @@ export function formatClock(tick: number): string {
 export function TopBar({ onSpeed, onMenu }: Props) {
   const { tick, cash, speed, business, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay } = useGameStore();
   const rating = business ? business.rating : 0;
+  const rate = Math.max(0, Math.min(100, rating));
+  const toggleTheme = (): void => {
+    setTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+    setSheet(useGameStore.getState().sheet);
+  };
+  const light = currentTheme() === 'light';
   return (
-    <div
-      data-testid="top-bar"
-      style="position:absolute;top:0;left:0;right:0;height:40px;display:flex;align-items:center;gap:14px;padding:0 12px;background:#10161cf2;border-bottom:1px solid #2c3a45;font-size:13px"
-    >
-      <strong>{t('app.title')}</strong>
-      <span data-testid="clock">{formatClock(tick)}</span>
-      <span data-testid="cash" title={t('hud.cash')}>
-        {formatMoney(cash)}
+    <div data-testid="top-bar" class="topbar">
+      <span class="brand">{t('app.title')}</span>
+      <span class="chip" data-testid="clock">
+        {formatClock(tick)}
       </span>
-      <span data-testid="rating" title={t('top.rating')}>
-        {t('top.rating')} {Math.round(rating)}
+      <span class="chip" data-testid="cash" title={t('hud.cash')}>
+        <span class="lbl">{t('hud.cash')}</span>
+        <b>{formatMoney(cash)}</b>
       </span>
-      {business && business.weather !== 'clear' && <span data-testid="weather">{tDynamic(`weather.${business.weather}`)}</span>}
+      <span class="chip" data-testid="rating" title={t('top.rating')}>
+        <span class="lbl">{t('top.rating')}</span>
+        <b>{Math.round(rating)}</b>
+        <span class="bar">
+          <i style={`width:${rate}%`} />
+        </span>
+      </span>
+      {business && business.weather !== 'clear' && (
+        <span class="chip" data-testid="weather">
+          {tDynamic(`weather.${business.weather}`)}
+        </span>
+      )}
       <span style="flex:1" />
-      {tickBacklog > 50 && <span style="color:#ffcf8f">x1</span>}
+      {tickBacklog > 50 && <span style="color:var(--warn)">x1</span>}
       <span style="display:flex;gap:3px" aria-label={t('hud.speedLabel')}>
         {SPEEDS.map((s) => (
-          <button key={s} data-testid={`speed-${s}`} aria-pressed={speed === s} onClick={() => onSpeed(s)}>
+          <button key={s} data-testid={`speed-${s}`} aria-pressed={speed === s} onClick={() => onSpeed(s)} style="padding:3px 10px">
             {s === 0 ? t('hud.pause') : `${s}x`}
           </button>
         ))}
       </span>
-      <button data-testid="open-airlines" onClick={() => setSheet('airlines')}>
-        {t('top.airlines')}
+      <button class="round" data-testid="open-airlines" title={t('top.airlines')} aria-label={t('top.airlines')} onClick={() => setSheet('airlines')}>
+        <Icon name="airlines" size={16} />
       </button>
-      <button data-testid="open-finance" onClick={() => setSheet('finance')}>
-        {t('top.finance')}
+      <button class="round" data-testid="open-finance" title={t('top.finance')} aria-label={t('top.finance')} onClick={() => setSheet('finance')}>
+        <Icon name="finance" size={16} />
       </button>
-      <button data-testid="open-flights" onClick={() => setSheet('flights')}>
-        {t('top.flights')}
+      <button class="round" data-testid="open-flights" title={t('top.flights')} aria-label={t('top.flights')} onClick={() => setSheet('flights')}>
+        <Icon name="flights" size={16} />
       </button>
-      <button data-testid="parcel-toggle" aria-pressed={parcelOverlay} onClick={toggleParcelOverlay}>
-        {t('hud.parcels')}
+      <button class="round" data-testid="parcel-toggle" title={t('hud.parcels')} aria-label={t('hud.parcels')} aria-pressed={parcelOverlay} onClick={toggleParcelOverlay}>
+        <Icon name="parcels" size={16} />
+        <span class="kbd">P</span>
       </button>
-      <button data-testid="open-site" onClick={() => setSheet('site')}>
-        {t('top.sites')}
+      <button class="round" data-testid="open-site" title={t('top.sites')} aria-label={t('top.sites')} onClick={() => setSheet('site')}>
+        <Icon name="site" size={16} />
       </button>
-      <button data-testid="open-pause" onClick={onMenu}>
-        {t('top.pause')}
+      <button class="round" data-testid="theme-toggle" title={t('top.theme')} aria-label={t('top.theme')} onClick={toggleTheme}>
+        <Icon name={light ? 'moon' : 'sun'} size={16} />
+      </button>
+      <button class="round" data-testid="open-pause" title={t('top.pause')} aria-label={t('top.pause')} onClick={onMenu}>
+        <Icon name="menu" size={16} />
       </button>
     </div>
   );

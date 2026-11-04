@@ -2,6 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS } from '@data/index';
 import { LEDGER_CATEGORIES, type FeeLevel } from '@shared/business';
 import type { Command } from '@sim/commands';
+import { Icon } from './icons';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
 import { useGameStore } from './stores/gameStore';
 import { t, tDynamic, tFormat } from './strings';
@@ -10,20 +11,25 @@ interface Props {
   send(cmd: Command): void;
 }
 
+const TABS = ['airlines', 'finance', 'flights', 'site'] as const;
+
 function Sheet({ title, children, testId }: { title: string; children: preact.ComponentChildren; testId: string }) {
   const setSheet = useGameStore((s) => s.setSheet);
+  const current = useGameStore((s) => s.sheet);
   return (
-    <div
-      data-testid={testId}
-      role="dialog"
-      aria-label={title}
-      style="position:absolute;top:56px;left:50%;transform:translateX(-50%);width:min(860px,94vw);max-height:calc(100% - 110px);overflow:auto;padding:14px 16px;background:#10161cf8;border:1px solid #2c3a45;border-radius:8px;z-index:20"
-    >
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="font-size:15px">{title}</strong>
-        <button data-testid="sheet-close" onClick={() => setSheet(null)}>
-          {t('sheet.close')}
+    <div data-testid={testId} role="dialog" aria-label={title} class="panel" style="position:absolute;top:56px;left:50%;transform:translateX(-50%);width:min(860px,94vw);max-height:calc(100% - 110px);overflow:auto;padding:12px 16px;z-index:20">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span class="sheet-title">{title}</span>
+        <button class="round" style="width:28px;height:28px" data-testid="sheet-close" title={t('sheet.close')} aria-label={t('sheet.close')} onClick={() => setSheet(null)}>
+          <Icon name="close" size={14} />
         </button>
+      </div>
+      <div class="tabs" role="tablist">
+        {TABS.map((k) => (
+          <button key={k} role="tab" class="tab" data-testid={`tab-${k}`} aria-pressed={current === k} onClick={() => setSheet(k)}>
+            {t(`top.${k === 'site' ? 'sites' : k}`)}
+          </button>
+        ))}
       </div>
       {children}
     </div>
@@ -36,19 +42,19 @@ function AirlinesSheet({ send }: Props) {
   const max = Math.min(6, 1 + Math.floor(b.rating / 20));
   return (
     <Sheet title={t('airlines.title')} testId="sheet-airlines">
-      <div style="color:#9fb4c4;font-size:12px;margin-bottom:8px">{tFormat('airlines.max', { n: max })}</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:8px">{tFormat('airlines.max', { n: max })}</div>
       <div style="display:grid;gap:8px">
         {b.airlines.map((a) => {
           const locked = b.rating < a.minRating && a.rotations === 0;
           return (
-            <div key={a.id} data-testid={`airline-${a.id}`} style="display:grid;grid-template-columns:1.4fr 1.6fr 1fr 1.6fr;gap:10px;align-items:center;padding:8px;border:1px solid #2c3a45;border-radius:6px">
+            <div key={a.id} data-testid={`airline-${a.id}`} style="display:grid;grid-template-columns:1.4fr 1.6fr 1fr 1.6fr;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:10px">
               <div>
                 <div style="font-weight:600">{a.name}</div>
-                <div style="font-size:12px;color:#9fb4c4">{tDynamic(`airlines.scope.${a.scope}`)}</div>
+                <div style="font-size:12px;color:var(--muted)">{tDynamic(`airlines.scope.${a.scope}`)}</div>
               </div>
               <div style="font-size:12px">
                 {t('airlines.fleet')}: {a.fleet.map((f) => AIRCRAFT[f].name).join(', ')}
-                <div style="color:#9fb4c4">{tFormat('airlines.stats', { flights: a.flights, pax: formatInt(a.pax) })}</div>
+                <div style="color:var(--muted)">{tFormat('airlines.stats', { flights: a.flights, pax: formatInt(a.pax) })}</div>
               </div>
               <label style="font-size:12px">
                 {t('airlines.fee')}
@@ -62,7 +68,7 @@ function AirlinesSheet({ send }: Props) {
               </label>
               <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
                 {locked ? (
-                  <span style="color:#ffcf8f;font-size:12px">{tFormat('airlines.need', { n: a.minRating })}</span>
+                  <span style="color:var(--warn);font-size:12px">{tFormat('airlines.need', { n: a.minRating })}</span>
                 ) : (
                   <>
                     <label style="font-size:12px">
@@ -132,13 +138,13 @@ function FinanceSheet({ send }: Props) {
             <tr key={c}>
               <td>{tDynamic(`finance.cat.${c}`)}</td>
               {rows.map((r, i) => (
-                <td key={i} style={`text-align:right;color:${r[ci] < 0 ? '#ffb4ad' : r[ci] > 0 ? '#a8e6a1' : '#6c7c88'}`}>
+                <td key={i} style={`text-align:right;color:${r[ci] < 0 ? 'var(--bad)' : r[ci] > 0 ? 'var(--ok)' : 'var(--muted)'}`}>
                   {r[ci] === 0 ? '' : formatInt(r[ci])}
                 </td>
               ))}
             </tr>
           ))}
-          <tr style="border-top:1px solid #2c3a45;font-weight:600">
+          <tr style="border-top:1px solid var(--line);font-weight:600">
             <td>{t('finance.net')}</td>
             {rows.map((r, i) => (
               <td key={i} style="text-align:right">
