@@ -281,7 +281,7 @@ export class Renderer {
           ctx.beginPath();
           ctx.moveTo(sh.pts[0].x, sh.pts[0].y);
           for (let i = 1; i < sh.pts.length; i++) ctx.lineTo(sh.pts[i].x, sh.pts[i].y);
-          ctx.lineCap = 'round';
+          ctx.lineCap = 'butt';
           ctx.lineWidth = sh.w;
           ctx.strokeStyle = fill;
           ctx.stroke();

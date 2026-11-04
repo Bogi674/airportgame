@@ -427,7 +427,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
       plan.patches.push([{ x: Qx, y: Qy }, ...arc(cxn, cyn, R, a0, a1)]);
       for (const inset of EDGE_INSETS) plan.edges.push(mkLine(arc(cxn, cyn, R + inset, a0, a1)));
       tfMax = Math.max(tfMax, len(Cpt.x - j.px, Cpt.y - j.py) * 0 + (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy);
-      cutIntervals.push(sigma * ((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty));
+      cutIntervals.push((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty);
       // Lead-on centerline arc: concentric with the fillet where the widths match.
       // Between two taxiways the centerline runs straight almost to the junction and forks into two tight
       // curves, each tangent to the through centerline. The radius is about half the taxiway width, so

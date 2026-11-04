@@ -19,6 +19,7 @@ import { TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
 import { cellAtWorld, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
+import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { formatMoney } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
@@ -99,7 +100,8 @@ export class ToolController {
     }
     if (kind === 'taxiway') {
       const t = af.taxiways.find((x) => x.id === id);
-      return t ? [{ k: 'strip', pts: t.points, w: t.widthM + 2 }] : [];
+      // The smoothed centerline, so the outline follows the pavement that is actually drawn.
+      return t ? [{ k: 'strip', pts: planFor(af).smooth.get(t.id) ?? t.points, w: t.widthM }] : [];
     }
     if (kind === 'apron') {
       const a = af.aprons.find((x) => x.id === id);
@@ -616,7 +618,8 @@ export class ToolController {
     const shapes: GhostShape[] = [{ k: 'ring', x: q.x, y: q.y, r: AIRFIELD.codes[st.code].spanM / 2 }];
     let problem: Problem | null = null;
     if (pts.length >= 2) {
-      shapes.unshift({ k: 'strip', pts, w: width });
+      // Corners are rounded as they will be built, so the preview matches the pavement.
+      shapes.unshift({ k: 'strip', pts: smoothCorners(pts, AIRFIELD.codes[st.code].filletRadiusM), w: width });
       problem = this.landProblem({ pts, widthM: width });
       if (!problem && prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 8) problem = { code: 'segmentTooShort', args: { min: 8 } };
     }
