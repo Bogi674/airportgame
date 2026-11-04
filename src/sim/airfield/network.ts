@@ -114,7 +114,8 @@ export class TaxiNetwork {
         pts: t.points.map((p) => ({ x: p.x, y: p.y })),
         oneWay: t.oneWay,
         preferred: t.preferred ?? 0,
-        closed: t.closed,
+        // Works close the taxiway until they finish.
+        closed: t.closed || t.works !== undefined,
         maxCode: codeIndex(t.maxCode),
         speedMs: t.speedKmh / 3.6,
         pcr: t.pcr,

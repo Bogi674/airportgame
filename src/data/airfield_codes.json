@@ -111,5 +111,6 @@
     "remotePushback": 40000,
     "remoteThrough": 30000,
     "gaTieDown": 5000
-  }
+  },
+  "taxiwayTool": { "snapRadiusM": 15, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 }
 }

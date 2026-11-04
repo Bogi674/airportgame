@@ -20,6 +20,7 @@ import { cellAtWorld, newGrid, originFor, planEdit, rectWorld, worldToCell, corn
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
 import { buildPlan, planFor, smoothCorners } from '@render/markings/taxiPlan';
+import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
 import { formatMoney } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
@@ -183,8 +184,36 @@ export class ToolController {
     useToolStore.getState().set({ hint: null, problem: null, buy: null });
   }
 
+  private nodeCache: { af: AirfieldPayload; nodes: TaxiNode[] } | null = null;
+  /** The taxiway tool's current snap target, shown as a marker with a tooltip. */
+  private snapHit: SnapHit | null = null;
+
+  private taxiNodes(): TaxiNode[] {
+    if (!this.nodeCache || this.nodeCache.af !== this.af) this.nodeCache = { af: this.af, nodes: taxiNodes(this.af.taxiways) };
+    return this.nodeCache.nodes;
+  }
+
+  /**
+   * Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2): existing node, open end, segment,
+   * then angle guides every 15 degrees with the alignment frames. Shift forces the steps, Alt is free.
+   */
+  private taxiSnap(p: Pt, prev: Pt | null, mods: Mods): Pt {
+    this.snapHit = null;
+    if (mods.alt) {
+      this.deps.setGuide(null, null);
+      return p;
+    }
+    const hit = findSnap(this.af.taxiways, this.taxiNodes(), p);
+    if (hit) {
+      this.snapHit = hit;
+      this.deps.setGuide(null, null);
+      return hit.p;
+    }
+    return this.snap(p, prev, mods, true, TAXI_TOOL.angleStepDeg);
+  }
+
   /** Snaps to vertices, centerlines and the alignment frame. Shift gives 15 degree steps, Alt is free. */
-  private snap(p: Pt, prev: Pt | null, mods: Mods, centerlines: boolean): Pt {
+  private snap(p: Pt, prev: Pt | null, mods: Mods, centerlines: boolean, stepDeg = 90): Pt {
     const radius = Math.max(6, 12 / this.deps.zoom());
     const v = snapToVertex(this.af, p.x, p.y, radius);
     if (v) return v;
@@ -209,14 +238,15 @@ export class ToolController {
     if (len < 1) return p;
     const site = this.site();
     const frames = frameHeadings(this.af, site ? site.corridor.headingDeg : 0);
-    const stepDeg = mods.shift ? 15 : 90;
-    const tol = mods.shift ? 7.5 : 6;
+    const step = mods.shift ? 15 : stepDeg;
+    // Shift forces the steps; otherwise a heading near a step is pulled onto it.
+    const tol = mods.shift ? 7.5 : stepDeg === 90 ? 6 : TAXI_TOOL.angleTolDeg;
     const angle = (Math.atan2(dx, -dy) * 180) / Math.PI;
     let best = Infinity;
     let target = angle;
     for (const f of frames) {
-      for (let k = 0; k < 360 / stepDeg; k++) {
-        const cand = f + k * stepDeg;
+      for (let k = 0; k < 360 / step; k++) {
+        const cand = f + k * step;
         const diff = Math.abs(((angle - cand + 540) % 360) - 180);
         if (diff < best) {
           best = diff;
@@ -324,7 +354,7 @@ export class ToolController {
           break;
         }
         const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
-        const q = this.snap(p, prev, mods, true);
+        const q = this.taxiSnap(p, prev, mods);
         if (prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 3) break;
         this.pts.push(q);
         this.previewTaxiway(p, mods, st.tool === 'taxilane');
@@ -639,21 +669,26 @@ export class ToolController {
   private previewTaxiway(p: Pt, mods: Mods, lane: boolean): void {
     const st = useToolStore.getState();
     const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
-    const q = this.snap(p, prev, mods, true);
+    const q = this.taxiSnap(p, prev, mods);
     const width = AIRFIELD.codes[st.code].taxiwayWidthM;
     const pts = [...this.pts, q];
-    const shapes: GhostShape[] = [{ k: 'ring', x: q.x, y: q.y, r: AIRFIELD.codes[st.code].spanM / 2 }];
+    const shapes: GhostShape[] = [];
+    // Every node shows while the tool is open, and the active target gets its own marker.
+    for (const n of this.taxiNodes()) shapes.push({ k: 'marker', x: n.p.x, y: n.p.y, shape: 'dot', label: n.arms >= 3 ? n.label : undefined });
+    const hit = this.snapHit;
+    if (hit) shapes.push({ k: 'marker', x: hit.p.x, y: hit.p.y, shape: hit.kind === 'node' ? 'ring' : hit.kind === 'end' ? 'square' : 'diamond', label: hit.label || undefined });
     let problem: Problem | null = null;
     if (pts.length >= 2) {
       // Corners are rounded as they will be built, so the preview matches the pavement.
       shapes.unshift({ k: 'strip', pts: smoothCorners(pts, AIRFIELD.codes[st.code].turnRadiusM), w: width });
       problem = this.landProblem({ pts, widthM: width });
-      if (!problem && prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 8) problem = { code: 'segmentTooShort', args: { min: 8 } };
+      if (!problem && prev && Math.hypot(q.x - prev.x, q.y - prev.y) < TAXI_TOOL.minNodeGapM) problem = { code: 'segmentTooShort', args: { min: TAXI_TOOL.minNodeGapM } };
     }
+    const tip = hit ? (hit.kind === 'node' ? tFormat('ghost.snapNode', { label: hit.label }) : hit.kind === 'end' ? tFormat('ghost.snapEnd', {}) : tFormat('ghost.snapSegment', {})) : null;
     const ctx = this.ctx();
     const cost = ctx && pts.length >= 2 ? estimateStripCost(ctx, pts, width, st.surface, st.tier) : 0;
     this.show(
-      { valid: problem === null, shapes, label: { x: q.x, y: q.y, text: tFormat('ghost.taxiway', { seg: prev ? Math.round(Math.hypot(q.x - prev.x, q.y - prev.y)) : 0, total: Math.round(pts.reduce((l, pt, i) => (i > 0 ? l + Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y) : l), 0)), code: st.code, w: width, cost: formatMoney(cost) }) } },
+      { valid: problem === null, shapes, tone: 'snap', tip: tip ? { x: q.x, y: q.y, text: tip } : undefined, label: { x: q.x, y: q.y, text: tFormat('ghost.taxiway', { seg: prev ? Math.round(Math.hypot(q.x - prev.x, q.y - prev.y)) : 0, total: Math.round(pts.reduce((l, pt, i) => (i > 0 ? l + Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y) : l), 0)), code: st.code, w: width, cost: formatMoney(cost) }) } },
       problem,
       lane ? 'hint.taxilane' : 'hint.taxiway',
     );

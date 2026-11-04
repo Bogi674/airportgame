@@ -117,6 +117,7 @@ export class Sim {
         this.gameSeconds += TICK_SECONDS;
         break;
       case 2:
+        this.airfield.update(this.tick);
         if (this.networkVersion !== this.airfield.version) {
           this.networkVersion = this.airfield.version;
           this.traffic.setAirfield(this.airfield.data);
@@ -212,7 +213,7 @@ export class Sim {
         this.report(this.business.repayLoan(cmd.amount));
         break;
       default: {
-        const r = this.airfield.execute(cmd, this.buildContext(), this.cash);
+        const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes() });
         if (r === null) break;
         if (isProblem(r)) {
           let e = r.code;

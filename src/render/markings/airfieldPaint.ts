@@ -1,4 +1,5 @@
-import { AIRFIELD, SURFACE_SPEC } from '@data/index';
+import { AIRFIELD, PAINT, SURFACE_SPEC } from '@data/index';
+import type { Sign } from '@shared/pavement/pavement';
 import { compassVector, type AirfieldPayload, type Runway, type Stand, type Surface } from '@shared/airfield';
 
 import { FLOOR, TERMINAL_CELL_M, TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
@@ -12,7 +13,9 @@ type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
 const shoulderColor = (s: Surface): string => SURFACE_SPEC[s].shoulderColor ?? SURFACE_SPEC[s].color;
 const WHITE = '#f1f1ec';
-const YELLOW = '#f2c230';
+const YELLOW = PAINT.colors.yellow;
+const TW = PAINT.taxiway;
+const SLAB_JOINT = 'rgba(40,38,34,0.18)';
 const RED = '#d8362f';
 const THRESHOLD_STRIPES: Record<number, number> = { 18: 4, 23: 6, 30: 8, 45: 12, 60: 16 };
 
@@ -166,14 +169,66 @@ function paintAreas(ctx: Ctx, areas: readonly Area[], win: Window): void {
   }
 }
 
-function drawLines(ctx: Ctx, lines: readonly Line[], win: Window): void {
+function drawLines(ctx: Ctx, lines: readonly Line[], win: Window, outlinedOnly = false): void {
   ctx.beginPath();
   for (const l of lines) {
+    if (outlinedOnly && !l.outlined) continue;
     if (!overlaps(win, l.minX, l.minY, l.maxX, l.maxY)) continue;
     ctx.moveTo(l.pts[0].x, l.pts[0].y);
     for (let i = 1; i < l.pts.length; i++) ctx.lineTo(l.pts[i].x, l.pts[i].y);
   }
   ctx.stroke();
+}
+
+/** Strokes lines in one color, with a dark outline under the ones on concrete (docs/DESIGN_REVISION_2.md section 1). */
+function strokeLines(ctx: Ctx, lines: readonly Line[], win: Window, color: string, widthM: number, minPx: number): void {
+  const w = lineM(win, widthM, minPx);
+  ctx.strokeStyle = PAINT.colors.outline;
+  ctx.lineWidth = w + (2 * TW.concreteOutlinePx) / win.scale;
+  drawLines(ctx, lines, win, true);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = w;
+  drawLines(ctx, lines, win);
+}
+
+/** Unpaved taxiways: yellow edge markers with a dark outline, no paint. */
+function paintMarkers(ctx: Ctx, markers: readonly { x: number; y: number }[], win: Window): void {
+  const size = lineM(win, TW.unpavedMarkerSizeM, TW.unpavedMarkerMinPx);
+  ctx.fillStyle = YELLOW;
+  ctx.strokeStyle = PAINT.colors.markerOutline;
+  ctx.lineWidth = 0.8 / win.scale;
+  for (const m of markers) {
+    if (!overlaps(win, m.x - size, m.y - size, m.x + size, m.y + size)) continue;
+    ctx.fillRect(m.x - size / 2, m.y - size / 2, size, size);
+    ctx.strokeRect(m.x - size / 2, m.y - size / 2, size, size);
+  }
+}
+
+/** Taxiway signs: a yellow on black location box between black on yellow direction boxes, text inside each box. */
+function paintSign(ctx: Ctx, sg: Sign, win: Window): void {
+  const h = TW.signHeightM;
+  const widths = sg.parts.map((p) => [...p.text].length * TW.signCharWidthM + h * 0.6);
+  const total = widths.reduce((a, b) => a + b, 0);
+  if (!overlaps(win, sg.x - total, sg.y - total, sg.x + total, sg.y + total)) return;
+  ctx.save();
+  ctx.translate(sg.x, sg.y);
+  ctx.rotate(sg.angle);
+  ctx.font = `bold ${h * 0.62}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = h * 0.06;
+  let x = -total / 2;
+  sg.parts.forEach((p, i) => {
+    const w = widths[i];
+    ctx.fillStyle = p.location ? PAINT.colors.signBlack : YELLOW;
+    ctx.fillRect(x, -h / 2, w, h);
+    ctx.strokeStyle = PAINT.colors.signBlack;
+    ctx.strokeRect(x, -h / 2, w, h);
+    ctx.fillStyle = p.location ? YELLOW : PAINT.colors.signBlack;
+    ctx.fillText(p.text, x + w / 2, h * 0.04);
+    x += w;
+  });
+  ctx.restore();
 }
 
 /** Taxiway paint from the plan: fillets, centerlines with lead-on curves, double edge lines, enhanced centerlines. */
@@ -191,17 +246,23 @@ function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): 
   }
   ctx.lineJoin = 'round';
   ctx.lineCap = 'butt';
-  ctx.strokeStyle = YELLOW;
-  // Taxiway centerline 0.15 m wide, at least 1.6 px (docs/DESIGN_REVISION_2.md section 2.4).
-  ctx.lineWidth = lineM(win, 0.15, 1.6);
-  drawLines(ctx, plan.centerlines, win);
-  drawLines(ctx, plan.leadIns, win);
-  ctx.strokeStyle = RED;
-  drawLines(ctx, plan.redCenterlines, win);
+  // Taxiway centerline and edge lines (docs/DESIGN_REVISION_2.md section 2.4).
   if (win.scale >= 1) {
+    ctx.strokeStyle = SLAB_JOINT;
+    ctx.lineWidth = 1 / win.scale;
+    drawLines(ctx, plan.joints, win);
+  }
+  paintMarkers(ctx, plan.markers, win);
+  strokeLines(ctx, plan.stripes, win, YELLOW, TW.shoulderStripeWidthM, TW.shoulderStripeMinPx);
+  strokeLines(ctx, plan.centerlines, win, YELLOW, TW.centerlineWidthM, TW.centerlineMinPx);
+  ctx.strokeStyle = YELLOW;
+  ctx.lineWidth = lineM(win, TW.centerlineWidthM, TW.centerlineMinPx);
+  drawLines(ctx, plan.leadIns, win);
+  strokeLines(ctx, plan.redCenterlines, win, RED, TW.centerlineWidthM, TW.centerlineMinPx);
+  if (win.scale >= 1) {
+    strokeLines(ctx, plan.edges, win, YELLOW, TW.edgeLineWidthM, TW.edgeLineMinPx);
+    for (const sg of plan.signs) paintSign(ctx, sg, win);
     ctx.strokeStyle = YELLOW;
-    ctx.lineWidth = lineM(win, 0.15, 1.3);
-    drawLines(ctx, plan.edges, win);
     ctx.lineWidth = lineM(win, 0.18);
     ctx.setLineDash([1.2, 1.2]);
     drawLines(ctx, plan.enhanced, win);

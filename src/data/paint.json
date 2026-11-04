@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "note": "Marking palette and dimensions in meters (docs/DESIGN_REVISION_2.md sections 2.4 and 8). Minimum widths in device pixels at the bake scale.",
+  "colors": {
+    "yellow": "#f2c230",
+    "red": "#e0414a",
+    "white": "#f4f4f4",
+    "outline": "#1b1b1b",
+    "markerOutline": "#222222",
+    "signBlack": "#111111",
+    "snap": "#3cc8ea"
+  },
+  "taxiway": {
+    "centerlineWidthM": 0.15,
+    "centerlineMinPx": 1.6,
+    "edgeLineWidthM": 0.15,
+    "edgeLineMinPx": 1.3,
+    "edgeLineInsetsM": [0.25, 0.95],
+    "concreteOutlinePx": 1.1,
+    "shoulderStripeSpacingM": 7,
+    "shoulderStripeInsetM": 1.4,
+    "shoulderStripeEndGapM": 0.6,
+    "shoulderStripeWidthM": 0.3,
+    "shoulderStripeMinPx": 1.6,
+    "shoulderStripeEdgeClearM": 0.4,
+    "shoulderStripeReachFactor": 2.2,
+    "unpavedMarkerSizeM": 0.6,
+    "unpavedMarkerMinPx": 5,
+    "signOffsetM": 2,
+    "signBeforeJunctionM": 40,
+    "signHeightM": 2.4,
+    "signCharWidthM": 1.3
+  }
+}

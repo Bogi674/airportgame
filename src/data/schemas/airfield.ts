@@ -35,6 +35,8 @@ export const airfieldCodesSchema = z
       remoteThrough: z.number(),
       gaTieDown: z.number(),
     }),
+    /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
+    taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
   })
   .superRefine((d, ctx) => {
     for (const c of CODE_LETTERS) {
@@ -98,3 +100,34 @@ export const standSizesSchema = z
 
 export type StandSizesData = z.infer<typeof standSizesSchema>;
 export type StandSize = keyof StandSizesData['sizes'];
+
+const positive = z.number().positive();
+
+export const paintSchema = z.strictObject({
+  version: z.literal(1),
+  note: z.string(),
+  colors: z.strictObject({ yellow: hexColor, red: hexColor, white: hexColor, outline: hexColor, markerOutline: hexColor, signBlack: hexColor, snap: hexColor }),
+  taxiway: z.strictObject({
+    centerlineWidthM: positive,
+    centerlineMinPx: positive,
+    edgeLineWidthM: positive,
+    edgeLineMinPx: positive,
+    edgeLineInsetsM: z.array(positive).min(1),
+    concreteOutlinePx: positive,
+    shoulderStripeSpacingM: positive,
+    shoulderStripeInsetM: positive,
+    shoulderStripeEndGapM: positive,
+    shoulderStripeWidthM: positive,
+    shoulderStripeMinPx: positive,
+    shoulderStripeEdgeClearM: positive,
+    shoulderStripeReachFactor: positive,
+    unpavedMarkerSizeM: positive,
+    unpavedMarkerMinPx: positive,
+    signOffsetM: positive,
+    signBeforeJunctionM: positive,
+    signHeightM: positive,
+    signCharWidthM: positive,
+  }),
+});
+
+export type PaintData = z.infer<typeof paintSchema>;

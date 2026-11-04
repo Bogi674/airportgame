@@ -205,6 +205,13 @@ export class Business {
     return Math.max(0.3, Math.min(0.95, demand + this.rating / 300 + FEE_LF[a.feeLevel]));
   }
 
+  /** Aircraft types the signed airlines fly, in index order. */
+  assignedTypes(): number[] {
+    const out = new Set<number>();
+    for (const a of this.airlines) if (a.rotations > 0) for (const t of a.fleet) out.add(t);
+    return [...out].sort((p, q) => p - q);
+  }
+
   // Terminals ----------------------------------------------------------------
 
   /** Rebuilds counts, totals and the reach sample after any change to the grids. */

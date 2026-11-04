@@ -2,7 +2,7 @@ import { AIRFIELD, SURFACE_SPEC } from '@data/index';
 import { compassVector, type AirfieldPayload, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
 import { taxiGraph } from '@shared/pavement/fromAirfield';
-import { buildPavement, type EndTrim } from '@shared/pavement/pavement';
+import { buildPavement, type EndTrim, type Sign } from '@shared/pavement/pavement';
 
 /**
  * Plans taxiway and runway paint from the built geometry. Everything the player builds is turned
@@ -15,6 +15,8 @@ import { buildPavement, type EndTrim } from '@shared/pavement/pavement';
 
 export interface Line {
   pts: Pt[];
+  /** On concrete: drawn with a dark outline so it stays visible. */
+  outlined: boolean;
   minX: number;
   minY: number;
   maxX: number;
@@ -56,6 +58,14 @@ export interface Plan {
   edges: Line[];
   enhanced: Line[];
   leadIns: Line[];
+  /** Shoulder stripes on junction fillets. */
+  stripes: Line[];
+  /** Edge markers along unpaved taxiways. */
+  markers: Pt[];
+  /** Concrete slab joints. */
+  joints: Line[];
+  /** Taxiway location and direction signs before junctions. */
+  signs: Sign[];
   holds: HoldMark[];
   /** Cuts in the white runway edge stripes at taxiway openings, per runway id: [s0, s1] along the runway. */
   /** Openings in the runway edge stripes: start, end and the side (+1 right of travel, -1 left) they are on. */
@@ -65,7 +75,7 @@ export interface Plan {
 const EDGE_INSETS = [0.45, 0.8];
 const STEP = 1.2;
 
-const mkLine = (pts: Pt[]): Line => {
+const mkLine = (pts: Pt[], outlined = false): Line => {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -76,7 +86,7 @@ const mkLine = (pts: Pt[]): Line => {
     if (p.x > maxX) maxX = p.x;
     if (p.y > maxY) maxY = p.y;
   }
-  return { pts, minX, minY, maxX, maxY };
+  return { pts, outlined, minX, minY, maxX, maxY };
 };
 
 const len = (x: number, y: number): number => Math.hypot(x, y);
@@ -234,7 +244,7 @@ function runsOutside(pts: readonly Pt[], excluded: (x: number, y: number) => boo
   return runs;
 }
 
-const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], leadIns: [], holds: [], runwayBreaks: new Map() });
+const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], leadIns: [], stripes: [], markers: [], joints: [], signs: [], holds: [], runwayBreaks: new Map() });
 
 const cache = new WeakMap<AirfieldPayload, Plan>();
 
@@ -279,7 +289,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
   const centerCuts = new Map<number, { start: number; end: number }>();
   /** Edge line cuts at an end of an arriving taxiway, per side, from where each fillet arc leaves the straight edge. */
   const sideCuts = new Map<number, { start: Map<number, number>; end: Map<number, number> }>();
-  const extraCenter: Pt[][] = [];
+  const extraCenter: { pts: Pt[]; outlined: boolean }[] = [];
   const bump = (m: Map<number, { start: number; end: number }>, id: number, end: 0 | 1, v: number): void => {
     const cur = m.get(id) ?? { start: 0, end: 0 };
     if (end === 0) cur.start = Math.max(cur.start, v);
@@ -397,7 +407,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
       const ccx = j.px + (bx / bl) * bc;
       const ccy = j.py + (by / bl) * bc;
       const arcPts = arc(ccx, ccy, Rc, Math.atan2(A.y - ccy, A.x - ccx), Math.atan2(B.y - ccy, B.x - ccx));
-      extraCenter.push(arcPts);
+      extraCenter.push({ pts: arcPts, outlined: c.surface === 'concrete' });
       tcMax = Math.max(tcMax, tc);
     }
     // Opening in the through feature's edge: from the first to the last fillet tangent point.
@@ -423,7 +433,7 @@ export function buildPlan(af: AirfieldPayload): Plan {
     if (centerFromEnd > 0) bump(centerCuts, c.id, j.end, centerFromEnd);
     else if (tcMax > 0) {
       // The arcs start beyond the pavement end: run the line on to them.
-      extraCenter.push([{ x: E.x, y: E.y }, { x: j.px - j.cx * tcMax, y: j.py - j.cy * tcMax }]);
+      extraCenter.push({ pts: [{ x: E.x, y: E.y }, { x: j.px - j.cx * tcMax, y: j.py - j.cy * tcMax }], outlined: c.surface === 'concrete' });
     }
   }
 
@@ -465,12 +475,16 @@ export function buildPlan(af: AirfieldPayload): Plan {
   };
   // Lines stop where they would enter a runway; edge lines also stop on aprons.
   for (const c of pave.centerlines) {
-    for (const run of runsOutside(c.pts, onRunway)) if (run.length >= 2) (c.closed ? plan.redCenterlines : plan.centerlines).push(mkLine(run));
+    for (const run of runsOutside(c.pts, onRunway)) if (run.length >= 2) (c.closed ? plan.redCenterlines : plan.centerlines).push(mkLine(run, c.outlined));
   }
   for (const e of pave.edgeLines) {
-    for (const run of runsOutside(e, onRunwayOrApron)) if (run.length >= 2) plan.edges.push(mkLine(run));
+    for (const run of runsOutside(e.pts, onRunwayOrApron)) if (run.length >= 2) plan.edges.push(mkLine(run, e.outlined));
   }
-  for (const pts of extraCenter) plan.centerlines.push(mkLine(pts));
+  for (const x of extraCenter) plan.centerlines.push(mkLine(x.pts, x.outlined));
+  for (const st of pave.stripes) plan.stripes.push(mkLine(st.pts, st.outlined));
+  plan.markers.push(...pave.markers.filter((p) => !onRunwayOrApron(p.x, p.y)));
+  plan.signs.push(...pave.signs);
+  for (const j of pave.joints) plan.joints.push(mkLine(j));
 
   // Runway holding positions with their signs, and the enhanced centerline before them on instrument runways.
   for (const h of af.holding) {

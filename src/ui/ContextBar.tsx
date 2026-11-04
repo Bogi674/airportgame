@@ -3,6 +3,7 @@ import { APPROACHES, CODES, STAND_TYPES, SURFACES, type CodeLetter, type Surface
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { FIXTURE_KEYS } from '@shared/business';
+import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useToolStore, type TerminalSub } from './stores/toolStore';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
@@ -65,6 +66,7 @@ export function ContextBar({ send }: Props) {
   const tiers = SURFACE_SPEC[s.surface].pcrTiers;
   const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal';
   const showCode = showPavement && s.tool !== 'apron';
+  const taxiTool = s.tool === 'taxiway' || s.tool === 'taxilane';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
   const problemBlock = problemText ? (
     <div data-testid="problem" role="status" style="color:var(--bad);font-size:12px;display:flex;gap:8px;align-items:center">
@@ -96,13 +98,22 @@ export function ContextBar({ send }: Props) {
         {(s.tool === 'taxiway' || s.tool === 'taxilane') && (
           <Select label={t('opt.mode')} value={s.taxiMode} testId="opt-taxi-mode" options={(['new', 'extend', 'trim', 'cut'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ taxiMode: v, hint: null, problem: null })} />
         )}
-        {showCode && <Select label={t('opt.code')} value={s.code} testId="opt-code" options={CODES.map((c) => ({ v: c, text: c }))} onChange={(v: CodeLetter) => s.set({ code: v })} />}
+        {showCode && (
+          <Select
+            label={t('opt.code')}
+            value={s.code}
+            testId="opt-code"
+            options={CODES.map((c) => ({ v: c, text: c }))}
+            // Taxiway codes above C force a paved surface (docs/DESIGN_REVISION_2.md section 2.5).
+            onChange={(v: CodeLetter) => s.set(taxiTool && !surfaceAllowsCode(s.surface, v) ? { code: v, surface: 'asphalt', tier: 0 } : { code: v })}
+          />
+        )}
         {showPavement && (
           <Select
             label={t('opt.surface')}
             value={s.surface}
             testId="opt-surface"
-            options={SURFACES.map((x) => ({ v: x, text: tDynamic(`surface.${x}`) }))}
+            options={SURFACES.filter((x) => !taxiTool || surfaceAllowsCode(x, s.code)).map((x) => ({ v: x, text: tDynamic(`surface.${x}`) }))}
             onChange={(v: Surface) => s.set({ surface: v, tier: 0, approach: s.tool === 'runway' && !paved(v) ? 'visual' : s.approach })}
           />
         )}

@@ -1,5 +1,5 @@
 import { union, type MultiPolygon, type Polygon as ClipPolygon, type Ring } from 'polygon-clipping';
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, PAINT, SURFACE_SPEC } from '@data/index';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '../trig';
 import { codeIndex, type CodeLetter, type Surface, type TaxiKind } from '../airfield';
 import type { Pt } from '../geom';
@@ -32,6 +32,8 @@ export interface PaveEdge {
   surface: Surface;
   kind: TaxiKind;
   closed: boolean;
+  /** Taxiway name, for signs. */
+  name: string;
 }
 
 export interface PaveGraph {
@@ -95,9 +97,29 @@ export interface SurfacePolys {
   polys: Pt[][][];
 }
 
-export interface CenterLine {
+/** A painted line. Lines on concrete get a dark outline so they stay visible. */
+export interface Stroke {
   pts: Pt[];
+  outlined: boolean;
+}
+
+export interface CenterLine extends Stroke {
   closed: boolean;
+}
+
+/** One box of a taxiway sign: a location box (yellow on black) or a direction box (black on yellow). */
+export interface SignPart {
+  text: string;
+  location: boolean;
+}
+
+/** Signs beside a taxiway before a junction, facing the aircraft that approach it. */
+export interface Sign {
+  x: number;
+  y: number;
+  /** Direction of the text baseline in radians, to the right of the approaching aircraft. */
+  angle: number;
+  parts: SignPart[];
 }
 
 export interface PavementGeom {
@@ -105,14 +127,20 @@ export interface PavementGeom {
   fills: SurfacePolys[];
   shoulders: SurfacePolys[];
   /** Double edge lines on painted pavement, each a polyline. */
-  edgeLines: Pt[][];
+  edgeLines: Stroke[];
   centerlines: CenterLine[];
+  /** Yellow transverse stripes across the shoulders on junction fillets. */
+  stripes: Stroke[];
+  /** Edge markers along unpaved pavement. */
+  markers: Pt[];
+  /** Slab joints on concrete strips, aligned with the taxiway. */
+  joints: Pt[][];
+  signs: Sign[];
   /** Nodes per cluster, so callers can see which nodes were merged. */
   clusters: number[][];
 }
 
-/** Edge line insets from the full strength pavement edge (docs/DESIGN_REVISION_2.md section 2.4). */
-export const EDGE_LINE_INSETS = [0.25, 0.95] as const;
+const TW = PAINT.taxiway;
 const STRAIGHT_TOL = (1 * PI) / 180;
 const THROUGH_TOL = (10 * PI) / 180;
 const FILLET_MAX = (170 * PI) / 180;
@@ -458,7 +486,18 @@ function unionAll(pieces: readonly ClipPolygon[]): MultiPolygon {
 interface ClusterOut {
   fills: SurfacePolys[];
   shoulders: SurfacePolys[];
-  edgeLines: Pt[][];
+  edgeLines: Stroke[];
+  stripes: Stroke[];
+  markers: Pt[];
+}
+
+/** What a cluster needs besides its pieces to place stripes. */
+interface ClusterInfo {
+  /** Arm centerlines of its nodes, as segments with the arm half width. */
+  segs: [number, number, number, number, number][];
+  /** Junction nodes, how far from them fillet stripes may go, and their shoulder width. */
+  junctions: { x: number; y: number; reach: number; sw: number }[];
+  outlined: boolean;
 }
 
 /** Merged cluster shapes by content key, so an edit only rebuilds the clusters it touched. */
@@ -470,24 +509,103 @@ interface Piece {
   make: (w: HalfWidth) => ClipPolygon[];
 }
 
-function buildCluster(pieces: readonly Piece[], caps: readonly Cap[]): ClusterOut {
+function buildCluster(pieces: readonly Piece[], caps: readonly Cap[], info: ClusterInfo): ClusterOut {
   const surfaces = [...new Set(pieces.map((p) => p.surface))].sort((a, b) => SURFACE_RANK[a] - SURFACE_RANK[b]);
-  const fills: SurfacePolys[] = [];
-  const shoulders: SurfacePolys[] = [];
+  const out: ClusterOut = { fills: [], shoulders: [], edgeLines: [], stripes: [], markers: [] };
   for (const s of surfaces) {
     const own = pieces.filter((p) => p.surface === s);
-    fills.push({ surface: s, polys: toPts(unionAll(own.flatMap((p) => p.make((hw) => hw)))) });
+    const fill = unionAll(own.flatMap((p) => p.make((hw) => hw)));
+    out.fills.push({ surface: s, polys: toPts(fill) });
     if (isPavedSurface(s)) {
       const sh = unionAll(own.flatMap((p) => p.make((hw, code) => hw + shoulderOf(code))));
-      if (sh.length > 0) shoulders.push({ surface: s, polys: toPts(sh) });
+      if (sh.length > 0) out.shoulders.push({ surface: s, polys: toPts(sh) });
+    } else {
+      const spacing = SURFACE_SPEC[s].unpavedMarkerSpacingM ?? 0;
+      for (const run of outlineRuns(fill, caps)) out.markers.push(...samplesAlong(run, spacing).map((q) => ({ x: q.x, y: q.y })));
     }
   }
   const painted = pieces.filter((p) => p.painted);
-  const edgeLines: Pt[][] = [];
-  if (painted.length > 0) {
-    for (const inset of EDGE_LINE_INSETS) edgeLines.push(...outlineRuns(unionAll(painted.flatMap((p) => p.make((hw) => hw - inset))), caps));
+  if (painted.length === 0) return out;
+  for (const inset of TW.edgeLineInsetsM) {
+    for (const pts of outlineRuns(unionAll(painted.flatMap((p) => p.make((hw) => hw - inset))), caps)) out.edgeLines.push({ pts, outlined: info.outlined });
   }
-  return { fills, shoulders, edgeLines };
+  if (info.junctions.length === 0) return out;
+  // Shoulder stripes on the fillets (`junction2` in fig6.py): every few meters along the pavement edge,
+  // not beside straight arms and not far from the junction, across the shoulder from just off the edge.
+  const edge = unionAll(painted.flatMap((p) => p.make((hw) => hw)));
+  for (const run of outlineRuns(edge, caps)) {
+    for (const q of samplesAlong(run, TW.shoulderStripeSpacingM)) {
+      let near: ClusterInfo['junctions'][number] | null = null;
+      let nearD = Infinity;
+      for (const j of info.junctions) {
+        const d = Math.hypot(q.x - j.x, q.y - j.y);
+        if (d < nearD) {
+          nearD = d;
+          near = j;
+        }
+      }
+      if (!near || nearD > near.reach || near.sw <= 0) continue;
+      if (info.segs.some(([ax, ay, bx, by, hw]) => distToSeg(q.x, q.y, ax, ay, bx, by) < hw + TW.shoulderStripeEdgeClearM)) continue;
+      let nx = q.ty;
+      let ny = -q.tx;
+      if (insideRings(edge, q.x + nx, q.y + ny)) {
+        nx = -nx;
+        ny = -ny;
+      }
+      out.stripes.push({
+        pts: [
+          { x: q.x + nx * TW.shoulderStripeInsetM, y: q.y + ny * TW.shoulderStripeInsetM },
+          { x: q.x + nx * (near.sw - TW.shoulderStripeEndGapM), y: q.y + ny * (near.sw - TW.shoulderStripeEndGapM) },
+        ],
+        outlined: info.outlined,
+      });
+    }
+  }
+  return out;
+}
+
+/** Points every `step` meters along a polyline with the unit tangent there. */
+function samplesAlong(pts: readonly Pt[], step: number): { x: number; y: number; tx: number; ty: number }[] {
+  const out: { x: number; y: number; tx: number; ty: number }[] = [];
+  if (step <= 0) return out;
+  let next = 0;
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const l = Math.hypot(b.x - a.x, b.y - a.y);
+    if (l === 0) continue;
+    while (next <= acc + l) {
+      const t = (next - acc) / l;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, tx: (b.x - a.x) / l, ty: (b.y - a.y) / l });
+      next += step;
+    }
+    acc += l;
+  }
+  return out;
+}
+
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const l2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+/** Even odd point test against every ring of a shape. */
+function insideRings(mp: MultiPolygon, x: number, y: number): boolean {
+  let inside = false;
+  for (const poly of mp) {
+    for (const r of poly) {
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, yi] = r[i];
+        const [xj, yj] = r[j];
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+    }
+  }
+  return inside;
 }
 
 /** Builds pavement fills, shoulders, edge lines and centerlines for a taxiway graph. */
@@ -531,7 +649,7 @@ export function buildPavement(graph: PaveGraph, trims: ReadonlyMap<string, EndTr
     else members.set(r, [n.id]);
   }
 
-  const out: PavementGeom = { nodes: geo, fills: [], shoulders: [], edgeLines: [], centerlines: [], clusters: [] };
+  const out: PavementGeom = { nodes: geo, fills: [], shoulders: [], edgeLines: [], centerlines: [], stripes: [], markers: [], joints: [], signs: [], clusters: [] };
   const paintedEdge = (e: PaveEdge): boolean => isPavedSurface(e.surface) && e.kind !== 'taxilane';
   const used = new Set<string>();
   for (const ids of [...members.values()].sort((p, q) => p[0] - q[0])) {
@@ -568,12 +686,22 @@ export function buildPavement(graph: PaveGraph, trims: ReadonlyMap<string, EndTr
     used.add(key);
     let c = clusterCache.get(key);
     if (!c) {
-      c = buildCluster(pieces, caps);
+      const info: ClusterInfo = { segs: [], junctions: [], outlined: nodes.some((g) => g.surface === 'concrete') };
+      for (const g of nodes) {
+        for (const a of g.arms) info.segs.push([g.x, g.y, g.x + a.dx * a.length, g.y + a.dy * a.length, a.hw]);
+        if (g.kind !== 'junction' || g.fillets.length === 0) continue;
+        const r = Math.max(...g.fillets.map((f) => f.f.r));
+        const sw = Math.max(0, ...g.arms.filter((a) => isPavedSurface(a.surface)).map((a) => shoulderOf(a.code)));
+        info.junctions.push({ x: g.x, y: g.y, reach: r * TW.shoulderStripeReachFactor, sw });
+      }
+      c = buildCluster(pieces, caps, info);
       clusterCache.set(key, c);
     }
     out.fills.push(...c.fills);
     out.shoulders.push(...c.shoulders);
     out.edgeLines.push(...c.edgeLines);
+    out.stripes.push(...c.stripes);
+    out.markers.push(...c.markers);
   }
   for (const k of [...clusterCache.keys()]) if (!used.has(k)) clusterCache.delete(k);
 
@@ -590,7 +718,8 @@ export function buildPavement(graph: PaveGraph, trims: ReadonlyMap<string, EndTr
     const trimB = trims.get(`${e.id}:1`);
     const c0 = Math.max(aa.start, trimA?.center ?? 0);
     const c1 = L - Math.max(ab.start, trimB?.center ?? 0);
-    if (c1 > c0) out.centerlines.push({ pts: [{ x: A.x + aa.dx * c0, y: A.y + aa.dy * c0 }, { x: A.x + aa.dx * c1, y: A.y + aa.dy * c1 }], closed: e.closed });
+    const outlined = e.surface === 'concrete';
+    if (c1 > c0 && isPavedSurface(e.surface)) out.centerlines.push({ pts: [{ x: A.x + aa.dx * c0, y: A.y + aa.dy * c0 }, { x: A.x + aa.dx * c1, y: A.y + aa.dy * c1 }], closed: e.closed, outlined });
     if (internal.has(e.id)) continue;
     const s0 = aa.reach;
     const s1 = L - ab.reach;
@@ -603,19 +732,38 @@ export function buildPavement(graph: PaveGraph, trims: ReadonlyMap<string, EndTr
       const sp = snapPolygon(strip(A.x, A.y, aa.dx, aa.dy, f0, f1, e.hw + shoulderOf(e.code)));
       out.shoulders.push({ surface: e.surface, polys: [sp.map((r) => r.map(([x, y]) => ({ x, y })))] });
     }
+    if (!isPavedSurface(e.surface)) {
+      // Unpaved: no paint, edge markers along both edges.
+      const spacing = SURFACE_SPEC[e.surface].unpavedMarkerSpacingM ?? 0;
+      for (const side of [1, -1]) {
+        const nx = -aa.dy * side * e.hw;
+        const ny = aa.dx * side * e.hw;
+        for (let d = s0; spacing > 0 && d <= s1; d += spacing) out.markers.push({ x: A.x + aa.dx * d + nx, y: A.y + aa.dy * d + ny });
+      }
+      continue;
+    }
+    const slab = SURFACE_SPEC[e.surface].slabJointM;
+    if (slab !== null) {
+      const at = (d: number, lat: number): Pt => ({ x: A.x + aa.dx * d - aa.dy * lat, y: A.y + aa.dy * d + aa.dx * lat });
+      for (let d = Math.ceil(s0 / slab) * slab; d <= s1; d += slab) out.joints.push([at(d, -e.hw), at(d, e.hw)]);
+      for (let lat = -e.hw + slab; lat < e.hw - 0.5; lat += slab) out.joints.push([at(s0, lat), at(s1, lat)]);
+    }
     if (!paintedEdge(e)) continue;
     for (const side of [1, -1] as const) {
       const from = Math.max(s0, (side === 1 ? trimA?.left : trimA?.right) ?? 0);
       const to = Math.min(s1, L - ((side === 1 ? trimB?.left : trimB?.right) ?? 0));
       if (to <= from) continue;
-      for (const inset of EDGE_LINE_INSETS) {
+      for (const inset of TW.edgeLineInsetsM) {
         const d = side * (e.hw - inset);
         const nx = -aa.dy * d;
         const ny = aa.dx * d;
-        out.edgeLines.push([
-          { x: A.x + aa.dx * from + nx, y: A.y + aa.dy * from + ny },
-          { x: A.x + aa.dx * to + nx, y: A.y + aa.dy * to + ny },
-        ]);
+        out.edgeLines.push({
+          pts: [
+            { x: A.x + aa.dx * from + nx, y: A.y + aa.dy * from + ny },
+            { x: A.x + aa.dx * to + nx, y: A.y + aa.dy * to + ny },
+          ],
+          outlined,
+        });
       }
     }
   }
@@ -623,8 +771,58 @@ export function buildPavement(graph: PaveGraph, trims: ReadonlyMap<string, EndTr
     for (const f of g.fillets) {
       const ea = edgeById.get(g.arms[f.armA].edge);
       const eb = edgeById.get(g.arms[f.armB].edge);
-      out.centerlines.push({ pts: filletLine(f.f), closed: (ea?.closed ?? false) && (eb?.closed ?? false) });
+      if (!ea || !eb || !isPavedSurface(ea.surface) || !isPavedSurface(eb.surface)) continue;
+      out.centerlines.push({ pts: filletLine(f.f), closed: ea.closed && eb.closed, outlined: ea.surface === 'concrete' || eb.surface === 'concrete' });
     }
+    if (g.kind === 'junction') out.signs.push(...junctionSigns(g, edgeById));
+  }
+  return out;
+}
+
+const ARROWS: readonly [number, string][] = [
+  [-0.75, '\u2190'],
+  [-0.25, '\u2196'],
+  [0.25, '\u2191'],
+  [0.75, '\u2197'],
+  [Infinity, '\u2192'],
+];
+
+/**
+ * Location and direction signs before a junction, one group per arm that leads into it: placed beside
+ * the pavement on the left of the approaching aircraft, the location box with the arm's own name and a
+ * direction box for each other taxiway, arrows pointing left on the left (docs/DESIGN_REVISION_2.md 2.4).
+ */
+function junctionSigns(g: NodeGeom, edgeById: ReadonlyMap<number, PaveEdge>): Sign[] {
+  const out: Sign[] = [];
+  for (const a of g.arms) {
+    const e = edgeById.get(a.edge);
+    if (!e || e.kind === 'taxilane' || e.name === '') continue;
+    const d = Math.min(TW.signBeforeJunctionM, a.length / 2);
+    if (d < a.reach) continue;
+    // The aircraft travels toward the node, against the arm direction.
+    const vx = -a.dx;
+    const vy = -a.dy;
+    const dirs: { turn: number; text: string }[] = [];
+    for (const b of g.arms) {
+      const eb = edgeById.get(b.edge);
+      if (b === a || !eb || eb.name === '' || eb.name === e.name || eb.kind === 'taxilane') continue;
+      const cross = vx * b.dy - vy * b.dx;
+      const dot = vx * b.dx + vy * b.dy;
+      // Signed turn from -1 (hard left) to +1 (hard right).
+      const turn = cross >= 0 ? 1 - (dot + 1) / 2 : -(1 - (dot + 1) / 2);
+      const arrow = ARROWS.find(([lim]) => turn * 2 < lim)?.[1] ?? '\u2192';
+      dirs.push({ turn, text: turn < 0 ? `${arrow} ${eb.name}` : `${eb.name} ${arrow}` });
+    }
+    if (dirs.length === 0) continue;
+    dirs.sort((p, q) => p.turn - q.turn);
+    const parts: SignPart[] = [
+      ...dirs.filter((x) => x.turn < 0).map((x) => ({ text: x.text, location: false })),
+      { text: e.name, location: true },
+      ...dirs.filter((x) => x.turn >= 0).map((x) => ({ text: x.text, location: false })),
+    ];
+    // Left of travel in screen axes (y down) is (vy, -vx).
+    const off = a.hw + (isPavedSurface(e.surface) ? shoulderOf(e.code) : 0) + TW.signOffsetM + TW.signHeightM / 2;
+    out.push({ x: g.x + a.dx * d + vy * off, y: g.y + a.dy * d - vx * off, angle: atan2Det(vx, -vy), parts });
   }
   return out;
 }

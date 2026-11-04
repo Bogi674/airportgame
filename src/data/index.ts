@@ -1,15 +1,18 @@
 import airfieldCodesJson from './airfield_codes.json';
 import businessJson from './business.json';
 import gseJson from './gse.json';
+import paintJson from './paint.json';
 import standSizesJson from './stand_sizes.json';
 import surfacesJson from './surfaces.json';
 import {
   airfieldCodesSchema,
   businessSchema,
+  paintSchema,
   standSizesSchema,
   surfacesSchema,
   type AirfieldCodes,
   type BusinessData,
+  type PaintData,
   type StandSizesData,
   type SurfacesData,
 } from './schemas';
@@ -20,6 +23,8 @@ export const BUSINESS: BusinessData = businessSchema.parse(businessJson);
 export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
 /** Per surface rules, costs and look, keyed by surface name. */
 export const SURFACE_SPEC: SurfacesData['surfaces'] = SURFACE_DATA.surfaces;
+/** Marking palette and dimensions. */
+export const PAINT: PaintData = paintSchema.parse(paintJson);
 export const STAND_SIZES: StandSizesData['sizes'] = standSizesSchema.parse(standSizesJson).sizes;
 
 export interface GseSpec {

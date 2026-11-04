@@ -511,5 +511,20 @@
   "notice.terminalBounds": "That is outside the terminal's building area (320 m square).",
   "notice.terminalTooLarge": "That area is too large for one edit.",
   "notice.terminalNeedsFoundation": "There is no foundation there. Lay a foundation first.",
-  "notice.wallStraight": "Walls run along a single grid line, horizontal or vertical."
+  "notice.wallStraight": "Walls run along a single grid line, horizontal or vertical.",
+  "notice.surfaceCode": "Code {code} needs an asphalt or concrete surface.",
+  "notice.worksRunning": "Surface works are already under way here.",
+  "notice.surfaceExcludesType": "This surface would shut out the {type}, which an airline flies here.",
+  "inspector.surfaceCurrent": "Current: {surface}",
+  "inspector.surfaceSelected": "Selected: {surface} ({change})",
+  "inspector.surfaceUpgrade": "upgrade",
+  "inspector.surfaceDowngrade": "downgrade",
+  "inspector.surfaceCost": "Upgrade cost {cost}, works {days} days, segment closed during works, markings regenerate.",
+  "inspector.surfaceRefund": "Downgrade refunds {cost}, works {days} days, segment closed during works, markings regenerate.",
+  "inspector.worksUnderWay": "Works to {surface} under way, {days} days left. The taxiway is closed.",
+  "inspector.surfaceNeedsPaved": "Codes D to F need asphalt or concrete.",
+  "ghost.snapNode": "Snap to {label}",
+  "ghost.snapEnd": "Continue taxiway",
+  "ghost.snapSegment": "Split segment",
+  "notice.nodesTooClose": "Two nodes would be closer than {min} m. Snap to the existing node instead."
 }

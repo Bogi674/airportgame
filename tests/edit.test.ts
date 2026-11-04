@@ -168,6 +168,9 @@ describe('taxiway naming and upgrades', () => {
     expect(run(sim, { type: 'reclassTaxiway', id: t.id, code: 'D', surface: 'concrete', tier: 1 })).toEqual([]);
     const u = sim.airfield.data.taxiways.find((x) => x.id === t.id);
     expect(u?.widthM).toBe(18);
+    // The class changes now, the surface after the works (docs/DESIGN_REVISION_2.md section 2.5).
+    expect(u?.works?.surface).toBe('concrete');
+    sim.airfield.update(u?.works?.doneTick ?? 0);
     expect(u?.surface).toBe('concrete');
     expect(sim.cash).toBeLessThan(cash);
     expect(run(sim, { type: 'reverseTaxiway', id: t.id })).toEqual([]);

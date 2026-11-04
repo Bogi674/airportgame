@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 import airfieldCodesJson from '../src/data/airfield_codes.json';
+import paintJson from '../src/data/paint.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
 import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
-import { airfieldCodesSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
+import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -31,6 +32,7 @@ const FILES: [string, Json, ZodType][] = [
   ['airfield_codes.json', airfieldCodesJson as Json, airfieldCodesSchema],
   ['surfaces.json', surfacesJson as Json, surfacesSchema],
   ['stand_sizes.json', standSizesJson as Json, standSizesSchema],
+  ['paint.json', paintJson as Json, paintSchema],
 ];
 
 describe('data files', () => {

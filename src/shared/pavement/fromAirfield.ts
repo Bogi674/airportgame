@@ -27,8 +27,11 @@ interface Split {
  */
 export function taxiGraph(taxiways: readonly Taxiway[]): TaxiGraph {
   const splits = new Map<number, Split[]>();
+  /** Where each landed end goes, by taxiway id and end, so the end and the split are one node. */
+  const landed = new Map<string, Pt>();
   for (const c of taxiways) {
-    for (const E of [c.points[0], c.points[c.points.length - 1]]) {
+    for (const end of [0, 1] as const) {
+      const E = end === 0 ? c.points[0] : c.points[c.points.length - 1];
       for (const t of taxiways) {
         if (t.id === c.id) continue;
         const hit = landing(t.points, E);
@@ -36,6 +39,7 @@ export function taxiGraph(taxiways: readonly Taxiway[]): TaxiGraph {
         const l = splits.get(t.id);
         if (l) l.push(hit);
         else splits.set(t.id, [hit]);
+        landed.set(`${c.id}:${end}`, { x: hit.x, y: hit.y });
         break;
       }
     }
@@ -89,7 +93,10 @@ export function taxiGraph(taxiways: readonly Taxiway[]): TaxiGraph {
   const edgesOf = new Map<number, number[]>();
   const seen = new Set<string>();
   for (const t of taxiways) {
-    const ids = (withSplits.get(t.id) ?? t.points).map(nodeAt);
+    const pts = (withSplits.get(t.id) ?? t.points).slice();
+    pts[0] = landed.get(`${t.id}:0`) ?? pts[0];
+    pts[pts.length - 1] = landed.get(`${t.id}:1`) ?? pts[pts.length - 1];
+    const ids = pts.map(nodeAt);
     const own: number[] = [];
     for (let i = 1; i < ids.length; i++) {
       const a = ids[i - 1];
@@ -99,7 +106,7 @@ export function taxiGraph(taxiways: readonly Taxiway[]): TaxiGraph {
       if (seen.has(key)) continue;
       seen.add(key);
       const id = edges.length;
-      edges.push({ id, a, b, hw: t.widthM / 2, code: t.code, surface: t.surface, kind: t.kind, closed: t.closed });
+      edges.push({ id, a, b, hw: t.widthM / 2, code: t.code, surface: t.surface, kind: t.kind, closed: t.closed, name: t.name });
       own.push(id);
     }
     edgesOf.set(t.id, own);

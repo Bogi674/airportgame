@@ -58,6 +58,17 @@ export interface Taxiway {
   maxCode: CodeLetter;
   speedKmh: number;
   name: string;
+  /** Surface works in progress: the taxiway is closed until `doneTick`, then takes the new surface. */
+  works?: Works;
+}
+
+/** A surface change under construction (docs/DESIGN_REVISION_2.md section 2.5). */
+export interface Works {
+  surface: Surface;
+  pcr: number;
+  /** Value of the finished pavement, the new build cost. */
+  cost: number;
+  doneTick: number;
 }
 
 export interface Apron {

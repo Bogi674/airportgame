@@ -21,7 +21,7 @@ function star(angles: readonly number[], code: CodeLetter = 'C', armLen = 400): 
   const nodes = [{ id: 0, x: 0, y: 0 }];
   const edges = angles.map((a, i) => {
     nodes.push({ id: i + 1, x: Math.cos(a) * armLen, y: Math.sin(a) * armLen });
-    return { id: i, a: 0, b: i + 1, hw, code, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false };
+    return { id: i, a: 0, b: i + 1, hw, code, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false, name: '' };
   });
   return { nodes, edges };
 }
@@ -147,7 +147,7 @@ describe('node kinds', () => {
   it('a bend is one curve with true parallel edges', () => {
     const graph: PaveGraph = {
       nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: -300, y: 0 }, { id: 2, x: 300 * Math.cos(35 * DEG), y: -300 * Math.sin(35 * DEG) }],
-      edges: [0, 1].map((i) => ({ id: i, a: 0, b: i + 1, hw: 7.5, code: 'C' as const, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false })),
+      edges: [0, 1].map((i) => ({ id: i, a: 0, b: i + 1, hw: 7.5, code: 'C' as const, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false, name: '' })),
     };
     const geo = buildPavement(graph);
     const n = geo.nodes.get(0);
@@ -189,7 +189,7 @@ describe('node kinds', () => {
         [1, 3],
         [0, 4],
         [1, 5],
-      ].map(([a, b], i) => ({ id: i, a, b, hw: 7.5, code: 'C' as const, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false })),
+      ].map(([a, b], i) => ({ id: i, a, b, hw: 7.5, code: 'C' as const, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false, name: '' })),
     };
     const geo = buildPavement(graph);
     expect(geo.clusters.some((c) => c.includes(0) && c.includes(1))).toBe(true);
@@ -211,7 +211,7 @@ describe('pavement robustness', () => {
         const code = codes[Math.floor(rand() * 6)];
         nodes.push({ id: i + 1, x: nodes[0].x + Math.cos(a) * L, y: nodes[0].y + Math.sin(a) * L });
         const out = rand() < 0.5;
-        edges.push({ id: i, a: out ? 0 : i + 1, b: out ? i + 1 : 0, hw: AIRFIELD.codes[code].taxiwayWidthM / 2, code, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false });
+        edges.push({ id: i, a: out ? 0 : i + 1, b: out ? i + 1 : 0, hw: AIRFIELD.codes[code].taxiwayWidthM / 2, code, surface: 'asphalt' as const, kind: 'taxiway' as const, closed: false, name: '' });
       }
       const geo = buildPavement({ nodes, edges });
       const pave = mergedFill(geo.fills);

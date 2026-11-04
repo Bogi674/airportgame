@@ -3,7 +3,7 @@ import { CELL_M, GRID_N } from '@shared/site';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, PAINT } from '@data/index';
 import { paintGhostObjects } from './markings/airfieldPaint';
 import type { Ghost, GhostShape } from '@shared/ghost';
 import type { TerminalGrid } from '@shared/business';
@@ -331,8 +331,9 @@ export class Renderer {
         }
       }
     }
-    const fill = g.valid ? 'rgba(120,210,255,0.35)' : 'rgba(255,90,80,0.40)';
-    const stroke = g.valid ? 'rgba(160,230,255,0.95)' : 'rgba(255,120,110,0.95)';
+    // The taxiway tool shows the new arm in snapping cyan at 30 percent (docs/DESIGN_REVISION_2.md section 2.2).
+    const fill = !g.valid ? 'rgba(255,90,80,0.40)' : g.tone === 'snap' ? 'rgba(60,200,234,0.30)' : 'rgba(120,210,255,0.35)';
+    const stroke = !g.valid ? 'rgba(255,120,110,0.95)' : g.tone === 'snap' ? PAINT.colors.snap : 'rgba(160,230,255,0.95)';
     const zoom = this.camera.zoom;
     ctx.fillStyle = fill;
     ctx.strokeStyle = stroke;
@@ -366,11 +367,32 @@ export class Renderer {
         ctx.rotate((sh.headingDeg * Math.PI) / 180 - Math.PI / 2);
         ctx.fillRect(0, -sh.w / 2, sh.len, sh.w);
         ctx.strokeRect(0, -sh.w / 2, sh.len, sh.w);
-      } else {
+      } else if (sh.k === 'ring') {
         ctx.beginPath();
         ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI * 2);
         ctx.stroke();
+      } else {
+        this.drawMarker(sh.shape, a * sh.x + cc * sh.y + e, b * sh.x + d * sh.y + f, sh.label);
       }
+    }
+    if (g.tip) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const k = this.dpr;
+      const sx = a * g.tip.x + cc * g.tip.y + e + 34 * k;
+      const sy = b * g.tip.x + d * g.tip.y + f + 44 * k;
+      ctx.font = `bold ${13 * k}px system-ui, sans-serif`;
+      const w = ctx.measureText(g.tip.text).width + 24 * k;
+      const h = 28 * k;
+      ctx.fillStyle = 'rgba(16,22,28,0.92)';
+      ctx.strokeStyle = PAINT.colors.snap;
+      ctx.lineWidth = 1.5 * k;
+      ctx.beginPath();
+      ctx.roundRect(sx, sy - h / 2, w, h, 5 * k);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = PAINT.colors.snap;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(g.tip.text, sx + 12 * k, sy);
     }
     if (g.label) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -378,12 +400,72 @@ export class Renderer {
       const sy = b * g.label.x + d * g.label.y + f;
       ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
       const w = ctx.measureText(g.label.text).width + 12 * this.dpr;
+      // With a snap tooltip the readout moves up and right, clear of the snap ring.
+      const ox = (g.tip ? 34 : 14) * this.dpr;
+      const oy = g.tip ? -34 * this.dpr : 0;
       ctx.fillStyle = 'rgba(16,22,28,0.88)';
-      ctx.fillRect(sx + 14 * this.dpr, sy - 10 * this.dpr, w, 20 * this.dpr);
+      ctx.fillRect(sx + ox, sy + oy - 10 * this.dpr, w, 20 * this.dpr);
       ctx.fillStyle = g.valid ? '#e6f7ff' : '#ffb4ad';
       ctx.textBaseline = 'middle';
-      ctx.fillText(g.label.text, sx + 20 * this.dpr, sy);
+      ctx.fillText(g.label.text, sx + ox + 6 * this.dpr, sy + oy);
     }
+  }
+
+  /** A snap marker at screen position (x, y): node dots, and the ring, square or diamond of the active target. */
+  private drawMarker(shape: 'dot' | 'ring' | 'square' | 'diamond', x: number, y: number, label?: string): void {
+    const ctx = this.ctx;
+    const k = this.dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.lineWidth = 2 * k;
+    ctx.strokeStyle = PAINT.colors.snap;
+    ctx.fillStyle = PAINT.colors.snap;
+    ctx.beginPath();
+    if (shape === 'dot') {
+      // A junction shows its label inside the circle, sized to fit the text.
+      ctx.font = `bold ${11 * k}px system-ui, sans-serif`;
+      const r = label ? Math.max(11 * k, ctx.measureText(label).width / 2 + 5 * k) : 4 * k;
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,24,30,0.9)';
+      ctx.lineWidth = 1.2 * k;
+      ctx.stroke();
+      if (label) {
+        ctx.fillStyle = '#1d2128';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, x, y + 0.5 * k);
+        ctx.textAlign = 'start';
+      }
+      return;
+    }
+    if (shape === 'ring') {
+      // The target node: a cyan ring around a cyan dot, or around the node's badge when it has a label.
+      ctx.font = `bold ${11 * k}px system-ui, sans-serif`;
+      const inner = label ? Math.max(11 * k, ctx.measureText(label).width / 2 + 5 * k) : 5 * k;
+      ctx.arc(x, y, inner + 13 * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, inner, 0, Math.PI * 2);
+      ctx.fill();
+      if (label) {
+        ctx.fillStyle = '#1d2128';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, x, y + 0.5 * k);
+        ctx.textAlign = 'start';
+      }
+      return;
+    }
+    if (shape === 'square') ctx.rect(x - 10 * k, y - 10 * k, 20 * k, 20 * k);
+    else {
+      ctx.moveTo(x, y - 12 * k);
+      ctx.lineTo(x + 12 * k, y);
+      ctx.lineTo(x, y + 12 * k);
+      ctx.lineTo(x - 12 * k, y);
+      ctx.closePath();
+    }
+    ctx.stroke();
   }
 
   private drawChunks(a: number, b: number, cc: number, d: number, e: number, f: number): void {

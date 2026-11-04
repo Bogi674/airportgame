@@ -1,5 +1,7 @@
 import { AIRFIELD, SURFACE_SPEC } from '@data/index';
-import { FIXTURE_KEYS } from '@shared/business';
+import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
+import { SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
+import { formatMoney } from './format';
 import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import { ClassHelp } from './ClassHelp';
 import type { Command } from '@sim/commands';
@@ -12,21 +14,37 @@ interface Props {
   send(cmd: Command): void;
 }
 
-/** Class, surface and strength of a taxiway, plus reversing it and the tools to extend, trim or cut it. */
+/**
+ * Class, surface and strength of a taxiway, plus reversing it and the tools to extend, trim or cut it.
+ * The surface bar shows the price and works time before Apply (docs/DESIGN_REVISION_2.md section 2.5).
+ */
 function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
   const [code, setCode] = useState<CodeLetter>(x.code);
   const [surface, setSurface] = useState<Surface>(x.surface);
+  const tick = useGameStore((st) => st.tick);
   const tiers = SURFACE_SPEC[surface].pcrTiers;
   const [tier, setTier] = useState(Math.max(0, SURFACE_SPEC[x.surface].pcrTiers.indexOf(x.pcr)));
+  const tierNow = Math.min(tier, tiers.length - 1);
   const mode = (m: 'extend' | 'trim' | 'cut'): void => {
     useToolStore.getState().set({ tool: x.kind === 'taxilane' ? 'taxilane' : 'taxiway', taxiMode: m, category: 'taxiway', menuTab: 'build', menuOpen: true, selection: null, hint: null, problem: null });
   };
+  const pickCode = (c: CodeLetter): void => {
+    setCode(c);
+    // Codes above C force a paved surface in the same action.
+    if (!surfaceAllowsCode(surface, c)) {
+      setSurface('asphalt');
+      setTier(0);
+    }
+  };
+  const changed = surface !== x.surface || SURFACE_SPEC[surface].pcrTiers[tierNow] !== x.pcr;
+  const change = changed ? surfaceChange({ ...x, code, widthM: AIRFIELD.codes[code].taxiwayWidthM }, surface, tierNow) : null;
+  const daysLeft = x.works ? Math.max(0, Math.ceil((x.works.doneTick - tick) / TICKS_PER_DAY)) : 0;
   return (
-    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:4px" data-testid="taxiway-upgrade">
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:6px" data-testid="taxiway-upgrade">
       <div class="section" style="margin:0 0 2px">{t('inspector.taxiUpgrade')}</div>
       <label style="display:flex;justify-content:space-between;gap:6px">
         {t('opt.code')}
-        <select data-testid="tw-class" value={code} onChange={(e) => setCode((e.target as HTMLSelectElement).value as CodeLetter)}>
+        <select data-testid="tw-class" value={code} onChange={(e) => pickCode((e.target as HTMLSelectElement).value as CodeLetter)}>
           {CODES.map((c) => (
             <option key={c} value={c}>
               {c}, {AIRFIELD.codes[c].taxiwayWidthM} m
@@ -34,20 +52,32 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
           ))}
         </select>
       </label>
-      <label style="display:flex;justify-content:space-between;gap:6px">
-        {t('inspector.surfaceLabel')}
-        <select data-testid="tw-surface" value={surface} onChange={(e) => { setSurface((e.target as HTMLSelectElement).value as Surface); setTier(0); }}>
-          {SURFACES.map((s) => (
-            <option key={s} value={s}>
-              {tDynamic(`surface.${s}`)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px" data-testid="tw-surface">
+        {SURFACE_ORDER.map((sf) => (
+          <button
+            key={sf}
+            data-testid={`tw-surface-${sf}`}
+            aria-pressed={surface === sf}
+            disabled={!surfaceAllowsCode(sf, code) || x.works !== undefined}
+            style="flex:1 1 auto;padding:4px 8px;font-size:11px;white-space:nowrap"
+            onClick={() => {
+              setSurface(sf);
+              setTier(0);
+            }}
+          >
+            {tDynamic(`surface.${sf}`)}
+          </button>
+        ))}
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;flex-wrap:wrap">
+        <span style="color:var(--muted)">{tFormat('inspector.surfaceCurrent', { surface: tDynamic(`surface.${x.surface}`) })}</span>
+        {change && <span style="color:var(--accent)">{tFormat('inspector.surfaceSelected', { surface: tDynamic(`surface.${surface}`), change: t(change.upgrade ? 'inspector.surfaceUpgrade' : 'inspector.surfaceDowngrade') })}</span>}
+      </div>
+      {!surfaceAllowsCode('grass', code) && <div style="color:var(--muted);font-size:11px">{t('inspector.surfaceNeedsPaved')}</div>}
       {tiers.length > 1 && (
         <label style="display:flex;justify-content:space-between;gap:6px">
           {t('inspector.runwayStrength')}
-          <select data-testid="tw-tier" value={Math.min(tier, tiers.length - 1)} onChange={(e) => setTier(Number((e.target as HTMLSelectElement).value))}>
+          <select data-testid="tw-tier" value={tierNow} onChange={(e) => setTier(Number((e.target as HTMLSelectElement).value))}>
             {tiers.map((pcr, i) => (
               <option key={i} value={i}>
                 PCR {pcr}
@@ -56,7 +86,17 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
           </select>
         </label>
       )}
-      <button data-testid="tw-apply" onClick={() => send({ type: 'reclassTaxiway', id: x.id, code, surface, tier: Math.min(tier, tiers.length - 1) })}>
+      {x.works && (
+        <div style="font-size:11px" data-testid="tw-works">
+          {tFormat('inspector.worksUnderWay', { surface: tDynamic(`surface.${x.works.surface}`), days: daysLeft })}
+        </div>
+      )}
+      {change && !x.works && (
+        <div style="font-size:11px" data-testid="tw-cost">
+          {tFormat(change.upgrade ? 'inspector.surfaceCost' : 'inspector.surfaceRefund', { cost: formatMoney(Math.abs(change.cashDelta)), days: change.days })}
+        </div>
+      )}
+      <button data-testid="tw-apply" disabled={x.works !== undefined && changed} onClick={() => send({ type: 'reclassTaxiway', id: x.id, code, surface, tier: tierNow })}>
         {t('inspector.apply')}
       </button>
       <div style="display:flex;gap:6px;flex-wrap:wrap">

@@ -13,6 +13,8 @@ import {
 } from '@shared/airfield';
 import { closestOnSegment, pointInPolygon, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
+import { excludedType, isPaved, polylineLength, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks } from '@shared/surfaceRules';
+import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
@@ -29,9 +31,19 @@ interface Op {
   added: boolean;
   /** Cash change when the operation was done: negative for spending. */
   cashDelta: number;
+  /** Taxiways the operation changed in place, as copies before and after, so undo restores them exactly. */
+  swaps?: { before: Taxiway; after: Taxiway }[];
 }
 
 export type BuildResult = { cashDelta: number } | Problem;
+
+/** What a command needs to know about the rest of the game: the tick and the aircraft types airlines fly here. */
+export interface BuildEnv {
+  tick: number;
+  assignedTypes: readonly number[];
+}
+
+const NO_ENV: BuildEnv = { tick: 0, assignedTypes: [] };
 export const isProblem = (r: BuildResult): r is Problem => 'code' in r;
 
 const TAXI_NAMES = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -41,14 +53,6 @@ const MIN_RUNWAY_SEP_M = 100;
 const REFUND_SHARE = 0.25;
 const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000, precision: 1_200_000 };
 const round05 = (v: number): number => Math.round(v * 2) / 2;
-
-function tierOf(surface: Surface, tier: number): { pcr: number; factor: number } {
-  const tiers = SURFACE_SPEC[surface].pcrTiers;
-  const i = Math.max(0, Math.min(tiers.length - 1, Math.floor(tier)));
-  return { pcr: tiers[i], factor: SURFACE_DATA.tierCostFactor[i] ?? 1 };
-}
-
-const isPaved = (s: Surface): boolean => s === 'asphalt' || s === 'concrete';
 
 function segSegDist(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
   if (segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) >= 0) return 0;
@@ -143,7 +147,7 @@ export class Airfield {
   }
 
   /** Executes an airfield command. Returns the cash change or the reason it was refused. */
-  execute(cmd: Command, ctx: BuildContext, cash: number): BuildResult | null {
+  execute(cmd: Command, ctx: BuildContext, cash: number, env: BuildEnv = NO_ENV): BuildResult | null {
     switch (cmd.type) {
       case 'buildRunway':
         return this.buildRunway(cmd, ctx, cash);
@@ -164,9 +168,9 @@ export class Airfield {
       case 'setTaxiwayProps':
         return this.setTaxiwayProps(cmd);
       case 'resurface':
-        return this.resurface(cmd, cash);
+        return this.resurface(cmd, cash, env);
       case 'reclassTaxiway':
-        return this.reclassTaxiway(cmd, ctx, cash);
+        return this.reclassTaxiway(cmd, ctx, cash, env);
       case 'reverseTaxiway': {
         const t = this.data.taxiways.find((x) => x.id === cmd.id);
         if (!t) return { code: 'nothingThere' };
@@ -247,6 +251,7 @@ export class Airfield {
     name: string,
     ctx: BuildContext,
   ): Taxiway | Problem {
+    if (!surfaceAllowsCode(surface, code)) return { code: 'surfaceCode', args: { code } };
     const width = AIRFIELD.codes[code].taxiwayWidthM;
     const problem = checkStrip(ctx, points, width);
     if (problem) return problem;
@@ -274,22 +279,63 @@ export class Airfield {
     };
   }
 
+  /**
+   * The taxiway tool (docs/DESIGN_REVISION_2.md section 2.2): points snap to existing nodes, open
+   * ends and segments, a segment hit splits that taxiway, and an open end with the same class and
+   * surface is continued instead of starting a new taxiway. Undo restores every changed taxiway.
+   */
   private buildTaxiway(cmd: Extract<Command, { type: 'buildTaxiway' }>, ctx: BuildContext, cash: number): BuildResult {
-    const pts = cmd.points.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
-    if (pts.length < 2 || pts.length > 60) return { code: 'taxiwayPoints' };
-    let total = 0;
-    for (let i = 1; i < pts.length; i++) {
-      const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-      if (d < 8) return { code: 'segmentTooShort', args: { min: 8 } };
-      total += d;
-    }
-    if (total > 8000) return { code: 'taxiwayTooLong', args: { max: 8000 } };
+    if (cmd.points.length < 2 || cmd.points.length > 60) return { code: 'taxiwayPoints' };
+    const snapped = snapPolyline(
+      this.data.taxiways,
+      cmd.points.map((p) => ({ x: round05(p.x), y: round05(p.y) })),
+    );
+    if ('problem' in snapped) return { code: snapped.problem, args: { min: TAXI_TOOL.minNodeGapM } };
+    const pts = snapped.points;
+    if (polylineLength(pts) > 8000) return { code: 'taxiwayTooLong', args: { max: 8000 } };
     const t = this.makeTaxiway(pts, cmd.code, cmd.kind, cmd.surface, cmd.tier, this.nextTaxiName(), ctx);
     if (!('points' in t)) {
       this.nameIndex--;
       return t;
     }
-    return this.place([{ type: 'taxiway', obj: t }], cash);
+    if (t.cost > cash) {
+      this.nameIndex--;
+      return { code: 'insufficientFunds', args: { cost: t.cost } };
+    }
+    const before = new Map<number, Taxiway>();
+    const touch = (x: Taxiway): void => {
+      if (!before.has(x.id)) before.set(x.id, structuredClone(x));
+    };
+    // Splits, last segment first so earlier indexes stay valid.
+    const splits = snapped.hits.filter((h): h is SnapHit => h !== null && h.kind === 'segment');
+    splits.sort((p, q) => p.taxiwayId - q.taxiwayId || q.index - p.index || q.along - p.along);
+    for (const h of splits) {
+      const other = this.data.taxiways.find((x) => x.id === h.taxiwayId);
+      if (!other) continue;
+      touch(other);
+      other.points.splice(h.index + 1, 0, { x: h.p.x, y: h.p.y });
+    }
+    // Continue an open end of a taxiway of the same kind instead of starting a new one.
+    let merged: Taxiway | null = null;
+    for (const [hit, ownEnd] of [[snapped.hits[0], 0], [snapped.hits[snapped.hits.length - 1], 1]] as const) {
+      if (merged || !hit || hit.kind !== 'end') continue;
+      const o = this.data.taxiways.find((x) => x.id === hit.taxiwayId);
+      if (!o || o.code !== t.code || o.kind !== t.kind || o.surface !== t.surface || o.pcr !== t.pcr || o.works) continue;
+      const add = ownEnd === 0 ? t.points.slice(1) : t.points.slice(0, -1).reverse();
+      if (o.points.length + add.length > 60) continue;
+      touch(o);
+      o.points = hit.index === 1 ? [...o.points, ...add] : [...add.reverse(), ...o.points];
+      o.cost += t.cost;
+      merged = o;
+    }
+    if (merged) this.nameIndex--;
+    const items: Item[] = merged ? [] : [{ type: 'taxiway', obj: t }];
+    for (const it of items) this.list(it.type).push(it.obj);
+    this.refresh();
+    const swaps = [...before.values()].map((b) => ({ before: b, after: structuredClone(this.data.taxiways.find((x) => x.id === b.id) as Taxiway) }));
+    this.undoStack.push({ items, added: true, cashDelta: -t.cost, swaps });
+    this.redoStack.length = 0;
+    return { cashDelta: -t.cost };
   }
 
   private buildRapidExit(cmd: Extract<Command, { type: 'buildRapidExit' }>, ctx: BuildContext, cash: number): BuildResult {
@@ -505,25 +551,58 @@ export class Airfield {
     return { cashDelta: 0 };
   }
 
-  private resurface(cmd: Extract<Command, { type: 'resurface' }>, cash: number): BuildResult {
-    const obj =
-      cmd.kind === 'runway'
-        ? this.data.runways.find((x) => x.id === cmd.id)
-        : cmd.kind === 'taxiway'
-          ? this.data.taxiways.find((x) => x.id === cmd.id)
-          : this.data.aprons.find((x) => x.id === cmd.id);
+  /**
+   * Starts surface works on a taxiway: the cash change is booked now, the taxiway closes, and the new
+   * surface takes effect when the works finish (docs/DESIGN_REVISION_2.md section 2.5).
+   */
+  private startWorks(t: Taxiway, surface: Surface, tier: number, cash: number, env: BuildEnv, extraCost = 0): BuildResult {
+    if (t.works) return { code: 'worksRunning' };
+    if (!surfaceAllowsCode(surface, t.code)) return { code: 'surfaceCode', args: { code: t.code } };
+    const { pcr, factor } = tierOf(surface, tier);
+    if (surface === t.surface && pcr === t.pcr) return extraCost > cash ? { code: 'insufficientFunds', args: { cost: extraCost } } : { cashDelta: -extraCost };
+    const change = surfaceChange(t, surface, tier);
+    if (!change.upgrade) {
+      const blocked = excludedType(t.code, surface, env.assignedTypes);
+      if (blocked) return { code: 'surfaceExcludesType', args: { type: blocked } };
+    }
+    const net = change.cashDelta - extraCost;
+    if (-net > cash) return { code: 'insufficientFunds', args: { cost: -net } };
+    const area = polylineLength(t.points) * t.widthM;
+    t.works = { surface, pcr, cost: Math.round(area * SURFACE_SPEC[surface].costPerM2 * factor), doneTick: env.tick + worksTicks(change.days) };
+    this.refresh();
+    return { cashDelta: net };
+  }
+
+  /** Finishes the works that are due. Called once per tick; cheap when nothing is under works. */
+  update(tick: number): void {
+    let done = false;
+    for (const t of this.data.taxiways) {
+      const w = t.works;
+      if (!w || w.doneTick > tick) continue;
+      t.surface = w.surface;
+      t.pcr = w.pcr;
+      t.cost = w.cost;
+      t.condition = 100;
+      delete t.works;
+      done = true;
+    }
+    if (done) this.refresh();
+  }
+
+  private resurface(cmd: Extract<Command, { type: 'resurface' }>, cash: number, env: BuildEnv): BuildResult {
+    if (cmd.kind === 'taxiway') {
+      const t = this.data.taxiways.find((x) => x.id === cmd.id);
+      if (!t) return { code: 'nothingThere' };
+      return this.startWorks(t, cmd.surface, cmd.tier, cash, env);
+    }
+    const obj = cmd.kind === 'runway' ? this.data.runways.find((x) => x.id === cmd.id) : this.data.aprons.find((x) => x.id === cmd.id);
     if (!obj) return { code: 'nothingThere' };
     if (cmd.kind === 'runway' && (obj as Runway).approach !== 'visual' && !isPaved(cmd.surface)) return { code: 'approachNeedsPaved' };
     const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
-    let area = 0;
-    if (cmd.kind === 'runway') area = (obj as Runway).lengthM * ((obj as Runway).widthM + 2 * (obj as Runway).shoulderM);
-    else if (cmd.kind === 'taxiway') {
-      const t = obj as Taxiway;
-      for (let i = 1; i < t.points.length; i++) area += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y) * t.widthM;
-    } else area = polygonArea((obj as Apron).polygon);
+    const area = cmd.kind === 'runway' ? (obj as Runway).lengthM * ((obj as Runway).widthM + 2 * (obj as Runway).shoulderM) : polygonArea((obj as Apron).polygon);
     const cost = Math.round(area * SURFACE_SPEC[cmd.surface].costPerM2 * factor * 0.6);
     if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
-    const o = obj as Runway | Taxiway | Apron;
+    const o = obj as Runway | Apron;
     o.surface = cmd.surface;
     o.pcr = pcr;
     o.condition = 100;
@@ -531,33 +610,32 @@ export class Airfield {
     return { cashDelta: -cost };
   }
 
-  /** Changes a taxiway's class (width), surface and strength. Wider or stronger costs the difference, narrower refunds a quarter. */
-  private reclassTaxiway(cmd: Extract<Command, { type: 'reclassTaxiway' }>, ctx: BuildContext, cash: number): BuildResult {
+  /**
+   * Changes a taxiway's class (width) now and its surface or strength through works. Wider costs the
+   * difference, narrower refunds a share. A code that the current surface does not allow needs a
+   * surface change in the same command (docs/DESIGN_REVISION_2.md section 2.5).
+   */
+  private reclassTaxiway(cmd: Extract<Command, { type: 'reclassTaxiway' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
     const t = this.data.taxiways.find((x) => x.id === cmd.id);
     if (!t) return { code: 'nothingThere' };
+    if (!surfaceAllowsCode(cmd.surface, cmd.code)) return { code: 'surfaceCode', args: { code: cmd.code } };
     const width = AIRFIELD.codes[cmd.code].taxiwayWidthM;
     if (width > t.widthM) {
       const problem = checkStrip(ctx, t.points, width);
       if (problem) return problem;
     }
-    let len = 0;
-    for (let i = 1; i < t.points.length; i++) len += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y);
-    const oldTiers = SURFACE_SPEC[t.surface].pcrTiers;
-    const oldUnit = SURFACE_SPEC[t.surface].costPerM2 * tierOf(t.surface, Math.max(0, oldTiers.indexOf(t.pcr))).factor;
-    const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
-    const newUnit = SURFACE_SPEC[cmd.surface].costPerM2 * factor;
-    const delta = len * width * newUnit - len * t.widthM * oldUnit;
-    const net = Math.round(delta > 0 ? delta : delta * REFUND_SHARE);
-    if (net > cash) return { code: 'insufficientFunds', args: { cost: net } };
+    const oldUnit = SURFACE_SPEC[t.surface].costPerM2 * tierOf(t.surface, Math.max(0, SURFACE_SPEC[t.surface].pcrTiers.indexOf(t.pcr))).factor;
+    const delta = polylineLength(t.points) * (width - t.widthM) * oldUnit;
+    const widthCost = Math.round(delta > 0 ? delta : delta * SURFACE_SPEC[t.surface].refundShare);
+    const before = { code: t.code, widthM: t.widthM, userMaxCode: t.userMaxCode, cost: t.cost };
     t.code = cmd.code;
     t.widthM = width;
     t.userMaxCode = cmd.code;
-    t.surface = cmd.surface;
-    t.pcr = pcr;
-    t.condition = 100;
     t.cost = Math.max(0, t.cost + Math.round(Math.max(0, delta)));
+    const r = this.startWorks(t, cmd.surface, cmd.tier, cash, env, widthCost);
+    if (isProblem(r)) Object.assign(t, before);
     this.refresh();
-    return { cashDelta: -net };
+    return r;
   }
 
   /** Cost per square meter for a runway at its current strength tier. */
@@ -794,12 +872,21 @@ export class Airfield {
     return { cashDelta: refund };
   }
 
+  /** Puts copies of the given taxiway states in place of the taxiways with the same ids. */
+  private applySwaps(states: readonly Taxiway[]): void {
+    for (const st of states) {
+      const i = this.data.taxiways.findIndex((x) => x.id === st.id);
+      if (i >= 0) this.data.taxiways[i] = structuredClone(st);
+    }
+  }
+
   private undo(cash: number): BuildResult {
     const op = this.undoStack[this.undoStack.length - 1];
     if (!op) return { code: 'nothingToUndo' };
     // Undoing an addition refunds it. Undoing a demolition re-adds it and takes the refund back.
     if (-op.cashDelta < 0 && cash < op.cashDelta) return { code: 'insufficientFunds', args: { cost: op.cashDelta } };
     this.undoStack.pop();
+    if (op.swaps) this.applySwaps(op.swaps.map((w) => w.before));
     if (op.added) this.removeItems(op.items);
     else this.addItems(op.items);
     this.redoStack.push(op);
@@ -811,6 +898,7 @@ export class Airfield {
     if (!op) return { code: 'nothingToRedo' };
     if (op.cashDelta < 0 && cash < -op.cashDelta) return { code: 'insufficientFunds', args: { cost: -op.cashDelta } };
     this.redoStack.pop();
+    if (op.swaps) this.applySwaps(op.swaps.map((w) => w.after));
     if (op.added) this.addItems(op.items);
     else this.removeItems(op.items);
     this.undoStack.push(op);
@@ -850,6 +938,7 @@ export class Airfield {
     for (const t of this.data.taxiways) {
       acc = foldU32(foldU32(acc, t.id), t.points.length);
       acc = foldU32(foldU32(acc, codeIndex(t.maxCode)), (t.closed ? 1 : 0) + (t.oneWay ? 2 : 0) + ((t.preferred ?? 0) + 1) * 4);
+      acc = foldU32(foldU32(acc, surfaceRank(t.surface)), t.works ? t.works.doneTick % 0xffffffff : 0);
       for (const p of t.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
     }
     for (const a of this.data.aprons) acc = foldU32(foldU32(acc, a.id), a.polygon.length);
