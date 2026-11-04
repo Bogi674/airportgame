@@ -1,10 +1,11 @@
 import { AIRFIELD } from '@data/index';
 import { compassVector, type AirfieldPayload, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
-import { closestOnSegment, distToSegment, pointInPolygon } from '@shared/geom';
+
 import { FLOOR, TERMINAL_CELL_M, TERMINAL_GRID, WALL, type TerminalGrid } from '@shared/business';
 import { worldToCell } from '@shared/terminalOps';
 import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
+import { planFor, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
@@ -53,6 +54,8 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
   const win: Window = { minX: ox - pad, minY: oy - pad, maxX: ox + CHUNK_SIZE_M + pad, maxY: oy + CHUNK_SIZE_M + pad, scale };
   ctx.setTransform(scale, 0, 0, scale, -ox * scale, -oy * scale);
 
+  paintGroundContact(ctx, af, terminals, win);
+
   for (const a of af.aprons) {
     let minX = Infinity;
     let minY = Infinity;
@@ -73,15 +76,12 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     ctx.fill();
   }
 
-  for (const t of af.taxiways) paintTaxiwayPavement(ctx, t, win);
+  const plan = planFor(af);
+  for (const t of af.taxiways) paintTaxiwayPavement(ctx, t, win, plan);
   for (const r of af.runways) paintRunwayPavement(ctx, r, win);
-  for (const t of af.taxiways) paintTaxiwayMarks(ctx, t, win, af);
-  for (const h of af.holding) {
-    if (!overlaps(win, h.x - 30, h.y - 30, h.x + 30, h.y + 30)) continue;
-    const t = af.taxiways.find((x) => x.id === h.taxiwayId);
-    if (t) paintHoldingMark(ctx, t, h.x, h.y, win);
-  }
-  for (const r of af.runways) paintRunwayMarks(ctx, r, win);
+  paintTaxiPlan(ctx, af, plan, win);
+  for (const h of plan.holds) paintHold(ctx, h, win);
+  for (const r of af.runways) paintRunwayMarks(ctx, r, win, plan);
   for (const g of terminals) paintTerminal(ctx, g, win);
   for (const s of af.stands) {
     if (overlaps(win, s.x - 100, s.y - 100, s.x + 100, s.y + 100)) paintStand(ctx, s, win);
@@ -89,17 +89,86 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
+/**
+ * Seats everything on the ground. All of this is baked into the static chunk, so it costs
+ * nothing per frame: a cleared, packed earth margin around pavement and building pads, and a
+ * few stacked translucent strips that darken toward the edge like ambient occlusion.
+ */
+function paintGroundContact(ctx: Ctx, af: AirfieldPayload, terminals: readonly TerminalGrid[], win: Window): void {
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const soil = (alpha: number): string => `rgba(74,62,44,${alpha})`;
+  for (const a of af.aprons) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of a.polygon) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    if (!overlaps(win, minX - 8, minY - 8, maxX + 8, maxY + 8)) continue;
+    ctx.beginPath();
+    ctx.moveTo(a.polygon[0].x, a.polygon[0].y);
+    for (let i = 1; i < a.polygon.length; i++) ctx.lineTo(a.polygon[i].x, a.polygon[i].y);
+    ctx.closePath();
+    for (const [w, al] of [[9, 0.1], [6, 0.12], [3.2, 0.16]] as const) {
+      ctx.strokeStyle = soil(al);
+      ctx.lineWidth = w * 2;
+      ctx.stroke();
+    }
+  }
+  for (const t of af.taxiways) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of t.points) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    if (!overlaps(win, minX - t.widthM, minY - t.widthM, maxX + t.widthM, maxY + t.widthM)) continue;
+    ctx.beginPath();
+    ctx.moveTo(t.points[0].x, t.points[0].y);
+    for (let i = 1; i < t.points.length; i++) ctx.lineTo(t.points[i].x, t.points[i].y);
+    for (const [grow, al] of [[9, 0.09], [5.5, 0.12], [2.4, 0.16]] as const) {
+      ctx.strokeStyle = soil(al);
+      ctx.lineWidth = t.widthM + grow;
+      ctx.stroke();
+    }
+  }
+  for (const r of af.runways) {
+    const b = runwayBounds(r);
+    if (!overlaps(win, b[0], b[1], b[2], b[3])) continue;
+    ctx.save();
+    ctx.translate(r.x1, r.y1);
+    ctx.rotate((r.headingDeg * Math.PI) / 180 - Math.PI / 2);
+    const half = r.widthM / 2 + r.shoulderM;
+    for (const [grow, al] of [[9, 0.09], [5.5, 0.12], [2.4, 0.16]] as const) {
+      ctx.fillStyle = soil(al);
+      ctx.fillRect(-grow, -half - grow, r.lengthM + 2 * grow, 2 * (half + grow));
+    }
+    ctx.restore();
+  }
+  void terminals;
+}
+
 function runwayBounds(r: Runway): [number, number, number, number] {
   const m = r.widthM / 2 + r.shoulderM + 2;
   return [Math.min(r.x1, r.x2) - m, Math.min(r.y1, r.y2) - m, Math.max(r.x1, r.x2) + m, Math.max(r.y1, r.y2) + m];
 }
 
-function paintTaxiwayPavement(ctx: Ctx, t: Taxiway, win: Window): void {
+function paintTaxiwayPavement(ctx: Ctx, t: Taxiway, win: Window, plan: Plan): void {
+  const pts = plan.smooth.get(t.id) ?? t.points;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const p of t.points) {
+  for (const p of pts) {
     minX = Math.min(minX, p.x);
     minY = Math.min(minY, p.y);
     maxX = Math.max(maxX, p.x);
@@ -111,158 +180,64 @@ function paintTaxiwayPavement(ctx: Ctx, t: Taxiway, win: Window): void {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'butt';
   ctx.beginPath();
-  ctx.moveTo(t.points[0].x, t.points[0].y);
-  for (let i = 1; i < t.points.length; i++) ctx.lineTo(t.points[i].x, t.points[i].y);
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
 }
 
-/** Offsets a polyline sideways with mitred corners, so edge lines stay continuous through turns. */
-function offsetPolyline(pts: readonly { x: number; y: number }[], d: number): { x: number; y: number }[] {
-  const out: { x: number; y: number }[] = [];
-  const n = pts.length;
-  for (let i = 0; i < n; i++) {
-    const p = pts[i];
-    let nx0 = 0;
-    let ny0 = 0;
-    let nx1 = 0;
-    let ny1 = 0;
-    if (i > 0) {
-      const l = Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) || 1;
-      nx0 = -(p.y - pts[i - 1].y) / l;
-      ny0 = (p.x - pts[i - 1].x) / l;
-    }
-    if (i < n - 1) {
-      const l = Math.hypot(pts[i + 1].x - p.x, pts[i + 1].y - p.y) || 1;
-      nx1 = -(pts[i + 1].y - p.y) / l;
-      ny1 = (pts[i + 1].x - p.x) / l;
-    }
-    if (i === 0) {
-      nx0 = nx1;
-      ny0 = ny1;
-    }
-    if (i === n - 1) {
-      nx1 = nx0;
-      ny1 = ny0;
-    }
-    const dot = nx0 * nx1 + ny0 * ny1;
-    const k = 1 / Math.max(0.5, 1 + dot);
-    out.push({ x: p.x + (nx0 + nx1) * k * d, y: p.y + (ny0 + ny1) * k * d });
-  }
-  return out;
-}
-
-type Excluder = (x: number, y: number) => boolean;
-
-/** Samples a polyline and returns the stretches that fall inside the window and outside excluded areas. */
-function visibleRuns(pts: readonly { x: number; y: number }[], step: number, win: Window, excluded: Excluder): { x: number; y: number }[][] {
-  const runs: { x: number; y: number }[][] = [];
-  let cur: { x: number; y: number }[] | null = null;
-  const take = (x: number, y: number): void => {
-    const inside = x >= win.minX && x <= win.maxX && y >= win.minY && y <= win.maxY && !excluded(x, y);
-    if (inside) {
-      if (!cur) {
-        cur = [];
-        runs.push(cur);
-      }
-      cur.push({ x, y });
-    } else {
-      cur = null;
-    }
-  };
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (len === 0) continue;
-    // Skip whole segments far from the window.
-    if (Math.max(a.x, b.x) < win.minX || Math.min(a.x, b.x) > win.maxX || Math.max(a.y, b.y) < win.minY || Math.min(a.y, b.y) > win.maxY) {
-      cur = null;
-      continue;
-    }
-    const n = Math.max(1, Math.ceil(len / step));
-    for (let k = i === 1 ? 0 : 1; k <= n; k++) take(a.x + ((b.x - a.x) * k) / n, a.y + ((b.y - a.y) * k) / n);
-  }
-  return runs;
-}
-
-function strokeRuns(ctx: Ctx, runs: { x: number; y: number }[][]): void {
+function drawLines(ctx: Ctx, lines: readonly Line[], win: Window): void {
   ctx.beginPath();
-  for (const run of runs) {
-    if (run.length < 2) continue;
-    ctx.moveTo(run[0].x, run[0].y);
-    for (let i = 1; i < run.length; i++) ctx.lineTo(run[i].x, run[i].y);
+  for (const l of lines) {
+    if (!overlaps(win, l.minX, l.minY, l.maxX, l.maxY)) continue;
+    ctx.moveTo(l.pts[0].x, l.pts[0].y);
+    for (let i = 1; i < l.pts.length; i++) ctx.lineTo(l.pts[i].x, l.pts[i].y);
   }
   ctx.stroke();
 }
 
-function insideRunway(r: Runway, x: number, y: number, margin: number): boolean {
-  const c = { x: 0, y: 0, t: 0 };
-  closestOnSegment(x, y, r.x1, r.y1, r.x2, r.y2, c);
-  return Math.hypot(x - c.x, y - c.y) <= r.widthM / 2 + r.shoulderM + margin;
-}
-
-function paintTaxiwayMarks(ctx: Ctx, t: Taxiway, win: Window, af: AirfieldPayload): void {
-  if (!isPaved(t.surface)) return;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of t.points) {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
+/** Taxiway paint from the plan: fillets, centerlines with lead-on curves, double edge lines, enhanced centerlines. */
+function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): void {
+  const surface = af.taxiways[0]?.surface ?? 'asphalt';
+  ctx.fillStyle = PAVEMENT[surface];
+  for (const patch of plan.patches) {
+    const first = patch[0];
+    if (!overlaps(win, first.x - 80, first.y - 80, first.x + 80, first.y + 80)) continue;
+    ctx.beginPath();
+    ctx.moveTo(patch[0].x, patch[0].y);
+    for (let i = 1; i < patch.length; i++) ctx.lineTo(patch[i].x, patch[i].y);
+    ctx.closePath();
+    ctx.fill();
   }
-  if (!overlaps(win, minX - t.widthM, minY - t.widthM, maxX + t.widthM, maxY + t.widthM)) return;
-  const step = Math.max(0.5, 1.2 / win.scale);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'butt';
-  const onRunway: Excluder = (x, y) => {
-    for (const r of af.runways) if (insideRunway(r, x, y, 0.3)) return true;
-    return false;
-  };
-  // The centerline is one continuous line along the whole taxiway, cut only where it would enter a runway.
-  ctx.strokeStyle = t.closed ? RED : YELLOW;
+  ctx.strokeStyle = YELLOW;
   ctx.lineWidth = lineM(win, 0.3);
-  strokeRuns(ctx, visibleRuns(t.points, step, win, onRunway));
-
-  if (win.scale >= 1 && t.kind !== 'taxilane') {
-    // Edge lines stop where another pavement opens up: junctions, runways and aprons.
-    const others = af.taxiways.filter((o) => o.id !== t.id);
-    const inOther: Excluder = (x, y) => {
-      if (onRunway(x, y)) return true;
-      for (const o of others) {
-        const reach = o.widthM / 2 + 0.25;
-        for (let i = 1; i < o.points.length; i++) {
-          const a = o.points[i - 1];
-          const b = o.points[i];
-          if (x < Math.min(a.x, b.x) - reach || x > Math.max(a.x, b.x) + reach || y < Math.min(a.y, b.y) - reach || y > Math.max(a.y, b.y) + reach) continue;
-          // Only the strip beside the centerline counts, not the rounded end of a stub that stops at this taxiway.
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const len2 = dx * dx + dy * dy || 1;
-          const along = ((x - a.x) * dx + (y - a.y) * dy) / len2;
-          if (along < 0 || along > 1) continue;
-          if (distToSegment(x, y, a.x, a.y, b.x, b.y) <= reach) return true;
-        }
-      }
-      for (const ap of af.aprons) if (pointInPolygon(x, y, ap.polygon)) return true;
-      return false;
-    };
-    ctx.lineWidth = lineM(win, 0.15);
+  drawLines(ctx, plan.centerlines, win);
+  drawLines(ctx, plan.leadIns, win);
+  ctx.strokeStyle = RED;
+  drawLines(ctx, plan.redCenterlines, win);
+  if (win.scale >= 1) {
     ctx.strokeStyle = YELLOW;
-    for (const side of [-1, 1]) strokeRuns(ctx, visibleRuns(offsetPolyline(t.points, side * (t.widthM / 2 - 0.6)), step, win, inOther));
+    ctx.lineWidth = lineM(win, 0.15);
+    drawLines(ctx, plan.edges, win);
+    ctx.lineWidth = lineM(win, 0.18);
+    ctx.setLineDash([1.2, 1.2]);
+    drawLines(ctx, plan.enhanced, win);
+    ctx.setLineDash([]);
   }
-  if (t.oneWay && win.scale >= 0.25) {
-    // Small arrowheads along one way taxiways.
+  for (const t of af.taxiways) {
+    if (!t.oneWay || win.scale < 0.25) continue;
+    const pts = plan.smooth.get(t.id) ?? t.points;
     ctx.fillStyle = YELLOW;
-    for (let i = 1; i < t.points.length; i++) {
-      const a = t.points[i - 1];
-      const b = t.points[i];
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
-      const dx = (b.x - a.x) / len;
-      const dy = (b.y - a.y) / len;
-      for (let d = 40; d < len - 20; d += 120) {
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const l = Math.hypot(b.x - a.x, b.y - a.y);
+      if (l < 60) continue;
+      const dx = (b.x - a.x) / l;
+      const dy = (b.y - a.y) / l;
+      if (!overlaps(win, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y))) continue;
+      for (let d = 40; d < l - 20; d += 120) {
         const px = a.x + dx * d;
         const py = a.y + dy * d;
         ctx.beginPath();
@@ -276,36 +251,48 @@ function paintTaxiwayMarks(ctx: Ctx, t: Taxiway, win: Window, af: AirfieldPayloa
   }
 }
 
-function paintHoldingMark(ctx: Ctx, t: Taxiway, x: number, y: number, win: Window): void {
-  if (!isPaved(t.surface)) return;
-  const c = { x: 0, y: 0, t: 0 };
-  let best = Infinity;
-  let dx = 1;
-  let dy = 0;
-  for (let i = 1; i < t.points.length; i++) {
-    closestOnSegment(x, y, t.points[i - 1].x, t.points[i - 1].y, t.points[i].x, t.points[i].y, c);
-    const d = Math.hypot(x - c.x, y - c.y);
-    if (d < best) {
-      best = d;
-      const len = Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y) || 1;
-      dx = (t.points[i].x - t.points[i - 1].x) / len;
-      dy = (t.points[i].y - t.points[i - 1].y) / len;
-    }
-  }
-  const half = t.widthM / 2 - 0.4;
+/**
+ * Runway holding position: four yellow lines across the taxiway, two solid on the side where
+ * aircraft hold and two dashed on the runway side (ICAO pattern A), with the surface painted
+ * signs: white on red for the runway, yellow on black for the taxiway.
+ */
+function paintHold(ctx: Ctx, h: HoldMark, win: Window): void {
+  if (!overlaps(win, h.x - 30, h.y - 30, h.x + 30, h.y + 30)) return;
+  ctx.save();
+  ctx.translate(h.x, h.y);
+  ctx.rotate(Math.atan2(h.dy, h.dx));
+  // Local frame: +x toward the runway, +y to the right of travel.
+  const half = h.widthM / 2 - 0.3;
+  const lw = lineM(win, 0.15);
   ctx.strokeStyle = YELLOW;
-  ctx.lineWidth = lineM(win, 0.15);
-  for (let k = 0; k < 4; k++) {
-    const off = (k - 1.5) * 0.9;
-    const px = x + dx * off;
-    const py = y + dy * off;
-    ctx.setLineDash(k < 2 ? [] : [1.5, 1.5]);
+  ctx.lineWidth = lw;
+  const rows: [number, boolean][] = [[-0.675, true], [-0.225, true], [0.225, false], [0.675, false]];
+  for (const [x, solid] of rows) {
+    ctx.setLineDash(solid ? [] : [1.2, 1.2]);
     ctx.beginPath();
-    ctx.moveTo(px - dy * half, py + dx * half);
-    ctx.lineTo(px + dy * half, py - dx * half);
+    ctx.moveTo(x, -half);
+    ctx.lineTo(x, half);
     ctx.stroke();
   }
   ctx.setLineDash([]);
+  if (win.scale >= 1) {
+    const sign = (cy: number, fill: string, text: string, color: string): void => {
+      ctx.fillStyle = fill;
+      ctx.fillRect(-12, cy - 1.5, 7, 3);
+      ctx.fillStyle = color;
+      ctx.font = 'bold 2.2px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.save();
+      ctx.translate(-8.5, cy);
+      ctx.rotate(Math.PI / 2);
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    };
+    sign(-half * 0.45, '#c82a24', h.runwayName, '#fff');
+    sign(half * 0.45, '#151515', h.taxiName, YELLOW);
+  }
+  ctx.restore();
 }
 
 function paintRunwayPavement(ctx: Ctx, r: Runway, win: Window): void {
@@ -324,7 +311,40 @@ function paintRunwayPavement(ctx: Ctx, r: Runway, win: Window): void {
   ctx.restore();
 }
 
-function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window): void {
+const DIGITS: Record<string, string> = { '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc', '5': 'afgcd', '6': 'afgedc', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', L: 'fed', R: 'abfegc', C: 'afed' };
+
+/** Block stencil numeral or letter, centred on the origin with its top toward -y. */
+function stencil(ctx: Ctx, ch: string, cx: number, cy: number): void {
+  const w = 4;
+  const h = 9;
+  const st = 1.15;
+  const seg = DIGITS[ch];
+  if (!seg) return;
+  const rects: Record<string, [number, number, number, number]> = {
+    a: [-w / 2, -h / 2, w, st],
+    b: [w / 2 - st, -h / 2, st, h / 2],
+    c: [w / 2 - st, 0, st, h / 2],
+    d: [-w / 2, h / 2 - st, w, st],
+    e: [-w / 2, 0, st, h / 2],
+    f: [-w / 2, -h / 2, st, h / 2],
+    g: [-w / 2, -st / 2, w, st],
+  };
+  for (const k of seg) {
+    const r = rects[k];
+    ctx.fillRect(cx + r[0], cy + r[1], r[2], r[3]);
+  }
+}
+
+/** Pairs of touchdown zone marks by usable length (ICAO Annex 14). */
+function tdzPairs(length: number): number {
+  return length < 900 ? 1 : length < 1200 ? 2 : length < 1500 ? 3 : length < 2400 ? 4 : 6;
+}
+
+function aimingDistance(length: number): number {
+  return length >= 2400 ? 300 : length >= 1500 ? 250 : length >= 1200 ? 200 : 150;
+}
+
+function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window, plan: Plan): void {
   const b = runwayBounds(r);
   if (!overlaps(win, b[0], b[1], b[2], b[3])) return;
   ctx.save();
@@ -346,65 +366,85 @@ function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window): void {
     return;
   }
   ctx.fillStyle = WHITE;
-  // Edge lines.
+  // Edge stripes, continuous except where a taxiway opens onto the runway.
   const edgeW = lineM(win, 0.9);
-  ctx.fillRect(0, -half + 0.6, L, edgeW);
-  ctx.fillRect(0, half - 0.6 - edgeW, L, edgeW);
-  // Centerline dashes.
-  const cw = lineM(win, 0.9);
-  for (let x = 90; x + 30 <= L - 90; x += 50) ctx.fillRect(x, -cw / 2, 30, cw);
-  for (const end of [0, 1]) {
+  const breaks = (plan.runwayBreaks.get(r.id) ?? []).slice().sort((p, q) => p[0] - q[0]);
+  for (const side of [-1, 1]) {
+    let x = 0;
+    for (const [s0, s1] of breaks) {
+      if (s0 > x) ctx.fillRect(x, side * (half - 0.6) - (side > 0 ? edgeW : 0), Math.min(s0, L) - x, edgeW);
+      x = Math.max(x, s1);
+    }
+    if (x < L) ctx.fillRect(x, side * (half - 0.6) - (side > 0 ? edgeW : 0), L - x, edgeW);
+  }
+  const instrument = r.approach !== 'visual';
+  const precision = r.approach === 'precision';
+  const name = [r.nameA, r.nameB];
+  // Centerline: 30 m stripes with 20 m gaps, centred between the two designators.
+  const cw = lineM(win, r.widthM >= 30 ? 0.9 : 0.45);
+  const first = 72;
+  const span = L - 2 * first;
+  if (span > 30) {
+    const n = Math.floor((span + 20) / 50);
+    const used = n * 50 - 20;
+    const startX = first + (span - used) / 2;
+    for (let i = 0; i < n; i++) ctx.fillRect(startX + i * 50, -cw / 2, 30, cw);
+  }
+  const aim = aimingDistance(L);
+  const inner = r.widthM >= 30 ? 18 : 6;
+  for (let end = 0; end < 2; end++) {
     ctx.save();
     if (end === 1) {
       ctx.translate(L, 0);
       ctx.rotate(Math.PI);
     }
-    paintRunwayEnd(ctx, r, end === 0 ? r.nameA : r.nameB, win);
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
-/** Paints one end in end local coordinates, x pointing inward from the threshold. */
-function paintRunwayEnd(ctx: Ctx, r: Runway, name: string, win: Window): void {
-  const half = r.widthM / 2;
-  const n = THRESHOLD_STRIPES[r.widthM] ?? 8;
-  const usable = r.widthM - 6;
-  const pitch = usable / n;
-  for (let i = 0; i < n; i++) {
-    const y = -usable / 2 + pitch * (i + 0.5) - 0.9;
-    ctx.fillRect(6, y, 30, Math.max(1.8, 0.9 / win.scale));
-  }
-  // Designator: number on top of the letter, readable on approach.
-  const digits = name.slice(0, 2);
-  const letter = name.slice(2);
-  const size = 12.5;
-  ctx.save();
-  ctx.font = `bold ${size}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.translate(50, 0);
-  ctx.rotate(Math.PI / 2);
-  ctx.fillText(digits, 0, 0);
-  if (letter) ctx.fillText(letter, 0, size * 1.05);
-  ctx.restore();
-  // Aiming point and touchdown zone marks on instrument runways.
-  if (r.approach !== 'visual' && r.lengthM >= 1200) {
-    const aim = r.lengthM >= 1500 ? 300 : 250;
-    const off = Math.min(12, half - 5);
-    for (const side of [-1, 1]) ctx.fillRect(aim, side * off - 3, 45, 6);
-    if (r.approach === 'precision') {
-      for (let k = 0; k < 3; k++) {
-        const x = aim + 150 * (k + 1);
-        if (x + 22 > r.lengthM / 2) break;
-        for (const side of [-1, 1]) {
-          ctx.fillRect(x, side * (off - 4) - 1.5, 22.5, 3);
-          ctx.fillRect(x, side * (off + 4) - 1.5, 22.5, 3);
+    // Threshold stripes: 1.8 m wide, 30 m long, 6 m in, in two symmetric groups.
+    if (instrument) {
+      const n = THRESHOLD_STRIPES[r.widthM] ?? 8;
+      const perSide = n / 2;
+      const group = perSide * 1.8 + (perSide - 1) * 1.8;
+      const start = half - 1.5 - group;
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < perSide; i++) {
+          const y0 = start + i * 3.6;
+          ctx.fillRect(6, side > 0 ? y0 : -y0 - 1.8, 30, Math.max(1.8, 0.9 / win.scale));
         }
       }
     }
+    // Designator: numerals with their tops toward the runway centre, a letter below.
+    const label = name[end];
+    const digits = label.slice(0, 2);
+    const letter = label.slice(2);
+    ctx.save();
+    ctx.translate(instrument ? 56 : 24, 0);
+    ctx.rotate(Math.PI / 2);
+    for (let i = 0; i < digits.length; i++) stencil(ctx, digits[i], (i - (digits.length - 1) / 2) * 5.6, 0);
+    if (letter) stencil(ctx, letter, 0, 12);
+    ctx.restore();
+    // Aiming point on instrument runways, and on visual ones that are long enough for jets.
+    if (instrument || L >= 1200) {
+      const off = inner / 2 + 3;
+      const bar = aim >= 250 ? 45 : 30;
+      for (const side of [-1, 1]) ctx.fillRect(aim, side * off - 3, bar, 6);
+    }
+    // Touchdown zone: groups of 3, 2 and 1 bars every 150 m, only on precision runways.
+    if (precision) {
+      const pairs = tdzPairs(L);
+      const counts = [3, 3, 2, 2, 1, 1];
+      for (let k = 0; k < pairs; k++) {
+        const x = 150 * (k + 1);
+        if (Math.abs(x - aim) < 60 || x + 22.5 > L / 2) continue;
+        for (const side of [-1, 1]) {
+          for (let i = 0; i < counts[k]; i++) {
+            const y0 = inner / 2 + i * 3.3;
+            ctx.fillRect(x, side > 0 ? y0 : -y0 - 1.8, 22.5, Math.max(1.8, 0.9 / win.scale));
+          }
+        }
+      }
+    }
+    ctx.restore();
   }
-  void half;
+  ctx.restore();
 }
 
 function paintStand(ctx: Ctx, s: Stand, win: Window): void {
@@ -418,12 +458,6 @@ function paintStand(ctx: Ctx, s: Stand, win: Window): void {
   const halfSpan = row.spanM / 2;
   const paved = s.surface === 'asphalt' || s.surface === 'concrete';
   if (paved) {
-    ctx.strokeStyle = YELLOW;
-    ctx.lineWidth = lineM(win, 0.2);
-    ctx.beginPath();
-    ctx.moveTo(-row.standLengthM - 20, 0);
-    ctx.lineTo(0, 0);
-    ctx.stroke();
     if (s.type !== 'gaTieDown') {
       ctx.fillStyle = YELLOW;
       ctx.fillRect(-0.4, -3, Math.max(0.8, 1 / win.scale), 6);
@@ -484,6 +518,35 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   ctx.save();
   ctx.translate(g.ox, g.oy);
   ctx.rotate((g.headingDeg * Math.PI) / 180 - Math.PI / 2);
+  // Cleared pad and soft edge darkening so the building looks seated on the ground. Baked into the chunk.
+  const filled = (cx: number, cy: number): boolean => cx >= 0 && cy >= 0 && cx < N && cy < N && g.floor[cy * N + cx] > 0;
+  for (let cy = y0; cy <= y1; cy++) {
+    let runStart = -1;
+    for (let cx = x0; cx <= x1 + 1; cx++) {
+      const on = cx <= x1 && filled(cx, cy);
+      if (on && runStart < 0) runStart = cx;
+      if (!on && runStart >= 0) {
+        ctx.fillStyle = '#7b7260';
+        ctx.fillRect(runStart * C - 2.6, cy * C - 2.6, (cx - runStart) * C + 5.2, C + 5.2);
+        runStart = -1;
+      }
+    }
+  }
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      if (!filled(cx, cy)) continue;
+      const px = cx * C;
+      const py = cy * C;
+      // Strips outside each exposed edge, longer toward the south east, as if lit from the north west.
+      for (const [w, al] of [[0.5, 0.2], [1.1, 0.14], [1.8, 0.09]] as const) {
+        ctx.fillStyle = `rgba(38,30,20,${al})`;
+        if (!filled(cx - 1, cy)) ctx.fillRect(px - w, py, w, C);
+        if (!filled(cx, cy - 1)) ctx.fillRect(px, py - w, C, w);
+        if (!filled(cx + 1, cy)) ctx.fillRect(px + C, py, w * 1.6, C);
+        if (!filled(cx, cy + 1)) ctx.fillRect(px, py + C, C, w * 1.6);
+      }
+    }
+  }
   // Floors, merged along rows.
   let any = false;
   for (let cy = y0; cy <= y1; cy++) {
@@ -518,7 +581,30 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     }
     ctx.stroke();
   }
+  // A thin lit curb on the north and west edges and a dark one on the south and east.
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      if (!filled(cx, cy)) continue;
+      const px = cx * C;
+      const py = cy * C;
+      ctx.fillStyle = 'rgba(255,255,255,0.32)';
+      if (!filled(cx - 1, cy)) ctx.fillRect(px, py, 0.3, C);
+      if (!filled(cx, cy - 1)) ctx.fillRect(px, py, C, 0.3);
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      if (!filled(cx + 1, cy)) ctx.fillRect(px + C - 0.3, py, 0.3, C);
+      if (!filled(cx, cy + 1)) ctx.fillRect(px, py + C - 0.3, C, 0.3);
+    }
+  }
   // Fixtures.
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      const f0 = g.fixture[cy * N + cx];
+      if (f0 === 0) continue;
+      // A short shadow under each fixture lifts it off the floor in the same cheap way.
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(cx * C + 0.45, cy * C + 0.45, C - 0.4, C - 0.4);
+    }
+  }
   for (let cy = y0; cy <= y1; cy++) {
     for (let cx = x0; cx <= x1; cx++) {
       const f = g.fixture[cy * N + cx];

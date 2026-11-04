@@ -192,7 +192,18 @@ export class TerrainBaker {
             const ly = Math.floor(wy / lot);
             const ox = wx - lx * lot - 3;
             const oy = wy - ly * lot - 2;
-            if (ox >= 0 && ox < lw && oy >= 0 && oy < lh && hash2(seed + 5, lx, ly) < 0.85) {
+            const hasHouse = hash2(seed + 5, lx, ly) < 0.85;
+            if (hasHouse && ox >= lw && ox < lw + 1.6 && oy >= 1.2 && oy < lh + 1.6) {
+              // Short dark strip along the south east sides, so the house sits on the ground.
+              r *= 0.72;
+              g *= 0.72;
+              b *= 0.72;
+            } else if (hasHouse && oy >= lh && oy < lh + 1.6 && ox >= 1.2 && ox < lw + 1.6) {
+              r *= 0.72;
+              g *= 0.72;
+              b *= 0.72;
+            }
+            if (ox >= 0 && ox < lw && oy >= 0 && oy < lh && hasHouse) {
               const roof = ROOFS[Math.floor(hash2(seed + 6, lx, ly) * 4)];
               const edge = ox < 1 || oy < 1 || ox > lw - 1 || oy > lh - 1;
               const k = edge ? 0.75 : 1;
