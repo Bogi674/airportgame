@@ -64,7 +64,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [x] Runway tool with profile (code, approach type, surface, strength), widths by code, length and heading readouts, wind band readout (shown as text, no ring yet)
 * [x] Taxiway tool with code widths, fillets, segment properties (one way, closed, max code, speed), automatic names (fillets, junctions and bends from `docs/DESIGN_REVISION_2.md` section 2, with node, end and segment snapping)
 * [x] Ghost envelopes: runway strip, wingtip envelope, separations with automatic max code downgrade, obstacle surfaces (the wingtip envelope is the largest roster type of the code with red clash bands; obstacle surfaces are simplified to an approach and a transitional surface)
-* [ ] Automatic holding points at correct distances, entries with takeoff distance available (done, the player cannot drag holding points out yet)
+* [x] Automatic holding points at correct distances, entries with takeoff distance available (the select tool drags a holding point along its taxiway, up to 250 m beyond the default and never closer)
 * [x] Rapid exit tool with 30, 45 and 90 degree presets and suggested distance
 * [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down (aprons merge and cut, free polygon and rectangle modes; stands come in four sizes with a lead in fork)
 * [ ] Surfaces with PCR tiers, condition and resurfacing (done for taxiways with works that close the edges for their duration and allowed codes per surface; the runway does not yet close during works and aprons resurface at once)

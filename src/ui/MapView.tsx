@@ -64,7 +64,10 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       downX = e.offsetX;
       downY = e.offsetY;
       canvas.setPointerCapture(e.pointerId);
-      if (e.button === 0 && tool !== 'select' && !spaceHeld) {
+      if (e.button === 0 && tool === 'select' && !spaceHeld && controller.grab(toWorld(e))) {
+        // A holding point under the pointer is dragged instead of panning the map.
+        toolDown = true;
+      } else if (e.button === 0 && tool !== 'select' && !spaceHeld) {
         toolDown = true;
         if (controller.armed) endClick = true;
         else controller.down(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });

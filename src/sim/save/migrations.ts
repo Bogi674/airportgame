@@ -3,7 +3,7 @@ import type { CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface SaveData {
   version: number;
@@ -51,5 +51,7 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 5 to 6: terminal grids grow and store their bounds. Older grids load as the fixed 160 by 160 grid.
   if (save.version < 6) save.version = 6;
+  // Version 6 to 7: taxiways gained optional holding position settings. Older saves keep the defaults.
+  if (save.version < 7) save.version = 7;
   return save as SaveData;
 }

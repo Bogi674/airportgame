@@ -9,6 +9,7 @@ import {
   type Runway,
   type RunwayEntry,
   type Taxiway,
+  runwaySide,
 } from '@shared/airfield';
 import { closestOnSegment, polylineLength } from '@shared/geom';
 
@@ -138,11 +139,18 @@ export function deriveNetwork(af: AirfieldPayload): void {
         todaTowardB: Math.round(r.lengthM * (1 - tt)),
         todaTowardA: Math.round(r.lengthM * tt),
       });
+      // The player may move a holding position further out on either side (docs/GAME_DESIGN.md section 6).
+      const holdOn = (side: 1 | -1): number => {
+        const set = t.holds?.find((h) => h.runwayId === r.id && h.side === side);
+        return set && set.distM > holdD ? set.distM : holdD;
+      };
       for (let i = 1; i < n; i++) {
-        const leaving = ds[i - 1] < holdD && ds[i] >= holdD && i > firstTouch;
-        const entering = ds[i - 1] >= holdD && ds[i] < holdD && i <= lastTouch;
+        const side = runwaySide(r, samples[i].x, samples[i].y);
+        const hd = holdOn(side);
+        const leaving = ds[i - 1] < hd && ds[i] >= hd && i > firstTouch;
+        const entering = ds[i - 1] >= hd && ds[i] < hd && i <= lastTouch;
         if (leaving || entering) {
-          holding.push({ x: samples[i].x, y: samples[i].y, runwayId: r.id, taxiwayId: t.id, distM: Math.round(ds[i]) });
+          holding.push({ x: samples[i].x, y: samples[i].y, runwayId: r.id, taxiwayId: t.id, distM: Math.round(ds[i]), side, minM: holdD });
         }
       }
     }

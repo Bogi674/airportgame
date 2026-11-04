@@ -66,6 +66,21 @@ export interface Taxiway {
   name: string;
   /** Surface works in progress: the taxiway is closed until `doneTick`, then takes the new surface. */
   works?: Works;
+  /** Holding positions the player moved further out than the default, per runway and side. */
+  holds?: HoldSetting[];
+}
+
+/** A holding position moved out by the player: never closer than the default for the runway. */
+export interface HoldSetting {
+  runwayId: number;
+  /** Side of the runway centerline, see `runwaySide`. */
+  side: 1 | -1;
+  distM: number;
+}
+
+/** Which side of a runway's centerline a point is on: 1 left of the heading from threshold A, -1 right. */
+export function runwaySide(r: Pick<Runway, 'x1' | 'y1' | 'x2' | 'y2'>, x: number, y: number): 1 | -1 {
+  return (r.x2 - r.x1) * (y - r.y1) - (r.y2 - r.y1) * (x - r.x1) < 0 ? 1 : -1;
 }
 
 /** A surface change under construction (docs/DESIGN_REVISION_2.md section 2.5). */
@@ -118,7 +133,11 @@ export interface HoldingPoint {
   y: number;
   runwayId: number;
   taxiwayId: number;
+  /** Distance from the runway centerline. */
   distM: number;
+  side: 1 | -1;
+  /** The default distance for the runway, the closest the point may be. */
+  minM: number;
 }
 
 export interface RunwayEntry {

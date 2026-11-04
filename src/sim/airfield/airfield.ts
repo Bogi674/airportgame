@@ -57,6 +57,8 @@ const MIN_RUNWAY_M = 300;
 const MAX_RUNWAY_M = 5000;
 const MIN_RUNWAY_SEP_M = 100;
 const REFUND_SHARE = 0.25;
+/** How far beyond the default a holding position may be moved. */
+const MAX_HOLD_EXTRA_M = 250;
 const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000, precision: 1_200_000 };
 const round05 = (v: number): number => Math.round(v * 2) / 2;
 
@@ -205,6 +207,8 @@ export class Airfield {
         this.refresh();
         return { cashDelta: 0 };
       }
+      case 'moveHolding':
+        return this.moveHolding(cmd);
       case 'resizeRunway':
         return this.resizeRunway(cmd, ctx, cash);
       case 'reclassRunway':
@@ -707,6 +711,37 @@ export class Airfield {
     return r;
   }
 
+  /**
+   * Moves a holding position further out along its taxiway, or back to the default. The taxiway keeps
+   * the setting, so undo, redo and saves restore it with the taxiway.
+   */
+  private moveHolding(cmd: Extract<Command, { type: 'moveHolding' }>): BuildResult {
+    const t = this.data.taxiways.find((x) => x.id === cmd.taxiwayId);
+    const r = this.data.runways.find((x) => x.id === cmd.runwayId);
+    if (!t || !r) return { code: 'nothingThere' };
+    const min = AIRFIELD.holdingDistanceM[r.approach];
+    const d = Math.round(cmd.distM);
+    if (d < min) return { code: 'holdTooClose', args: { min } };
+    if (d > min + MAX_HOLD_EXTRA_M) return { code: 'holdTooFar', args: { max: min + MAX_HOLD_EXTRA_M } };
+    const side = cmd.side === 1 ? 1 : -1;
+    const before = structuredClone(t);
+    const list = (t.holds ?? []).filter((h) => !(h.runwayId === r.id && h.side === side));
+    if (d > min) list.push({ runwayId: r.id, side, distM: d });
+    list.sort((p, q) => p.runwayId - q.runwayId || p.side - q.side);
+    if (list.length > 0) t.holds = list;
+    else delete t.holds;
+    this.refresh();
+    const placed = this.data.holding.some((h) => h.runwayId === r.id && h.taxiwayId === t.id && h.side === side && Math.abs(h.distM - d) <= 2);
+    if (!placed) {
+      this.applySwaps([before]);
+      this.refresh();
+      return { code: 'holdBeyondTaxiway' };
+    }
+    this.undoStack.push({ items: [], added: true, cashDelta: 0, swaps: [{ before, after: structuredClone(t) }] });
+    this.redoStack.length = 0;
+    return { cashDelta: 0 };
+  }
+
   /** Cost per square meter for a runway at its current strength tier. */
   private unitCost(r: Runway): number {
     const tiers = SURFACE_SPEC[r.surface].pcrTiers;
@@ -1011,6 +1046,7 @@ export class Airfield {
       acc = foldU32(foldU32(acc, t.id), t.points.length);
       acc = foldU32(foldU32(acc, codeIndex(t.maxCode)), (t.closed ? 1 : 0) + (t.oneWay ? 2 : 0) + ((t.preferred ?? 0) + 1) * 4);
       acc = foldU32(foldU32(acc, surfaceRank(t.surface)), t.works ? t.works.doneTick % 0xffffffff : 0);
+      for (const h of t.holds ?? []) acc = foldU32(foldU32(acc, h.runwayId * 2 + (h.side > 0 ? 1 : 0)), h.distM);
       for (const p of t.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
     }
     for (const a of this.data.aprons) acc = foldU32(foldU32(foldU32(acc, a.id), a.polygon.length), a.holes?.length ?? 0);

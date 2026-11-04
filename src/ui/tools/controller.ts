@@ -1,7 +1,7 @@
 import { apronContains } from '@shared/apronGeom';
 import { AIRFIELD, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { sizeCode } from '@shared/standSizes';
-import { codeIndex, compassVector, CODES, type AirfieldPayload, type CodeLetter, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
+import { codeIndex, compassVector, CODES, runwaySide, type AirfieldPayload, type CodeLetter, type HoldingPoint, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -15,7 +15,7 @@ import {
   suggestedExitDistance,
 } from '@shared/airfieldGeom';
 import type { Ghost, GhostShape } from '@shared/ghost';
-import { closestOnSegment, type Pt } from '@shared/geom';
+import { closestOnSegment, distToSegment, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
 import { WALL, type TerminalGrid } from '@shared/business';
 import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
@@ -139,8 +139,80 @@ export class ToolController {
   private resize: { id: number; end: 'a' | 'b' } | null = null;
   private tEdit: { id: number; end: 'start' | 'end' | null; at: Pt | null } | null = null;
 
+  /** A holding point being dragged in the select tool, and where it would go. */
+  private holdDrag: { h: HoldingPoint; t: Taxiway; r: Runway; d: number } | null = null;
+
+  private holdingAt(p: Pt): HoldingPoint | null {
+    const reach = Math.max(10, 16 / this.deps.zoom());
+    let best: HoldingPoint | null = null;
+    let bestD = reach;
+    for (const h of this.af.holding) {
+      const d = Math.hypot(h.x - p.x, h.y - p.y);
+      if (d < bestD) {
+        best = h;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** Starts dragging a holding point under the pointer in the select tool. True when one was grabbed. */
+  grab(p: Pt): boolean {
+    const h = this.holdingAt(p);
+    if (!h) return false;
+    const t = this.af.taxiways.find((x) => x.id === h.taxiwayId);
+    const r = this.af.runways.find((x) => x.id === h.runwayId);
+    if (!t || !r) return false;
+    this.holdDrag = { h, t, r, d: h.distM };
+    this.previewHold(p);
+    return true;
+  }
+
+  /** The holding point at the pointer's place along its taxiway, kept on its side and out of the minimum. */
+  private previewHold(p: Pt): void {
+    const g = this.holdDrag;
+    if (!g) return;
+    const c = { x: 0, y: 0, t: 0 };
+    let best: { x: number; y: number; dx: number; dy: number } | null = null;
+    let bestD = Infinity;
+    for (let i = 1; i < g.t.points.length; i++) {
+      const a = g.t.points[i - 1];
+      const b = g.t.points[i];
+      closestOnSegment(p.x, p.y, a.x, a.y, b.x, b.y, c);
+      const dd = Math.hypot(p.x - c.x, p.y - c.y);
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      if (dd < bestD && runwaySide(g.r, c.x, c.y) === g.h.side) {
+        bestD = dd;
+        best = { x: c.x, y: c.y, dx: (b.x - a.x) / len, dy: (b.y - a.y) / len };
+      }
+    }
+    if (!best) return;
+    const raw = distToSegment(best.x, best.y, g.r.x1, g.r.y1, g.r.x2, g.r.y2);
+    const d = Math.max(g.h.minM, Math.min(g.h.minM + 250, Math.round(raw)));
+    g.d = d;
+    // Below the minimum the bar stays at the default place.
+    const at = raw < g.h.minM ? { x: g.h.x, y: g.h.y } : best;
+    const heading = compassOf(best.dx, best.dy);
+    const shapes: GhostShape[] = [{ k: 'box', x: at.x - best.dx * 2, y: at.y - best.dy * 2, headingDeg: heading, len: 4, w: g.t.widthM + 6 }];
+    this.show({ valid: raw >= g.h.minM - 0.5, shapes, label: { x: at.x, y: at.y, text: tFormat('ghost.holding', { d, min: g.h.minM }) } }, null, 'hint.holdDrag');
+  }
+
+  private commitHold(): void {
+    const g = this.holdDrag;
+    this.holdDrag = null;
+    this.deps.setGhost(null);
+    useToolStore.getState().set({ hint: null, problem: null });
+    if (!g || Math.abs(g.d - g.h.distM) < 1) return;
+    this.deps.send({ type: 'moveHolding', runwayId: g.r.id, taxiwayId: g.t.id, side: g.h.side, distM: g.d });
+  }
+
   /** Highlights what a click would select and shows a pointer cursor over it. */
   private hoverAt(p: Pt): void {
+    if (this.holdingAt(p)) {
+      this.hovered = '';
+      this.deps.setCursor('grab');
+      return;
+    }
     const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
     const term = hit ? null : this.terminalAt(p);
     const kind = hit ? hit.kind : term !== null ? 'terminal' : '';
@@ -353,7 +425,8 @@ export class ToolController {
         this.previewDemolish(p);
         break;
       case 'select':
-        this.hoverAt(p);
+        if (this.holdDrag) this.previewHold(p);
+        else this.hoverAt(p);
         break;
       default:
         break;
@@ -363,6 +436,11 @@ export class ToolController {
   up(p: Pt, mods: Mods): void {
     const st = useToolStore.getState();
     this.cursor = p;
+    if (this.holdDrag) {
+      this.previewHold(p);
+      this.commitHold();
+      return;
+    }
     switch (st.tool) {
       case 'runway':
         this.finishRunway(p, mods);

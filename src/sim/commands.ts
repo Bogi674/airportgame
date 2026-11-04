@@ -25,6 +25,8 @@ export type Command =
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
   | { type: 'reclassTaxiway'; id: number; code: CodeLetter; surface: Surface; tier: number }
   | { type: 'reverseTaxiway'; id: number }
+  /** Moves a holding position along its taxiway, never closer to the runway than the default. */
+  | { type: 'moveHolding'; runwayId: number; taxiwayId: number; side: 1 | -1; distM: number }
   | { type: 'buyGse'; kind: string; count: number }
   | { type: 'setStandProps'; id: number; closed?: boolean; usage?: 'any' | 'commercial' | 'ga'; pushback?: PushbackDir }
   | { type: 'assignStand'; flight: number; standId: number }
