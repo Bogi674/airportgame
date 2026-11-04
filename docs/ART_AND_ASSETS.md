@@ -255,7 +255,7 @@ Generated from settings. Dimensions follow ICAO Annex 14. All in meters.
 * **Displaced threshold**: white arrows along the centerline and a transverse bar.
 * **Blast pad**: yellow chevrons on paved areas before the threshold.
 * **Runway holding position**: pattern A, two solid and two dashed yellow lines across the taxiway at the holding point. A red sign with white runway designators beside it.
-* **Taxiway**: yellow centerline 0.15 m continuous, double yellow edge lines where shoulders are paved, single dashed intermediate holding positions, yellow on black location signs at junctions.
+* **Taxiway** (`docs/DESIGN_REVISION_2.md` section 2.4, `junction2` in `docs/reference/geometry/fig6.py`): yellow centerline 0.15 m, at least 1.6 px, continuous through junctions along the turn curves; double yellow edge lines inset 0.25 m and 0.95 m from the pavement edge, following the fillets; yellow transverse stripes every 7 m across the shoulders on junction fillets only; yellow on black location signs and black on yellow direction signs 2 m beside the shoulder, 40 m before each junction on the left of the approaching aircraft, at true scale. On concrete every yellow line has a black outline. Unpaved taxiways get no paint, only yellow edge markers every 15 m. Single dashed intermediate holding positions are unchanged. Palette and dimensions live in `src/data/paint.json`.
 * **Turn pads**: yellow centerline curves.
 * **Surface look**: asphalt runways have grooving texture and darker rubber deposits in the touchdown zones. Concrete runways show slab joints.
 * **Unpaved runways**: no paint. White edge markers every 60 m, threshold boards, a windsock.
@@ -263,34 +263,28 @@ Generated from settings. Dimensions follow ICAO Annex 14. All in meters.
 
 ## 9. Stand markings
 
-Reference: `docs/art/surfaces_stands.png`, code `stands2.py` and `stands3.py`.
+Revised by `docs/DESIGN_REVISION_2.md` sections 1 and 3 (reference sheets `docs/art/rev2_01`, `rev2_04` and `rev2_05`, geometry in `docs/reference/geometry/fig1.py`, `fig4_stand_data.py` and `fig5.py`). Everything is drawn from stand data and aircraft data by `render/markings/standLayout.ts` and `standPaint.ts`, in stand local meters: x across the stand, y away from the taxilane centerline (y = 0).
 
-### 9.1 Painted stands (concrete, asphalt)
+### 9.1 Lead in fork (every stand)
 
-* Yellow lead in lines from both taxilane directions with a curve, straight centerline to the stop area, lead out line with arrow on taxi through stands.
-* Stand number boxes, black text on yellow, at the lead in start and before the stop area. MARS alternates use orange boxes and orange dashed lines.
-* Stop position ladder: one yellow bar across the centerline per type group, black boxes with white type text on both sides. A type group is all assigned types whose stop positions are within 0.8 m.
-* Equipment restraint area (red, double line: solid outer 0.28 m, dashed inner 0.16 m, 0.7 m inside):
-  1. For each assigned type at its stop position, take its planform outline (fuselage, wings, tail, nacelles).
-  2. Buffer by 3 m.
-  3. Union all outlines.
-  4. Simplify with a 1 m tolerance, then snap near parallel edges to the centerline direction and keep swept edges at the wing sweep angle.
-  5. The result is drawn as the double line. Swept wing stands get swept rear lines. Straight wing stands get a near rectangle.
-* Red dashed wingtip clearance lines along both sides at the stand boundary.
-* Red hatched no parking band where the jet bridge wheels drive, labeled `NO PARKING`.
-* Red hatched `EMERGENCY EQUIPMENT ONLY` triangle at the head of stand.
-* Red square fuel pits labeled `FUEL` under each wing at the type's fuel coupling, yellow `GPU` pit, red circle extinguisher points.
-* White: head of stand road with edge lines, center dashes, arrows and zebra crossings. GSE parking box with diagonal stripes. Push back limit line. Passenger walkways as zebra bands from the door to the bus bay or building.
-* VDGS board on the facade at the centerline end.
-* Paint fades with pavement condition (alpha from 1.0 at condition 100 to 0.5 at 40).
+The stand centerline runs from the first stop bar to the fork point at y = D, the fork radius of the size. Two quarter circle arcs of radius D leave the fork and meet the taxilane centerline tangentially at x = plus and minus D. Nothing crosses the taxilane. Facing ends of neighbouring stands that land within 8 m share their midpoint. The stand number box, black on yellow, sits on the centerline at y = 0.35 D.
 
-### 9.2 Unpaved stands (gravel, grass, dirt)
+### 9.2 Contact stands (medium, large, extra large)
 
-No paint. Orange and white cones along the lead in every 6 m, a stand signboard (black post with yellow number board), tie down rings at wing and tail positions, white edge markers at the stand corners. Grass stands add mowed stripes.
+1. Stand safety line: solid red across the stand at y = D.
+2. Stand boundary: solid red on each side from the safety line up to the funnel start, a diagonal inward to the nose point (n, top minus 5 m), then straight to the top, with n the fuselage half width of the largest type plus 4.5 m. The funnel start is the lowest point, searched upward in 0.5 m steps from D plus 2 m, where both front corner polygons stay 3 m clear of every assigned type's outline. The diagonal continues 12 m toward the neighbours.
+3. Front left: red hatched jet bridge zone, 1 m inside the corner. Front right: white hatched equipment staging area.
+4. Service road 12 m wide above the stand top: white edge lines, center dashes, one arrow per lane.
+5. Jet bridges: fixed link from the road to a rotunda (grey circle, radius 2.6 m) in the jet bridge zone, a tunnel to the door and a 3.5 by 4 m cab. Door stations come from the aircraft data. Large and extra large stands have two bridges.
+6. Stop bars: one yellow bar per type group, a black box with white type text to its right; 3.5 m apart on medium stands, 5 m on large and extra large.
+7. Hydrant fuel pits on large and extra large stands: red 2.2 m square with a diagonal at the type's fuel coupling under each wing.
+8. No red dashed wingtip lines: the boundary already marks the clearance.
 
-### 9.3 GA tie down rows
+Remote stands use the same layout without the jet bridge zone, the road and the bridges; the front left corner shows a dashed bus bay instead. At low zoom only the lead in, the boundary and the stand number show. Paint fades with pavement condition.
 
-Asphalt: painted yellow T marks for the nose wheel and wingtip marks. Unpaved: tie down rings and cones only.
+### 9.3 Small stands
+
+Paved: yellow fork and stand number, one yellow stop mark labelled GA, red dashed wingtip lines at plus and minus W / 2 from the safety line to the top, white tie down rings (2 m) at both wings and the tail. Unpaved: no paint, orange and white cones along the lead in every 6 m, a stand signboard, tie down rings and white edge markers at the corners.
 
 ## 10. Surfaces
 
@@ -303,7 +297,9 @@ Repeating textures in meters, generated once per surface and condition band:
 * Concrete: 5 m slabs with joints and slight tone variation per slab, tire marks on taxilanes.
 * Runway asphalt: grooving and rubber deposits.
 
-Reference: `docs/art/surfaces_stands.png`.
+Base colors and shoulder colors per surface live in `src/data/surfaces.json` (`docs/DESIGN_REVISION_2.md` sections 2.5 and 8): grass `#86ad5a`, dirt `#8a6c4c`, gravel `#9b968c`, asphalt `#4b4c52` with shoulders `#5e5f66`, concrete `#a9a7a2` with shoulders `#8e8c87` and 5 m slab joints on taxiways and aprons.
+
+Reference: `docs/art/surfaces_stands.png`, `docs/art/rev2_06_taxiway_radius_markings_surfaces.png`.
 
 ## 11. Terminal interior kit
 

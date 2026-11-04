@@ -62,12 +62,12 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 ### M2. Airfield builder
 
 * [x] Runway tool with profile (code, approach type, surface, strength), widths by code, length and heading readouts, wind band readout (shown as text, no ring yet)
-* [ ] Taxiway tool with code widths, fillets, segment properties (one way, closed, max code, speed), automatic names (done, except real fillets: corners use round joins)
+* [x] Taxiway tool with code widths, fillets, segment properties (one way, closed, max code, speed), automatic names (fillets, junctions and bends from `docs/DESIGN_REVISION_2.md` section 2, with node, end and segment snapping)
 * [ ] Ghost envelopes: runway strip, wingtip envelope, separations with automatic max code downgrade, obstacle surfaces (done except obstacle surfaces, and the wingtip envelope is a static ring)
 * [ ] Automatic holding points at correct distances, entries with takeoff distance available (done, the player cannot drag holding points out yet)
 * [x] Rapid exit tool with 30, 45 and 90 degree presets and suggested distance
-* [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down
-* [ ] Surfaces with PCR tiers, condition and resurfacing (done, the runway does not yet close during works)
+* [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down (aprons merge and cut, free polygon and rectangle modes; stands come in four sizes with a lead in fork)
+* [ ] Surfaces with PCR tiers, condition and resurfacing (done for taxiways with works that close the edges for their duration and allowed codes per surface; the runway does not yet close during works and aprons resurface at once)
 * [x] Alignment frames and snapping rules (`GAME_DESIGN.md` section 6)
 * [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block (all but the turn pad)
 * [ ] Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes (simplified set: thresholds, designators, centerline, edges, aiming point, touchdown zone, hold marks, stand lines and boxes)
@@ -82,7 +82,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [ ] Taxi network builder with samples, blocks and conflict sets, property tests (built with 2 m samples and per taxiway blocks, conflict sets and property tests are missing)
 * [x] Routing with direction, closures, max code, congestion cost and preferred flows (direction, closures, max code, strength, congestion cost and a per taxiway preferred flow that costs three times as much against it)
 * [ ] Reservations, following gaps, junction priority, holding points, runway exclusivity with wake separation (node and block reservations, following gaps, holding points, runway exclusivity and wake separation work, junction priority is first come)
-* [ ] Push back with direction per stand (straight push back only)
+* [x] Push back with direction per stand (along the lead in and one fork arc: left, right or away from the departure route, switching side when blocked)
 * [x] Deadlock detection and resolution with debug overlay (wait cycles are found and broken by a yield, and a traffic overlay ringing waiting aircraft in amber and deadlocked ones in red)
 * [x] Runway length, payload and range, ACR and PCR checks with the limiting factor shown (stage lengths per rotation, takeoff weight from empty weight, passengers and fuel, payload cut at MTOW, runway need grows with weight, refusals name the limiting factor)
 * [x] Test flight generator for arrivals and departures
@@ -90,7 +90,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 
 ### M4. Terminal and departures
 
-* [x] Building shell placement with local grid and rotation (the player lays foundation cells on a local 2 m grid, rotated in steps with R, a new building starts with the first foundation)
+* [x] Building shell placement with local grid and rotation (the player lays foundation cells on a local 2 m grid, rotated in steps with R, a new building starts with the first foundation; the grid grows in 64 m chunks with no size cap, revision 2 section 5)
 * [x] Walls, doors, floors, rooms with types, room validation (foundations, flooring, walls, glass, doors, painted zones and room validation: passengers must be able to walk from check in through a security lane into secure floor with seats, a gap in the wall is a security bypass and stops departures)
 * [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in desk, security lane, baggage belt, seating, toilets and six shop types are placed cell by cell, kiosks, bag drop, passport booth and gate desks are missing)
 * [ ] Walking graph with cached distances and regional rebuild (not built)

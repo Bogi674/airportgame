@@ -150,17 +150,22 @@ Editing a runway later (lengthen, widen, upgrade code or approach type, resurfac
 
 ### Taxiway tool
 
-* Draw the centerline as a polyline. Pick a code letter. Width, shoulders and fillets at junctions are generated from the code.
-* Segment properties set by the player: one way or two way, open or closed, maximum code, speed limit, name (letters such as A, B, B1 are suggested automatically).
+Revised by `docs/DESIGN_REVISION_2.md` section 2.
 
-| Code | Taxiway width | Fillet inner radius | Min separation taxiway to taxiway (centerlines) | Taxiway to object |
-| --- | --- | --- | --- | --- |
-| A | 7.5 m | 25 m | 23 m | 15.5 m |
-| B | 10.5 m | 30 m | 32 m | 20 m |
-| C | 15 m | 40 m | 44 m | 26 m |
-| D | 18 m | 45 m | 63 m | 37 m |
-| E | 23 m | 50 m | 76 m | 43.5 m |
-| F | 25 m | 55 m | 91 m | 51 m |
+* One polyline tool. While it is open every node shows as a small circle, junctions with their label (J1, J2).
+* Snap targets in priority order, within 15 m: an existing node (the new arm joins it, a T becomes a 4 way), an open end (the taxiway is continued), a point on the middle of a segment (the segment splits and a junction is made there), then angle guides every 15 degrees and along the runway frames. Alt places freely, Shift forces 15 degree steps.
+* No two nodes are ever closer than 15 m. Undo and redo restore the exact arm set.
+* Pavement at a node is generated: a bend is one curve at the code's turn radius, a junction gets fillets between neighbouring arms under 170 degrees, a straight through centerline and a forked stem. Shoulders are a lighter paved band.
+* Segment properties set by the player: one way or two way, open or closed, maximum code, speed limit, surface, name (letters such as A, B, B1 are suggested automatically).
+
+| Code | Taxiway width | Centerline turn radius | Inner edge radius | Shoulder each side | Min separation taxiway to taxiway (centerlines) | Taxiway to object |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | 7.5 m | 13 m | 9.25 m | none | 23 m | 15.5 m |
+| B | 10.5 m | 18 m | 12.75 m | none | 32 m | 20 m |
+| C | 15 m | 25 m | 17.5 m | 5 m | 44 m | 26 m |
+| D | 18 m | 30 m | 21 m | 5.5 m | 63 m | 37 m |
+| E | 23 m | 38 m | 26.5 m | 5.5 m | 76 m | 43.5 m |
+| F | 25 m | 42 m | 29.5 m | 7.5 m | 91 m | 51 m |
 
 Values are ICAO based and live in `src/data/airfield_codes.json`.
 
@@ -221,6 +226,8 @@ Parametric pieces that generate normal editable objects: runway end with turn pa
 
 ### Surfaces and pavement
 
+Per surface rules, colors, costs and works rates live in `src/data/surfaces.json` (`docs/DESIGN_REVISION_2.md` section 2.5). Grass, dirt and gravel allow codes A to C only and get edge markers instead of paint; asphalt and concrete allow every code and get full paint, concrete with a dark outline on every yellow line. A taxiway's surface is chosen when building and changed later in its inspector: an upgrade pays the new pavement, a downgrade refunds a share of the old value, and either one closes the taxiway for works that take `worksDaysPerKm2` of the new surface. A downgrade that would shut out a type an airline flies here is refused and names the type. Routing treats a segment as closed to a type whose surface list does not include it.
+
 | Surface | Build cost per m2 | Strength tiers (PCR) | Upkeep per year | Rain | Allowed users |
 | --- | --- | --- | --- | --- | --- |
 | Dirt | 3 | fixed 5 | 4 percent of build | Closes after heavy rain until dry | Types with `dirt` in `surfaces` |
@@ -240,36 +247,36 @@ surfaceFactor = 1.0 asphalt, 1.1 concrete
 
 ### Stands
 
-Stand types:
+Revised by `docs/DESIGN_REVISION_2.md` sections 1 and 3. Four sizes, each contact (jet bridges at a terminal) or remote (bus or stairs); small stands are always remote. Sizes and dimensions live in `src/data/stand_sizes.json`.
 
-| Type | Surfaces | Boarding | Push back | Notes |
-| --- | --- | --- | --- | --- |
-| Contact, nose in | Concrete, asphalt | Jet bridge, 1 to 3 | Tug | Needs a terminal facade and head of stand road |
-| MARS | Concrete, asphalt | Jet bridges | Tug | One code E or F aircraft or two code C aircraft on left and right lines |
-| Remote, push back | Concrete, asphalt | Bus or stairs | Tug | Cheaper, slower boarding, rain lowers satisfaction |
-| Remote, taxi through | Concrete, asphalt | Bus or stairs | None | Turboprops and small jets, taxilanes at both ends |
-| Cargo | Concrete | Loaders | Tug | Needs cargo road and staging |
-| GA tie down | Asphalt, gravel, grass, dirt | Walk | None | Rows of light aircraft |
+| Size | Codes | Wingspan | Examples | Surfaces | Width | Depth | Fork radius |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Small | A, B | up to 24 m | Cessna 172, King Air, Citation | grass, dirt, gravel, asphalt, concrete | 30 m | 24 m | 16.5 m |
+| Medium | C | over 24 up to 36 m | A320 family, 737, ATR 72, Dash 8 | grass, dirt, gravel, asphalt, concrete | 45 m | 52 m | 24.5 m |
+| Large | D, E | over 36 up to 65 m | 777, 787, A350, A330 | asphalt, concrete | 80 m | 88 m | 42.5 m |
+| Extra large | F | over 65 up to 80 m | 747, A380, An 124 | asphalt, concrete | 95 m | 94 m | 50.5 m |
+
+* A type fits a stand when its wingspan is within the size and the stand surface is on its list, so an unpaved medium stand takes an ATR 72 but not an A320. The inspector names the types a stand refuses.
+* An An 225 needs two adjacent extra large stands merged into a double stand (`mergeable` in the data; no released type needs it yet).
+* Lead in and push back: the stand centerline runs from the stop bar to the fork point at the fork radius from the taxilane, and two quarter circle arcs join the taxilane tangentially, one each way. Nothing crosses the taxilane. Neighbouring forks share the point where they meet.
+* Push back runs tail first along one arc onto the taxilane, then the aircraft taxis forward. The stand sets left or right, or by default the side away from the departure route. Before starting the aircraft needs the arc's taxilane node and the 28 m of taxilane beyond it clear.
+* MARS and cargo stands arrive with MVP 2 as variants of these sizes.
 
 A stand takes its surface from what it is built on, and its markings follow the surface:
 
 | Surface | Markings | Restrictions |
 | --- | --- | --- |
-| Concrete | Full paint set, crisp | None |
-| Asphalt | Full paint set, fading with condition, repaint as an upkeep task | None |
-| Gravel | No paint. Cones along the lead in, stand signboard, tie down rings, white edge markers | No jet bridge, no hydrant fuel, refueller truck only, only types with `gravel`, turnaround plus 20 percent in rain |
-| Grass | As gravel plus mowed lines | As gravel, types with `grass` |
-| Dirt | Cones, signboard and tie down rings only | As gravel, types with `dirt` |
+| Concrete | Full paint set, lines outlined in black | Size rules above |
+| Asphalt | Full paint set, fading with condition | Size rules above |
+| Gravel, grass, dirt | No paint. Cones along the lead in, stand signboard, tie down rings, white edge markers | Small and medium only, types rated for the surface |
 
-Painted stand markings are generated from the stand type and its assigned aircraft types (full rules in `docs/ART_AND_ASSETS.md` section 9):
+Contact stands (medium, large, extra large) are marked from the stand data and the assigned types (full rules in `docs/ART_AND_ASSETS.md` section 9): the red stand safety line at the fork radius, a red stand boundary that narrows into a funnel at the nose, found so both front corners stay 3 m clear of every assigned type, a red hatched jet bridge zone front left and a white hatched staging area front right, the service road with lane arrows above the stand, jet bridges to the door stations, stop bars per type group and hydrant pits on large and extra large stands. Remote stands drop the bridges and the road and show a bus bay. Small stands get the GA stop mark, red dashed wingtip lines and tie down rings. At low zoom only the lead in, the boundary and the stand number show.
 
-* Yellow lead in and lead out lines, stand number boxes, and a stop position ladder with one stop bar per type group and black type boxes on both sides.
-* The red equipment restraint area is generated from the **union of the real outlines of all assigned types plus clearance**, simplified to clean straight lines. Behind a swept wing its lines follow the wing sweep. For straight wing types it is close to a rectangle.
-* Red wingtip clearance lines, hatched no parking under jet bridges, hatched emergency equipment zone, fuel pits and extinguisher points.
-* White head of stand road with crossings, GSE parking, staging boxes, push back limit line and passenger walkways.
-* At low zoom only the lead in line, restraint outline and stand number show.
+The sim stores stand size, type, surface and push back side. Paint is a render concern.
 
-The sim stores stand type, surface, assigned types, stop positions and push back direction. Paint is a render concern.
+### Apron tool
+
+`docs/DESIGN_REVISION_2.md` section 4. Two modes in one tool, switched with A or the buttons in the build bar: free polygon (click corners, double click or Enter to close, Shift for 15 degree steps, live edge lengths and area) and rectangle (drag corner to corner, aligned to the runway frame or the nearest apron edge, snapping to apron and taxiway edges, live width, height and area). Pieces of the same surface that overlap or touch merge into one named apron and only the new area is paid for. Ctrl drag or Ctrl click cuts a piece out, which can leave a hole or split the apron. Undo and redo cover every piece.
 
 ### Runway and taxiway markings
 
@@ -282,7 +289,7 @@ What the player controls (implementation in `docs/ARCHITECTURE.md` section 5):
 * **Segment rules**: one way, two way, closed, maximum code, speed limit.
 * **Holding points**: aircraft stop and wait for ATC clearance to enter or cross a runway.
 * **Preferred flows**: the player can paint standard taxi routes, for example an inbound loop and an outbound loop, or "stand group 1 to runway 27 via A and B2". Aircraft use preferred routes when they are open and fall back to the fastest legal route otherwise.
-* **Push back**: each stand has a push back direction (left, right, straight back). Push back blocks the taxilane segment behind the stand while in progress.
+* **Push back**: tail first along one fork arc of the stand, left or right (straight back is not allowed on a forked stand), then 28 m along the taxilane. The aircraft starts only when the arc's taxilane node, the 28 m stretch beyond it and the taxiway past it are clear.
 * **Congestion**: route cost includes live traffic, so new routes avoid jammed taxiways. Aircraft never meet head on, never pass through each other and keep a safe gap.
 * **Deadlocks**: when a wait cycle forms, the lowest priority aircraft holds or reroutes. A debug overlay shows the cycle so the player can fix the layout.
 * **Vehicles**: GSE use service roads and apron lanes with the same reservation rules. Where a service road crosses a taxiway, vehicles always give way to aircraft.
@@ -292,6 +299,8 @@ What the player controls (implementation in `docs/ARCHITECTURE.md` section 5):
 ### Tools
 
 Walls, doors, floor types, rooms with a type, fixtures and shop units, all on the building's local 2 m grid with 90 degree rotation. A room type check gives live warnings, for example a gate lounge with no door to the airside.
+
+A building has no fixed size (`docs/DESIGN_REVISION_2.md` section 5). Its footprint is laid in rectangles that merge and can be extended or shrunk in any direction; only owned land, money, clearances to runways, taxiways and aprons, and the world size limit it. The grid grows in 64 m steps as edits reach past it.
 
 ### Fixtures and starting parameters
 

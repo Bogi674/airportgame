@@ -165,9 +165,11 @@ Key O opens a compact list. One overlay at a time plus optional labels. Active o
 ## 6. Building interactions
 
 * **Runway**: click start, move, click end. The wind ring and runway numbers follow the cursor. Context bar shows length, heading, band and cost.
-* **Taxiway**: click to add nodes, double click or Enter to finish. A ghost wingtip envelope slides along. Junctions and fillets preview live. Click an existing taxiway to branch from it.
+* **Taxiway** (`docs/DESIGN_REVISION_2.md` section 2.2): click to add nodes, double click or Enter to finish. While the tool is open every node shows as a small white circle, junctions with their label. The snap target shows in snapping cyan: a ring with a dot on a node, a square on an open end, a diamond on a segment, with a tooltip ("Snap to J1", "Continue taxiway", "Split segment") in a dark box with a cyan border. The new arm previews in cyan at 30 percent. The length readout moves clear of the snap ring.
+* **Taxiway inspector**: a surface bar (Grass, Dirt, Gravel, Asphalt, Concrete) with the current and selected surface, the upgrade cost or downgrade refund and the works days, and Apply. Codes above C disable the unpaved surfaces. A taxiway under works shows the days left.
 * **Rapid exit**: hover the runway, the tool shows the suggested position with a marker. Click to place, scroll to change the angle preset.
-* **Stand and stand row**: drag along an apron edge or taxilane. Stand count and spacing preview live. Assigned types are chosen in the context bar.
+* **Stand and stand row**: click to place a row. The context bar sets contact or remote, the size (small, medium, large, extra large) and the count; spacing is the size's width. The preview shows the real fork and markings. The stand inspector shows the size, the types the stand refuses with the reason, and the push back side (left, right or away from the route).
+* **Apron** (`docs/DESIGN_REVISION_2.md` section 4): two modes, free polygon and rectangle, switched with A or the two buttons in the context bar. Edge lengths and the area show live as small tags; Ctrl cuts instead of building. The apron inspector shows its name and area.
 * **Terminal interior**: drag rectangles for walls and rooms on the grid. Fixtures follow the cursor. R rotates 90 degrees.
 * **Validation**: errors show as a red outline on the offending object plus a short label by the cursor ("Too close to runway 09/27, max code C here"). Hovering the label shows the full rule.
 * **Costs** show before confirming, with build time and monthly upkeep.
@@ -186,6 +188,8 @@ Key O opens a compact list. One overlay at a time plus optional labels. Active o
 | R | Rotate 90 degrees |
 | Shift (hold) | Snap to 15 degree steps |
 | Alt (hold) | Free placement, no snapping |
+| A | Apron tool: switch free polygon and rectangle |
+| Ctrl (hold) | Apron tool: cut a piece out |
 | Space | Pause and resume |
 | 1 to 4 | Game speed |
 | O | Overlays |
