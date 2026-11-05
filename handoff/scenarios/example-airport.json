@@ -1,0 +1,20 @@
+{
+  "buy": [[2880, 4880, 5720, 5640]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 1 },
+    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 190, "code": "C", "connectors": 4, "surface": "asphalt", "tier": 1 },
+    { "type": "buildApron", "polygon": [{ "x": 3800, "y": 5205 }, { "x": 4400, "y": 5205 }, { "x": 4400, "y": 5420 }, { "x": 3800, "y": 5420 }], "surface": "concrete", "tier": 1 },
+    { "type": "buildStands", "x": 4350, "y": 5330, "headingDeg": 180, "count": 6, "spacingM": 45, "standType": "remote", "size": "medium" }
+  ],
+  "camera": { "x": 4100, "y": 5250, "zoom": 1.2 },
+  "hideUi": true,
+  "actions": [
+    { "shot": "overview", "clip": { "w": 900, "h": 600 } },
+    { "tool": "tool-taxiway" },
+    { "click": [3900, 5450] },
+    { "move": [4300, 5450] },
+    { "shot": "taxiway-tool", "clip": { "w": 900, "h": 600 } },
+    { "key": "Escape" }
+  ],
+  "report": ["airfield.runways.length", "airfield.stands.length", "cash"]
+}

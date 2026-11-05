@@ -26,6 +26,8 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 | `docs/reference/sprite-prototypes/` | Python reference code for sprites, markings and collision. Port it, do not ship it |
 | `docs/reference/geometry/` | Python reference code for fillets, junctions, stand forks, funnels and apron shapes. Port the math exactly, do not ship it |
 
+Other agents (opencode and similar) read `AGENTS.md` and `handoff/`, which repeat these rules with a step by step workflow. When a rule here changes, change it there too.
+
 Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`) and `src/data/gse.json` (ground vehicle catalog).
 
 ## Precedence
