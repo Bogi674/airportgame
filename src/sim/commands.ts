@@ -1,4 +1,4 @@
-import type { Approach, CodeLetter, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
+import type { Approach, CodeLetter, PadSide, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
 import type { FeeLevel } from '@shared/business';
 import type { TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -35,6 +35,8 @@ export type Command =
   | { type: 'autoAssignStands' }
   | { type: 'resizeRunway'; id: number; end: 'a' | 'b'; deltaM: number }
   | { type: 'reclassRunway'; id: number; code: CodeLetter; approach: Approach }
+  /** Builds a turn pad at one end of a runway on the given side, or removes it with null. */
+  | { type: 'turnPad'; runwayId: number; end: 'a' | 'b'; side: PadSide | null }
   | { type: 'editTaxiway'; id: number; op: 'extend' | 'trim' | 'cut'; end?: 'start' | 'end'; points?: Pt[]; at?: Pt; at2?: Pt }
   | { type: 'resurface'; kind: 'runway' | 'taxiway' | 'apron'; id: number; surface: Surface; tier: number }
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; edit: TerminalEdit }

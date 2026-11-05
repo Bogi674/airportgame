@@ -106,6 +106,14 @@
     "precision": 280
   },
   "gradingCostPerM3": 6,
+  "turnPad": {
+    "note": "Runway end turn pad (ICAO Annex 14 3.3), by runway code: total paved width at the pad, the length at full width and the taper back to the runway edge. Departures that need the full length backtrack along the runway at backtrackSpeedMs and turn on the pad in turnSeconds.",
+    "widthM": { "A": 26, "B": 30, "C": 60, "D": 70, "E": 75, "F": 90 },
+    "lengthM": { "A": 30, "B": 40, "C": 60, "D": 75, "E": 85, "F": 95 },
+    "taperM": { "A": 20, "B": 30, "C": 50, "D": 60, "E": 70, "F": 80 },
+    "backtrackSpeedMs": 8,
+    "turnSeconds": 40
+  },
   "runwayWorks": {
     "note": "Runway edits close the runway. Days come from the pavement area that changes at the surface's works rate times areaFactor (runway crews are larger), plus fitting out a new approach type.",
     "areaFactor": 0.15,

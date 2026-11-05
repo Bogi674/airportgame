@@ -14,6 +14,7 @@ import {
   type Taxiway,
 } from '@shared/airfield';
 import type { RunwayObstacles } from '@shared/obstacles';
+import { padArea, padPolygon } from '@shared/turnPad';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
@@ -213,6 +214,8 @@ export class Airfield {
         return this.resizeRunway(cmd, ctx, cash, env);
       case 'reclassRunway':
         return this.reclassRunway(cmd, ctx, cash, env);
+      case 'turnPad':
+        return this.turnPad(cmd, ctx, cash, env);
       case 'editTaxiway':
         return this.editTaxiway(cmd, ctx, cash);
       case 'undo':
@@ -759,6 +762,41 @@ export class Airfield {
     return { cashDelta: 0 };
   }
 
+  /**
+   * Builds or removes a runway end turn pad (docs/GAME_DESIGN.md section 6, prefab pieces). Building it
+   * is a runway edit: the runway closes while the pad is laid.
+   */
+  private turnPad(cmd: Extract<Command, { type: 'turnPad' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
+    const r = this.data.runways.find((x) => x.id === cmd.runwayId);
+    if (!r) return { code: 'nothingThere' };
+    const end = cmd.end === 'b' ? 'b' : 'a';
+    const unit = this.unitCost(r);
+    const value = Math.round(padArea(r) * unit);
+    const current = r.pads?.[end];
+    if (cmd.side === null) {
+      if (!current) return { code: 'nothingThere' };
+      const pads = { ...r.pads };
+      delete pads[end];
+      if (pads.a || pads.b) r.pads = pads;
+      else delete r.pads;
+      r.cost = Math.max(0, r.cost - value);
+      this.refresh();
+      return { cashDelta: Math.round(value * REFUND_SHARE) };
+    }
+    const side = cmd.side === 'right' ? 'right' : 'left';
+    if (current === side) return { code: 'padExists' };
+    const problem = checkPolygon(ctx, padPolygon(r, end, side));
+    if (problem) return problem;
+    // Moving a pad to the other side pays for the new one and refunds a share of the old.
+    const cost = value - (current ? Math.round(value * REFUND_SHARE) : 0);
+    if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
+    this.closeForWorks(r, { ...r }, { areaM2: padArea(r) }, env);
+    r.pads = { ...r.pads, [end]: side };
+    if (!current) r.cost += value;
+    this.refresh();
+    return { cashDelta: -cost };
+  }
+
   /** Cost per square meter for a runway at its current strength tier. */
   private unitCost(r: Runway): number {
     const tiers = SURFACE_SPEC[r.surface].pcrTiers;
@@ -1063,6 +1101,7 @@ export class Airfield {
     for (const x of this.data.runways) {
       acc = foldU32(foldU32(foldU32(acc, x.id), r(x.x1)), r(x.y1));
       acc = foldU32(foldU32(foldU32(acc, x.headingDeg), x.lengthM), x.works ? x.works.doneTick % 0xffffffff : 0);
+      acc = foldU32(acc, (x.pads?.a === 'left' ? 1 : x.pads?.a === 'right' ? 2 : 0) + (x.pads?.b === 'left' ? 4 : x.pads?.b === 'right' ? 8 : 0));
     }
     for (const t of this.data.taxiways) {
       acc = foldU32(foldU32(acc, t.id), t.points.length);

@@ -69,7 +69,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down (aprons merge and cut, free polygon and rectangle modes; stands come in four sizes with a lead in fork)
 * [x] Surfaces with PCR tiers, condition and resurfacing (taxiway works close the edges for their duration, runway edits close the runway, allowed codes per surface; aprons resurface at once)
 * [x] Alignment frames and snapping rules (`GAME_DESIGN.md` section 6)
-* [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block (all but the turn pad)
+* [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block (turn pad: sim, `turnPad` command and departure backtrack done; drawing the pad and its curve and the placement tool are open, see `handoff/tasks/01-turn-pad-ui.md`)
 * [ ] Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes (simplified set: thresholds, designators, centerline, edges, aiming point, touchdown zone, hold marks, stand lines and boxes)
 * [ ] Grading tool with cut and fill cost (only an automatic grading cost is charged, terrain is not modified)
 * [x] Undo and redo for all build actions, validation messages with explanations

@@ -38,6 +38,15 @@ export const airfieldCodesSchema = z
     holdingDistanceM: perApproach,
     stripWidthM: perApproach,
     gradingCostPerM3: z.number().nonnegative(),
+    /** Runway end turn pads (docs/GAME_DESIGN.md section 6, prefab pieces). */
+    turnPad: z.strictObject({
+      note: z.string(),
+      widthM: perCode,
+      lengthM: perCode,
+      taperM: perCode,
+      backtrackSpeedMs: z.number().positive(),
+      turnSeconds: z.number().positive(),
+    }),
     /** Runway works durations (docs/GAME_DESIGN.md section 6, runway tool). */
     runwayWorks: z.strictObject({ note: z.string(), areaFactor: z.number().positive(), approachDays: perApproach }),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */

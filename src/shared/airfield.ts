@@ -43,7 +43,11 @@ export interface Runway {
   nameB: string;
   /** Works in progress: the runway is closed until `doneTick`. */
   works?: { doneTick: number };
+  /** Turn pads at threshold A and B, on the left or right of the heading from A to B. */
+  pads?: { a?: PadSide; b?: PadSide };
 }
+
+export type PadSide = 'left' | 'right';
 
 export interface Taxiway {
   id: number;

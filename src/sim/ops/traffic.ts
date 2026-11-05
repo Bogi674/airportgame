@@ -9,6 +9,8 @@ import type { Rng } from '../rng';
 import { standRefusal } from '@shared/standSizes';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
+import { AIRFIELD } from '@data/index';
+import { padSize } from '@shared/turnPad';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
 
@@ -27,7 +29,7 @@ const RETRY_TICKS = 300;
 const SLOTS = 8;
 const TURN_RATE = 0.35;
 
-export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround: 4, Pushback: 5, TaxiOut: 6, Holding: 7, LineUp: 8, Takeoff: 9 } as const;
+export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround: 4, Pushback: 5, TaxiOut: 6, Holding: 7, LineUp: 8, Takeoff: 9, Backtrack: 10 } as const;
 export const FlState = { Free: 0, Scheduled: 1, Inbound: 2, OnGround: 3, Departing: 4, Done: 5 } as const;
 
 const ROLE_TURNAROUND_MIN: Record<string, number> = { ga: 15, commuter: 20, regionalTurboprop: 30, regionalJet: 35, narrowbody: 45, widebody: 75 };
@@ -98,6 +100,8 @@ export class Traffic {
   readonly rwyDir = new Int8Array(MAX_AIRCRAFT);
   readonly rwyS = new Float64Array(MAX_AIRCRAFT);
   readonly rwyExitS = new Float64Array(MAX_AIRCRAFT);
+  /** Distance a departure backtracks along the runway to a turn pad before its roll, 0 for none. */
+  readonly rwyBack = new Float64Array(MAX_AIRCRAFT);
   readonly rwySlot = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly entryIdx = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly timer = new Int32Array(MAX_AIRCRAFT);
@@ -260,7 +264,7 @@ export class Traffic {
 
   private replan(i: number): void {
     const st = this.state[i];
-    if (st === AcState.Takeoff) {
+    if (st === AcState.Takeoff || st === AcState.Backtrack) {
       if (this.rwyIdx[i] >= this.af.runways.length) this.removeAircraft(i, 'lost');
       return;
     }
@@ -855,6 +859,9 @@ export class Traffic {
         case AcState.Takeoff:
           this.updateTakeoff(i);
           break;
+        case AcState.Backtrack:
+          this.updateBacktrack(i);
+          break;
         default:
           break;
       }
@@ -1329,6 +1336,7 @@ export class Traffic {
     let bestDir = 1;
     let firstFail = '';
     let failAvail = -1;
+    let bestBack = 0;
     const f = this.flight[i];
     let waitedOnly = false;
     for (const h of this.net.holds) {
@@ -1348,7 +1356,17 @@ export class Traffic {
       for (const dir of [1, -1] as const) {
         const toda = dir === 1 ? en.todaTowardB : en.todaTowardA;
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;
-        const lim = checkTakeoff(a, rw, toda, this.site.climate, this.lengthFactor(rw, dir), this.shareFor(i));
+        let lim = checkTakeoff(a, rw, toda, this.site.climate, this.lengthFactor(rw, dir), this.shareFor(i));
+        // A turn pad at the end the roll starts from lets the aircraft backtrack and use the full length.
+        let back = 0;
+        const pad = dir === 1 ? rw.pads?.a : rw.pads?.b;
+        if (!lim.ok && pad && toda < rw.lengthM) {
+          const full = checkTakeoff(a, rw, rw.lengthM, this.site.climate, this.lengthFactor(rw, dir), this.shareFor(i));
+          if (full.ok) {
+            lim = full;
+            back = rw.lengthM - toda;
+          }
+        }
         if (!lim.ok) {
           // Report the best an entry could offer, not the first entry that failed.
           if (!firstFail || lim.available > failAvail) {
@@ -1363,12 +1381,14 @@ export class Traffic {
         if (n < 0) continue;
         let time = 0;
         for (let k = 0; k < n; k++) time += this.net.edgeLen[this.tmpEdge[k]] / Math.max(1, this.net.edgeSpeed[this.tmpEdge[k]]);
+        if (back > 0) time += back / AIRFIELD.turnPad.backtrackSpeedMs + AIRFIELD.turnPad.turnSeconds;
         // Prefer a headwind and short taxi times.
         const score = time - this.headwind(hdg) * 3;
         if (score < bestScore) {
           bestScore = score;
           bestHold = h.entryIdx;
           bestDir = dir;
+          bestBack = back;
         }
       }
     }
@@ -1399,6 +1419,7 @@ export class Traffic {
     const en = this.af.entries[bestHold];
     this.rwyIdx[i] = this.af.runways.findIndex((r) => r.id === en.runwayId);
     this.rwyDir[i] = bestDir;
+    this.rwyBack[i] = bestBack;
     this.goalX[i] = this.net.nodeX[hold.node];
     this.goalY[i] = this.net.nodeY[hold.node];
     this.state[i] = bestN === 1 ? AcState.TaxiOut : AcState.Pushback;
@@ -1457,7 +1478,9 @@ export class Traffic {
     const vLof = a.performance.vrefKt * KT * 1.05;
     const rollTicks = Math.round(((2 * roll) / vLof) * 10);
     const start = this.tick;
-    const end = this.tick + RUNWAY_OCCUPANCY.lineUp * 10 + rollTicks + 100;
+    // A backtrack to a turn pad holds the runway for the taxi up it and the turn as well.
+    const backTicks = this.rwyBack[i] > 0 ? Math.round((this.rwyBack[i] / AIRFIELD.turnPad.backtrackSpeedMs + AIRFIELD.turnPad.turnSeconds) * 10) : 0;
+    const end = this.tick + RUNWAY_OCCUPANCY.lineUp * 10 + backTicks + rollTicks + 100;
     if (!this.slotFree(r, start, end, WAKE_OF[t])) return;
     const slot = this.reserve(r, start, end, WAKE_OF[t]);
     if (slot < 0) return;
@@ -1478,7 +1501,49 @@ export class Traffic {
     void f;
     this.uncount(i);
     this.state[i] = AcState.Takeoff;
+    if (this.rwyBack[i] > 0) {
+      this.state[i] = AcState.Backtrack;
+      this.speed[i] = AIRFIELD.turnPad.backtrackSpeedMs;
+    }
     this.placeOnRunway(i);
+    if (this.state[i] === AcState.Backtrack) this.heading[i] = turnWrap(this.heading[i] + PI);
+  }
+
+  /**
+   * Taxies a departure back along the runway to the turn pad at the start of its roll, turns it round on
+   * the pad and starts the takeoff (docs/GAME_DESIGN.md section 6, prefab pieces).
+   */
+  private updateBacktrack(i: number): void {
+    const rw = this.af.runways[this.rwyIdx[i]];
+    if (!rw) {
+      this.removeAircraft(i, 'lost');
+      return;
+    }
+    const turnTicks = AIRFIELD.turnPad.turnSeconds * 10;
+    if (this.rwyS[i] > 0) {
+      this.rwyS[i] = Math.max(0, this.rwyS[i] - AIRFIELD.turnPad.backtrackSpeedMs * DT);
+      this.placeOnRunway(i);
+      this.heading[i] = turnWrap(this.heading[i] + PI);
+      if (this.rwyS[i] === 0) this.timer[i] = turnTicks;
+      return;
+    }
+    // On the pad the aircraft swings out to the pad side and round to the takeoff heading.
+    this.timer[i]--;
+    const left = Math.max(0, this.timer[i]) / turnTicks;
+    this.placeOnRunway(i);
+    const side = this.rwyDir[i] === 1 ? rw.pads?.a : rw.pads?.b;
+    const len = Math.hypot(rw.x2 - rw.x1, rw.y2 - rw.y1) || 1;
+    const sign = side === 'right' ? -1 : 1;
+    const out = (rw.widthM / 2 + padSize(rw).extra / 2) * sinLut(PI * (1 - left)) * sign;
+    this.x[i] += ((rw.y2 - rw.y1) / len) * out;
+    this.y[i] -= ((rw.x2 - rw.x1) / len) * out;
+    this.heading[i] = turnWrap(this.heading[i] + PI * left);
+    this.speed[i] = 3;
+    if (this.timer[i] <= 0) {
+      this.rwyBack[i] = 0;
+      this.speed[i] = 2;
+      this.state[i] = AcState.Takeoff;
+    }
   }
 
   private updateTakeoff(i: number): void {
@@ -1585,7 +1650,7 @@ export class Traffic {
       heading: this.heading, speed: this.speed, dist: this.dist, routeLen: this.routeLen, routeIdx: this.routeIdx,
       routeEdge: this.routeEdge, routeDir: this.routeDir, heldNode: this.heldNode, curBlock: this.curBlock, prevBlock: this.prevBlock,
       nextBlock: this.nextBlock, nextAcq: this.nextAcq, waitingFor: this.waitingFor, ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
-      standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwySlot: this.rwySlot,
+      standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwyBack: this.rwyBack, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
       fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage, fStand: this.fStand,
@@ -1668,7 +1733,7 @@ export class Traffic {
     let n = 0;
     for (let k = 0; k < this.count; k++) {
       const s = this.state[this.activeList[k]];
-      if (s !== AcState.Approach && s !== AcState.Rollout && s !== AcState.Takeoff) n++;
+      if (s !== AcState.Approach && s !== AcState.Rollout && s !== AcState.Takeoff && s !== AcState.Backtrack) n++;
     }
     return n;
   }

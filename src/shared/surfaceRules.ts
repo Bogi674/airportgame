@@ -52,6 +52,8 @@ export interface RunwayEdit {
   approach?: Approach;
   /** Resurfacing, to this surface (the same surface for a strength change). */
   surface?: Surface;
+  /** New pavement added beside the runway, such as a turn pad. */
+  areaM2?: number;
 }
 
 /** Days a runway closes for an edit: the pavement that changes, plus fitting out a new approach type. 0 for no change. */
@@ -69,6 +71,7 @@ export function runwayWorksDays(r: Pick<Runway, 'lengthM' | 'widthM' | 'shoulder
     surface = e.surface;
     area += r.lengthM * full;
   }
+  if (e.areaM2) area += e.areaM2;
   let days = area > 0 ? Math.max(SURFACE_DATA.minWorksDays, Math.ceil((SURFACE_SPEC[surface].worksDaysPerKm2 * area * W.areaFactor) / 1e6)) : 0;
   if (e.approach && e.approach !== r.approach) {
     days += APPROACHES.indexOf(e.approach) > APPROACHES.indexOf(r.approach) ? W.approachDays[e.approach] : SURFACE_DATA.minWorksDays;
