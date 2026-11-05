@@ -51,6 +51,8 @@ export const airfieldCodesSchema = z
     runwayWorks: z.strictObject({ note: z.string(), areaFactor: z.number().positive(), approachDays: perApproach }),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
     taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
+    /** Construction grid along a runway or taxiway (handoff/tasks/T42-grid-snapping.md). */
+    constructionGrid: z.strictObject({ note: z.string(), spacingMinorM: z.number().positive(), spacingMajorM: z.number().positive() }),
     /** Approach and transitional surfaces (docs/GAME_DESIGN.md section 6, clearances). */
     obstacleSurfaces: z.strictObject({
       note: z.string(),
@@ -66,6 +68,9 @@ export const airfieldCodesSchema = z
     for (const c of CODE_LETTERS) {
       const r = d.codes[c];
       if (r.turnRadiusM <= r.taxiwayWidthM / 2) ctx.addIssue({ code: 'custom', path: ['codes', c, 'turnRadiusM'], message: 'turn radius must exceed half the taxiway width' });
+    }
+    if (d.constructionGrid.spacingMajorM % d.constructionGrid.spacingMinorM !== 0) {
+      ctx.addIssue({ code: 'custom', path: ['constructionGrid', 'spacingMajorM'], message: 'major grid spacing must be a whole multiple of the minor one' });
     }
   });
 

@@ -120,6 +120,11 @@
     "approachDays": { "visual": 1, "nonPrecision": 10, "precision": 21 }
   },
   "taxiwayTool": { "snapRadiusM": 15, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 },
+  "constructionGrid": {
+    "note": "Snappable construction grid along a runway or taxiway segment (T42). spacingMinorM is the distance between neighbouring nodes, spacingMajorM the distance between the highlighted lines, which must be a whole multiple of it.",
+    "spacingMinorM": 2,
+    "spacingMajorM": 10
+  },
   "obstacleSurfaces": {
     "note": "Simplified ICAO Annex 14 surfaces. The approach surface starts startM before the threshold with innerEdgeM width, widens by divergence each side and rises at slope over lengthM. The transitional surface rises at transitionalSlope from the strip edge up to transitionalTopM. Cover heights stand on terrain the player does not own; owned land is cleared.",
     "approach": {
