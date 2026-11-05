@@ -1,0 +1,24 @@
+{
+  "buy": [[2880, 4880, 5720, 5640]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 1 },
+    { "type": "turnPad", "runwayId": 1, "end": "a", "side": "left" },
+    { "type": "turnPad", "runwayId": 1, "end": "b", "side": "right" }
+  ],
+  "hideUi": true,
+  "actions": [
+    { "camera": { "x": 3035, "y": 4965, "zoom": 4 } },
+    { "shot": "zoomA", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 5565, "y": 5035, "zoom": 4 } },
+    { "shot": "zoomB", "clip": { "w": 900, "h": 600 } },
+    { "tool": "tool-runway" },
+    { "tool": "card-turnPad" },
+    { "camera": { "x": 5565, "y": 5035, "zoom": 4 } },
+    { "move": [5520, 4900] },
+    { "shot": "zoomPreview", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 3035, "y": 4965, "zoom": 4 } },
+    { "move": [3080, 5040] },
+    { "shot": "zoomPreviewRight", "clip": { "w": 900, "h": 600 } }
+  ],
+  "report": ["cash"]
+}

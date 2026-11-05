@@ -56,6 +56,7 @@
   "tool.taxilane": "Taxilane",
   "tool.rapidExit": "Rapid exit",
   "tool.parallel": "Parallel taxiway",
+  "tool.turnPad": "Turn pad",
   "tool.apron": "Apron",
   "tool.stands": "Stand row",
   "tool.gaBlock": "GA block",

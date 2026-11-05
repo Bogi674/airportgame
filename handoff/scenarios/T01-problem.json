@@ -1,0 +1,16 @@
+{
+  "buy": [[2880, 4880, 5720, 5640]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 1 },
+    { "type": "turnPad", "runwayId": 1, "end": "b", "side": "right" }
+  ],
+  "hideUi": false,
+  "actions": [
+    { "tool": "tool-runway" },
+    { "tool": "card-turnPad" },
+    { "camera": { "x": 5620, "y": 5040, "zoom": 1.5 } },
+    { "move": [5740, 5000] },
+    { "shot": "5-problem", "clip": { "w": 900, "h": 700 } }
+  ],
+  "report": ["cash"]
+}

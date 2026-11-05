@@ -1,16 +1,18 @@
 # T01: Turn pad drawing and placement tool
 
-Status: planning
+Status: done
 Branch: glm/mvp1
 
 ## Requirements
 
-* [ ] R1. One shared cost function: `padValue(r: Runway): number` in `src/shared/turnPad.ts` (pad area times the unit cost of the runway's surface and strength tier, rounded). The sim's `turnPad` uses it instead of its own formula. A test shows the sim charges exactly `padValue(r)`.
-* [ ] R2. Drawing: every pad is painted with the runway's pavement color, under the runway markings, by the chunk painter. The yellow turn curve (`padCurve`) is painted with the taxiway centerline width from `src/data/paint.json`, with a black outline on concrete like other yellow lines. On the pad side, the white runway edge line stops at the runway end, so it is not drawn from the runway end to `lengthM + taper`.
-* [ ] R3. Tool: a new tool `turnPad`, as a card in the runway category build tab, titled "Turn pad". Hovering within 150 m of a runway end previews a pad at that end, on the side of the runway axis where the cursor is (`runwaySide`). The preview shows the pad polygon and the curve, and a label with the cost and the works days from `runwayWorksDays(r, { areaM2: padArea(r) })`. Clicking sends `{ type: 'turnPad', runwayId, end, side }`.
-* [ ] R4. Preview validation uses the same checks as the sim: land (`checkPolygon`), money (`padValue`) and an existing pad on that side (`padExists`). An invalid preview is red and shows the problem text.
-* [ ] R5. Inspector: the runway inspector lists the pad at each end (designator plus side or none) and a Remove button per existing pad, which sends `side: null`.
-* [ ] R6. Strings for every new text in `src/ui/strings/en.json`, including `notice.padExists`.
+Copied from the task spec. Tick each one when it is met and tested.
+
+* [x] R1. One shared cost function: `padValue(r: Runway): number` in `src/shared/turnPad.ts` (pad area times the unit cost of the runway's surface and strength tier, rounded). The sim's `turnPad` uses it instead of its own formula. A test shows the sim charges exactly `padValue(r)`.
+* [x] R2. Drawing: every pad is painted with the runway's pavement color, under the runway markings, by the chunk painter. The yellow turn curve (`padCurve`) is painted with the taxiway centerline width from `src/data/paint.json`, with a black outline on concrete like other yellow lines. On the pad side, the white runway edge line stops at the runway end, so it is not drawn from the runway end to `lengthM + taper`.
+* [x] R3. Tool: a new tool `turnPad`, as a card in the runway category build tab, titled "Turn pad". Hovering within 150 m of a runway end previews a pad at that end, on the side of the runway axis where the cursor is (`runwaySide`). The preview shows the pad polygon and the curve, and a label with the cost and the works days from `runwayWorksDays(r, { areaM2: padArea(r) })`. Clicking sends `{ type: 'turnPad', runwayId, end, side }`.
+* [x] R4. Preview validation uses the same checks as the sim: land (`checkPolygon`), money (`padValue`) and an existing pad on that side (`padExists`). An invalid preview is red and shows the problem text.
+* [x] R5. Inspector: the runway inspector lists the pad at each end (designator plus side or none) and a Remove button per existing pad, which sends `side: null`.
+* [x] R6. Strings for every new text in `src/ui/strings/en.json`, including `notice.padExists`.
 
 ## Read first (done)
 
@@ -86,8 +88,54 @@ None. (R4's money check reads cash from the game store, confirmed present.)
 
 ## Verify
 
-(to be pasted after `npm run verify`)
+Slice 1, 2, 3 and 4 each ran `npm run verify -- quick` green before their commit. Slice 4 ran into one flake, `tests/site.test.ts` breaching its 5 s timeout under load, which passes on its own and on the next full run; no code change involved.
+
+Final `npm run verify` (all five checks):
+
+```
+=== summary
+PASS  rules
+PASS  types
+PASS  lint
+PASS  tests
+PASS  stress
+verify: all checks passed.
+```
+
+Stress numbers for the two hardest scenarios (ms per tick, mean and p99): traffic34C total 0.02565 mean, 0.85250 p99; terminal640 total 0.00426 mean, 0.03780 p99. Peak 62 aircraft, 0 deadlocks, no budget breach.
+
+## Visual check
+
+Scenario: `handoff/scenarios/T01.json` (painted pads, overview, previews), plus `T01-zoom.json` (4 px/m close ups, `shots/T01-zoom/`) and `T01-problem.json` (UI visible so the context bar shows the problem text). Shots in `shots/T01/` (gitignored, view with the file paths below).
+
+* `shots/T01/T01-1-endA.png` (1.5 px/m, end A): pad pavement joins the runway with no gap, the yellow teardrop leaves the centerline, turns on the pad and rejoins at the pad tip, and the white edge line is gapped along the pad side. Confirmed against the turn pad line of `docs/ART_AND_ASSETS.md` section 8.
+* `shots/T01-zoom/T01-zoom-zoomA.png` and `T01-zoom-zoomB.png` (4 px/m): the pad outer edge is 45 m off the runway edge true scale (60 m pad width minus 30 m runway, code C: 60 wide, 60 long, 50 taper from `airfield_codes.json`); the edge line break measures to `length + taper`, 110 m on the pad side, and the north edge line runs on through on the other side. The curve crosses the threshold piano keys where its loop dips 12 m across the centerline: that comes from the existing `padCurve` geometry that the backtrack sim navigates, not from this task.
+* `shots/T01/T01-2-overview.png` (0.3 px/m): both pads visible, not cluttered.
+* `shots/T01/T01-3-preview-valid.png`: cyan preview polygon plus dashed curve, label "Turn pad, $143,438. Closes the runway for 1 days" fully inside the frame and clear of the pad.
+* `shots/T01/T01-problem-5-problem.png`: red preview and the context bar showing "There is already a turn pad at this end on this side. Remove it first."
+* `npm run shot` reports `page errors: none` for all three scenario runs.
+
+## Commits
+
+* `3eda81e` turn pads: one shared cost for a pad
+* `ecc78c5` turn pads: pad pavement and turn curve painted
+* `a7d88fe` turn pads: placement tool with cost and works preview
+* `309d7a9` turn pads: show and remove them from the runway inspector
+* (this one) turn pads: context bar title and docs
 
 ## Report
 
-(to be filled from `handoff/templates/REPORT.md` when done)
+* What now works, in player terms: the player picks "Turn pad" in the runway build tab, hovers near a runway end, sees the pad and its yellow turn curve on the side the cursor is with the cost and the runway closure in days, and clicks to place it. Pads are painted by the chunk baker and the white edge line opens where the pad hems the runway edge. The runway inspector lists the pad at each end and a Remove button takes one out for a quarter of the price.
+* Commits:
+  * `3eda81e` turn pads: one shared cost for a pad
+  * `ecc78c5` turn pads: pad pavement and turn curve painted
+  * `a7d88fe` turn pads: placement tool with cost and works preview
+  * `309d7a9` turn pads: show and remove them from the runway inspector
+  * this commit: turn pads: context bar title and docs
+* Verify summary: all five checks passed (see the Verify section above).
+* Stress: traffic34C 0.02565 mean, 0.85250 p99 ms per tick; terminal640 0.00426 mean, 0.03780 p99. No breach.
+* Screenshots: `shots/T01/T01-1-endA.png`, `shots/T01/T01-2-overview.png`, `shots/T01/T01-3-preview-valid.png`, `shots/T01/T01-problem-5-problem.png`, and the 4 px/m close ups in `shots/T01-zoom/`.
+* Compared with the reference sheet: matches the turn pad line of `docs/ART_AND_ASSETS.md` section 8, curve at the taxiway centerline width, outline only on concrete. One known aesthetic: the curve loop dips 12 m across the centerline and crosses the threshold piano keys near the end; that is the existing `padCurve` geometry the backtrack sim navigates.
+* Roadmap lines ticked: none fully (the prefab line needs rapid exit, parallel, stand row and GA block, already ticked elsewhere, so the note on the line was updated instead).
+* Decisions added to `docs/ARCHITECTURE.md`: shared pad cost (`padValue`), pad paint through the marking plan (`padCurves` plus the edge line break).
+* Simplified or left out: the works days label reuses the existing `inspector.runwayWorksPreview` string, which reads "for 1 days" when the works take a single day (a code C pad does). No plurals machinery exists in the strings module, so I left it and flag it to the user. Arrivals backtracking, pads on taxiways and blast pads stay out of scope per the task.
