@@ -49,6 +49,44 @@ describe('turn pads', () => {
     for (const p of padCurve(r, 'a', 'left')) expect(pointInPolygon(p.x, p.y, pad)).toBe(true);
   });
 
+  it('the turn curve leaves the runway centerline tangentially and returns on a straight line', () => {
+    const sim = ownedSim();
+    run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
+    const r = sim.airfield.data.runways[0];
+    const pts = padCurve(r, 'a', 'left');
+    // Local frame for a heading of 090: s outward west, l toward the pad side north.
+    const local = (p: { x: number; y: number }): { s: number; l: number } => ({ s: 3000 - p.x, l: 5000 - p.y });
+    const first = local(pts[0]);
+    const last = local(pts[pts.length - 1]);
+    expect(Math.abs(first.s)).toBeLessThan(0.01);
+    expect(Math.abs(first.l)).toBeLessThan(0.01);
+    expect(Math.abs(last.s)).toBeLessThan(0.01);
+    expect(Math.abs(last.l)).toBeLessThan(0.01);
+    // The curved branch leaves the threshold along the runway centerline, as in the reference diagram.
+    const head = local(pts[1]);
+    expect(Math.abs(head.l - first.l) / Math.abs(head.s - first.s)).toBeLessThan(0.06);
+    // The return branch is the straight diagonal of the reference: it comes back at a clear angle to the axis.
+    const tail = local(pts[pts.length - 2]);
+    const slope = Math.abs(tail.l - last.l) / Math.abs(tail.s - last.s);
+    expect(slope).toBeGreaterThan(0.5);
+  });
+
+  it('the loop keeps a clear margin from the pad edges', () => {
+    const sim = ownedSim();
+    run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
+    const r = sim.airfield.data.runways[0];
+    const size = padSize(r);
+    const local = (p: { x: number; y: number }): { s: number; l: number } => ({ s: 3000 - p.x, l: 5000 - p.y });
+    const h = r.widthM / 2;
+    const margin = (r.widthM + size.extra) * 0.1;
+    for (const p of padCurve(r, 'a', 'left')) {
+      const { s, l } = local(p);
+      expect(l).toBeGreaterThanOrEqual(-h + margin - 0.01);
+      expect(l).toBeLessThanOrEqual(h + size.extra - margin + 0.01);
+      expect(s).toBeLessThanOrEqual(size.length - margin + 0.01);
+    }
+  });
+
   it('building a pad costs money, closes the runway for a while and can be removed', () => {
     const sim = ownedSim();
     run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });

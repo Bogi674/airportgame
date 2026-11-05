@@ -64,25 +64,52 @@ function bezier(p0: Pt, p1: Pt, p2: Pt, p3: Pt, n: number, out: Pt[]): void {
 }
 
 /**
- * The yellow turn curve: its tail meets the runway centerline at the end, sweeps into the pad and turns
- * round on a circle as wide as the pavement allows, then back to the end: a teardrop that points at the
- * runway. The same shape fits either end and side through the local frame.
+ * The yellow turn curve, drawn as the user's reference diagram shows it: a tangent loop on the pad.
+ * The curved branch leaves the threshold along the runway centerline, sweeps the long way round a
+ * circle set in the pad and comes back on a straight diagonal to the threshold. The same shape fits
+ * either end and side through the local frame.
  */
 export function padCurve(r: Runway, end: 'a' | 'b', side: PadSide): Pt[] {
   const at = frame(r, end, side);
-  const h = r.widthM / 2;
   const { extra, length } = padSize(r);
-  const R = (2 * h + extra) / 2 - 3;
+  // Proportions measured from the user's reference diagram: the loop radius is a third of the paved
+  // width, and its centre sits a little over half the pad length out, so the loop keeps a clear
+  // margin from every pad edge instead of filling the pavement.
+  const paved = r.widthM + extra;
+  const wantRadius = paved * 0.33;
+  const cs = length * 0.53;
   const cl = extra / 2;
-  const cs = length / 2;
-  const k = cs * 0.5;
+  const d = Math.hypot(cs, cl);
+  // The threshold is outside the loop for every code. The clamp only guards the tangent math.
+  const radius = Math.min(wantRadius, d - 1);
+  const phi = Math.atan2(cl, cs);
+  const alpha = Math.asin(radius / d);
+  const reach = Math.sqrt(d * d - radius * radius);
+  // The two tangents from the threshold: the shallow one leaves the marking along the centerline,
+  // the steep one is the straight return diagonal.
+  const upper = { s: reach * Math.cos(phi - alpha), l: reach * Math.sin(phi - alpha) };
+  const lower = { s: reach * Math.cos(phi + alpha), l: reach * Math.sin(phi + alpha) };
+  const beta1 = Math.atan2(upper.l - cl, upper.s - cs);
+  const beta2 = Math.atan2(lower.l - cl, lower.s - cs);
+  // The loop travels the long way round: over the far side of the circle and back along the pad side.
+  const span = (beta2 - beta1 + 2 * Math.PI) % (2 * Math.PI);
   const local: Pt[] = [{ x: 0, y: 0 }];
-  const lc = (s: number, l: number): Pt => ({ x: s, y: l });
-  bezier(lc(0, 0), lc(k, 0), lc(cs - k, cl + R), lc(cs, cl + R), 16, local);
-  for (let d = 95; d <= 270; d += 5) {
-    const a = (d * Math.PI) / 180;
-    local.push({ x: cs + R * Math.cos(a), y: cl + R * Math.sin(a) });
+  // The curved branch starts along the runway centerline and meets the circle tangentially.
+  const k = reach / 3;
+  bezier(
+    local[0],
+    { x: k, y: 0 },
+    { x: upper.s + k * Math.sin(beta1), y: upper.l - k * Math.cos(beta1) },
+    { x: upper.s, y: upper.l },
+    16,
+    local,
+  );
+  const steps = Math.max(2, Math.ceil(span / (Math.PI / 36)));
+  for (let j = 1; j < steps; j++) {
+    const beta = beta1 + (span * j) / steps;
+    local.push({ x: cs + radius * Math.cos(beta), y: cl + radius * Math.sin(beta) });
   }
-  bezier(lc(cs, cl - R), lc(cs - k, cl - R), lc(k, 0), lc(0, 0), 16, local);
+  // The straight diagonal back to the threshold closes the marking.
+  local.push({ x: lower.s, y: lower.l }, { x: 0, y: 0 });
   return local.map((p) => at(p.x, p.y));
 }
