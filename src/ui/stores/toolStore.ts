@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
 
-export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
+export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
 
 export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 

@@ -1,7 +1,7 @@
 import { apronContains } from '@shared/apronGeom';
-import { AIRFIELD, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, PAINT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { sizeCode } from '@shared/standSizes';
-import { codeIndex, compassVector, CODES, runwaySide, type AirfieldPayload, type CodeLetter, type HoldingPoint, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
+import { codeIndex, compassVector, CODES, runwaySide, type AirfieldPayload, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -25,6 +25,7 @@ import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
 import { envelopeType, taxiClashes } from '@shared/clearance';
 import { runwayWorksDays } from '@shared/surfaceRules';
+import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
 import { typeOutlines } from '@render/markings/standLayout';
 import { formatMoney, formatNumber } from '../format';
@@ -49,6 +50,9 @@ interface Deps {
 }
 
 const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(dx, -dy) * 180) / Math.PI) % 360) + 360) % 360;
+
+/** How close the cursor must come to a runway threshold before a turn pad previews (task T01 spec). */
+const TURN_PAD_REACH_M = 150;
 
 /**
  * Turns pointer input into previews and build commands for the active tool. It holds
@@ -406,6 +410,9 @@ export class ToolController {
       case 'rapidExit':
         this.previewRapidExit(p);
         break;
+      case 'turnPad':
+        this.previewTurnPad(p);
+        break;
       case 'parallel':
         this.previewParallel(p);
         break;
@@ -472,6 +479,9 @@ export class ToolController {
       }
       case 'rapidExit':
         this.commitRapidExit(p);
+        break;
+      case 'turnPad':
+        this.commitTurnPad(p);
         break;
       case 'parallel':
         this.commitParallel(p);
@@ -1065,6 +1075,56 @@ export class ToolController {
     const plan = this.exitPlan(p);
     if (!plan) return;
     this.deps.send({ type: 'buildRapidExit', runwayId: plan.r.id, distM: plan.dist, side: plan.side, angleDeg: st.exitAngle, code: st.code, surface: st.surface, tier: st.tier });
+  }
+
+  /** A pad previews within this reach of a runway threshold, flat in world meters (task T01 spec). */
+  private padPlan(p: Pt): { r: Runway; end: 'a' | 'b'; side: PadSide } | null {
+    let best: { r: Runway; end: 'a' | 'b' } | null = null;
+    let bestD = TURN_PAD_REACH_M;
+    for (const r of this.af.runways) {
+      for (const [end, pt] of [['a', { x: r.x1, y: r.y1 }], ['b', { x: r.x2, y: r.y2 }]] as const) {
+        const d = Math.hypot(pt.x - p.x, pt.y - p.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { r, end };
+        }
+      }
+    }
+    if (!best) return null;
+    return { r: best.r, end: best.end, side: runwaySide(best.r, p.x, p.y) === 1 ? 'left' : 'right' };
+  }
+
+  /** Turn pad preview (docs/GAME_DESIGN.md section 6, UI_DESIGN section 6): the same checks the sim runs. */
+  private previewTurnPad(p: Pt): void {
+    const plan = this.padPlan(p);
+    if (!plan) {
+      this.deps.setGhost(null);
+      useToolStore.getState().set({ hint: 'hint.needRunway', problem: null, buy: null });
+      return;
+    }
+    const { r, end, side } = plan;
+    const poly = padPolygon(r, end, side);
+    const value = padValue(r);
+    let problem = this.landProblem({ polygon: poly });
+    if (!problem && r.pads?.[end] === side) problem = { code: 'padExists' };
+    if (!problem && value > useGameStore.getState().cash) problem = { code: 'insufficientFunds', args: { cost: value } };
+    const curve = padCurve(r, end, side);
+    const at = poly[1];
+    this.show(
+      {
+        valid: problem === null,
+        shapes: [{ k: 'poly', pts: poly }, { k: 'strip', pts: curve, w: PAINT.taxiway.centerlineWidthM }],
+        label: { x: at.x, y: at.y, text: `${tFormat('ghost.turnPad', { cost: formatMoney(value) })}. ${tFormat('inspector.runwayWorksPreview', { days: runwayWorksDays(r, { areaM2: padArea(r) }) })}` },
+      },
+      problem,
+      'hint.turnPad',
+    );
+  }
+
+  private commitTurnPad(p: Pt): void {
+    const plan = this.padPlan(p);
+    if (!plan) return;
+    this.deps.send({ type: 'turnPad', runwayId: plan.r.id, end: plan.end, side: plan.side });
   }
 
   private parallelPlan(p: Pt): { r: Runway; side: 'left' | 'right'; offset: number; pts: Pt[]; conn: Pt[][]; cap: CodeLetter } | null {

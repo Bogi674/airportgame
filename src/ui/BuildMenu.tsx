@@ -84,6 +84,7 @@ export const CATEGORIES: Category[] = [
           { id: 'new', thumb: 'runway', icon: 'runway', run: (s) => s.set({ tool: 'runway', runwayMode: 'new' }), active: (s) => s.tool === 'runway' && s.runwayMode === 'new' },
           { id: 'extend', thumb: 'runwayExtend', icon: 'runway', run: (s) => s.set({ tool: 'runway', runwayMode: 'extend' }), active: (s) => s.tool === 'runway' && s.runwayMode === 'extend' },
           { id: 'shorten', thumb: 'runwayShorten', icon: 'runway', run: (s) => s.set({ tool: 'runway', runwayMode: 'shorten' }), active: (s) => s.tool === 'runway' && s.runwayMode === 'shorten' },
+          { id: 'turnPad', thumb: 'turnPad', icon: 'rapidExit', run: (s) => s.set({ tool: 'turnPad' }), active: (s) => s.tool === 'turnPad' },
         ],
       },
       { id: 'upgrade', items: [{ id: 'upgrade', thumb: 'runway', icon: 'select', run: (s) => s.set({ tool: 'select', hint: 'hint.runwayUpgrade' }) }] },

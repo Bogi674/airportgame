@@ -88,6 +88,14 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
           <path d="M30 20C42 22 52 30 70 50" stroke={LINE} stroke-width="1" fill="none" />
         </Scene>
       );
+    case 'turnPad':
+      return (
+        <Scene>
+          <rect x="-4" y="34" width="104" height="12" fill={PAVE} />
+          <rect x="-4" y="10" width="56" height="24" fill={PAVE} />
+          <path d="M46 40C46 28 40 22 30 22C14 22 14 34 28 34C38 34 44 40 46 40" stroke={LINE} stroke-width="1.2" fill="none" />
+        </Scene>
+      );
     case 'parallel':
       return (
         <Scene>
