@@ -3,7 +3,7 @@ import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
 import { apronArea } from '@shared/apronGeom';
-import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PushbackDir, type Runway, type Surface, type Taxiway } from '@shared/airfield';
+import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
 import { standRefusal } from '@shared/standSizes';
 import { ClassHelp } from './ClassHelp';
@@ -119,6 +119,12 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
       <ClassHelp />
     </div>
   );
+}
+
+/** "09 left", "27 right", or "none" for the turn pads line in the runway inspector (task T01 spec). */
+function padText(des: string, side: PadSide | undefined): string {
+  if (!side) return t('inspector.padNone');
+  return `${des} ${t(side === 'left' ? 'inspector.padLeft' : 'inspector.padRight')}`;
 }
 
 /** Class, approach and strength of a runway. Changes are applied together and priced by the sim. */
@@ -263,6 +269,21 @@ export function ObjectPanel({ send }: Props) {
         <div>{tFormat('inspector.pcr', { n: r.pcr, surface: tDynamic(`surface.${r.surface}`) })}</div>
         <div>{tFormat('inspector.condition', { n: Math.round(r.condition) })}</div>
         <div>{tFormat('inspector.holding', { n: af.holding.filter((h) => h.runwayId === r.id).length })}</div>
+        <div data-testid="runway-pads">
+          {tFormat('inspector.turnPads', { a: padText(r.nameA, r.pads?.a), b: padText(r.nameB, r.pads?.b) })}
+        </div>
+        {(r.pads?.a || r.pads?.b) && (
+          <div style="font-size:11px" data-testid="runway-pad-remove">
+            {(['a', 'b'] as const).map((end) => {
+              if (!r.pads?.[end]) return null;
+              return (
+                <button key={end} data-testid={`pad-remove-${end}`} style="margin-right:6px" onClick={() => send({ type: 'turnPad', runwayId: r.id, end, side: null })}>
+                  {tFormat('inspector.removePad', { des: end === 'a' ? r.nameA : r.nameB })}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {obs && (
           <div data-testid="runway-obstacles" style={obs.penetrations.length > 0 ? 'color:var(--warn)' : undefined}>
             <div>{dirLine(r.nameA, obs.approachA)}</div>
