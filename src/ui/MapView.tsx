@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Renderer } from '@render/renderer';
 import type { SimClient } from '../worker/client';
+import { gridById } from '@shared/constructionGrid';
 import { useGameStore } from './stores/gameStore';
-import { useToolStore } from './stores/toolStore';
+import { GRID_TOOLS, useToolStore } from './stores/toolStore';
 import { ToolController } from './tools/controller';
 import { toolActions } from './tools/actions';
 
@@ -119,11 +120,14 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     const onContext = (e: Event): void => e.preventDefault();
     const onKeyDown = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null;
+      // Alt is the live override of the snap mode, so the context bar follows it (T42 R4).
+      if (useToolStore.getState().altHeld !== e.altKey) useToolStore.getState().set({ altHeld: e.altKey });
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return;
       if (e.code === 'Space') spaceHeld = true;
       if (controller.key(e)) e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent): void => {
+      if (useToolStore.getState().altHeld !== e.altKey) useToolStore.getState().set({ altHeld: e.altKey });
       if (e.code === 'Space') spaceHeld = false;
     };
 
@@ -146,6 +150,22 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     const unsubAirfield = useGameStore.subscribe((s, prev) => {
       if (s.airfield !== prev.airfield || s.terminalGrids !== prev.terminalGrids) controller.refreshSelection();
     });
+
+    // The picked construction grid is drawn only while a tool places on it (T42 R2, R6).
+    const syncGrid = (): void => {
+      const st = useToolStore.getState();
+      const picked = st.gridId === null ? null : gridById(useGameStore.getState().airfield, st.gridId);
+      // A grid whose runway or taxiway is gone cannot be snapped to, so the pick is dropped.
+      if (st.gridId !== null && picked === null) useToolStore.getState().set({ gridId: null });
+      renderer.setGrid(GRID_TOOLS.includes(st.tool) ? picked : null);
+    };
+    const unsubGrid = useToolStore.subscribe((s, prev) => {
+      if (s.tool !== prev.tool || s.gridId !== prev.gridId) syncGrid();
+    });
+    const unsubGridAirfield = useGameStore.subscribe((s, prev) => {
+      if (s.airfield !== prev.airfield) syncGrid();
+    });
+    syncGrid();
 
     // Switching tools drops any gesture in progress.
     let lastTool = useToolStore.getState().tool;
@@ -198,6 +218,8 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       toolActions.cancel = () => undefined;
       unsubSelection();
       unsubAirfield();
+      unsubGrid();
+      unsubGridAirfield();
       dprQuery.removeEventListener('change', onDpr);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);

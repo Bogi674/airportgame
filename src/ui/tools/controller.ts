@@ -28,10 +28,11 @@ import { runwayWorksDays } from '@shared/surfaceRules';
 import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
 import { typeOutlines } from '@render/markings/standLayout';
+import { gridById, snapToGrid, type ConstructionGrid } from '@shared/constructionGrid';
 import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
-import { useToolStore } from '../stores/toolStore';
+import { GRID_TOOLS, snapModeOf, useToolStore } from '../stores/toolStore';
 
 export interface Mods {
   shift: boolean;
@@ -67,6 +68,8 @@ export class ToolController {
   private cutting = false;
   /** After a refused drag the preview and its buy offer stay up until the next press. */
   private frozen = false;
+  /** Alignment frame of the apron rectangle in progress, captured at the press. */
+  private rectFrame: number | null = null;
 
   constructor(private readonly deps: Deps) {}
 
@@ -269,6 +272,7 @@ export class ToolController {
     this.pts = [];
     this.dragging = false;
     this.frozen = false;
+    this.rectFrame = null;
     this.tStart = null;
     this.tGrid = null;
     this.deps.setGhost(null);
@@ -350,6 +354,39 @@ export class ToolController {
     return { x: prev.x + dir.x * len, y: prev.y + dir.y * len };
   }
 
+  // Construction grid ------------------------------------------------------
+
+  /**
+   * The grid the tools snap to right now: the picked one, when the active tool places on the grid
+   * and its snap mode is grid. Alt is the live override, so holding it returns null (T42 R3, R4).
+   */
+  private snapGrid(mods: Mods): ConstructionGrid | null {
+    const st = useToolStore.getState();
+    if (mods.alt) return null;
+    if (!GRID_TOOLS.includes(st.tool)) return null;
+    if (snapModeOf(st.snapMode, st.tool) !== 'grid') return null;
+    return gridById(this.af, st.gridId ?? '');
+  }
+
+  /**
+   * The point a tool places at: the nearest node of the picked grid in grid mode, else the raw
+   * cursor point (T42 R4).
+   */
+  private placeAt(p: Pt, mods: Mods): Pt {
+    const g = this.snapGrid(mods);
+    return g ? snapToGrid(p, g).p : p;
+  }
+
+  /**
+   * Heading a row, a block or a new terminal squares up to: the grid heading in grid mode, so the
+   * placed object runs along the grid, else the alignment frame as today (T42 R4).
+   */
+  private rowHeadingAt(p: Pt, mods: Mods): number {
+    const g = this.snapGrid(mods);
+    if (g) return g.headingDeg;
+    return (((this.frameAt(p) + useToolStore.getState().rowHeading) % 360) + 360) % 360;
+  }
+
   /** Checks land and ownership, and fills the buy offer when land is what is missing. */
   private landProblem(strip: { pts: Pt[]; widthM: number } | { polygon: Pt[] }): Problem | null {
     const ctx = this.ctx();
@@ -387,10 +424,11 @@ export class ToolController {
       this.start = this.snap(p, null, mods, false);
       this.dragging = true;
     } else if (tool === 'apron' && useToolStore.getState().apronMode === 'rect') {
-      this.start = this.rectSnap(p, this.apronFrame(p), mods);
+      this.rectFrame = null;
+      this.start = this.rectCorner(p, this.apronFrame(p, mods), mods);
       this.dragging = true;
     } else if (tool === 'terminal') {
-      this.terminalDown(p);
+      this.terminalDown(p, mods);
     }
   }
 
@@ -424,10 +462,10 @@ export class ToolController {
         break;
       case 'stands':
       case 'gaBlock':
-        this.previewStands(p);
+        this.previewStands(p, mods);
         break;
       case 'terminal':
-        this.previewTerminal(p);
+        this.previewTerminal(p, mods);
         break;
       case 'demolish':
         this.previewDemolish(p);
@@ -472,7 +510,7 @@ export class ToolController {
           break;
         }
         const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
-        this.pts.push(this.snap(p, prev, mods, false));
+        this.pts.push(this.apronCorner(p, prev, mods));
         this.cutting = mods.ctrl === true;
         this.previewApron(p, mods);
         break;
@@ -488,7 +526,7 @@ export class ToolController {
         break;
       case 'stands':
       case 'gaBlock':
-        this.commitStands(p);
+        this.commitStands(p, mods);
         break;
       case 'terminal':
         this.finishTerminal(p);
@@ -1188,7 +1226,7 @@ export class ToolController {
   /** Free polygon apron (docs/DESIGN_REVISION_2.md section 4): live edge lengths and area, Ctrl cuts. */
   private previewApron(p: Pt, mods: Mods): void {
     const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
-    const q = this.snap(p, prev, mods, false);
+    const q = this.apronCorner(p, prev, mods);
     const pts = [...this.pts, q];
     const cut = mods.ctrl === true || this.cutting;
     const shapes: GhostShape[] = pts.length >= 3 ? [{ k: 'poly', pts }] : [{ k: 'strip', pts, w: 1 }];
@@ -1265,7 +1303,9 @@ export class ToolController {
    * Alignment frame of an apron rectangle: the runway frame, or without a runway the direction of the
    * nearest apron edge, so new pieces square up with the apron they extend, else the site axis.
    */
-  private apronFrame(p: Pt): number {
+  private apronFrame(p: Pt, mods: Mods): number {
+    const g = this.snapGrid(mods);
+    if (g) return g.headingDeg;
     if (this.af.runways.length > 0) return this.frameAt(p);
     let best = 100;
     let heading = this.frameAt(p);
@@ -1285,14 +1325,38 @@ export class ToolController {
     return heading;
   }
 
-  /** The rectangle from the drag start to p, aligned to the frame at the start. */
+  /**
+   * A corner of a free polygon apron: the nearest grid node in grid mode, else the shared snap with
+   * its vertex, centerline and angle guide steps (T42 R3, R4).
+   */
+  private apronCorner(p: Pt, prev: Pt | null, mods: Mods): Pt {
+    const g = this.snapGrid(mods);
+    if (!g) return this.snap(p, prev, mods, false);
+    // The grid wins, so no alignment guide is drawn for a snapped corner.
+    this.deps.setGuide(null, null);
+    return snapToGrid(p, g).p;
+  }
+
+  /**
+   * A corner of an apron rectangle: the nearest grid node in grid mode, else the edge snap in the
+   * alignment frame (T42 R3, R4).
+   */
+  private rectCorner(p: Pt, frame: number, mods: Mods): Pt {
+    const g = this.snapGrid(mods);
+    return g ? snapToGrid(p, g).p : this.rectSnap(p, frame, mods);
+  }
+
+  /** The rectangle from the drag start to p, aligned to the frame captured at the press. */
   private apronRect(p: Pt, mods: Mods): { pts: Pt[]; w: number; h: number } | null {
     const s0 = this.start;
     if (!s0) return null;
-    const frame = this.apronFrame(s0);
-    const q = this.rectSnap(p, frame, mods);
-    const u = compassVector(frame);
-    const v = { x: -u.y, y: u.x };
+    // The frame is captured at the press, so holding Alt mid drag cannot flip the rectangle under the player.
+    if (this.rectFrame === null) this.rectFrame = this.apronFrame(s0, mods);
+    const frame = this.rectFrame;
+    const g = this.snapGrid(mods);
+    const q = this.rectCorner(p, frame, mods);
+    const u = g ? { x: g.ax, y: g.ay } : compassVector(frame);
+    const v = g ? { x: g.cx, y: g.cy } : { x: -u.y, y: u.x };
     const du = (q.x - s0.x) * u.x + (q.y - s0.y) * u.y;
     const dv = (q.x - s0.x) * v.x + (q.y - s0.y) * v.y;
     const pts = [s0, { x: s0.x + u.x * du, y: s0.y + u.y * du }, { x: s0.x + u.x * du + v.x * dv, y: s0.y + u.y * du + v.y * dv }, { x: s0.x + v.x * dv, y: s0.y + v.y * dv }];
@@ -1343,20 +1407,17 @@ export class ToolController {
     return heading;
   }
 
-  private rowHeadingAt(p: Pt): number {
-    return (((this.frameAt(p) + useToolStore.getState().rowHeading) % 360) + 360) % 360;
-  }
-
-  private standPlan(p: Pt): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean } {
+  private standPlan(p: Pt, mods: Mods): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean } {
     const st = useToolStore.getState();
     const ga = st.tool === 'gaBlock';
     const size: StandSize = ga ? 'small' : st.standSize;
+    const q = this.placeAt(p, mods);
     // Stands sit side by side at the size's width (docs/DESIGN_REVISION_2.md table 3.2).
-    return { x: p.x, y: p.y, count: ga ? st.gaCount : st.standCount, spacing: STAND_SIZES[size].widthM, heading: this.rowHeadingAt(p), size, ga };
+    return { x: q.x, y: q.y, count: ga ? st.gaCount : st.standCount, spacing: STAND_SIZES[size].widthM, heading: this.rowHeadingAt(p, mods), size, ga };
   }
 
-  private previewStands(p: Pt): void {
-    const plan = this.standPlan(p);
+  private previewStands(p: Pt, mods: Mods): void {
+    const plan = this.standPlan(p, mods);
     const d = compassVector(plan.heading);
     const perp = { x: -d.y, y: d.x };
     const shapes: GhostShape[] = [];
@@ -1395,9 +1456,9 @@ export class ToolController {
     this.show({ valid: problem === null, shapes, preview: { stands: cands }, label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0') }) } }, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
   }
 
-  private commitStands(p: Pt): void {
+  private commitStands(p: Pt, mods: Mods): void {
     const st = useToolStore.getState();
-    const plan = this.standPlan(p);
+    const plan = this.standPlan(p, mods);
     if (plan.ga) this.deps.send({ type: 'buildGaBlock', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count });
     else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, size: plan.size });
   }
@@ -1427,12 +1488,19 @@ export class ToolController {
     return null;
   }
 
-  /** The grid an edit at this point goes to: an existing building or a fresh one that starts here. */
-  private gridFor(p: Pt): TerminalGrid {
+  /**
+   * The grid an edit at this point goes to: an existing building, or a fresh one that starts here.
+   * A fresh foundation starts on a grid node in grid mode, and keeps the 2 m local cell grid inside
+   * the building either way (T42 R5).
+   */
+  private gridFor(p: Pt, mods: Mods): TerminalGrid {
     const existing = this.buildingAt(p);
     if (existing) return existing;
-    const heading = this.rowHeadingAt(p);
-    const o = originFor(Math.round(p.x / 2) * 2, Math.round(p.y / 2) * 2, heading);
+    const st = useToolStore.getState();
+    const heading = this.rowHeadingAt(p, mods);
+    const g = st.tSub === 'foundation' ? this.snapGrid(mods) : null;
+    const q = g ? snapToGrid(p, g).p : { x: Math.round(p.x / 2) * 2, y: Math.round(p.y / 2) * 2 };
+    const o = originFor(q.x, q.y, heading);
     const t = this.tTemp;
     if (t && t.ox === o.ox && t.oy === o.oy && t.headingDeg === heading) return t;
     this.tTemp = newGrid(-1, o.ox, o.oy, heading);
@@ -1499,20 +1567,20 @@ export class ToolController {
     return { x0: rx, y0: Math.floor(c.cy), x1: rx, y1: Math.floor(c.cy) + 1 };
   }
 
-  private terminalDown(p: Pt): void {
+  private terminalDown(p: Pt, mods: Mods): void {
     this.frozen = false;
-    const g = this.gridFor(p);
+    const g = this.gridFor(p, mods);
     this.tGrid = g;
     const c = worldToCell(g, p.x, p.y);
     this.tStart = { cx: c.cx, cy: c.cy };
     this.dragging = true;
   }
 
-  private previewTerminal(p: Pt): void {
+  private previewTerminal(p: Pt, mods: Mods): void {
     if (this.frozen && !this.dragging) return;
     const st = useToolStore.getState();
     const hint = `hint.terminal.${st.tSub}`;
-    const g = this.dragging && this.tGrid ? this.tGrid : this.gridFor(p);
+    const g = this.dragging && this.tGrid ? this.tGrid : this.gridFor(p, mods);
     const c = worldToCell(g, p.x, p.y);
     const a = this.dragging && this.tStart ? this.tStart : c;
     const edit = this.terminalEdit(g, a, c);

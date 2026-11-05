@@ -4,7 +4,7 @@ import { airfieldCodesSchema } from '../src/data/schemas';
 import airfieldCodesJson from '../src/data/airfield_codes.json';
 import type { Pt } from '@shared/geom';
 import { EMPTY_AIRFIELD, type AirfieldPayload, type Runway, type Taxiway } from '@shared/airfield';
-import { gridPoint, gridsFor, snapToGrid } from '@shared/constructionGrid';
+import { gridById, gridLabel, gridPoint, gridsFor, snapToGrid } from '@shared/constructionGrid';
 import { buildTestAirport, ownedSim, run } from './helpers';
 
 /** Asserts a point to a thousandth of a meter. */
@@ -246,5 +246,44 @@ describe('snapToGrid', () => {
     const r = snapToGrid({ x: 1000.4, y: 2000.4 }, east);
     expect(Object.is(r.i, 0)).toBe(true);
     expect(Object.is(r.j, 0)).toBe(true);
+  });
+});
+
+describe('gridById', () => {
+  it('finds a grid by its stable id and returns null for an id that is gone', () => {
+    const af = airfield();
+    expect(gridById(af, 'taxi:4:1')).toBe(gridsFor(af)[2]);
+    expect(gridById(af, 'taxi:4:2')).toBeNull();
+    expect(gridById(EMPTY_AIRFIELD, 'runway:1')).toBeNull();
+  });
+});
+
+describe('gridLabel', () => {
+  it('names a runway grid by its designator pair', () => {
+    expect(gridLabel(gridsFor(airfield())[0], airfield())).toEqual({ name: '04/22', segment: null });
+  });
+
+  it('names a taxiway grid by its name and one based segment number', () => {
+    const grids = gridsFor(airfield());
+    expect(gridLabel(grids[1], airfield())).toEqual({ name: 'T', segment: 1 });
+    expect(gridLabel(grids[2], airfield())).toEqual({ name: 'T', segment: 2 });
+  });
+
+  it('drops the segment number for a taxiway with a single straight run', () => {
+    const t = taxiway(5, [{ x: 0, y: 0 }, { x: 30, y: 0 }]);
+    const af = { ...EMPTY_AIRFIELD, version: 1, taxiways: [t] };
+    expect(gridLabel(gridsFor(af)[0], af)).toEqual({ name: 'T', segment: null });
+  });
+
+  it('falls back to the object id when a name is empty', () => {
+    const bare = rotatedRunway();
+    bare.nameA = '';
+    bare.nameB = '';
+    const af = { ...EMPTY_AIRFIELD, version: 1, runways: [bare] };
+    expect(gridLabel(gridsFor(af)[0], af)).toEqual({ name: '#1', segment: null });
+    const nameless = taxiway(6, [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 60 }]);
+    nameless.name = '';
+    const af2 = { ...EMPTY_AIRFIELD, version: 1, taxiways: [nameless] };
+    expect(gridLabel(gridsFor(af2)[0], af2)).toEqual({ name: '#6', segment: 1 });
   });
 });

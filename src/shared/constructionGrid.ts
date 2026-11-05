@@ -126,6 +126,11 @@ export function gridsFor(af: AirfieldPayload): ConstructionGrid[] {
   return grids;
 }
 
+/** The grid with this id in the airfield's current grids, or null when there is none. */
+export function gridById(af: AirfieldPayload, id: string): ConstructionGrid | null {
+  return gridsFor(af).find((g) => g.id === id) ?? null;
+}
+
 /** World position of a grid node. The origin is the node (0, 0). */
 export function gridPoint(g: ConstructionGrid, i: number, j: number): Pt {
   const along = g.spacingMinorM * i;
@@ -153,4 +158,31 @@ export function snapToGrid(p: Pt, g: ConstructionGrid): GridSnap {
     j,
     major: i % step === 0 && j % step === 0,
   };
+}
+
+/** What a grid is called in the UI: the object's own name, and its segment when it has several. */
+export interface GridLabel {
+  /** A runway designator pair such as `09/27`, or a taxiway name such as `A`. */
+  name: string;
+  /** Segment index counting from 1, or null when the object is a single straight run. */
+  segment: number | null;
+}
+
+/**
+ * The player facing name of a grid, resolved from the airfield it was built from. The id carries the
+ * object id and, for a taxiway, the segment index, so this is the one place that parses it.
+ */
+export function gridLabel(g: ConstructionGrid, af: AirfieldPayload): GridLabel {
+  const [, idText, segText] = g.id.split(':');
+  if (g.kind === 'runway') {
+    const r = af.runways.find((x) => String(x.id) === idText);
+    if (r && (r.nameA !== '' || r.nameB !== '')) return { name: `${r.nameA}/${r.nameB}`, segment: null };
+    return { name: `#${idText}`, segment: null };
+  }
+  const t = af.taxiways.find((x) => String(x.id) === idText);
+  if (!t) return { name: `#${idText}`, segment: null };
+  const name = t.name !== '' ? t.name : `#${idText}`;
+  // A taxiway of two points has a single straight run, so the segment number is noise there.
+  if (t.points.length <= 2) return { name, segment: null };
+  return { name, segment: Number(segText) + 1 };
 }

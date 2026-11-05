@@ -1,16 +1,57 @@
 import { SURFACE_SPEC } from '@data/index';
-import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
+import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type AirfieldPayload, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
+import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { FIXTURE_KEYS } from '@shared/business';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
-import { useToolStore, type TerminalSub } from './stores/toolStore';
+import { useGameStore } from './stores/gameStore';
+import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
 
 interface Props {
   send(cmd: Command): void;
+}
+
+/** Name of one grid in the picker: the runway or taxiway it belongs to, and its segment when there are several. */
+function gridText(g: ConstructionGrid, af: AirfieldPayload): string {
+  const l = gridLabel(g, af);
+  return l.segment === null ? tFormat(g.kind === 'runway' ? 'grid.runway' : 'grid.taxiway', { name: l.name }) : tFormat('grid.taxiSegment', { name: l.name, n: l.segment });
+}
+
+/**
+ * The construction grid controls: which grid is picked, and whether the active tool snaps to it.
+ * The mode is persistent per tool, and Alt overrides it while it is held (T42 R2, R3, R4).
+ */
+function GridControls({ tool }: { tool: Tool }) {
+  const s = useToolStore();
+  const af = useGameStore((g) => g.airfield);
+  const grids = gridsFor(af);
+  const live: SnapMode = s.altHeld ? 'free' : snapModeOf(s.snapMode, tool);
+  return (
+    <>
+      <Select
+        label={t('opt.grid')}
+        value={s.gridId ?? ''}
+        testId="opt-grid"
+        options={[{ v: '', text: t('grid.none') }, ...grids.map((g) => ({ v: g.id, text: gridText(g, af) }))]}
+        onChange={(v) => s.set({ gridId: v === '' ? null : v })}
+      />
+      <div style="display:flex;gap:4px;align-self:center" data-testid="snap-mode">
+        {(['grid', 'free'] as const).map((m) => (
+          <button key={m} data-testid={`snap-mode-${m}`} aria-pressed={live === m} onClick={() => s.set({ snapMode: { ...s.snapMode, [tool]: m } })}>
+            {tDynamic(`snap.${m}`)}
+          </button>
+        ))}
+      </div>
+      <span data-testid="snap-mode-label" style="align-self:center;color:var(--muted);font-size:11px">
+        {t('opt.snap')}: {tDynamic(`snap.${live}`)}
+        {s.gridId === null ? `, ${t('grid.none').toLowerCase()}` : ''}
+      </span>
+    </>
+  );
 }
 
 function Select<T extends string | number>({ label, value, options, onChange, testId }: { label: string; value: T; options: { v: T; text: string }[]; onChange(v: T): void; testId?: string }) {
@@ -92,6 +133,7 @@ export function ContextBar({ send }: Props) {
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
+        {GRID_TOOLS.includes(s.tool) && <GridControls tool={s.tool} />}
         {s.tool === 'runway' && (
           <Select label={t('opt.mode')} value={s.runwayMode} testId="opt-runway-mode" options={(['new', 'extend', 'shorten'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ runwayMode: v, hint: null, problem: null })} />
         )}
