@@ -12,6 +12,8 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 | T39 | M2 | [Turn pads sit beyond the runway threshold](tasks/T39-turn-pad-beyond.md) | S | T01 | done | b2a027f e53274e f781b57 1899039 |
 | T02 | M2 | [Runway marking details](tasks/T02-runway-markings.md) | L | | todo | |
 | T03 | M2 | [Grading tool with cut and fill](tasks/T03-grading.md) | L | | todo | |
+| T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M | | todo | |
+| T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M | | todo | |
 | T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T02 T03 | todo | |
 | T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L | T04 | todo | |
 | T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | todo | |
@@ -43,6 +45,7 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 | T32 | M6 | [Shop sales and tenant fill](tasks/T32-shops.md) | M | T17 | todo | |
 | T33 | M6 | [Automatic staffing and coverage overlay](tasks/T33-staffing.md) | M | T29 | todo | |
 | T34 | M6 | [Milestone review M6](tasks/milestone-review.md) | S | T30 to T33 | todo | |
+| T41 | M6 | [Flight schedule with exact times and automation](tasks/T41-flight-schedule.md) | L | | todo | |
 | T35 | M7 | [Menus, wizard, load, settings, pause](tasks/T35-menus.md) | M | T34 | todo | |
 | T36 | M7 | [Left rail flyouts, alert center, overlay list](tasks/T36-hud.md) | M | T34 | todo | |
 | T37 | M7 | [Browser tests in three engines](tasks/T37-e2e-engines.md) | S | T34 | todo | |
