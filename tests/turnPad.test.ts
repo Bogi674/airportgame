@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STAND_SIZES } from '@data/index';
-import { padCurve, padPolygon, padSize, padValue } from '@shared/turnPad';
+import { padArea, padCurve, padPolygon, padSize, padValue } from '@shared/turnPad';
 import { buildPlan } from '@render/markings/taxiPlan';
 import { SURFACE_SPEC } from '@data/index';
 import { pointInPolygon } from '@shared/geom';
@@ -28,16 +28,25 @@ function midConnectorAirport(sim: Sim, len: number): void {
 }
 
 describe('turn pads', () => {
-  it('the pad lies beside the runway end and the curve stays on runway and pad pavement', () => {
+  it('the pad lies beyond the runway end with the far edge flush and the curve stays on the pad', () => {
     const sim = ownedSim();
     run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
     const r = sim.airfield.data.runways[0];
     const pad = padPolygon(r, 'a', 'left');
-    // Left of a heading of 090 is north, smaller y.
-    expect(Math.min(...pad.map((p) => p.y))).toBeLessThan(5000 - r.widthM / 2);
-    expect(Math.max(...pad.map((p) => p.x))).toBeLessThan(3200);
-    const runway = [{ x: 3000, y: 5000 - r.widthM / 2 - 0.01 }, { x: 5000, y: 5000 - r.widthM / 2 - 0.01 }, { x: 5000, y: 5000 + r.widthM / 2 + 0.01 }, { x: 3000, y: 5000 + r.widthM / 2 + 0.01 }];
-    for (const p of padCurve(r, 'a', 'left')) expect(pointInPolygon(p.x, p.y, pad) || pointInPolygon(p.x, p.y, runway)).toBe(true);
+    const size = padSize(r);
+    // A unit frame for a heading of 090: s outward from end A is west (smaller x),
+    // l toward the pad side (left) is north (smaller y).
+    const local = (p: { x: number; y: number }): { s: number; l: number } => ({ s: 3000 - p.x, l: 5000 - p.y });
+    for (const p of pad) {
+      const { s, l } = local(p);
+      expect(s).toBeGreaterThanOrEqual(-1.01);
+      expect(s).toBeLessThanOrEqual(size.length + 0.01);
+      expect(l).toBeGreaterThanOrEqual(-r.widthM / 2 - 0.01);
+      expect(l).toBeLessThanOrEqual(r.widthM / 2 + size.extra + 0.01);
+    }
+    // Flush far edge: the extreme l on the far side is the runway edge itself.
+    expect(Math.min(...pad.map((p) => local(p).l))).toBeCloseTo(-r.widthM / 2, 6);
+    for (const p of padCurve(r, 'a', 'left')) expect(pointInPolygon(p.x, p.y, pad)).toBe(true);
   });
 
   it('building a pad costs money, closes the runway for a while and can be removed', () => {
@@ -69,20 +78,30 @@ describe('turn pads', () => {
     expect(sim.cash).toBe(built + refund);
   });
 
-  it('the plan gaps the runway edge line along the pad side and carries the turn curve', () => {
+  it('the plan carries the turn curve and no pad edge line gap', () => {
     const sim = ownedSim();
     run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
     const r = sim.airfield.data.runways[0];
-    const sIn = padSize(r).length + padSize(r).taper;
     r.pads = { a: 'left' };
     const planA = buildPlan(sim.airfield.data);
-    expect((planA.runwayBreaks.get(r.id) ?? []).some((b) => b[0] === 0 && b[1] === sIn && b[2] === -1)).toBe(true);
+    expect((planA.runwayBreaks.get(r.id) ?? []).length).toBe(0);
     expect(planA.padCurves).toHaveLength(1);
     expect(planA.padCurves[0].pts).toEqual(padCurve(r, 'a', 'left'));
     r.pads = { b: 'right' };
     const planB = buildPlan(sim.airfield.data);
-    expect((planB.runwayBreaks.get(r.id) ?? []).some((b) => b[0] === r.lengthM - sIn && b[1] === r.lengthM && b[2] === 1)).toBe(true);
+    expect((planB.runwayBreaks.get(r.id) ?? []).length).toBe(0);
     expect(planB.padCurves).toHaveLength(1);
+  });
+
+  it('padArea is the runway width plus the extra width times the pad length', () => {
+    const sim = ownedSim();
+    run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
+    const r = sim.airfield.data.runways[0];
+    const size = padSize(r);
+    expect(size.extra).toBe(30);
+    expect(size.length).toBe(60);
+    expect(padArea(r)).toBe((r.widthM + size.extra) * size.length);
+    expect(padArea(r)).toBe(3600);
   });
 
   it('two runs with a pad from one seed give identical hashes', () => {

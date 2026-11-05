@@ -1,5 +1,5 @@
 import { PAINT, SURFACE_SPEC } from '@data/index';
-import { padPolygon, padSize } from '@shared/turnPad';
+import { padPolygon } from '@shared/turnPad';
 import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
@@ -193,10 +193,23 @@ function paintGroundContact(ctx: Ctx, af: AirfieldPayload, terminals: readonly T
 }
 
 function runwayBounds(r: Runway): [number, number, number, number] {
-  let m = r.widthM / 2 + r.shoulderM + 2;
-  // A pad sticks out sideways from the runway end, so the culling box must include it.
-  if (r.pads?.a || r.pads?.b) m += padSize(r).extra;
-  return [Math.min(r.x1, r.x2) - m, Math.min(r.y1, r.y2) - m, Math.max(r.x1, r.x2) + m, Math.max(r.y1, r.y2) + m];
+  const m = r.widthM / 2 + r.shoulderM + 2;
+  let x0 = Math.min(r.x1, r.x2) - m;
+  let y0 = Math.min(r.y1, r.y2) - m;
+  let x1 = Math.max(r.x1, r.x2) + m;
+  let y1 = Math.max(r.y1, r.y2) + m;
+  // A pad reaches past the runway end and sticks out sideways, so the culling box must include both.
+  for (const end of ['a', 'b'] as const) {
+    const side = r.pads?.[end];
+    if (!side) continue;
+    for (const p of padPolygon(r, end, side)) {
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
+    }
+  }
+  return [x0, y0, x1, y1];
 }
 
 function paintAreas(ctx: Ctx, areas: readonly Area[], win: Window): void {
