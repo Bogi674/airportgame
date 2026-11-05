@@ -3,6 +3,7 @@ import { AIRFIELD, SURFACE_SPEC } from '@data/index';
 import { compassVector, type AirfieldPayload, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
 import { taxiGraph } from '@shared/pavement/fromAirfield';
+import { padCurve, padSize } from '@shared/turnPad';
 import { buildPavement, type EndTrim, type Sign } from '@shared/pavement/pavement';
 
 /**
@@ -70,6 +71,8 @@ export interface Plan {
   /** Cuts in the white runway edge stripes at taxiway openings, per runway id: [s0, s1] along the runway. */
   /** Openings in the runway edge stripes: start, end and the side (+1 right of travel, -1 left) they are on. */
   runwayBreaks: Map<number, [number, number, number][]>;
+  /** Yellow turn curves of the runway end turn pads (docs/ART_AND_ASSETS.md section 8). */
+  padCurves: Line[];
 }
 
 const EDGE_INSETS = [0.45, 0.8];
@@ -244,7 +247,7 @@ function runsOutside(pts: readonly Pt[], excluded: (x: number, y: number) => boo
   return runs;
 }
 
-const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], runwayBreaks: new Map() });
+const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], runwayBreaks: new Map(), padCurves: [] });
 
 const cache = new WeakMap<AirfieldPayload, Plan>();
 
@@ -485,6 +488,23 @@ export function buildPlan(af: AirfieldPayload): Plan {
   plan.markers.push(...pave.markers.filter((p) => !onRunwayOrApron(p.x, p.y)));
   plan.signs.push(...pave.signs);
   for (const j of pave.joints) plan.joints.push(mkLine(j));
+
+  // Turn pads (docs/GAME_DESIGN.md section 6): the edge line on the pad side must not run through
+  // the pad pavement that hems against the runway edge, and the yellow turn curve is painted on it.
+  for (const r of af.runways) {
+    for (const end of ['a', 'b'] as const) {
+      const side = r.pads?.[end];
+      if (!side) continue;
+      const sIn = padSize(r).length + padSize(r).taper;
+      // The painter's runway local frame has +y to the right of travel at every heading, so a pad
+      // left of the heading is on local side -1 in both of the painter and pad frames.
+      const sign = side === 'left' ? -1 : 1;
+      const breaks = plan.runwayBreaks.get(r.id) ?? [];
+      breaks.push(end === 'a' ? [0, sIn, sign] : [r.lengthM - sIn, r.lengthM, sign]);
+      plan.runwayBreaks.set(r.id, breaks);
+      plan.padCurves.push(mkLine(padCurve(r, end, side), r.surface === 'concrete'));
+    }
+  }
 
   // Runway holding positions with their signs, and the enhanced centerline before them on instrument runways.
   for (const h of af.holding) {

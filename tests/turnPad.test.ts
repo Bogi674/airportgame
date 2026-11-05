@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STAND_SIZES } from '@data/index';
-import { padCurve, padPolygon, padValue } from '@shared/turnPad';
+import { padCurve, padPolygon, padSize, padValue } from '@shared/turnPad';
+import { buildPlan } from '@render/markings/taxiPlan';
 import { SURFACE_SPEC } from '@data/index';
 import { pointInPolygon } from '@shared/geom';
 import type { Sim } from '@sim/sim';
@@ -66,6 +67,22 @@ describe('turn pads', () => {
     const refund = Math.round(value * SURFACE_SPEC[r.surface].refundShare);
     expect(run(sim, { type: 'turnPad', runwayId: 1, end: 'a', side: null })).toEqual([]);
     expect(sim.cash).toBe(built + refund);
+  });
+
+  it('the plan gaps the runway edge line along the pad side and carries the turn curve', () => {
+    const sim = ownedSim();
+    run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
+    const r = sim.airfield.data.runways[0];
+    const sIn = padSize(r).length + padSize(r).taper;
+    r.pads = { a: 'left' };
+    const planA = buildPlan(sim.airfield.data);
+    expect((planA.runwayBreaks.get(r.id) ?? []).some((b) => b[0] === 0 && b[1] === sIn && b[2] === -1)).toBe(true);
+    expect(planA.padCurves).toHaveLength(1);
+    expect(planA.padCurves[0].pts).toEqual(padCurve(r, 'a', 'left'));
+    r.pads = { b: 'right' };
+    const planB = buildPlan(sim.airfield.data);
+    expect((planB.runwayBreaks.get(r.id) ?? []).some((b) => b[0] === r.lengthM - sIn && b[1] === r.lengthM && b[2] === 1)).toBe(true);
+    expect(planB.padCurves).toHaveLength(1);
   });
 
   it('two runs with a pad from one seed give identical hashes', () => {

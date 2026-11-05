@@ -1,4 +1,5 @@
 import { PAINT, SURFACE_SPEC } from '@data/index';
+import { padPolygon, padSize } from '@shared/turnPad';
 import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
@@ -98,6 +99,23 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
 
   paintAreas(ctx, plan.areas, win);
   for (const r of af.runways) paintRunwayPavement(ctx, r, win);
+  // Turn pad pavement joins the runway end fill in the same surface color, and the yellow turn curve
+  // sits on the pad under all white paint (docs/ART_AND_ASSETS.md section 8).
+  for (const r of af.runways) {
+    if (!overlaps(win, ...runwayBounds(r))) continue;
+    for (const end of ['a', 'b'] as const) {
+      const side = r.pads?.[end];
+      if (!side) continue;
+      ctx.fillStyle = pavementColor(r.surface);
+      const poly = padPolygon(r, end, side);
+      ctx.beginPath();
+      ctx.moveTo(poly[0].x, poly[0].y);
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  strokeLines(ctx, plan.padCurves, win, YELLOW, TW.centerlineWidthM, TW.centerlineMinPx);
   paintTaxiPlan(ctx, af, plan, win);
   for (const h of plan.holds) paintHold(ctx, h, win);
   for (const r of af.runways) paintRunwayMarks(ctx, r, win, plan);
@@ -175,7 +193,9 @@ function paintGroundContact(ctx: Ctx, af: AirfieldPayload, terminals: readonly T
 }
 
 function runwayBounds(r: Runway): [number, number, number, number] {
-  const m = r.widthM / 2 + r.shoulderM + 2;
+  let m = r.widthM / 2 + r.shoulderM + 2;
+  // A pad sticks out sideways from the runway end, so the culling box must include it.
+  if (r.pads?.a || r.pads?.b) m += padSize(r).extra;
   return [Math.min(r.x1, r.x2) - m, Math.min(r.y1, r.y2) - m, Math.max(r.x1, r.x2) + m, Math.max(r.y1, r.y2) + m];
 }
 
