@@ -8,7 +8,7 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 
 | Id | Milestone | Task | Size | Depends | Status | Commits |
 | --- | --- | --- | --- | --- | --- | --- |
-| T01 | M2 | [Turn pad drawing and placement tool](tasks/T01-turn-pad-ui.md) | M | | todo | |
+| T01 | M2 | [Turn pad drawing and placement tool](tasks/T01-turn-pad-ui.md) | M | | doing | |
 | T02 | M2 | [Runway marking details](tasks/T02-runway-markings.md) | L | | todo | |
 | T03 | M2 | [Grading tool with cut and fill](tasks/T03-grading.md) | L | | todo | |
 | T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T02 T03 | todo | |

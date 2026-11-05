@@ -1,5 +1,6 @@
 import { AIRFIELD } from '@data/index';
 import type { PadSide, Runway } from './airfield';
+import { runwayUnitCost } from './surfaceRules';
 import type { Pt } from './geom';
 
 /**
@@ -41,6 +42,11 @@ export function padPolygon(r: Runway, end: 'a' | 'b', side: PadSide): Pt[] {
 export function padArea(r: Pick<Runway, 'code' | 'widthM'>): number {
   const { extra, length, taper } = padSize(r);
   return extra * (length + taper / 2);
+}
+
+/** The pad's cost in cash: its area times the runway surface's unit cost at the runway's strength tier, rounded. */
+export function padValue(r: Runway): number {
+  return Math.round(padArea(r) * runwayUnitCost(r));
 }
 
 function bezier(p0: Pt, p1: Pt, p2: Pt, p3: Pt, n: number, out: Pt[]): void {

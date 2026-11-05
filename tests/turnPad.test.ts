@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { STAND_SIZES } from '@data/index';
-import { padCurve, padPolygon } from '@shared/turnPad';
+import { padCurve, padPolygon, padValue } from '@shared/turnPad';
+import { SURFACE_SPEC } from '@data/index';
 import { pointInPolygon } from '@shared/geom';
 import type { Sim } from '@sim/sim';
 import { AcState } from '@sim/ops/traffic';
-import { ownedSim, run } from './helpers';
+import { ownedSim, run, buildTestAirport } from './helpers';
 
 /**
  * Runway 09/27 of `len` meters with one connector in the middle, a parallel taxiway and a stand row,
@@ -50,6 +51,33 @@ describe('turn pads', () => {
     expect(run(sim, { type: 'turnPad', runwayId: 1, end: 'a', side: 'left' })).toEqual(['padExists']);
     expect(run(sim, { type: 'turnPad', runwayId: 1, end: 'a', side: null })).toEqual([]);
     expect(sim.airfield.data.runways[0].pads).toBeUndefined();
+  });
+
+  it('building a pad charges exactly padValue and removing refunds the refund share of it', () => {
+    const sim = ownedSim();
+    run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
+    const r = sim.airfield.data.runways[0];
+    const value = padValue(r);
+    expect(value).toBeGreaterThan(0);
+    const cash = sim.cash;
+    expect(run(sim, { type: 'turnPad', runwayId: 1, end: 'a', side: 'left' })).toEqual([]);
+    expect(sim.cash).toBe(cash - value);
+    const built = sim.cash;
+    const refund = Math.round(value * SURFACE_SPEC[r.surface].refundShare);
+    expect(run(sim, { type: 'turnPad', runwayId: 1, end: 'a', side: null })).toEqual([]);
+    expect(sim.cash).toBe(built + refund);
+  });
+
+  it('two runs with a pad from one seed give identical hashes', () => {
+    const a = ownedSim();
+    const b = ownedSim();
+    for (const s of [a, b]) {
+      buildTestAirport(s, {});
+      run(s, { type: 'turnPad', runwayId: 1, end: 'a', side: 'left' });
+      s.enqueue({ type: 'setTestTraffic', perHour: 60, turnScale: 0.1 });
+      for (let t = 0; t < 2000; t++) s.step();
+    }
+    expect(a.stateHash()).toBe(b.stateHash());
   });
 
   it('a departure that needs the full length backtracks to the pad, turns and takes off', () => {

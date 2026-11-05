@@ -14,10 +14,10 @@ import {
   type Taxiway,
 } from '@shared/airfield';
 import type { RunwayObstacles } from '@shared/obstacles';
-import { padArea, padPolygon } from '@shared/turnPad';
+import { padArea, padPolygon, padValue } from '@shared/turnPad';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
-import { excludedType, isPaved, polylineLength, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
+import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
 import { apronArea, apronContains, cutShape, mergeShapes, touches } from '@shared/apronGeom';
 import { foldU32 } from '../hash';
@@ -770,8 +770,7 @@ export class Airfield {
     const r = this.data.runways.find((x) => x.id === cmd.runwayId);
     if (!r) return { code: 'nothingThere' };
     const end = cmd.end === 'b' ? 'b' : 'a';
-    const unit = this.unitCost(r);
-    const value = Math.round(padArea(r) * unit);
+    const value = padValue(r);
     const current = r.pads?.[end];
     if (cmd.side === null) {
       if (!current) return { code: 'nothingThere' };
@@ -797,12 +796,6 @@ export class Airfield {
     return { cashDelta: -cost };
   }
 
-  /** Cost per square meter for a runway at its current strength tier. */
-  private unitCost(r: Runway): number {
-    const tiers = SURFACE_SPEC[r.surface].pcrTiers;
-    return SURFACE_SPEC[r.surface].costPerM2 * tierOf(r.surface, Math.max(0, tiers.indexOf(r.pcr))).factor;
-  }
-
   /**
    * Extends or shortens a runway at one end. The new section joins the old one, so it stays a single
    * runway. Shortening is refused while a taxiway or exit still uses the part that would go.
@@ -816,7 +809,7 @@ export class Airfield {
     if (delta === 0 || newLen < MIN_RUNWAY_M || newLen > MAX_RUNWAY_M) return { code: 'runwayLength', args: { min: MIN_RUNWAY_M, max: MAX_RUNWAY_M } };
     const d = compassVector(r.headingDeg);
     const fullW = r.widthM + 2 * r.shoulderM;
-    const unit = this.unitCost(r);
+    const unit = runwayUnitCost(r);
     if (delta > 0) {
       const from = cmd.end === 'b' ? { x: r.x2, y: r.y2 } : { x: r.x1, y: r.y1 };
       const sign = cmd.end === 'b' ? 1 : -1;
@@ -886,7 +879,7 @@ export class Airfield {
       const problem = checkStrip(ctx, [{ x: r.x1, y: r.y1 }, { x: r.x2, y: r.y2 }], newFull);
       if (problem) return problem;
     }
-    const unit = this.unitCost(r);
+    const unit = runwayUnitCost(r);
     const areaCost = (newFull - oldFull) * r.lengthM * unit;
     const fee = APPROACH_FEE[cmd.approach] - APPROACH_FEE[r.approach];
     const net = Math.round((areaCost > 0 ? areaCost : areaCost * REFUND_SHARE) + (fee > 0 ? fee : fee * REFUND_SHARE));

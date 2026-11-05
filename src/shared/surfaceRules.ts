@@ -26,6 +26,11 @@ export function tierOf(surface: Surface, tier: number): { pcr: number; factor: n
 /** Cost per square meter of a surface at a strength tier. */
 export const unitCost = (surface: Surface, tier: number): number => SURFACE_SPEC[surface].costPerM2 * tierOf(surface, tier).factor;
 
+/** Cost per square meter of a runway at its current strength tier, from its stored PCR value. */
+export function runwayUnitCost(r: Pick<Runway, 'surface' | 'pcr'>): number {
+  return SURFACE_SPEC[r.surface].costPerM2 * tierOf(r.surface, Math.max(0, SURFACE_SPEC[r.surface].pcrTiers.indexOf(r.pcr))).factor;
+}
+
 export function polylineLength(points: readonly { x: number; y: number }[]): number {
   let l = 0;
   for (let i = 1; i < points.length; i++) l += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
