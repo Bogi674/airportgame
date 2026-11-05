@@ -11,7 +11,10 @@
     "e2e": "playwright test",
     "lint": "eslint .",
     "stress": "tsx scripts/stress.ts",
-    "build:offline": "npm run build && tsx scripts/inline.ts"
+    "build:offline": "npm run build && tsx scripts/inline.ts",
+    "verify": "bash scripts/verify.sh",
+    "rules": "node scripts/rules-check.mjs",
+    "shot": "node scripts/shot.mjs"
   },
   "dependencies": {
     "polygon-clipping": "0.15.7",

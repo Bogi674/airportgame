@@ -60,6 +60,9 @@ export class Renderer {
     return this.chunks.size;
   }
 
+  /** True once every chunk in view has been baked, for screenshots and tests. */
+  chunksReady = false;
+
   setQualityPreset(p: QualityPreset): void {
     this.governor.setPreset(p);
     this.applyQuality();
@@ -571,7 +574,7 @@ export class Renderer {
     const minCy = Math.floor(this.bounds[1] / CHUNK_SIZE_M);
     const maxCx = Math.floor(this.bounds[2] / CHUNK_SIZE_M);
     const maxCy = Math.floor(this.bounds[3] / CHUNK_SIZE_M);
-    this.chunks.update(band, minCx, minCy, maxCx, maxCy);
+    this.chunksReady = this.chunks.update(band, minCx, minCy, maxCx, maxCy);
 
     const ctx = this.ctx;
     const px = chunkPixelSize(band);
