@@ -7,6 +7,7 @@ import { AIRFIELD, PAINT } from '@data/index';
 import { paintGhostObjects } from './markings/airfieldPaint';
 import type { Ghost, GhostShape } from '@shared/ghost';
 import type { TerminalGrid } from '@shared/business';
+import type { ConstructionGrid } from '@shared/constructionGrid';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
@@ -17,6 +18,14 @@ import { vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
 
 const MAX_BACKING = 4096;
+
+/** Construction grid line strokes: screen pixel widths and opacities, and the smallest drawn gap in CSS pixels. */
+const GRID_MINOR_PX = 1;
+const GRID_MAJOR_PX = 1.5;
+const GRID_MINOR_ALPHA = 0.2;
+const GRID_MAJOR_ALPHA = 0.5;
+const GRID_MINOR_MIN_GAP_PX = 2;
+const GRID_MAJOR_MIN_GAP_PX = 3;
 
 /** Canvas 2D renderer. Static layer from baked chunks, dynamic layer from interpolated snapshots. */
 export class Renderer {
@@ -31,6 +40,8 @@ export class Renderer {
   private showParcels = false;
   private ghost: Ghost | null = null;
   private guide: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
+  private grid: ConstructionGrid | null = null;
+  private readonly gridPoint = { x: 0, y: 0 };
   private hover: GhostShape[] | null = null;
   private selected: GhostShape[] | null = null;
   private readonly sprites = new SpriteCache();
@@ -180,6 +191,11 @@ export class Renderer {
     this.guide = a && b ? { a, b } : null;
   }
 
+  /** The construction grid to draw under the ghost preview, or none (handoff/tasks/T42-grid-snapping.md, R6). */
+  setGrid(grid: ConstructionGrid | null): void {
+    this.grid = grid;
+  }
+
   /** Outlines for what the pointer is over and what is selected. */
   setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void {
     this.hover = hover;
@@ -243,6 +259,7 @@ export class Renderer {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
     if (this.hover || this.selected) this.drawHighlights(z * c, z * s, -z * s, z * c, e, f);
+    if (this.grid) this.drawGrid(this.grid, z * c, z * s, -z * s, z * c, e, f);
     if (this.guide) this.drawGuide(z * c, z * s, -z * s, z * c, e, f);
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
     this.drawPeople(z * c, z * s, -z * s, z * c, e, f);
@@ -267,6 +284,76 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(g.a.x, g.a.y, 4 / zoom, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  /**
+   * Construction grid lines in the snapping cyan (handoff/tasks/T42-grid-snapping.md, R6). The lattice has
+   * no extent: the four viewport corners are mapped into the grid frame and only the lines that cross that
+   * range are drawn. Endpoints are projected to device pixels by hand so the strokes keep a fixed screen
+   * width at every zoom (PITFALLS 15). Minor lines closer than GRID_MINOR_MIN_GAP_PX on screen are dropped,
+   * and the whole grid goes below GRID_MAJOR_MIN_GAP_PX, so a zoomed out view never turns into a wash. No text.
+   */
+  private drawGrid(g: ConstructionGrid, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const zoom = this.camera.zoom;
+    const minor = g.spacingMinorM;
+    const major = g.spacingMajorM;
+    const showMinor = minor * zoom >= GRID_MINOR_MIN_GAP_PX;
+    if (!showMinor && major * zoom < GRID_MAJOR_MIN_GAP_PX) return;
+    const cam = this.camera;
+    const p = this.gridPoint;
+    let alongMin = Infinity;
+    let alongMax = -Infinity;
+    let acrossMin = Infinity;
+    let acrossMax = -Infinity;
+    for (let k = 0; k < 4; k++) {
+      cam.screenToWorld(k % 2 === 0 ? 0 : cam.width, k < 2 ? 0 : cam.height, p);
+      const dx = p.x - g.origin.x;
+      const dy = p.y - g.origin.y;
+      const along = dx * g.ax + dy * g.ay;
+      const across = dx * g.cx + dy * g.cy;
+      if (along < alongMin) alongMin = along;
+      if (along > alongMax) alongMax = along;
+      if (across < acrossMin) acrossMin = across;
+      if (across > acrossMax) acrossMax = across;
+    }
+    const ctx = this.ctx;
+    const k = this.dpr;
+    const step = Math.round(major / minor);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = PAINT.colors.snap;
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([]);
+    for (let pass = 0; pass < 2; pass++) {
+      const isMajor = pass === 1;
+      if (!isMajor && !showMinor) continue;
+      ctx.globalAlpha = isMajor ? GRID_MAJOR_ALPHA : GRID_MINOR_ALPHA;
+      ctx.lineWidth = (isMajor ? GRID_MAJOR_PX : GRID_MINOR_PX) * k;
+      ctx.beginPath();
+      // Lines of constant along coordinate run across the grid, lines of constant across coordinate run along it.
+      for (let axis = 0; axis < 2; axis++) {
+        const lo = axis === 0 ? alongMin : acrossMin;
+        const hi = axis === 0 ? alongMax : acrossMax;
+        const from = axis === 0 ? acrossMin : alongMin;
+        const to = axis === 0 ? acrossMax : alongMax;
+        const ux = axis === 0 ? g.cx : g.ax;
+        const uy = axis === 0 ? g.cy : g.ay;
+        const nx = axis === 0 ? g.ax : g.cx;
+        const ny = axis === 0 ? g.ay : g.cy;
+        for (let i = Math.ceil(lo / minor); i <= Math.floor(hi / minor); i++) {
+          if ((i % step === 0) !== isMajor) continue;
+          const bx = g.origin.x + nx * i * minor;
+          const by = g.origin.y + ny * i * minor;
+          const x1 = bx + ux * from;
+          const y1 = by + uy * from;
+          const x2 = bx + ux * to;
+          const y2 = by + uy * to;
+          ctx.moveTo(a * x1 + cc * y1 + e, b * x1 + d * y1 + f);
+          ctx.lineTo(a * x2 + cc * y2 + e, b * x2 + d * y2 + f);
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   /**
