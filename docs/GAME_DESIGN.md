@@ -190,6 +190,8 @@ Values are ICAO based and live in `src/data/airfield_codes.json`.
 
 Parametric pieces that generate normal editable objects: runway end with turn pad, rapid exit, parallel taxiway with N connectors at a chosen spacing, stand row with taxilane, GA apron block, terminal starter shell. After placement every node is editable.
 
+A turn pad is an extension of the runway beyond its end, like a real runway turn pad: a sharp rectangle from the end out to the code's pad length, flush with the runway's far edge and wider than the runway by the code's extra width on the side the player picked, with the yellow turn curve in it. It does not move the threshold and does not change the declared distances; the takeoff roll still counts the full runway length. A departure at an end without enough length ahead backtracks to the pad and turns there.
+
 ### Placement, rotation and alignment
 
 * The main runway can take any heading in 1 degree steps. It creates an **alignment frame**.
