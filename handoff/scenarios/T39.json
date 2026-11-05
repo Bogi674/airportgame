@@ -13,15 +13,17 @@
     { "shot": "2-endB", "clip": { "w": 900, "h": 600 } },
     { "camera": { "x": 4300, "y": 5150, "zoom": 0.3 } },
     { "shot": "3-overview", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 2980, "y": 4980, "zoom": 6 } },
+    { "shot": "4-endA-zoom", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 5620, "y": 5020, "zoom": 6 } },
+    { "shot": "5-endB-zoom", "clip": { "w": 900, "h": 600 } },
     { "tool": "tool-runway" },
     { "tool": "card-turnPad" },
     { "camera": { "x": 5580, "y": 5035, "zoom": 3 } },
     { "move": [5520, 4900] },
-    { "shot": "4-preview", "clip": { "w": 900, "h": 600 } },
-    { "camera": { "x": 5620, "y": 5020, "zoom": 6 } },
-    { "shot": "5-endB-zoom", "clip": { "w": 900, "h": 600 } },
+    { "shot": "6-preview", "clip": { "w": 900, "h": 600 } },
     { "move": [5520, 5100] },
-    { "shot": "6-preview-red", "clip": { "w": 900, "h": 600 } }
+    { "shot": "7-preview-red", "clip": { "w": 900, "h": 600 } }
   ],
   "report": ["cash"]
 }

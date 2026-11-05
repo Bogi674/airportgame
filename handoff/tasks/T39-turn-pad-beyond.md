@@ -30,3 +30,12 @@ A pad is paved ground beyond the runway end, adjoined to the runway, wider than 
 ## Out of scope
 
 Chamfered corners. Changing declared distances or the backtrack pivot.
+
+## Revision 2: the turn curve must match the reference diagram
+
+The user's follow up (session of 2026-11-05) after seeing the screenshots: the extension pad looked wrong and must match the attached reference in centerline curvature and how it attaches to the runway end. The reference shows the runway centerline flowing into a curved branch that leaves the threshold tangentially along the centerline, sweeps the long way round a circle set in the pad and returns on a straight diagonal to the threshold. The loop keeps a clear margin from every pad edge instead of filling the pavement.
+
+* R6. `padCurve` becomes that tangent loop. Proportions measured from the reference: loop radius 0.33 of the paved pad width, loop centre 0.53 of the pad length out on the pad's lateral centre.
+* R7. The curve must leave the threshold along the runway centerline (first step slope under 6 percent in the local frame) and return on a diagonal with a slope over 0.5.
+* R8. The loop must keep at least 10 percent of the paved width clear of the lateral and outward pad edges.
+* R9. Everything else (pad polygon, area, price, painter, tool, sim) is unchanged. Docs mention the tangent loop.
