@@ -39,6 +39,7 @@ export class Sim {
   private businessSentTick = -1000000;
   private airfieldSent = -1;
   private obstaclesSent = -1;
+  private towersSent = -1;
   private networkVersion = -1;
   /** Bumped whenever the player buys land, which clears the cover on it. */
   private ownerVersion = 0;
@@ -290,9 +291,10 @@ export class Sim {
 
   /** True once per airfield change. */
   takeAirfieldDirty(): boolean {
-    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent) return false;
+    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent && this.airfield.towersVersion === this.towersSent) return false;
     this.airfieldSent = this.airfield.version;
     this.obstaclesSent = this.airfield.obstaclesVersion;
+    this.towersSent = this.airfield.towersVersion;
     return true;
   }
 
@@ -387,6 +389,7 @@ export class Sim {
     this.ownershipDirty = true;
     this.airfieldSent = -1;
     this.obstaclesSent = -1;
+    this.towersSent = -1;
     this.obstacleKey = '';
     this.obstacleSeen.fill(-1);
     this.updateObstacles();

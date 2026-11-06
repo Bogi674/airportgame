@@ -1,8 +1,9 @@
-import { AIRFIELD, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, BUSINESS, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { sizeCode } from '@shared/standSizes';
 import {
   codeIndex,
   compassVector,
+  towerRect,
   type Apron,
   type AirfieldPayload,
   type CodeLetter,
@@ -12,9 +13,12 @@ import {
   type StandType,
   type Surface,
   type Taxiway,
+  type Tower,
 } from '@shared/airfield';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { padArea, padPolygon, padValue } from '@shared/turnPad';
+import { levelForRunways, runwayCapOf, towerLevelOf } from '@shared/towerBudget';
+import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
@@ -25,10 +29,10 @@ import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
 import { assignRunwayNames, assignTaxiNames, deriveNetwork } from './geometry';
 
-type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand';
+type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower';
 interface Item {
   type: ObjType;
-  obj: Runway | Taxiway | Apron | Stand;
+  obj: Runway | Taxiway | Apron | Stand | Tower;
 }
 interface Op {
   items: Item[];
@@ -38,6 +42,8 @@ interface Op {
   cashDelta: number;
   /** Taxiways the operation changed in place, as copies before and after, so undo restores them exactly. */
   swaps?: { before: Taxiway; after: Taxiway }[];
+  /** Towers the operation changed in place, as levels before and after, so undo restores them exactly. */
+  towerSwaps?: { id: number; before: Tower; after: Tower }[];
   /** Objects the operation removed while adding `items`, such as aprons merged into a new one. */
   replaced?: Item[];
 }
@@ -80,7 +86,7 @@ function segSegDist(ax: number, ay: number, bx: number, by: number, cx: number, 
 
 /** All built airfield objects, with undo and redo. State lives here, changes arrive as commands. */
 export class Airfield {
-  readonly data: AirfieldPayload = { version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [] };
+  readonly data: AirfieldPayload = { version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [], towers: [] };
   private nextId = 1;
   private nameIndex = 0;
   private standNumber = 0;
@@ -90,6 +96,8 @@ export class Airfield {
 
   /** Bumped when the obstacle results change; they never rebuild the taxi network. */
   obstaclesVersion = 0;
+  /** Bumped when a tower is built, upgraded or removed. Towers sit off the taxi network, so this never rebuilds it. */
+  towersVersion = 0;
 
   get version(): number {
     return this.data.version;
@@ -116,9 +124,15 @@ export class Airfield {
         return this.data.taxiways;
       case 'apron':
         return this.data.aprons;
+      case 'tower':
+        return this.towerList;
       default:
         return this.data.stands;
     }
+  }
+
+  private get towerList(): Tower[] {
+    return (this.data.towers ??= []);
   }
 
   private nextTaxiName(): string {
@@ -135,9 +149,15 @@ export class Airfield {
     this.data.version++;
   }
 
+  /** Rebuilds the taxi network, unless the items are towers only, which never touch it. */
+  private refreshFor(items: Item[]): void {
+    if (items.length > 0 && items.every((it) => it.type === 'tower')) this.towersVersion++;
+    else this.refresh();
+  }
+
   private addItems(items: Item[]): void {
     for (const it of items) this.list(it.type).push(it.obj);
-    this.refresh();
+    this.refreshFor(items);
   }
 
   private removeItems(items: Item[]): void {
@@ -146,7 +166,7 @@ export class Airfield {
       const i = l.findIndex((o) => o.id === it.obj.id);
       if (i >= 0) l.splice(i, 1);
     }
-    this.refresh();
+    this.refreshFor(items);
   }
 
   private record(items: Item[], added: boolean, cashDelta: number): BuildResult {
@@ -185,6 +205,12 @@ export class Airfield {
         return this.buildGaBlock(cmd, ctx, cash);
       case 'demolish':
         return this.demolish(cmd.kind, cmd.id);
+      case 'buildTower':
+        return this.buildTower(cmd, ctx, cash);
+      case 'upgradeTower':
+        return this.upgradeTower(cmd.id, cash);
+      case 'demolishTower':
+        return this.demolishTower(cmd.id);
       case 'setTaxiwayProps':
         return this.setTaxiwayProps(cmd);
       case 'resurface':
@@ -230,6 +256,9 @@ export class Airfield {
   private buildRunway(cmd: Extract<Command, { type: 'buildRunway' }>, ctx: BuildContext, cash: number): BuildResult {
     const length = Math.round(cmd.lengthM);
     if (length < MIN_RUNWAY_M || length > MAX_RUNWAY_M) return { code: 'runwayLength', args: { min: MIN_RUNWAY_M, max: MAX_RUNWAY_M } };
+    // The tower ladder caps how many runways it can serve (handoff/tasks/T40-atc-tower.md R5). Without a tower the cap is unlimited.
+    const cap = runwayCapOf(towerLevelOf(this.data));
+    if (cap >= 0 && this.data.runways.length + 1 > cap) return { code: 'towerRunwayCap', args: { level: levelForRunways(this.data.runways.length + 1) } };
     if (cmd.approach !== 'visual' && !isPaved(cmd.surface)) return { code: 'approachNeedsPaved' };
     const row = AIRFIELD.codes[cmd.code];
     const heading = ((Math.round(cmd.headingDeg) % 360) + 360) % 360;
@@ -613,6 +642,50 @@ export class Airfield {
     // Stands lose their apron with it only if the player demolishes them too.
     this.removeItems(items);
     return this.record(items, false, refund);
+  }
+
+  /**
+   * Builds a free standing ATC tower centred on the point, at a level from 1 to 5, paying the build
+   * cost plus one upgrade per level above 1 (handoff/tasks/T40-atc-tower.md section 1).
+   */
+  private buildTower(cmd: Extract<Command, { type: 'buildTower' }>, ctx: BuildContext, cash: number): BuildResult {
+    const levels = BUSINESS.tower.levels;
+    const level = Math.floor(cmd.level);
+    if (!Number.isInteger(cmd.level) || level < 1 || level > levels.length) return { code: 'towerLevel', args: { max: levels.length } };
+    const side = BUSINESS.tower.footprintM;
+    const poly = towerRect(round05(cmd.x), round05(cmd.y), side);
+    const landProblem = checkPolygon(ctx, poly);
+    if (landProblem) return landProblem;
+    if (towerBlocked(this.data, poly)) return { code: 'towerOnPavement' };
+    for (const t of this.towerList) if (towersOverlap(poly, towerRect(t.x, t.y, side))) return { code: 'towerOverlap' };
+    const cost = BUSINESS.tower.cost + (level - 1) * BUSINESS.tower.upgradeCost;
+    const tower: Tower = { id: this.nextId++, cost, x: poly[0].x + side / 2, y: poly[0].y + side / 2, level };
+    return this.place([{ type: 'tower', obj: tower }], cash);
+  }
+
+  /**
+   * Raises a tower by one level for the upgrade cost. The change is recorded as a tower swap, so undo
+   * and redo move the level back and forth and give the money back exactly once.
+   */
+  private upgradeTower(id: number, cash: number): BuildResult {
+    const t = this.towerList.find((x) => x.id === id);
+    if (!t) return { code: 'nothingThere' };
+    const levels = BUSINESS.tower.levels;
+    if (t.level >= levels.length) return { code: 'towerMaxLevel' };
+    const price = BUSINESS.tower.upgradeCost;
+    if (price > cash) return { code: 'insufficientFunds', args: { cost: price } };
+    const before: Tower = { ...t };
+    t.level++;
+    t.cost += price;
+    this.towersVersion++;
+    this.undoStack.push({ items: [], added: true, cashDelta: -price, towerSwaps: [{ id, before, after: { ...t } }] });
+    this.redoStack.length = 0;
+    return { cashDelta: -price };
+  }
+
+  /** Removes a tower and refunds a share of everything the player spent on it, as the other demolitions do. */
+  private demolishTower(id: number): BuildResult {
+    return this.demolish('tower', id);
   }
 
   private setTaxiwayProps(cmd: Extract<Command, { type: 'setTaxiwayProps' }>): BuildResult {
@@ -1037,9 +1110,24 @@ export class Airfield {
     }
   }
 
+  /** Puts the given tower states in place of the towers with the same ids. */
+  private applyTowerSwaps(states: readonly Tower[]): void {
+    for (const st of states) {
+      const i = this.towerList.findIndex((x) => x.id === st.id);
+      if (i >= 0) this.towerList[i] = { ...st };
+    }
+  }
+
   private undo(cash: number): BuildResult {
     const op = this.undoStack[this.undoStack.length - 1];
     if (!op) return { code: 'nothingToUndo' };
+    // An upgrade changes a tower in place and has no items, so it only swaps the level back.
+    if (op.items.length === 0 && op.towerSwaps) {
+      this.undoStack.pop();
+      this.applyTowerSwaps(op.towerSwaps.map((w) => w.before));
+      this.redoStack.push(op);
+      return { cashDelta: -op.cashDelta };
+    }
     // Undoing an addition refunds it. Undoing a demolition re-adds it and takes the refund back.
     if (-op.cashDelta < 0 && cash < op.cashDelta) return { code: 'insufficientFunds', args: { cost: op.cashDelta } };
     this.undoStack.pop();
@@ -1054,6 +1142,12 @@ export class Airfield {
   private redo(cash: number): BuildResult {
     const op = this.redoStack[this.redoStack.length - 1];
     if (!op) return { code: 'nothingToRedo' };
+    if (op.items.length === 0 && op.towerSwaps) {
+      this.redoStack.pop();
+      this.applyTowerSwaps(op.towerSwaps.map((w) => w.after));
+      this.undoStack.push(op);
+      return { cashDelta: op.cashDelta };
+    }
     if (op.cashDelta < 0 && cash < -op.cashDelta) return { code: 'insufficientFunds', args: { cost: -op.cashDelta } };
     this.redoStack.pop();
     if (op.swaps) this.applySwaps(op.swaps.map((w) => w.after));
@@ -1067,16 +1161,17 @@ export class Airfield {
   /** Everything needed to rebuild the airfield. Undo history is not saved. */
   saveState(): unknown {
     const d = this.data;
-    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
+    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, towers: this.towerList, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
   }
 
   loadState(raw: unknown): void {
-    const o = raw as { runways: Runway[]; taxiways: Taxiway[]; aprons: Apron[]; stands: Stand[]; nextId: number; nameIndex: number; standNumber: number; version: number };
+    const o = raw as { runways: Runway[]; taxiways: Taxiway[]; aprons: Apron[]; stands: Stand[]; towers?: Tower[]; nextId: number; nameIndex: number; standNumber: number; version: number };
     const d = this.data;
     d.runways = o.runways;
     d.taxiways = o.taxiways;
     d.aprons = o.aprons;
     d.stands = o.stands;
+    this.towerList.splice(0, this.towerList.length, ...(o.towers ?? []));
     this.nextId = o.nextId;
     this.nameIndex = o.nameIndex;
     this.standNumber = o.standNumber;
@@ -1105,6 +1200,7 @@ export class Airfield {
     }
     for (const a of this.data.aprons) acc = foldU32(foldU32(foldU32(acc, a.id), a.polygon.length), a.holes?.length ?? 0);
     for (const s of this.data.stands) acc = foldU32(foldU32(foldU32(acc, s.id), r(s.x)), r(s.y));
+    for (const t of this.towerList) acc = foldU32(foldU32(foldU32(foldU32(acc, t.id), t.level), t.cost), r(t.x) * 64 + r(t.y));
     return acc;
   }
 }

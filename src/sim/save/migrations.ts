@@ -3,7 +3,7 @@ import type { CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface SaveData {
   version: number;
@@ -53,5 +53,7 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 6) save.version = 6;
   // Version 6 to 7: taxiways gained optional holding position settings, runways optional works and turn pads. Older saves keep the defaults and have no works.
   if (save.version < 7) save.version = 7;
+  // Version 7 to 8: the airfield gained ATC towers. Older saves have none, and loading defaults them to an empty list.
+  if (save.version < 8) save.version = 8;
   return save as SaveData;
 }

@@ -54,6 +54,34 @@
    "staff": 1.5
   }
  },
+ "tower": {
+  "note": "Free standing ATC tower, confirmed by the user on 2026-11-06. Money in the game currency, footprint side in meters. Index 0 of levels is level 1. movementsPerHour is the landing and takeoff budget per runway in a rolling 60 minute window. maxRunways is the most runways the level allows, minus 1 means unlimited.",
+  "cost": 100000,
+  "upgradeCost": 50000,
+  "footprintM": 15,
+  "levels": [
+   {
+    "movementsPerHour": 20,
+    "maxRunways": 1
+   },
+   {
+    "movementsPerHour": 40,
+    "maxRunways": 1
+   },
+   {
+    "movementsPerHour": 60,
+    "maxRunways": 2
+   },
+   {
+    "movementsPerHour": 80,
+    "maxRunways": 2
+   },
+   {
+    "movementsPerHour": 100,
+    "maxRunways": -1
+   }
+  ]
+ },
  "shops": {
   "convenience": {
    "cost": 40000,

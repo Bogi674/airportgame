@@ -13,7 +13,7 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 | T02 | M2 | [Runway marking details](tasks/T02-runway-markings.md) | L | | todo | |
 | T03 | M2 | [Grading tool with cut and fill](tasks/T03-grading.md) | L | | todo | |
 | T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M | | todo | |
-| T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M | | todo | |
+| T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M | | doing | |
 | T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T02 T03 | todo | |
 | T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L | T04 | todo | |
 | T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | todo | |

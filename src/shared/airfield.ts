@@ -156,6 +156,29 @@ export interface RunwayEntry {
   todaTowardA: number;
 }
 
+/** A free standing ATC tower. Its square footprint side comes from `BUSINESS.tower.footprintM`. */
+export interface Tower {
+  id: number;
+  /** What it cost to build and upgrade, used for demolition refunds. */
+  cost: number;
+  /** Centre of the footprint. */
+  x: number;
+  y: number;
+  /** One to five. */
+  level: number;
+}
+
+/** The axis aligned square a tower covers, as four corners. */
+export function towerRect(x: number, y: number, sideM: number): Pt[] {
+  const h = sideM / 2;
+  return [
+    { x: x - h, y: y - h },
+    { x: x + h, y: y - h },
+    { x: x + h, y: y + h },
+    { x: x - h, y: y + h },
+  ];
+}
+
 /** Everything the renderer and UI need to know about the airfield. */
 export interface AirfieldPayload {
   version: number;
@@ -165,6 +188,8 @@ export interface AirfieldPayload {
   stands: Stand[];
   holding: HoldingPoint[];
   entries: RunwayEntry[];
+  /** ATC towers. Missing means none, so older payload literals stay valid. */
+  towers?: Tower[];
   /** Obstacle surface results per runway, derived from the terrain, land and buildings. */
   obstacles?: RunwayObstacles[];
 }
