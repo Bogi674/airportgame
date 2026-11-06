@@ -63,11 +63,18 @@ Output: green tests for the slice.
 
 ## Step 6. Verify
 
+Check cadence (user decision, 2026-11-06):
+
+* Every slice commit: `npm run verify -- quick` must pass (rules, types, lint, tests).
+* Once per task, before the task's last commit: the full `npm run verify`, which adds stress.
+* Screenshots: once per visual task, at the end of the task (step 7).
+* The full play session stays a single final task (T38).
+
 ```
 npm run verify
 ```
 
-All five checks must pass: rules, types, lint, tests, stress. Paste the summary block into the work file.
+All five checks must pass on the task's last commit: rules, types, lint, tests, stress. Paste the summary block into the work file.
 
 If stress fails with a regression, find what made the tick slower (a loop, an allocation, a lookup in a hot path) and fix it. Read `docs/PERFORMANCE.md` sections 3 and 9.
 
@@ -116,7 +123,16 @@ Update `handoff/TASKS.md` (status `done`, commit hashes) and the "Report" sectio
 * what now works, in player terms;
 * the verify summary and the stress numbers;
 * the screenshots' paths;
-* anything simplified or left out, and the new task you created for it.
+* anything simplified or left out, and the new task you created for it;
+* a reminder to the user to close this session and open a new one for the next task, because a fresh session keeps token usage low and loses nothing: decisions, specs and plans are on disk.
+
+## Token budget (user request, 2026-11-06)
+
+* One task per session, then a fresh session. Remind the user at the end of every task.
+* The orchestrator plans, decides and reviews. Subagents on smaller models do inventories, coding and tests.
+* Ask subagents for short reports, about 150 words: what changed, check results, open questions.
+* Batch design questions into one questionnaire per task, asked before coding starts.
+* Review a subagent's work by spot checking its diff and running `npm run verify -- quick`, not by rereading every file.
 
 ## Slicing rules
 

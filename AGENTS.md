@@ -9,7 +9,7 @@ This file is loaded into every session. Read it fully. Then follow `handoff/WORK
 1. **One task per session.** Pick the first task marked `todo` in `handoff/TASKS.md`, unless the user names one. Never work on two tasks at once.
 2. **Write the plan before code.** Copy `handoff/templates/PLAN.md` to `handoff/work/<task-id>.md` and fill it in before you edit any source file.
 3. **Tests first for sim logic.** Every change under `src/sim` or `src/shared` gets a failing test before the code that makes it pass.
-4. **`npm run verify` must pass before every commit.** If it fails, fix it. Never commit red. Never delete or skip a test to make it pass.
+4. **Verify before every commit.** `npm run verify -- quick` must pass before every slice commit, and the full `npm run verify` (with stress) before the last commit of each task (user decision, 2026-11-06). If it fails, fix it. Never commit red. Never delete or skip a test to make it pass.
 5. **Never guess the design.** If the spec and the docs do not answer a design question, write it in `handoff/QUESTIONS.md` and ask the user. Do not invent gameplay rules.
 
 ## Reading order for a new session
@@ -51,7 +51,7 @@ This file is loaded into every session. Read it fully. Then follow `handoff/WORK
 
 ```
 npm run dev        dev server at http://localhost:5173 (needed for screenshots)
-npm run verify     rules check, type check, lint, all tests, stress. Run before every commit.
+npm run verify     rules check, type check, lint, all tests, stress. Run before the last commit of each task.
 npm run verify -- quick   the same without stress, for fast loops while coding
 npm run rules      only the hard rule checker (dashes, any, TODO, sim determinism and imports)
 npm run test       vitest once; one file: npx vitest run tests/<name>.test.ts
