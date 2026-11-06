@@ -670,6 +670,7 @@ export class Business {
       serviceSlowdown: this.traffic.serviceSlowdown,
       arrCapacity: this.arrCapacity(),
       towerLevel: towerLevelOf(this.airfield.data),
+      atcQueue: this.traffic.atcQueueLength(),
       history: this.history.map((h) => Array.from(h)),
       today: Array.from(this.today),
       paxToday: this.paxToday,

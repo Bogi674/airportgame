@@ -1,6 +1,6 @@
 # T40: Standalone ATC tower with five levels
 
-Status: planning
+Status: doing
 Branch: glm/mvp1
 
 ## Requirements
@@ -60,7 +60,7 @@ Notes from reading:
   * `src/shared/towerBudget.ts` (new): `towerLevelOf(af)` the highest tower level or 0, `movementsPerHour(level)`, `runwayCapOf(level)`, `levelForRunways(n)` the cheapest level that allows n runways, and `towerCapacity(af)` returning `{ hasTower, level, perHour, total }`. Pure functions over `BUSINESS.tower`, no state, so the sim, the renderer and the UI cannot disagree. This is the shared home for the ladder because `SlotsSheet`, the tool preview and the traffic gate all read it.
   * `src/shared/towerGeom.ts` (new): `towerBlocked(af, rect)` true when the rectangle touches a runway strip, a taxiway strip, an apron or a stand, by sampling the footprint every metre, and `towersOverlap(a, b)` for two axis aligned footprints. Shared so the tool preview validates with the same test the sim uses (R7 of RECIPES). `towerRect` itself sits in `src/shared/airfield.ts` next to `Tower`, because the renderer needs it too.
   * `src/sim/airfield/airfield.ts`: `buildTower`, `upgradeTower`, `demolishTower` handlers in the `execute` switch, all following `buildGaBlock`: `checkPolygon` then `towerBlocked` then money, then state, then `record`. They bump a new `towersVersion` counter instead of calling `refresh`. `buildRunway` (230) gains the cap check at the top, using `runwayCapOf(towerLevelOf(this.data))` and refusing with `towerRunwayCap|level=<needed>`. `saveState` gains `towers`, `loadState` defaults `o.towers ?? []`, `hash` folds each tower's id, position and level.
-  * `src/sim/ops/traffic.ts`: `setTowerLevel(level)` stores the effective level for the budget, called from `Sim.apply` and `Sim.restore` because `traffic.af` is a shallow copy that never sees the new towers array (PITFALLS 4). `movRing`, `movHead`, `movCount` form the rolling window ledger, one ring per runway keyed by runway id, reallocated in `setAirfield` next to `rsvStart`. `qKind`, `qRef`, `qSince`, `qHead`, `qCount` form the single FIFO queue, one shared ring for arrivals and departures. `takeMovement(runwayId, startTick)` is the atomic check and spend. `delay` gains a limit parameter. `atcQueueLength()` returns `qCount` for the UI.
+  * `src/sim/ops/traffic.ts`: `setTowerLevel(level)` stores the effective level for the budget, called from `Sim.apply` and `Sim.restore` because `traffic.af` is a shallow copy that never sees the new towers array (PITFALLS 4). `movStart`, `movHead` and `movCount` form the rolling ledger, one ring per runway, reallocated in `setAirfield` next to `rsvStart` and carried across a rebuild by runway id. `fMovWait` and the new per aircraft `depWait` plus `depRetryAt` form the wait that the retry schedule serves, and the 30 game minute window counts only budget waits. `movementFree(runwayIdx)` is the check and `spendMovement(runwayIdx)` the spend, called only at the two admission points. `atcQueueLength()` returns the waiting movements for the UI.
   * `src/sim/business/business.ts`: `atcOk` becomes `towers.length > 0 && runways.length > 0`, dropping `atcCells`, `atcX`, `atcY` and `atcRangeM` from the decision. `readiness` pushes only `noAtc`. `payload` (664) gains `towerLevel` and `atcQueue`.
   * `src/sim/sim.ts`: `apply` gains the three tower commands and, after them, `this.business.version++` and `this.traffic.setTowerLevel(...)`, the same pattern as `setAutoStands` at 202. `restore` (373) emits `atcLost` when the loaded save had control room cells and no tower.
   * `src/render/markings/towerPaint.ts` (new): `paintTowers(ctx, af, win)`, called from `paintAirfield` between `paintTerminal` (122) and `paintStands` (123). Sizes come from `AIRFIELD.tower` in meters, and the shadow is drawn longer than other buildings per `docs/ART_AND_ASSETS.md`.
@@ -75,7 +75,7 @@ Notes from reading:
   No field conversion is needed because `Airfield.loadState` defaults `towers` to an empty list, which is what R3 of RECIPES calls for. `tests/save.test.ts` gains a version 7 object that loads with no towers and emits the load warning.
 * Why this design and not the obvious alternative:
   * The budget gate sits at the two admission points and nowhere else, because a gate anywhere later would freeze an aircraft that already owns the runway. `tryClearDeparture` and the landing and takeoff updates only ever extend a reservation that exists, so they stay out of the budget path entirely.
-  * The FIFO queue is not a new array of waiting movements. It is the retry schedule that already exists: a blocked arrival waits on `fRetryAt`, set by `delay`, and a blocked departure waits on a new `depWait` array. Both advance by the same `RETRY_TICKS` step from the tick the movement was first blocked, so the movement blocked earliest always has the earliest next attempt and is served first, and the order never changes. An explicit ring of pending movements would need a per tick release path and more saved state for the same result.
+  * The FIFO queue is not a new array of waiting movements. It is the retry schedule that already exists: a blocked arrival waits on `fRetryAt`, set by `atcWait`, and a blocked departure waits on `depRetryAt`. Both advance by the same `RETRY_TICKS` step, so the movement blocked earliest has the earliest retry phase and normally goes first. The user approved enforcing the budget on that 30 game second cadence, so a slot that frees between two retries is taken by the first retry after it, not at the tick it frees. An explicit ring of pending movements would need a per tick release path and more saved state for the same result.
   * The rolling window is a ring of movement start ticks per runway, keyed by runway id rather than by array index, because `setAirfield` rebuilds the network and reallocates the reservation arrays whenever the airfield version changes. Keying by id keeps the count correct across a rebuild, and expired entries are dropped as the head advances, so the scan is O(1) amortised.
   * The tower bumps its own `towersVersion` counter instead of `data.version`, because a version bump calls `traffic.setAirfield`, which replans every aircraft and clears every runway reservation (PITFALLS 1). The counter still reaches the UI through `Sim.takeAirfieldDirty`, which already folds `obstaclesVersion`, so the renderer re-bakes the chunks that hold the new tower.
   * Test traffic is metered like any other traffic, because the budget is a property of the tower, not of the airline. With no tower there is no budget at all, which keeps GA and private movement unscaled and matches "no default commercial budget". The consequence is that `scripts/stress.ts` must build a level 5 tower in every scenario or the `busy50` peak requirement fails; that edit is part of slice 3.
@@ -84,7 +84,7 @@ Notes from reading:
 
 1. Sim data, tower object and commands, no behaviour change. (R1, R2, R9, R5) Files: `src/data/business.json`, `src/data/schemas/business.ts`, `src/shared/airfield.ts`, `src/shared/towerBudget.ts`, `src/shared/towerGeom.ts`, `src/sim/airfield/airfield.ts`, `src/sim/commands.ts`, `src/sim/sim.ts`, `src/sim/save/migrations.ts`, `tests/tower.test.ts`. Done. The place strings (`towerLevel`, `towerMaxLevel`, `towerOnPavement`, `towerOverlap`, `towerRunwayCap`) landed here too. Ends green with `atcOk` still reading the control room, so nothing the player sees changes yet.
 2. The tower becomes the only ATC source. (R3, R12, R6) Files: `src/sim/business/business.ts`, `src/sim/sim.ts`, `src/shared/business.ts`, `src/ui/strings/en.json`, `src/ui/alerts.ts`, `src/ui/BuildMenu.tsx`, `src/ui/ContextBar.tsx`, `src/ui/thumbs.tsx`, `src/ui/Guide.tsx`, `tests/business.test.ts`, `tests/save.test.ts`, `tests/helpers.ts`. Done. The control room card disappears, the checklist asks for a tower, the terminal helper builds a level 5 tower, and a loaded save that relied on a control room warns once with `atcLost`.
-3. The rolling movement budget and the FIFO queue. (R4, R10) Files: `src/sim/ops/traffic.ts`, `src/shared/towerBudget.ts`, `src/sim/business/business.ts`, `src/sim/sim.ts`, `scripts/stress.ts`, `tests/tower.test.ts`, `tests/traffic.test.ts`. About 300 lines. The budget ledger, the queue, the 30 game minute divert window, the `atcQueue` payload field and the determinism test all land here, and the stress tool gains a level 5 tower.
+3. The rolling movement budget and the FIFO queue. (R4, R10) Files: `src/sim/ops/traffic.ts`, `src/shared/towerBudget.ts`, `src/sim/business/business.ts`, `src/sim/sim.ts`, `scripts/stress.ts`, `tests/tower.test.ts`, `tests/traffic.test.ts`. About 300 lines. The budget ledger, the queue, the 30 game minute divert window, the `atcQueue` payload field and the determinism test all land here, and the stress tool gains a level 5 tower. Done. The ledger is a ring of movement start ticks per runway, keyed by runway id when the network is rebuilt, so a taxiway edit cannot reset the budget. A blocked departure waits on `depRetryAt` and keeps its stand; only arrivals divert, after 18000 ticks of budget wait. `Sim.apply` refreshes the traffic level from `towersVersion`, which also covers undo and redo. The tests read admissions from the aircraft states instead of the sim internals.
 4. Render the tower. (R7, R8) Files: `src/render/markings/towerPaint.ts`, `src/render/markings/airfieldPaint.ts`, `src/render/bake/bakeWorker.ts` if the worker needs the payload, `handoff/scenarios/T40-atc-tower.json`, `shots/T40`. About 200 lines plus the scenario. Five looks, true scale, checked at two zooms.
 5. UI: the tower tool and the overload readout. (R4, R8, R11) Files: `src/ui/stores/toolStore.ts`, `src/ui/BuildMenu.tsx`, `src/ui/ContextBar.tsx`, `src/ui/tools/controller.ts`, `src/ui/Sheets.tsx`, `src/ui/strings/en.json`, `docs/UI_DESIGN.md`. About 220 lines. The last step is the `SlotsSheet` cap and the queue length, so the player sees the whole feature at once.
 6. Docs. Files: `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/GAME_DESIGN.md`, `docs/ART_AND_ASSETS.md`, `docs/UI_DESIGN.md`, `handoff/TASKS.md`, `handoff/STATE.md`. Run `npm run rules` again after the edits.
@@ -98,13 +98,13 @@ Notes from reading:
   * upgrade a level 1 tower: level 2 and cash down 50000. Upgrade a level 5 tower: `towerMaxLevel`. Demolish: refund of 25 percent of the money spent, following `REFUND_SHARE`.
   * runway cap: with a level 1 tower the second runway build returns `towerRunwayCap` with `level=2`. With a level 3 tower two runways build and the third returns `towerRunwayCap` with `level=5`. With a level 5 tower three runways build and a fourth is accepted.
 * `tests/tower.test.ts`, the budget, using `setTestTraffic` and a small airport:
-  * level 1 tower, 20 movements per hour, one runway, 60 arrivals offered per hour for 3 game hours: completed plus diverted plus queued equals offered, and no more than 20 landings are admitted in any rolling 60 minute window. Assert by counting admission ticks in the ring.
+  * level 1 tower, 20 movements per hour, one runway, 120 arrivals offered per hour for 2 game hours: no more than 20 movements (landings plus takeoffs) are admitted in any rolling 60 minute window. Admissions are counted from the aircraft states, not from sim internals.
   * the 21st movement on a runway is admitted no earlier than 36000 ticks after the first one, which is the 60 minute window.
-  * an arrival that has waited 18000 ticks for a movement emits `flightDiverted` with `reason=noMovement` and increments `divertedFlights` by 1.
-  * mid movement safety: over 20000 ticks at 60 arrivals per hour with a level 1 tower, every aircraft in `AcState.Approach`, `Rollout`, `Takeoff` or `Backtrack` keeps `rwySlot >= 0` and its `rwyS` never jumps backwards. No aircraft is removed while it holds a reservation.
-  * no tower: `atcOk` is false, `readiness()` contains `noAtc`, a signed airline emits `noAtc` at the day close and schedules no flight, and test traffic still moves because GA is unscaled.
-  * determinism: two sims from one seed, each with a tower build, an upgrade and 2000 ticks, identical `stateHash` (RECIPES R9).
-  * save and restore: build a tower, run 500 ticks, save, restore into a fresh sim, run 500 more, and compare the hash with an uninterrupted run (RECIPES R9, second half).
+  * an arrival that has waited 18000 ticks for a movement emits `flightDiverted` with `reason=noMovement` and increments `divertedFlights`, and the payload shows a queue above zero before that.
+  * mid movement safety: over 20000 ticks at 120 arrivals per hour with a level 1 tower, every aircraft in `AcState.Approach`, `Rollout`, `Takeoff` or `Backtrack` keeps `rwySlot >= 0` while it owns the runway, `rwyS` never jumps backwards on approach, rollout or takeoff, and no aircraft is removed while it holds a reservation. A takeoff hands its reservation back after rotation, so it is only checked while still on the runway.
+  * no tower: `atcOk` is false, `readiness()` contains `noAtc`, and test traffic still lands more than 20 aircraft an hour because there is no budget at all.
+  * determinism: two metered sims from one seed give the same `stateHash` after 4000 ticks under budget pressure, on top of the existing build and upgrade case (RECIPES R9).
+  * save and restore: a metered sim saves after 5000 ticks, restores into a fresh sim with the same hash, and both continue another 5000 ticks to the hash of an uninterrupted run (RECIPES R9, second half).
 * `tests/data.test.ts`: the three new refines on the `tower` block, one case each.
 * `tests/save.test.ts`: a version 7 save object with an airfield that has no `towers` loads with an empty list, `atcOk` false, and the `atcLost` event once.
 * `tests/business.test.ts`: the control room case moves to a tower. A control room alone leaves `readiness()` containing `noAtc`. A tower alone clears it.
@@ -137,7 +137,48 @@ These need the user before the slice named. Everything else in this plan is deci
 
 Paste the summary block of `npm run verify` here before every commit of this task.
 
-Nothing is committed yet, so there is no summary to paste. The first `npm run verify` must pass before slice 1 is committed, per AGENTS.md rule 4.
+Slice 1, `npm run verify -- quick`:
+
+```
+PASS  rules
+PASS  types
+PASS  lint
+PASS  tests (32 files, 294 tests)
+verify: all checks passed.
+```
+
+Slice 2, `npm run verify -- quick`:
+
+```
+PASS  rules
+PASS  types
+PASS  lint
+PASS  tests (32 files, 294 tests)
+verify: all checks passed.
+```
+
+Slice 3, `npm run verify -- quick`:
+
+```
+PASS  rules
+PASS  types
+PASS  lint
+PASS  tests (32 files, 301 tests)
+verify: all checks passed.
+```
+
+Slice 3, `npm run stress` (no baseline update, every scenario builds a level 5 tower):
+
+```
+small       peak 8,  total mean 0.00759 ms  budget 1
+medium      peak 10, total mean 0.00578 ms  budget 4
+large       peak 15, total mean 0.00668 ms  budget 8
+busy50      peak 62, total mean 0.02349 ms  budget 4
+terminal640 peak 9,  total mean 0.00534 ms  budget 4
+no budget breach, no regression over 10 percent
+```
+
+The full `npm run verify`, with stress, still has to run before the last commit of the task.
 
 ## Report
 

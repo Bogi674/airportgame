@@ -151,6 +151,8 @@ export interface BusinessPayload {
   autoStands: boolean;
   /** Highest ATC tower level on the site, 0 when none stands. */
   towerLevel: number;
+  /** Landings and takeoffs waiting for the tower's rolling hour movement budget. */
+  atcQueue: number;
   /** Vehicles owned by catalog index of the ground vehicle list. */
   fleet: number[];
   /** 1 when ground handling keeps up, up to 1.6 when it is short of vehicles. */

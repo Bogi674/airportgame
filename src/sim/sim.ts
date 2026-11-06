@@ -10,6 +10,7 @@ import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, Traffic } from './ops/traffic';
 import { Business } from './business/business';
 import { ATC_MIN_CELLS, type LedgerCategory, type TerminalGrid } from '@shared/business';
+import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
@@ -222,6 +223,7 @@ export class Sim {
         this.report(this.business.repayLoan(cmd.amount));
         break;
       default: {
+        const towersBefore = this.airfield.towersVersion;
         const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes() });
         if (r === null) break;
         if (isProblem(r)) {
@@ -231,8 +233,11 @@ export class Sim {
         } else if (r.cashDelta !== 0) {
           this.book('construction', r.cashDelta);
         }
-        // A tower changes ATC coverage, so the sheet and the checklist refresh at once.
-        if (!isProblem(r) && (cmd.type === 'buildTower' || cmd.type === 'upgradeTower' || cmd.type === 'demolishTower')) this.business.version++;
+        // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
+        if (this.airfield.towersVersion !== towersBefore) {
+          this.business.version++;
+          this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
+        }
       }
     }
   }
@@ -386,6 +391,7 @@ export class Sim {
     // Build the network for the loaded airfield, then put the traffic state on top of it.
     this.networkVersion = this.airfield.version;
     this.traffic.setAirfield(this.airfield.data);
+    this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
     // A save from before the tower that relied on a control room has no coverage now (handoff/tasks/T40-atc-tower.md R3).

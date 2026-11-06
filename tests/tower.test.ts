@@ -6,6 +6,7 @@ import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
 import { levelForRunways, movementsPerHour, runwayCapOf, towerCapacity, towerLevelOf } from '@shared/towerBudget';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
+import { AcState } from '@sim/ops/traffic';
 import { buildTestAirport, ownedSim, run, OPTIONS } from './helpers';
 
 const BUILD = 100_000;
@@ -317,6 +318,106 @@ describe('runway caps', () => {
     expect(run(sim, runwayAt(5900))).toEqual(['towerRunwayCap|level=3']);
     run(sim, { type: 'upgradeTower', id });
     expect(run(sim, runwayAt(5900))).toEqual([]);
+  });
+});
+
+/** Admission ticks of arrivals and departures, read from the aircraft states the player would see. */
+function admissions(sim: Sim, ticks: number): { arrivals: number[]; departures: number[] } {
+  const t = sim.traffic;
+  const prev = new Uint8Array(256);
+  const arrivals: number[] = [];
+  const departures: number[] = [];
+  for (let k = 0; k < ticks; k++) {
+    sim.step();
+    for (let i = 0; i < 256; i++) {
+      if (t.active[i] === 0) {
+        prev[i] = 0;
+        continue;
+      }
+      const s = t.state[i];
+      if (s === AcState.Approach && prev[i] !== AcState.Approach) arrivals.push(sim.tick);
+      if (prev[i] === AcState.Turnaround && s !== AcState.Turnaround) departures.push(sim.tick);
+      prev[i] = s;
+    }
+  }
+  return { arrivals, departures };
+}
+
+/** The test airport with one runway and a tower at the given level, so the movement budget applies. */
+function metered(level: number, perHour: number): Sim {
+  const sim = ownedSim();
+  buildTestAirport(sim, { standsPerRow: 30 });
+  expect(build(sim, level)).toEqual([]);
+  run(sim, { type: 'setTestTraffic', perHour, turnScale: 0.05 });
+  return sim;
+}
+
+describe('the movement budget', () => {
+  it('admits at most 20 movements in any rolling hour at level 1', () => {
+    const sim = metered(1, 120);
+    const log = admissions(sim, 72000);
+    expect(log.arrivals.length).toBeGreaterThan(20);
+    const all = [...log.arrivals, ...log.departures].sort((a, b) => a - b);
+    for (let i = 0; i < all.length; i++) {
+      let inWindow = 1;
+      for (let j = i + 1; j < all.length && all[j] - all[i] < 36000; j++) inWindow++;
+      expect(inWindow).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('admits the 21st movement no earlier than 60 minutes after the first', () => {
+    const sim = metered(1, 120);
+    const log = admissions(sim, 72000);
+    const all = [...log.arrivals, ...log.departures].sort((a, b) => a - b);
+    expect(all.length).toBeGreaterThan(20);
+    expect(all[20] - all[0]).toBeGreaterThanOrEqual(36000);
+  });
+
+  it('diverts an arrival that waits 30 game minutes for a movement', () => {
+    const sim = metered(1, 240);
+    for (let k = 0; k < 12000; k++) sim.step();
+    expect(sim.business.payload(sim.tick).atcQueue).toBeGreaterThan(0);
+    const events: string[] = [];
+    for (let k = 0; k < 28000; k++) {
+      sim.step();
+      sim.drainEvents(events);
+    }
+    const diverted = events.filter((e) => e.startsWith('flightDiverted|') && e.endsWith('|reason=noMovement'));
+    expect(diverted.length).toBeGreaterThan(0);
+    expect(sim.traffic.divertedFlights).toBeGreaterThanOrEqual(diverted.length);
+  });
+
+  it('keeps the ledger through a save and queues the same way after a load', () => {
+    const a = metered(1, 240);
+    for (let k = 0; k < 10000; k++) a.step();
+    const b = metered(1, 240);
+    for (let k = 0; k < 5000; k++) b.step();
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(JSON.parse(JSON.stringify(b.serialize())));
+    expect(c.stateHash()).toBe(b.stateHash());
+    for (let k = 0; k < 5000; k++) {
+      b.step();
+      c.step();
+    }
+    expect(c.stateHash()).toBe(a.stateHash());
+  }, 60000);
+
+  it('meters nothing without a tower, so GA and private traffic keeps moving', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim, { standsPerRow: 30 });
+    run(sim, { type: 'setTestTraffic', perHour: 120, turnScale: 0.05 });
+    const log = admissions(sim, 36000);
+    expect(log.arrivals.length).toBeGreaterThan(20);
+  });
+
+  it('two runs under budget pressure give identical hashes', () => {
+    const a = metered(1, 240);
+    const b = metered(1, 240);
+    for (let k = 0; k < 4000; k++) {
+      a.step();
+      b.step();
+    }
+    expect(a.stateHash()).toBe(b.stateHash());
   });
 });
 

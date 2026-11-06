@@ -3,13 +3,14 @@ import { codeIndex, compassVector, type AirfieldPayload, type CodeLetter, type R
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
-import { foldF64, foldU32 } from '../hash';
+import { foldF64, foldInts, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { standRefusal } from '@shared/standSizes';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
-import { AIRFIELD } from '@data/index';
+import { AIRFIELD, BUSINESS } from '@data/index';
+import { movementsPerHour } from '@shared/towerBudget';
 import { padSize } from '@shared/turnPad';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
@@ -26,6 +27,12 @@ const TAXI_ACCEL = 1.0;
 const PUSHBACK_SPEED = 1.5;
 const MAX_DELAY_TICKS = 12000;
 const RETRY_TICKS = 300;
+/** A movement waits for ATC budget for 30 game minutes, then the arrival diverts (T40 R4). */
+const ATC_MAX_WAIT_TICKS = 18000;
+// The rolling span of a movement budget, one game hour.
+const MOVEMENT_WINDOW_TICKS = 36000;
+/** Ring size for one runway's movement starts, the highest per hour budget on the ladder. */
+const MOVEMENT_RING = BUSINESS.tower.levels.reduce((m, l) => Math.max(m, l.movementsPerHour), 0);
 const SLOTS = 8;
 const TURN_RATE = 0.35;
 
@@ -106,6 +113,10 @@ export class Traffic {
   readonly entryIdx = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly timer = new Int32Array(MAX_AIRCRAFT);
   readonly stuckTicks = new Int32Array(MAX_AIRCRAFT);
+  /** Ticks a departure has waited on its stand for an ATC movement. */
+  readonly depWait = new Int32Array(MAX_AIRCRAFT);
+  /** Tick a budget blocked departure tries again. Zero means no wait. */
+  readonly depRetryAt = new Int32Array(MAX_AIRCRAFT);
   readonly goalX = new Float64Array(MAX_AIRCRAFT);
   readonly goalY = new Float64Array(MAX_AIRCRAFT);
   count = 0;
@@ -127,6 +138,8 @@ export class Traffic {
   readonly fStage = new Int32Array(MAX_FLIGHTS);
   /** Stand id a flight is assigned to by the player or the auto scheduler, -1 for none. */
   readonly fStand = new Int32Array(MAX_FLIGHTS).fill(-1);
+  /** Ticks a scheduled arrival has waited for an ATC movement, 0 when it is not waiting for the budget. */
+  readonly fMovWait = new Int32Array(MAX_FLIGHTS);
   /** When false only flights with an assigned stand are accepted. */
   autoStands = true;
   /** Multiplier on new turnaround times from the ground handling fleet, set by the business. */
@@ -159,6 +172,12 @@ export class Traffic {
   private rsvStart = new Int32Array(0);
   private rsvEnd = new Int32Array(0);
   private rsvCat = new Int8Array(0);
+  /** Start tick of each admitted movement per runway, the rolling hour budget (T40 R4). */
+  private movStart = new Int32Array(0);
+  private movHead = new Int32Array(0);
+  private movCount = new Int32Array(0);
+  /** Highest tower level on the airfield, 0 without a tower. Level 0 means no movement budget at all. */
+  private towerLevel = 0;
   private readonly tmpEdge = new Int32Array(MAX_ROUTE);
   private readonly tmpDir = new Int8Array(MAX_ROUTE);
   private readonly tailEdge = new Int32Array(MAX_ROUTE);
@@ -199,6 +218,11 @@ export class Traffic {
     this.testTurnScale = Math.max(0.05, Math.min(6, turnScale));
   }
 
+  /** Sets the tower level that meters movements. The sim calls it when a tower is built, upgraded, lost or loaded. */
+  setTowerLevel(level: number): void {
+    this.towerLevel = level;
+  }
+
   get nowTick(): number {
     return this.tick;
   }
@@ -224,12 +248,27 @@ export class Traffic {
 
   /** Rebuilds the network after an airfield change and re-plans everything that was moving on it. */
   setAirfield(af: AirfieldPayload): void {
+    // The movement ledger belongs to a runway id, not to its array index, so a rebuild keeps it (T40 R4).
+    const oldIds = this.af.runways.map((r) => r.id);
+    const oldStart = this.movStart;
+    const oldHead = this.movHead;
+    const oldCount = this.movCount;
     this.af = { ...af, runways: af.runways, taxiways: af.taxiways, aprons: af.aprons, stands: af.stands, holding: af.holding, entries: af.entries };
     this.net = TaxiNetwork.build(af, af.version);
     const R = af.runways.length;
     this.rsvStart = new Int32Array(R * SLOTS);
     this.rsvEnd = new Int32Array(R * SLOTS);
     this.rsvCat = new Int8Array(R * SLOTS).fill(-1);
+    this.movStart = new Int32Array(R * MOVEMENT_RING);
+    this.movHead = new Int32Array(R);
+    this.movCount = new Int32Array(R);
+    for (let r = 0; r < R; r++) {
+      const old = oldIds.indexOf(af.runways[r].id);
+      if (old < 0) continue;
+      this.movHead[r] = oldHead[old];
+      this.movCount[r] = oldCount[old];
+      for (let k = 0; k < MOVEMENT_RING; k++) this.movStart[r * MOVEMENT_RING + k] = oldStart[old * MOVEMENT_RING + k];
+    }
     this.entryInbound = new Int32Array(af.entries.length);
     this.entryDeparting = new Int32Array(af.entries.length);
     this.entryCounted.fill(0);
@@ -402,6 +441,7 @@ export class Traffic {
     this.fAc[f] = -1;
     this.fDelay[f] = 0;
     this.fRetryAt[f] = 0;
+    this.fMovWait[f] = 0;
     this.fAirline[f] = airline;
     this.fLate[f] = 0;
     this.fStage[f] = stageKm;
@@ -460,6 +500,39 @@ export class Traffic {
   }
 
   // Runway reservations ----------------------------------------------------
+
+  /**
+   * True when one more movement fits the runway's rolling hour budget. Expired movements drop off the
+   * head as time passes, so the scan stays O(1) amortised (handoff/tasks/T40-atc-tower.md R4).
+   */
+  private movementFree(r: number): boolean {
+    if (this.towerLevel < 1) return true;
+    const base = r * MOVEMENT_RING;
+    while (this.movCount[r] > 0 && this.tick - this.movStart[base + this.movHead[r]] >= MOVEMENT_WINDOW_TICKS) {
+      this.movHead[r] = (this.movHead[r] + 1) % MOVEMENT_RING;
+      this.movCount[r]--;
+    }
+    return this.movCount[r] < movementsPerHour(this.towerLevel);
+  }
+
+  /** Records a landing or takeoff that is starting now against the runway budget. Taxiing is free. */
+  private spendMovement(r: number): void {
+    if (this.towerLevel < 1) return;
+    const base = r * MOVEMENT_RING;
+    this.movStart[base + ((this.movHead[r] + this.movCount[r]) % MOVEMENT_RING)] = this.tick;
+    this.movCount[r]++;
+  }
+
+  /** Movements waiting for budget right now: scheduled arrivals plus aircraft still on a stand before push back. */
+  atcQueueLength(): number {
+    let n = 0;
+    for (let f = 0; f < MAX_FLIGHTS; f++) if (this.fState[f] === FlState.Scheduled && this.fMovWait[f] > 0) n++;
+    for (let k = 0; k < this.count; k++) {
+      const i = this.activeList[k];
+      if (this.state[i] === AcState.Turnaround && this.depWait[i] > 0) n++;
+    }
+    return n;
+  }
 
   /** A runway under works takes no movements (docs/GAME_DESIGN.md section 6, runway tool). */
   private runwayClosed(r: number): boolean {
@@ -582,11 +655,23 @@ export class Traffic {
   private delay(f: number, reason: string): void {
     this.fDelay[f] += RETRY_TICKS;
     this.fRetryAt[f] = this.tick + RETRY_TICKS;
-    if (this.fDelay[f] > MAX_DELAY_TICKS) {
-      this.fState[f] = FlState.Done;
-      this.divertedFlights++;
-      this.emit(`flightDiverted|type=${AIRCRAFT[this.fType[f]].id}|reason=${reason}`);
-    }
+    if (this.fDelay[f] > MAX_DELAY_TICKS) this.divert(f, reason);
+  }
+
+  /**
+   * Holds an arrival whose movement the tower has no budget for. Only this wait counts toward the 30
+   * game minute ATC window, so a stand or runway wait keeps its own 20 minute limit (T40 R4).
+   */
+  private atcWait(f: number): void {
+    this.fMovWait[f] += RETRY_TICKS;
+    this.fRetryAt[f] = this.tick + RETRY_TICKS;
+    if (this.fMovWait[f] >= ATC_MAX_WAIT_TICKS) this.divert(f, 'noMovement');
+  }
+
+  private divert(f: number, reason: string): void {
+    this.fState[f] = FlState.Done;
+    this.divertedFlights++;
+    this.emit(`flightDiverted|type=${AIRCRAFT[this.fType[f]].id}|reason=${reason}`);
   }
 
   private trySpawnArrival(f: number): void {
@@ -675,6 +760,11 @@ export class Traffic {
       this.delay(f, 'runwayBusy');
       return;
     }
+    // The tower meters landings too. A blocked flight keeps its chosen exit and stand and retries.
+    if (!this.movementFree(bestR)) {
+      this.atcWait(f);
+      return;
+    }
     // Runway window for the landing.
     const approachTicks = Math.round(((APPROACH_START_M + TOUCHDOWN_M) / (a.performance.vrefKt * KT)) * 10);
     const sExit = ordered.find((e) => e.idx === chosen)?.s ?? rw.lengthM;
@@ -704,6 +794,8 @@ export class Traffic {
     }
     this.routeLen[ac] = n;
     this.routeIdx[ac] = 0;
+    this.fMovWait[f] = 0;
+    this.spendMovement(bestR);
     this.standOwner[stand] = ac;
     this.standId[ac] = af.stands[stand].id;
     this.type[ac] = t;
@@ -761,6 +853,8 @@ export class Traffic {
         this.yieldUntil[i] = 0;
         this.stuckTicks[i] = 0;
         this.rwySlot[i] = -1;
+        this.depWait[i] = 0;
+        this.depRetryAt[i] = 0;
         this.rebuildActive();
         return i;
       }
@@ -1320,6 +1414,8 @@ export class Traffic {
       this.timer[i]--;
       return;
     }
+    // A departure that lost the movement budget waits a retry step before it asks again (T40 R4).
+    if (this.tick < this.depRetryAt[i]) return;
     if (this.tick % 20 !== i % 20) return;
     this.planDeparture(i);
   }
@@ -1402,6 +1498,14 @@ export class Traffic {
     }
     const hold = this.net.holds.find((h) => h.entryIdx === bestHold);
     if (!hold) return;
+    const rwyIdx = this.af.runways.findIndex((r) => r.id === this.af.entries[bestHold].runwayId);
+    if (rwyIdx < 0) return;
+    // The tower meters takeoffs too. A blocked aircraft stays on its stand and keeps its place in the queue.
+    if (!this.movementFree(rwyIdx)) {
+      this.depWait[i] += RETRY_TICKS;
+      this.depRetryAt[i] = this.tick + RETRY_TICKS;
+      return;
+    }
     const bestN = this.forkPushback(s, this.net.route(from, hold.node, CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE), hold.node, t);
     const base = i * MAX_ROUTE;
     for (let k = 0; k < bestN; k++) {
@@ -1412,12 +1516,14 @@ export class Traffic {
     this.routeIdx[i] = 0;
     this.dist[i] = 0;
     this.speed[i] = 0;
+    this.depWait[i] = 0;
+    this.depRetryAt[i] = 0;
+    this.spendMovement(rwyIdx);
     this.uncount(i);
     this.entryIdx[i] = bestHold;
     this.entryDeparting[bestHold]++;
     this.entryCounted[i] = 2;
-    const en = this.af.entries[bestHold];
-    this.rwyIdx[i] = this.af.runways.findIndex((r) => r.id === en.runwayId);
+    this.rwyIdx[i] = rwyIdx;
     this.rwyDir[i] = bestDir;
     this.rwyBack[i] = bestBack;
     this.goalX[i] = this.net.nodeX[hold.node];
@@ -1654,8 +1760,10 @@ export class Traffic {
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
       fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage, fStand: this.fStand,
+      fMovWait: this.fMovWait,
       nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
+      movStart: this.movStart, movHead: this.movHead, movCount: this.movCount, depWait: this.depWait, depRetryAt: this.depRetryAt,
     };
   }
 
@@ -1725,6 +1833,12 @@ export class Traffic {
     acc = foldF64(acc, this.bits[1], MAX_AIRCRAFT);
     acc = foldF64(acc, this.bits[2], MAX_AIRCRAFT);
     for (let i = 0; i < MAX_AIRCRAFT; i++) acc = foldU32(acc, this.state[i] + (this.routeIdx[i] << 8));
+    acc = foldInts(acc, this.fMovWait, MAX_FLIGHTS);
+    acc = foldInts(acc, this.depWait, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.depRetryAt, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.movHead, this.movHead.length);
+    acc = foldInts(acc, this.movCount, this.movCount.length);
+    acc = foldInts(acc, this.movStart, this.movStart.length);
     return acc;
   }
 

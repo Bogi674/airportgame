@@ -114,3 +114,40 @@ describe('airfield edits while traffic moves', () => {
     expect(sim.traffic.completedFlights).toBeGreaterThan(0);
   });
 });
+
+describe('the ATC movement budget mid movement', () => {
+  it('never holds or removes an aircraft that already owns the runway', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim, { standsPerRow: 30 });
+    run(sim, { type: 'buildTower', x: 2700, y: 4800, level: 1 });
+    run(sim, { type: 'setTestTraffic', perHour: 120, turnScale: 0.05 });
+    const t = sim.traffic;
+    const rwyLen = sim.airfield.data.runways[0].lengthM;
+    const mid = (s: number): boolean => s === AcState.Approach || s === AcState.Rollout || s === AcState.Takeoff || s === AcState.Backtrack;
+    // A takeoff hands its reservation back after rotation, so it only owns the runway while still on it.
+    const needsSlot = (s: number, i: number): boolean => s === AcState.Approach || s === AcState.Rollout || s === AcState.Backtrack || (s === AcState.Takeoff && t.rwyS[i] <= rwyLen);
+    const rolling = (s: number): boolean => s === AcState.Approach || s === AcState.Rollout || s === AcState.Takeoff;
+    const prevState = new Uint8Array(256);
+    const prevSlot = new Int32Array(256).fill(-1);
+    const prevS = new Float64Array(256);
+    const prevActive = new Uint8Array(256);
+    let unowned = 0;
+    let removed = 0;
+    let backwards = 0;
+    for (let k = 0; k < 20000; k++) {
+      for (let i = 0; i < 256; i++) {
+        prevActive[i] = t.active[i];
+        prevState[i] = t.state[i];
+        prevSlot[i] = t.rwySlot[i];
+        prevS[i] = t.rwyS[i];
+      }
+      sim.step();
+      for (let i = 0; i < 256; i++) {
+        if (t.active[i] === 1 && needsSlot(t.state[i], i) && t.rwySlot[i] < 0) unowned++;
+        if (prevActive[i] === 1 && mid(prevState[i]) && prevSlot[i] >= 0 && t.active[i] === 0) removed++;
+        if (t.active[i] === 1 && prevActive[i] === 1 && rolling(prevState[i]) && t.state[i] === prevState[i] && t.rwyS[i] < prevS[i] - 1e-6) backwards++;
+      }
+    }
+    expect({ unowned, removed, backwards }).toEqual({ unowned: 0, removed: 0, backwards: 0 });
+  });
+});
