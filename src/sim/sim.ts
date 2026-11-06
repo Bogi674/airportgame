@@ -9,7 +9,7 @@ import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, Traffic } from './ops/traffic';
 import { Business } from './business/business';
-import type { LedgerCategory, TerminalGrid } from '@shared/business';
+import { ATC_MIN_CELLS, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
 import { Rng } from './rng';
@@ -231,6 +231,8 @@ export class Sim {
         } else if (r.cashDelta !== 0) {
           this.book('construction', r.cashDelta);
         }
+        // A tower changes ATC coverage, so the sheet and the checklist refresh at once.
+        if (!isProblem(r) && (cmd.type === 'buildTower' || cmd.type === 'upgradeTower' || cmd.type === 'demolishTower')) this.business.version++;
       }
     }
   }
@@ -386,6 +388,8 @@ export class Sim {
     this.traffic.setAirfield(this.airfield.data);
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
+    // A save from before the tower that relied on a control room has no coverage now (handoff/tasks/T40-atc-tower.md R3).
+    if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
     this.airfieldSent = -1;
     this.obstaclesSent = -1;

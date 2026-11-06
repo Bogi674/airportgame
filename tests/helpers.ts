@@ -64,9 +64,12 @@ export interface TerminalOptions {
   seating?: number;
   toilet?: number;
   shop?: boolean;
-  /** Set false to leave out the control room. */
+  /** Build the ATC tower too. Set false to test the no ATC case. */
   atc?: boolean;
 }
+
+/** A free spot north west of the test airport, clear of every pavement and stand. */
+const TEST_TOWER = { x: 2700, y: 4800 } as const;
 
 /**
  * Lays a small terminal south of the test apron with the commands a player would use: a
@@ -98,7 +101,15 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   row(4, o.seating ?? 6, 76, 46);
   row(5, o.toilet ?? 2, 84, 46);
   if (o.shop) row(6, 1, 86, 46);
-  if (o.atc !== false) edit(id, { op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 });
-  if (o.atc !== false) edit(id, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
+  if (o.atc !== false) problems.push(...run(sim, { type: 'buildTower', x: TEST_TOWER.x, y: TEST_TOWER.y, level: 5 }));
   return problems;
+}
+
+/** Paints a legacy control room fixture in the first terminal, to test that it grants no coverage any more. */
+export function buildTestControlRoom(sim: Sim): string[] {
+  const g = sim.business.grids[0];
+  if (!g) return ['noTerminal'];
+  const edit = (e: { op: 'fixture' | 'zone'; x0: number; y0: number; x1: number; y1: number; variant: number }): string[] =>
+    run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: e });
+  return [...edit({ op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 }), ...edit({ op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 })];
 }

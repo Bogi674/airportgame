@@ -191,10 +191,7 @@ export const CATEGORIES: Category[] = [
     hue: 340,
     testId: 'tool-staff',
     tool: null,
-    tabs: [
-      { id: 'control', items: [{ ...fx('atc', 'atc', 'flightops'), id: 'atc' }] },
-      { id: 'admin', items: [sheet('finance', 'finance', 'finance'), sheet('airlines', 'airlines', 'airlines'), sheet('site', 'site', 'site')] },
-    ],
+    tabs: [{ id: 'admin', items: [sheet('finance', 'finance', 'finance'), sheet('airlines', 'airlines', 'airlines'), sheet('site', 'site', 'site')] }],
   },
   {
     id: 'zoning',

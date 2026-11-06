@@ -149,6 +149,8 @@ export interface BusinessPayload {
   readiness: string[];
   /** When false flights only use stands assigned to them. */
   autoStands: boolean;
+  /** Highest ATC tower level on the site, 0 when none stands. */
+  towerLevel: number;
   /** Vehicles owned by catalog index of the ground vehicle list. */
   fleet: number[];
   /** 1 when ground handling keeps up, up to 1.6 when it is short of vehicles. */

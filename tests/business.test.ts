@@ -3,7 +3,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
 import { Sim } from '@sim/sim';
 import { cellIndex, floorBounds, originFor } from '@shared/terminalOps';
-import { buildTestAirport, buildTestTerminal, ownedSim, run } from './helpers';
+import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run } from './helpers';
 
 function airportWithTerminal() {
   const sim = ownedSim();
@@ -23,7 +23,7 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * 150));
     expect(sim.business.arrCapacity()).toBe(2 * 260);
     // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
-    const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000 + 4 * 90000);
+    const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
     expect(g.cost).toBe(expected);
   });
 
@@ -192,7 +192,7 @@ describe('zones, control room and slots', () => {
     expect(at({ op: 'zone', x0: 42, y0: 42, x1: 43, y1: 43, variant: 4 })[0]).toBe('zoneHasFixture');
   });
 
-  it('flights need a control room in range, and zones decide capacity', () => {
+  it('flights need an ATC tower, and zones decide capacity', () => {
     const a = ownedSim();
     a.cash = 100_000_000;
     buildTestAirport(a, { standsPerRow: 4 });
@@ -206,6 +206,17 @@ describe('zones, control room and slots', () => {
     buildTestTerminal(b);
     expect(b.business.readiness()).toEqual([]);
     expect(b.business.atcOk).toBe(true);
+  });
+
+  it('a legacy control room grants no ATC coverage', () => {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim, { standsPerRow: 4 });
+    buildTestTerminal(sim, { atc: false });
+    expect(buildTestControlRoom(sim)).toEqual([]);
+    expect(sim.business.atcCells).toBeGreaterThanOrEqual(4);
+    expect(sim.business.atcOk).toBe(false);
+    expect(sim.business.readiness()).toContain('noAtc');
   });
 
   it('slots default across the day, can be moved, and survive fewer rotations', () => {

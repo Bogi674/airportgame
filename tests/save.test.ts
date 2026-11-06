@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '@sim/sim';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
-import { buildTestAirport, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
+import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 
 function prepared(): Sim {
   const sim = ownedSim();
@@ -39,5 +39,23 @@ describe('saves', () => {
     expect(() => new Sim('OTHER', OPTIONS).restore(data)).toThrow(/different seed/);
     expect(() => migrate({ ...data, version: SAVE_VERSION + 1 })).toThrow(/newer version/);
     expect(() => migrate({ hello: 1 })).toThrow(/not an Airfield Tycoon save/);
+  });
+
+  it('a version 7 save with a control room and no tower warns once and loses ATC', () => {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim);
+    buildTestTerminal(sim, { atc: false });
+    expect(buildTestControlRoom(sim)).toEqual([]);
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; airfield: { towers?: unknown } };
+    data.version = 7;
+    delete data.airfield.towers;
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(data);
+    const events: string[] = [];
+    c.drainEvents(events);
+    expect(events.filter((e) => e === 'atcLost')).toHaveLength(1);
+    expect(c.business.atcOk).toBe(false);
+    expect(c.airfield.data.towers).toEqual([]);
   });
 });

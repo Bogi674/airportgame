@@ -9,14 +9,13 @@ export function Guide() {
   const hide = useGameStore((s) => s.setGuideHidden);
   if (hidden) return null;
   const miss = b ? b.readiness : ['noTerminal'];
-  const terminalReady = !!b && !miss.some((k) => k !== 'noAtc' && k !== 'atcRange');
-  const atcReady = !!b && !miss.includes('noAtc') && !miss.includes('atcRange');
+  const terminalReady = !!b && !miss.some((k) => k !== 'noAtc');
   const steps: { key: StringKey; done: boolean }[] = [
     { key: 'guide.runway', done: af.runways.length > 0 },
     { key: 'guide.taxiway', done: af.taxiways.length > 0 },
     { key: 'guide.stand', done: af.stands.length > 0 },
     { key: 'guide.terminal', done: terminalReady },
-    { key: 'guide.atc', done: atcReady },
+    { key: 'guide.atc', done: af.runways.length > 0 && (af.towers?.length ?? 0) > 0 },
     { key: 'guide.airline', done: !!b && b.airlines.some((a) => a.rotations > 0) },
   ];
   const all = steps.every((s) => s.done);
@@ -31,8 +30,8 @@ export function Guide() {
       {steps.map((s) => (
         <div key={s.key} style={s.done ? 'color:var(--ok)' : ''}>
           {s.done ? '✓' : '○'} {t(s.key)}
-          {!s.done && s.key === 'guide.terminal' && miss.filter((k) => k !== 'noAtc' && k !== 'atcRange').map((k) => <div key={k} style="color:var(--muted);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
-          {!s.done && s.key === 'guide.atc' && miss.filter((k) => k === 'noAtc' || k === 'atcRange').map((k) => <div key={k} style="color:var(--muted);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
+          {!s.done && s.key === 'guide.terminal' && miss.filter((k) => k !== 'noAtc').map((k) => <div key={k} style="color:var(--muted);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
+          {!s.done && s.key === 'guide.atc' && miss.filter((k) => k === 'noAtc').map((k) => <div key={k} style="color:var(--muted);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
         </div>
       ))}
       {all && <div style="color:var(--ok)">{t('guide.done')}</div>}

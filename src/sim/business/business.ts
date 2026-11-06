@@ -24,7 +24,8 @@ import {
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
-import { isShopFixture, fixtureKey, ATC_MIN_CELLS, ZONE } from '@shared/business';
+import { isShopFixture, fixtureKey, ZONE } from '@shared/business';
+import { towerLevelOf } from '@shared/towerBudget';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -85,8 +86,6 @@ export class Business {
 
   /** Layout problems of the main terminal building, from the walls, doors and zones laid. */
   roomIssues: string[] = [];
-  private atcX = 0;
-  private atcY = 0;
   secureSeating = 0;
   private totals: Record<FixtureKey, number> = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
   /** Sample of foundation cell centres, for the contact stand reach test. */
@@ -237,8 +236,6 @@ export class Business {
 
   private computeFacilities(): void {
     let cells = 0;
-    let sx = 0;
-    let sy = 0;
     this.secureSeating = 0;
     for (const g of this.grids) {
       for (let i = 0; i < g.fixture.length; i++) {
@@ -246,11 +243,7 @@ export class Business {
         if (f === 0) continue;
         const k = fixtureKey(f);
         if (k === 'atc') {
-          const c = cellOf(g, i);
-          const w = cornerWorld(g, c.x + 0.5, c.y + 0.5);
           cells++;
-          sx += w.x;
-          sy += w.y;
         } else if (k === 'seating' && g.zone[i] === ZONE.Secure) this.secureSeating++;
       }
     }
@@ -258,17 +251,11 @@ export class Business {
     let main: TerminalGrid | null = null;
     for (const g of this.grids) if (main === null || cellCountOf(g) > cellCountOf(main)) main = g;
     this.roomIssues = main ? terminalIssues(main) : [];
-    this.atcX = cells > 0 ? sx / cells : 0;
-    this.atcY = cells > 0 ? sy / cells : 0;
   }
 
-  /** True when the control tower cab is big enough and within range of every runway. */
+  /** True when an ATC tower stands and a runway exists. The tower covers the whole site, so there is no range test. */
   get atcOk(): boolean {
-    if (this.atcCells < ATC_MIN_CELLS || this.airfield.data.runways.length === 0) return false;
-    for (const r of this.airfield.data.runways) {
-      if (Math.hypot((r.x1 + r.x2) / 2 - this.atcX, (r.y1 + r.y2) / 2 - this.atcY) > BUSINESS.terminal.atcRangeM) return false;
-    }
-    return true;
+    return (this.airfield.data.towers?.length ?? 0) > 0 && this.airfield.data.runways.length > 0;
   }
 
   /** What still stops flights from working, as string keys for the UI checklist. */
@@ -282,8 +269,7 @@ export class Business {
       for (const k of this.roomIssues) out.push(k);
       if (this.totals.belt === 0) out.push('noBelt');
     }
-    if (this.atcCells < ATC_MIN_CELLS) out.push('noAtc');
-    else if (!this.atcOk) out.push('atcRange');
+    if (!this.atcOk) out.push('noAtc');
     return out;
   }
 
@@ -683,6 +669,7 @@ export class Business {
       fleet: this.fleet,
       serviceSlowdown: this.traffic.serviceSlowdown,
       arrCapacity: this.arrCapacity(),
+      towerLevel: towerLevelOf(this.airfield.data),
       history: this.history.map((h) => Array.from(h)),
       today: Array.from(this.today),
       paxToday: this.paxToday,

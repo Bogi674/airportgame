@@ -213,7 +213,7 @@ export function ContextBar({ send }: Props) {
                 label={t('opt.fixture')}
                 value={s.fixtureId}
                 testId="opt-fixture"
-                options={FIXTURE_KEYS.map((_, i) => ({ v: i + 1, text: tDynamic(`fixture.${i + 1}`) }))}
+                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc').map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
                 onChange={(v) => s.set({ fixtureId: v })}
               />
             )}

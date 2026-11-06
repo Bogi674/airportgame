@@ -157,8 +157,6 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
       return <Scene bg="#d3dadd"><rect x="22" y="14" width="22" height="32" rx="3" fill="#9a5cc8" /><rect x="52" y="14" width="22" height="32" rx="3" fill="#b88ad8" /></Scene>;
     case 'shop':
       return <Scene bg="#d3dadd"><rect x="16" y="14" width="64" height="32" rx="3" fill="#e0a030" /><rect x="24" y="22" width="48" height="12" fill="rgba(255,255,255,0.5)" /><path d="M14 14h68l-4-6H18z" fill="#d85c5c" /></Scene>;
-    case 'atc':
-      return <Scene bg="#6f7f55"><rect x="38" y="24" width="20" height="30" fill="#aeb4ba" /><rect x="32" y="12" width="32" height="14" rx="3" fill="#4ab0b8" stroke="#2c7a82" /></Scene>;
     case 'zonePublic':
     case 'zoneCommercial':
     case 'zoneSecure':
