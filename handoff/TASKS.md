@@ -39,13 +39,15 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 | T26 | M5 | [Footprints, overhead zones and the collision test](tasks/T26-collision.md) | M | T24 | todo | |
 | T27 | M5 | [Draw order rules](tasks/T27-draw-order.md) | S | T26 | todo | |
 | T28 | M5 | [Staff sprites](tasks/T28-staff-sprites.md) | M | T15 | todo | |
+| T43 | M5 | [Working baggage system, single level](tasks/T43-baggage-system.md) | L | T22 T24 | todo | |
+| T46 | Later | [Baggage levels, transfers and bridges](tasks/T46-baggage-levels.md) | M | T43 | todo | |
 | T29 | M5 | [Milestone review M5](tasks/milestone-review.md) | S | T20 to T28 | todo | |
 | T30 | M6 | [Airline generator](tasks/T30-airline-generator.md) | L | T29 | todo | |
 | T31 | M6 | [Route demand, seasonal slots, contracts](tasks/T31-demand-contracts.md) | L | T30 | todo | |
 | T32 | M6 | [Shop sales and tenant fill](tasks/T32-shops.md) | M | T17 | todo | |
 | T33 | M6 | [Automatic staffing and coverage overlay](tasks/T33-staffing.md) | M | T29 | todo | |
 | T34 | M6 | [Milestone review M6](tasks/milestone-review.md) | S | T30 to T33 | todo | |
-| T41 | M6 | [Flight schedule with exact times and automation](tasks/T41-flight-schedule.md) | L | | todo | |
+| T41 | M6 | [Flight offers and stand management](tasks/T41-flight-schedule.md) | L | | todo | |
 | T35 | M7 | [Menus, wizard, load, settings, pause](tasks/T35-menus.md) | M | T34 | todo | |
 | T36 | M7 | [Left rail flyouts, alert center, overlay list](tasks/T36-hud.md) | M | T34 | todo | |
 | T37 | M7 | [Browser tests in three engines](tasks/T37-e2e-engines.md) | S | T34 | todo | |
