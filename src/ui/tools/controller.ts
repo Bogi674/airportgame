@@ -28,7 +28,7 @@ import { runwayWorksDays } from '@shared/surfaceRules';
 import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
 import { typeOutlines } from '@render/markings/standLayout';
-import { gridById, snapToGrid, type ConstructionGrid } from '@shared/constructionGrid';
+import { gridById, gridsFor, snapToGrid, type ConstructionGrid } from '@shared/constructionGrid';
 import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
@@ -369,6 +369,45 @@ export class ToolController {
   }
 
   /**
+   * The runway or taxiway segment grid under the cursor, measured to the centerline against half
+   * the pavement width plus shoulder, so any point on the pavement counts. It cannot reuse
+   * `pickObject`, which biases stands above runways (T42 R3). The nearest centerline wins.
+   */
+  private gridUnder(p: Pt): ConstructionGrid | null {
+    const slack = Math.max(4, 8 / this.deps.zoom());
+    let best: ConstructionGrid | null = null;
+    let bestD = Infinity;
+    for (const g of gridsFor(this.af)) {
+      const reach = this.gridReach(g) + slack;
+      const d = distToSegment(p.x, p.y, g.origin.x, g.origin.y, g.origin.x + g.ax * g.lengthM, g.origin.y + g.ay * g.lengthM);
+      if (d <= reach && d < bestD) {
+        best = g;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** Half the pavement width plus shoulder of the object a grid runs along. */
+  private gridReach(g: ConstructionGrid): number {
+    const [, idText] = g.id.split(':');
+    if (g.kind === 'runway') {
+      const r = this.af.runways.find((x) => String(x.id) === idText);
+      return r ? r.widthM / 2 + r.shoulderM : 0;
+    }
+    const t = this.af.taxiways.find((x) => String(x.id) === idText);
+    return t ? t.widthM / 2 : 0;
+  }
+
+  /** Picks the grid under the cursor while a grid tool is active and none is picked yet (T42 R3). */
+  private pickGridOnHover(p: Pt): void {
+    const st = useToolStore.getState();
+    if (st.gridId !== null || !GRID_TOOLS.includes(st.tool)) return;
+    const g = this.gridUnder(p);
+    if (g) st.set({ gridId: g.id });
+  }
+
+  /**
    * The point a tool places at: the nearest node of the picked grid in grid mode, else the raw
    * cursor point (T42 R4).
    */
@@ -435,6 +474,7 @@ export class ToolController {
   move(p: Pt, mods: Mods): void {
     this.cursor = p;
     this.deps.setGuide(null, null);
+    this.pickGridOnHover(p);
     const st = useToolStore.getState();
     switch (st.tool) {
       case 'runway':
