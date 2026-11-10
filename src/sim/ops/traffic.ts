@@ -143,6 +143,8 @@ export class Traffic {
   readonly fDelay = new Int32Array(MAX_FLIGHTS);
   readonly fRetryAt = new Int32Array(MAX_FLIGHTS);
   readonly fAirline = new Int8Array(MAX_FLIGHTS).fill(-1);
+  /** Rotation index of a flight within its airline, -1 for flights not bound to a rotation. */
+  readonly fRot = new Int16Array(MAX_FLIGHTS).fill(-1);
   /** How late the arrival touched down against its schedule, in ticks. */
   readonly fLate = new Int32Array(MAX_FLIGHTS);
   /** Stage length in km a flight departs on, 0 for the default weight. */
@@ -448,7 +450,7 @@ export class Traffic {
   // Flights ----------------------------------------------------------------
 
   /** Schedules an arriving flight. Its turnaround and departure follow automatically. */
-  scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number, airline = -1, stageKm = 0): number {
+  scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number, airline = -1, stageKm = 0, rot = -1): number {
     let f = -1;
     for (let k = 0; k < MAX_FLIGHTS; k++) {
       if (this.fState[k] === FlState.Free || this.fState[k] === FlState.Done) {
@@ -467,6 +469,7 @@ export class Traffic {
     this.fRetryAt[f] = 0;
     this.fMovWait[f] = 0;
     this.fAirline[f] = airline;
+    this.fRot[f] = rot;
     this.fLate[f] = 0;
     this.fStage[f] = stageKm;
     this.fStand[f] = -1;
@@ -1937,7 +1940,7 @@ export class Traffic {
 
   // Saving ------------------------------------------------------------------
 
-  private arrays(): Record<string, Float64Array | Int32Array | Uint8Array | Int8Array> {
+  private arrays(): Record<string, Float64Array | Int32Array | Int16Array | Uint8Array | Int8Array> {
     return {
       active: this.active, state: this.state, type: this.type, livery: this.livery, flight: this.flight, x: this.x, y: this.y,
       heading: this.heading, speed: this.speed, dist: this.dist, routeLen: this.routeLen, routeIdx: this.routeIdx,
@@ -1947,7 +1950,7 @@ export class Traffic {
       standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwyBack: this.rwyBack, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
-      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage, fStand: this.fStand,
+      fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage, fStand: this.fStand, fRot: this.fRot,
       fMovWait: this.fMovWait,
       nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
@@ -2022,6 +2025,8 @@ export class Traffic {
     acc = foldF64(acc, this.bits[2], MAX_AIRCRAFT);
     for (let i = 0; i < MAX_AIRCRAFT; i++) acc = foldU32(acc, this.state[i] + (this.routeIdx[i] << 8));
     acc = foldInts(acc, this.fMovWait, MAX_FLIGHTS);
+    acc = foldInts(acc, this.fStand, MAX_FLIGHTS);
+    for (let f = 0; f < MAX_FLIGHTS; f++) acc = foldU32(acc, this.fRot[f]);
     acc = foldInts(acc, this.depWait, MAX_AIRCRAFT);
     acc = foldInts(acc, this.depRetryAt, MAX_AIRCRAFT);
     acc = foldInts(acc, this.movHead, this.movHead.length);

@@ -3,7 +3,7 @@ import type { CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export interface SaveData {
   version: number;
@@ -57,5 +57,7 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 8) save.version = 8;
   // Version 8 to 9: traffic gained the junction request table. Older saves load with no open requests.
   if (save.version < 9) save.version = 9;
+  // Version 9 to 10: airlines remember a stand per rotation and flights carry their rotation index. Older saves load with no remembered stands.
+  if (save.version < 10) save.version = 10;
   return save as SaveData;
 }

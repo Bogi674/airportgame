@@ -107,6 +107,8 @@ export interface Airline {
   rotations: number;
   /** Arrival slot of each rotation, minute of the day, in the order the player sees them. */
   slots: number[];
+  /** Stand id the player chose for each rotation, -1 for none. Applied to the rotation's flight every morning (T41 D2). */
+  standPrefs: number[];
   feeLevel: FeeLevel;
   flights: number;
   pax: number;

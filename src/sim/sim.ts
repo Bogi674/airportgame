@@ -213,6 +213,7 @@ export class Sim {
         if (this.traffic.fState[cmd.flight] !== FlState.Scheduled) break;
         if (cmd.standId === -1) {
           this.traffic.fStand[cmd.flight] = -1;
+          this.rememberStand(cmd.flight, -1);
           this.business.version++;
           break;
         }
@@ -222,6 +223,7 @@ export class Sim {
           break;
         }
         this.traffic.fStand[cmd.flight] = cmd.standId;
+        this.rememberStand(cmd.flight, cmd.standId);
         this.business.version++;
         break;
       }
@@ -268,6 +270,13 @@ export class Sim {
         }
       }
     }
+  }
+
+  /** Remembers a stand choice for the rotation of a flight, so the next day's flight of that rotation takes it. */
+  private rememberStand(flight: number, standId: number): void {
+    const airline = this.traffic.fAirline[flight];
+    const rot = this.traffic.fRot[flight];
+    if (airline >= 0 && rot >= 0) this.business.setStandPref(airline, rot, standId);
   }
 
   private report(problem: string | null): void {

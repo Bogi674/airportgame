@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
 import { Sim } from '@sim/sim';
+import { FlState } from '@sim/ops/traffic';
 import { cellIndex, floorBounds, originFor } from '@shared/terminalOps';
-import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run } from './helpers';
+import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 function airportWithTerminal() {
   const sim = ownedSim();
@@ -267,5 +268,106 @@ describe('room validation', () => {
     // Close the opening in the wall and the lanes can no longer be reached.
     at({ op: 'wall', x0: 72, y0: 42, x1: 72, y1: 45, variant: 1 });
     expect(sim.business.roomIssues).toContain('noSecurityLink');
+  });
+});
+
+/** The scheduled flight of each rotation that arrives latest, which is the newest day's flight. */
+function newestByRotation(sim: Sim, airline: number, rotations: number): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < rotations; k++) {
+    let best = -1;
+    for (let f = 0; f < 1024; f++) {
+      if (sim.traffic.fState[f] !== FlState.Scheduled || sim.traffic.fAirline[f] !== airline || sim.traffic.fRot[f] !== k) continue;
+      if (best < 0 || sim.traffic.fEta[f] > sim.traffic.fEta[best]) best = f;
+    }
+    out.push(best);
+  }
+  return out;
+}
+
+function closeDay(sim: Sim, day: number): void {
+  (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(day * TICKS_PER_DAY);
+}
+
+describe('rotations keep their type and stand from day to day', () => {
+  it('a rotation flies the same type on consecutive days', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    closeDay(sim, 1);
+    const day1 = newestByRotation(sim, 0, 2);
+    expect(day1.every((f) => f >= 0)).toBe(true);
+    const types1 = day1.map((f) => sim.traffic.fType[f]);
+    closeDay(sim, 2);
+    const types2 = newestByRotation(sim, 0, 2).map((f) => sim.traffic.fType[f]);
+    expect(types2).toEqual(types1);
+  });
+
+  it('a stand chosen for a rotation is taken by the next day flight of that rotation', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    const today = newestByRotation(sim, 0, 2)[0];
+    const stand = sim.airfield.data.stands.find((s) => sim.traffic.refuseAssign(today, s.id) === null);
+    expect(stand).toBeDefined();
+    run(sim, { type: 'assignStand', flight: today, standId: stand?.id ?? -1 });
+    expect(sim.traffic.fStand[today]).toBe(stand?.id);
+    closeDay(sim, 1);
+    const next = newestByRotation(sim, 0, 2)[0];
+    expect(next).not.toBe(today);
+    expect(sim.traffic.fStand[next]).toBe(stand?.id);
+  });
+
+  it('clearing a stand with -1 forgets it for the next day', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    run(sim, { type: 'setAutoStands', on: false });
+    const today = newestByRotation(sim, 0, 2)[0];
+    const stand = sim.airfield.data.stands.find((s) => sim.traffic.refuseAssign(today, s.id) === null);
+    run(sim, { type: 'assignStand', flight: today, standId: stand?.id ?? -1 });
+    expect(sim.business.airlines[0].standPrefs[0]).toBe(stand?.id);
+    run(sim, { type: 'assignStand', flight: today, standId: -1 });
+    expect(sim.business.airlines[0].standPrefs[0]).toBe(-1);
+    closeDay(sim, 1);
+    const next = newestByRotation(sim, 0, 2)[0];
+    expect(sim.traffic.fStand[next]).toBe(-1);
+  });
+});
+
+describe('stand choices with determinism', () => {
+  function standedSim(autoStands: boolean): Sim {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    if (!autoStands) run(sim, { type: 'setAutoStands', on: false });
+    const f = newestByRotation(sim, 0, 2)[0];
+    const stand = sim.airfield.data.stands.find((s) => sim.traffic.refuseAssign(f, s.id) === null);
+    run(sim, { type: 'assignStand', flight: f, standId: stand?.id ?? -1 });
+    return sim;
+  }
+
+  it('same seed and commands give the same hash with a remembered stand, auto stands on and off', () => {
+    const make = (auto: boolean): number => {
+      const sim = standedSim(auto);
+      for (let t = 0; t < 2000; t++) sim.step();
+      return sim.stateHash();
+    };
+    expect(make(true)).toBe(make(true));
+    expect(make(false)).toBe(make(false));
+  });
+
+  it('a save taken mid run and restored continues to the same hash', () => {
+    const a = standedSim(false);
+    for (let t = 0; t < 1000; t++) a.step();
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(JSON.parse(JSON.stringify(a.serialize())));
+    expect(c.business.airlines.map((x) => x.standPrefs)).toEqual(a.business.airlines.map((x) => x.standPrefs));
+    expect(Array.from(c.traffic.fRot)).toEqual(Array.from(a.traffic.fRot));
+    for (let t = 0; t < 1000; t++) {
+      a.step();
+      c.step();
+    }
+    expect(c.stateHash()).toBe(a.stateHash());
+    closeDay(a, 1);
+    closeDay(c, 1);
+    expect(Array.from(c.traffic.fStand)).toEqual(Array.from(a.traffic.fStand));
+    expect(Array.from(c.traffic.fRot)).toEqual(Array.from(a.traffic.fRot));
   });
 });

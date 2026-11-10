@@ -154,7 +154,7 @@ export class Business {
         const t = pool[this.marketRng.int(0, pool.length - 1)];
         if (!fleet.includes(t)) fleet.push(t);
       }
-      return { id, name, scope, livery: id % 8, fleet, minRating, rotations: 0, slots: [], feeLevel: 1, flights: 0, pax: 0 };
+      return { id, name, scope, livery: id % 8, fleet, minRating, rotations: 0, slots: [], standPrefs: [], feeLevel: 1, flights: 0, pax: 0 };
     };
     this.airlines.push(mk('regional', regionalPool, 0, 0), mk('regional', regionalPool, 0, 1), mk('regional', regionalPool, 10, 2));
     this.airlines.push(mk('national', nationalPool, 25, 3), mk('national', nationalPool, 35, 4), mk('national', nationalPool, 45, 5));
@@ -171,12 +171,20 @@ export class Business {
     const before = a.rotations;
     a.rotations = r;
     a.slots = fitSlots(a.slots, r, a.id);
+    a.standPrefs = fitStandPrefs(a.standPrefs, r);
     this.version++;
     if (before === 0 && r > 0) {
       this.host.emit(`airlineSigned|name=${a.name}`);
       this.scheduleToday(a);
     }
     return null;
+  }
+
+  /** Remembers the stand the player chose for a rotation, -1 to clear. Out of range rotations are ignored. */
+  setStandPref(airline: number, rot: number, standId: number): void {
+    const a = this.airlines[airline];
+    if (!a || rot < 0 || rot >= a.standPrefs.length) return;
+    a.standPrefs[rot] = standId;
   }
 
   setFee(id: number, level: FeeLevel): void {
@@ -451,12 +459,28 @@ export class Business {
     this.usableTypesFor(a);
     if (this.usableScratch.length === 0) return;
     if (!this.atcOk) return;
-    for (let r = 0; r < a.rotations; r++) {
-      const minute = a.slots[r] ?? SLOT_FIRST;
+    for (let k = 0; k < a.rotations; k++) {
+      const minute = a.slots[k] ?? SLOT_FIRST;
       if (minute < nowMin + 45) continue;
-      const t = this.usableScratch[this.rng.int(0, this.usableScratch.length - 1)];
-      this.traffic.scheduleArrival(t, now + (minute - nowMin) * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t));
+      const t = this.typeForRotation(a, k);
+      const f = this.traffic.scheduleArrival(t, now + (minute - nowMin) * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t), k);
+      this.applyStandPref(a, k, f);
     }
+  }
+
+  /**
+   * The aircraft type a rotation flies. It is fixed by the rotation index, so the same rotation
+   * flies the same type every day (T41 D1). Requires `usableScratch` to be filled for the airline.
+   */
+  private typeForRotation(a: Airline, k: number): number {
+    return this.usableScratch[(a.id + k) % this.usableScratch.length];
+  }
+
+  /** Gives a new flight the stand remembered for its rotation. A refused stand is kept as a preference, not cleared. */
+  private applyStandPref(a: Airline, k: number, f: number): void {
+    if (f < 0 || a.standPrefs[k] < 0) return;
+    if (this.traffic.refuseAssign(f, a.standPrefs[k]) !== null) return;
+    this.traffic.fStand[f] = a.standPrefs[k];
   }
 
   /** Stage length of a rotation in km: regional flights are short, national ones longer, never beyond the type's range. */
@@ -510,10 +534,11 @@ export class Business {
       }
       for (let k = 0; k < a.rotations; k++) {
         const minute = a.slots[k] ?? SLOT_FIRST;
-        const t = this.usableScratch[this.rng.int(0, this.usableScratch.length - 1)];
+        const t = this.typeForRotation(a, k);
         // Arrival times are relative to the midnight that starts this day, in ticks.
         const midnight = tick - minuteOfDay(tick) * TICKS_PER_MINUTE;
-        this.traffic.scheduleArrival(t, midnight + minute * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t));
+        const f = this.traffic.scheduleArrival(t, midnight + minute * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t), k);
+        this.applyStandPref(a, k, f);
       }
     }
     // Today's flights take free stands now; this runs in the business step, after the airfield copy is current.
@@ -697,7 +722,7 @@ export class Business {
     this.grids.length = 0;
     for (const sg of o.grids) this.grids.push(loadGrid(sg));
     this.airlines.length = 0;
-    this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id) })));
+    this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id), standPrefs: a.standPrefs ?? new Array<number>(a.rotations).fill(-1) })));
     this.rating = o.rating;
     this.satisfaction = o.satisfaction;
     this.onTime = o.onTime;
@@ -730,7 +755,10 @@ export class Business {
     acc = foldU32(acc, Math.floor(this.rating * 100));
     acc = foldU32(acc, this.loan);
     acc = foldU32(acc, this.paxToday);
-    for (const a of this.airlines) acc = foldU32(foldU32(acc, a.rotations), a.pax);
+    for (const a of this.airlines) {
+      acc = foldU32(foldU32(acc, a.rotations), a.pax);
+      for (const s of a.standPrefs) acc = foldU32(acc, s);
+    }
     for (const g of this.grids) {
       acc = foldU32(foldU32(acc, g.id), cellCount(g));
       for (let i = 0; i < g.fixture.length; i++) {
@@ -789,6 +817,13 @@ function fitSlots(old: number[], rotations: number, id: number): number[] {
     const base = SLOT_FIRST + Math.floor(((i + 0.5) * span) / Math.max(1, rotations));
     out.push(Math.max(SLOT_FIRST, Math.min(SLOT_LAST, Math.round((base + ((id * 35) % 60) - 30) / 5) * 5)));
   }
+  return out;
+}
+
+/** Keeps the stands the player chose per rotation, pads new rotations with -1 and drops extras from the end. */
+function fitStandPrefs(old: number[], rotations: number): number[] {
+  const out = old.slice(0, rotations);
+  while (out.length < rotations) out.push(-1);
   return out;
 }
 
