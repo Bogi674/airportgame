@@ -56,6 +56,8 @@ export async function playSmallAirport(page: Page): Promise<void> {
   await edit(1, { op: 'fixture', x0: 62, y0: 42, x1: 64, y1: 43, variant: 3 });
   await edit(1, { op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 });
   await edit(1, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
+  // Flights need an ATC tower on the airport (T40): one at level 1 covers the runway.
+  await send({ type: 'buildTower', x: 3300, y: 5600, level: 1 });
   await send({ type: 'signAirline', airlineId: 0, rotations: 2 });
   await send({ type: 'signAirline', airlineId: 1, rotations: 2 });
   await expect.poll(() => page.evaluate(() => window.__store?.getState().airfield.runways.length ?? 0)).toBe(1);
