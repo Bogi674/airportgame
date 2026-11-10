@@ -80,7 +80,7 @@ A playable slice of MVP 1 exists and runs as one offline file (`npm run build:of
 * [x] Aircraft data loader with zod schema for the 10 MVP 1 types, derived code, wake and approach category tests
 * [ ] Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3 (geometry based top down sprites with tiers 0 to 3: silhouette, engines and livery, panel lines, then seams, window strips and flap tracks, not a full port of the prototype renderer)
 * [ ] Calibration overlays saved for all 10 types within tolerance (a test checks length and span of all 10 types against the data (2 and 4 percent), overlays against photos are not saved)
-* [ ] Taxi network builder with samples, blocks and conflict sets, property tests (built with 2 m samples and per taxiway blocks, conflict sets and property tests are missing)
+* [x] Taxi network builder with samples, blocks and conflict sets, property tests (2 m samples, per taxiway blocks, conflict sets in `conflictStart` and `conflictEdge`, property tests in `tests/networkProperties.test.ts`)
 * [x] Routing with direction, closures, max code, congestion cost and preferred flows (direction, closures, max code, strength, congestion cost and a per taxiway preferred flow that costs three times as much against it)
 * [ ] Reservations, following gaps, junction priority, holding points, runway exclusivity with wake separation (node and block reservations, following gaps, holding points, runway exclusivity and wake separation work, junction priority is first come)
 * [x] Push back with direction per stand (along the lead in and one fork arc: left, right or away from the departure route, switching side when blocked)

@@ -17,6 +17,8 @@ import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './p
 
 export const MAX_AIRCRAFT = 256;
 const MAX_ROUTE = 40;
+/** Extra reach of a junction zone, about one aircraft length, so an aircraft already past the node still holds its conflicts. */
+const CONFLICT_MARGIN_M = 30;
 const MAX_FLIGHTS = 1024;
 const DT = 0.1;
 const KT = 0.514444;
@@ -1218,6 +1220,13 @@ export class Traffic {
       this.waitingFor[i] = owner;
       return false;
     }
+    if (!ignore) {
+      const j = this.conflictHolder(i, node, nextE);
+      if (j >= 0) {
+        this.waitingFor[i] = j;
+        return false;
+      }
+    }
     const nb = net.edgeBlock[nextE];
     // A block the aircraft already holds (the same taxiway) needs no new reservation.
     const needsBlock = nb >= 0 && nb !== this.curBlock[i];
@@ -1244,6 +1253,41 @@ export class Traffic {
     this.nextAcq[i] = nextE;
     this.waitingFor[i] = -1;
     return true;
+  }
+
+  /**
+   * Another aircraft on an edge that conflicts with `nextE` and inside the junction zone around `node`, or -1.
+   * Only taxiing aircraft count, the node owner check has already settled the aircraft at the node itself.
+   */
+  private conflictHolder(i: number, node: number, nextE: number): number {
+    const net = this.net;
+    const curE = this.routeEdge[i * MAX_ROUTE + this.routeIdx[i]];
+    const nx = net.nodeX[node];
+    const ny = net.nodeY[node];
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === i) continue;
+      const st = this.state[j];
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback && st !== AcState.Holding) continue;
+      // Two aircraft held back by each other would deadlock: the lower index goes first, the other keeps waiting.
+      if (this.waitingFor[j] === i && j > i) continue;
+      const jk = j * MAX_ROUTE + this.routeIdx[j];
+      const ej = this.routeEdge[jk];
+      // The aircraft sweeps the end of the edge it is on as well as the start of the next one.
+      if (!this.edgesConflict(nextE, ej) && !this.edgesConflict(curE, ej)) continue;
+      // An aircraft that has left the node along its edge and cleared it with its tail no longer holds it.
+      const leaving = this.routeDir[jk] === 1 ? net.edgeFrom[ej] === node : net.edgeTo[ej] === node;
+      if (leaving && this.dist[j] > AIRCRAFT[this.type[j]].dimensions.lengthM) continue;
+      const zone = Math.max(net.edgeZoneM[nextE], net.edgeZoneM[ej]);
+      if (Math.hypot(this.x[j] - nx, this.y[j] - ny) < zone + CONFLICT_MARGIN_M) return j;
+    }
+    return -1;
+  }
+
+  private edgesConflict(e: number, f: number): boolean {
+    const net = this.net;
+    for (let c = net.conflictStart[e]; c < net.conflictStart[e + 1]; c++) if (net.conflictEdge[c] === f) return true;
+    return false;
   }
 
   private pushbackClear(i: number): boolean {
