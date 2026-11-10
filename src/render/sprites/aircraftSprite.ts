@@ -1,28 +1,24 @@
 import { AIRCRAFT, SPRITE_BASES } from '@data/aircraft';
 import type { SpriteEngine } from '@data/aircraft';
+import { SPRITES } from '@data/index';
+import type { LiveryData } from '@data/schemas';
 import { bounds, buildGeometry, finPts, fuselagePts, hstabRight, hw, leY, teY, windscreen, upperDeckPts, wingRight, winglet, type AircraftGeometry, type XY } from './geometry';
 
-export interface Livery {
-  body: string;
-  tail: string;
-  accent: string;
+export type Livery = LiveryData;
+
+/** Livery slots: the 8 invented airline liveries of the data file, then the neutral default. */
+export const LIVERY_SLOTS = SPRITES.liveries.length + 1;
+
+/** Invented airline liveries, no real logos. Index 0 to 7 is stored per aircraft, anything else is neutral. */
+export function liveryFor(idx: number): Livery {
+  return SPRITES.liveries[idx] ?? SPRITES.neutral;
 }
 
-/** Invented airline liveries, no real logos. Index 0 to 7 is stored per aircraft in the snapshot. */
-export const LIVERIES: readonly Livery[] = [
-  { body: '#eef0f2', tail: '#c8102e', accent: '#1d2b53' },
-  { body: '#f4f1e8', tail: '#1f6fb2', accent: '#f2b705' },
-  { body: '#e9eef0', tail: '#2a9d8f', accent: '#264653' },
-  { body: '#f6f6f6', tail: '#e76f51', accent: '#2b2d42' },
-  { body: '#dfe5ea', tail: '#6a4c93', accent: '#f4a261' },
-  { body: '#f0ede4', tail: '#2d6a4f', accent: '#d4a017' },
-  { body: '#eaeaea', tail: '#0b3c5d', accent: '#d9b310' },
-  { body: '#f8f1e5', tail: '#9d0208', accent: '#370617' },
-];
-
-/** Pixels per meter for the three detail tiers. */
-export const TIER_PPM = [1.5, 4, 9, 18] as const;
-export const tierForZoom = (zoom: number): number => (zoom < 0.5 ? 0 : zoom < 3 ? 1 : zoom < 8 ? 2 : 3);
+/** Tier of the aircraft sprite at a camera zoom in px per m, from the thresholds in `sprites.json`. */
+export function tierForZoom(zoom: number): number {
+  const min = SPRITES.tiers.minZoom;
+  return zoom >= min[3] ? 3 : zoom >= min[2] ? 2 : zoom >= min[1] ? 1 : 0;
+}
 
 export interface Sprite {
   canvas: HTMLCanvasElement;
@@ -31,7 +27,7 @@ export interface Sprite {
   height: number;
 }
 
-const PAD_M = 4;
+const PAD_M = SPRITES.padM;
 const geometryCache = new Map<number, AircraftGeometry>();
 
 function geometryFor(typeIdx: number): AircraftGeometry {
@@ -72,9 +68,10 @@ const COL = {
 export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: number): Sprite {
   const g = geometryFor(typeIdx);
   const s = g.base;
-  const livery = LIVERIES[liveryIdx % LIVERIES.length];
-  const ppm = TIER_PPM[tier];
+  const livery = liveryFor(liveryIdx);
+  const ppm = SPRITES.tiers.bakePpm[tier];
   const L = s.L;
+  if (tier === 0) return bakeArrow(L, livery.fin, ppm);
   const bnd = bounds(s);
   const width = Math.ceil((L + 2 * PAD_M) * ppm);
   const height = Math.ceil((2 * bnd.xMax + 2 * PAD_M) * ppm);
@@ -190,7 +187,7 @@ export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: num
   ctx.globalAlpha = 0.28;
   drawSilhouette();
   ctx.restore();
-  if (tier === 0) {
+  if (tier === 1) {
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = livery.body;
@@ -204,7 +201,7 @@ export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: num
     return { canvas, ppm, width, height };
   }
 
-  const finFill = livery.tail;
+  const finFill = livery.fin;
 
   // ----- engines
   const nacelleGrad = (x: number, r: number): CanvasGradient => {
@@ -295,6 +292,25 @@ export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: num
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     poly(pts, nacelleGrad(x, r), COL.outline, 0.9);
+    if (detail && livery.nacelle) {
+      // Livery tint of the cowl, ports `nacelle_fan` with a livery.
+      poly(
+        [
+          [x - r * 0.97, y0 + 0.12 * Ln],
+          [x - r * 0.97, y0 + 0.5 * fanEnd * Ln + 0.15 * Ln],
+          [x - r * 0.84, y0 + fanEnd * Ln * 0.97],
+          [x + r * 0.84, y0 + fanEnd * Ln * 0.97],
+          [x + r * 0.97, y0 + 0.5 * fanEnd * Ln + 0.15 * Ln],
+          [x + r * 0.97, y0 + 0.12 * Ln],
+        ],
+        null,
+      );
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = livery.nacelle;
+      ctx.fill();
+      ctx.restore();
+    }
     // Lip.
     ctx.beginPath();
     quadFront(x, y0, Ln, r);
@@ -438,7 +454,7 @@ export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: num
     for (const sg of [-1, 1] as const) {
       if (!high) poly(rp.map(([x, y]): XY => [sg * x, y]), COL.wing, COL.outline, 0.9);
       const wl = winglet(s, w, sg);
-      if (wl.length) poly(wl, finFill, COL.outline, 0.8);
+      if (wl.length) poly(wl, livery.winglet, COL.outline, 0.8);
     }
     if (!detail) return;
     const R = w.root_y ?? s.fw / 2;
@@ -500,6 +516,10 @@ export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: num
   // ----- fuselage and cabin details
   const fuselageDraw = (): void => {
     poly(fuselagePts(s), gradAcross(0, s.fw / 2, livery.body, shade(livery.body, 0.82)), COL.outline, 1.0);
+    if (detail && livery.crown) {
+      // Crown band along the top of the barrel, between the nose and the tail taper.
+      rect(-s.fw * 0.09, s.nose, s.fw * 0.18, s.L - s.tail - s.nose, livery.crown);
+    }
   };
   const upperDeck = (): void => {
     const pts = upperDeckPts(s);
@@ -621,21 +641,77 @@ function shade(hex: string, k: number): string {
   return `rgb(${r},${gg},${b})`;
 }
 
-/** Sprite cache keyed by type, livery and tier. At most 10 types by 8 liveries by 4 tiers. */
+/** Marker of tier 0: a heading arrow in the airline color, ports `marker`. The nose points to +x. */
+function bakeArrow(L: number, color: string, ppm: number): Sprite {
+  const k = Math.max(6, L * 0.5);
+  const width = Math.ceil(1.6 * k * ppm) + 2;
+  const height = Math.ceil(1.1 * k * ppm) + 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { canvas, ppm, width, height };
+  ctx.setTransform(ppm, 0, 0, ppm, 0, 0);
+  const cx = width / ppm / 2;
+  const cy = height / ppm / 2;
+  const pts: XY[] = [
+    [0, 0],
+    [0.55 * k, 1.6 * k],
+    [0, 1.2 * k],
+    [-0.55 * k, 1.6 * k],
+  ];
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => {
+    const px = cx + 0.8 * k - y;
+    const py = cy + x;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 0.08 * k;
+  ctx.stroke();
+  return { canvas, ppm, width, height };
+}
+
+/**
+ * Sprite cache keyed by type, livery slot and tier. It is a least recently used cache bounded by
+ * `SPRITES.cache.maxEntries`, so baking every combination never grows past that count.
+ */
 export class SpriteCache {
-  private readonly sprites: (Sprite | undefined)[] = [];
+  private readonly sprites = new Map<number, Sprite>();
+
+  constructor(
+    private readonly bake: (typeIdx: number, liveryIdx: number, tier: number) => Sprite = bakeAircraftSprite,
+    private readonly maxEntries: number = SPRITES.cache.maxEntries,
+  ) {}
 
   get(typeIdx: number, liveryIdx: number, tier: number): Sprite {
-    const key = (typeIdx * 8 + (liveryIdx & 7)) * 4 + tier;
-    let s = this.sprites[key];
-    if (!s) {
-      s = bakeAircraftSprite(typeIdx, liveryIdx & 7, tier);
-      this.sprites[key] = s;
+    const slot = liveryIdx >= 0 && liveryIdx < SPRITES.liveries.length ? liveryIdx : SPRITES.liveries.length;
+    const key = (typeIdx * LIVERY_SLOTS + slot) * 4 + tier;
+    let s = this.sprites.get(key);
+    if (s) {
+      // Touch: move to the most recent end.
+      this.sprites.delete(key);
+    } else {
+      s = this.bake(typeIdx, slot, tier);
+      if (this.sprites.size >= this.maxEntries) {
+        const oldest = this.sprites.keys().next();
+        if (!oldest.done) this.sprites.delete(oldest.value);
+      }
     }
+    this.sprites.set(key, s);
     return s;
   }
 
+  get size(): number {
+    return this.sprites.size;
+  }
+
   clear(): void {
-    this.sprites.length = 0;
+    this.sprites.clear();
   }
 }
