@@ -3,7 +3,7 @@ import type { CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export interface SaveData {
   version: number;
@@ -55,5 +55,7 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 7) save.version = 7;
   // Version 7 to 8: the airfield gained ATC towers. Older saves have none, and loading defaults them to an empty list.
   if (save.version < 8) save.version = 8;
+  // Version 8 to 9: traffic gained the junction request table. Older saves load with no open requests.
+  if (save.version < 9) save.version = 9;
   return save as SaveData;
 }

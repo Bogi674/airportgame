@@ -99,6 +99,12 @@ export class Traffic {
   /** Edge the junction and block were reserved for, or -1. */
   readonly nextAcq = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly waitingFor = new Int32Array(MAX_AIRCRAFT).fill(-1);
+  /** Junction node this aircraft asked to enter, or -1 for none. Requests compete by class, then by first tick. */
+  readonly reqNode = new Int32Array(MAX_AIRCRAFT).fill(-1);
+  /** Tick of the first request for reqNode, so an earlier request wins within a class. */
+  readonly reqTick = new Int32Array(MAX_AIRCRAFT);
+  /** Priority class of the open request: 0 arrival on its first edge, 1 other arrival, 2 departure or other, 3 push back. Lower wins. */
+  readonly reqClass = new Uint8Array(MAX_AIRCRAFT);
   readonly ignoreLocks = new Int32Array(MAX_AIRCRAFT);
   readonly yieldUntil = new Int32Array(MAX_AIRCRAFT);
   /** Until this tick the aircraft shows in the deadlock overlay. Not saved, it only feeds the overlay. */
@@ -293,6 +299,7 @@ export class Traffic {
       this.nextBlock[i] = -1;
       this.nextAcq[i] = -1;
       this.waitingFor[i] = -1;
+      this.reqNode[i] = -1;
     }
     for (let i = 0; i < MAX_AIRCRAFT; i++) {
       if (this.active[i] === 1 && this.standId[i] >= 0) {
@@ -851,6 +858,7 @@ export class Traffic {
         this.nextBlock[i] = -1;
         this.nextAcq[i] = -1;
         this.waitingFor[i] = -1;
+        this.reqNode[i] = -1;
         this.ignoreLocks[i] = 0;
         this.yieldUntil[i] = 0;
         this.stuckTicks[i] = 0;
@@ -912,6 +920,7 @@ export class Traffic {
     }
     this.nextAcq[i] = -1;
     this.waitingFor[i] = -1;
+    this.reqNode[i] = -1;
   }
 
   // Position on the runway -------------------------------------------------
@@ -1212,35 +1221,95 @@ export class Traffic {
     return this.blockLast[nb];
   }
 
-    private tryEnter(i: number, node: number, nextE: number, nextD: number): boolean {
+  /**
+   * What stops aircraft i from entering the junction `node` onto `nextE`, without writing any state.
+   * -1 when free, the aircraft index that holds it, or -2 when a stand lead refuses it with no one to wait for.
+   */
+  private entryBlocker(i: number, node: number, nextE: number, nextD: number): number {
     const net = this.net;
     const ignore = this.ignoreLocks[i] > 0;
     const owner = this.nodeOwner[node];
-    if (owner !== -1 && owner !== i && !ignore) {
-      this.waitingFor[i] = owner;
-      return false;
-    }
+    if (owner !== -1 && owner !== i && !ignore) return owner;
     if (!ignore) {
       const j = this.conflictHolder(i, node, nextE);
-      if (j >= 0) {
-        this.waitingFor[i] = j;
+      if (j >= 0) return j;
+    }
+    const nb = net.edgeBlock[nextE];
+    // A block the aircraft already holds (the same taxiway) needs no new reservation.
+    const needsBlock = nb >= 0 && nb !== this.curBlock[i];
+    if (needsBlock && this.blockCount[nb] > 0 && this.blockDir[nb] !== nextD && this.blockLast[nb] !== i && !ignore) return this.blockHolder(i, nb);
+    // A stand lead in and its fork arcs are only for the aircraft that owns the stand, so an arrival
+    // waits on the taxilane and never blocks the way out of the aircraft still on the stand.
+    const leadKind = net.edgeKind[nextE];
+    if (leadKind === EdgeKind.StandLeadIn || leadKind === EdgeKind.StandFork) {
+      const s = leadKind === EdgeKind.StandLeadIn ? net.edgeStand[nextE] : net.edgeForkStand[nextE];
+      if (this.standOwner[s] !== -1 && this.standOwner[s] !== i) return -2;
+    }
+    return -1;
+  }
+
+  private priorityClass(i: number): number {
+    const st = this.state[i];
+    if (st === AcState.TaxiIn) return this.routeIdx[i] === 0 ? 0 : 1;
+    if (st === AcState.Pushback) return 3;
+    return 2;
+  }
+
+  /** Whether aircraft a has priority over b at a junction. Without an open request on both, the lower index wins. */
+  private outranks(a: number, b: number): boolean {
+    if (this.reqNode[a] < 0 || this.reqNode[b] < 0) return a < b;
+    if (this.reqClass[a] !== this.reqClass[b]) return this.reqClass[a] < this.reqClass[b];
+    if (this.reqTick[a] !== this.reqTick[b]) return this.reqTick[a] < this.reqTick[b];
+    return a < b;
+  }
+
+  /**
+   * The highest ranked aircraft that asked for `node` before i, is about to enter it and is not blocked
+   * there, or -1. Such an aircraft goes first, so i waits for it.
+   */
+  private priorityHolder(i: number, node: number): number {
+    const net = this.net;
+    let best = -1;
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === i || this.reqNode[j] !== node || !this.outranks(j, i)) continue;
+      if (this.tick < this.yieldUntil[j]) continue;
+      const st = this.state[j];
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback && st !== AcState.Holding) continue;
+      if (this.routeIdx[j] >= this.routeLen[j] - 1) continue;
+      const jk = j * MAX_ROUTE + this.routeIdx[j];
+      const e = this.routeEdge[jk];
+      const end = this.routeDir[jk] === 1 ? net.edgeTo[e] : net.edgeFrom[e];
+      if (end !== node) continue;
+      const nextK = jk + 1;
+      if (this.entryBlocker(j, node, this.routeEdge[nextK], this.routeDir[nextK]) !== -1) continue;
+      if (best < 0 || this.outranks(j, best)) best = j;
+    }
+    return best;
+  }
+
+  private tryEnter(i: number, node: number, nextE: number, nextD: number): boolean {
+    const net = this.net;
+    if (this.reqNode[i] !== node) {
+      this.reqNode[i] = node;
+      this.reqTick[i] = this.tick;
+      this.reqClass[i] = this.priorityClass(i);
+    }
+    const b = this.entryBlocker(i, node, nextE, nextD);
+    if (b !== -1) {
+      if (b >= 0) this.waitingFor[i] = b;
+      return false;
+    }
+    if (this.ignoreLocks[i] <= 0) {
+      const p = this.priorityHolder(i, node);
+      if (p >= 0) {
+        this.waitingFor[i] = p;
         return false;
       }
     }
     const nb = net.edgeBlock[nextE];
     // A block the aircraft already holds (the same taxiway) needs no new reservation.
     const needsBlock = nb >= 0 && nb !== this.curBlock[i];
-    if (needsBlock && this.blockCount[nb] > 0 && this.blockDir[nb] !== nextD && this.blockLast[nb] !== i && !ignore) {
-      this.waitingFor[i] = this.blockHolder(i, nb);
-      return false;
-    }
-    // A stand lead in and its fork arcs are only for the aircraft that owns the stand, so an arrival
-    // waits on the taxilane and never blocks the way out of the aircraft still on the stand.
-    const leadKind = net.edgeKind[nextE];
-    if (leadKind === EdgeKind.StandLeadIn || leadKind === EdgeKind.StandFork) {
-      const s = leadKind === EdgeKind.StandLeadIn ? net.edgeStand[nextE] : net.edgeForkStand[nextE];
-      if (this.standOwner[s] !== -1 && this.standOwner[s] !== i) return false;
-    }
     if (this.heldNode[i] >= 0 && this.heldNode[i] !== node && this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
     this.nodeOwner[node] = i;
     this.heldNode[i] = node;
@@ -1252,6 +1321,7 @@ export class Traffic {
     }
     this.nextAcq[i] = nextE;
     this.waitingFor[i] = -1;
+    this.reqNode[i] = -1;
     return true;
   }
 
@@ -1799,7 +1869,8 @@ export class Traffic {
       active: this.active, state: this.state, type: this.type, livery: this.livery, flight: this.flight, x: this.x, y: this.y,
       heading: this.heading, speed: this.speed, dist: this.dist, routeLen: this.routeLen, routeIdx: this.routeIdx,
       routeEdge: this.routeEdge, routeDir: this.routeDir, heldNode: this.heldNode, curBlock: this.curBlock, prevBlock: this.prevBlock,
-      nextBlock: this.nextBlock, nextAcq: this.nextAcq, waitingFor: this.waitingFor, ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
+      nextBlock: this.nextBlock, nextAcq: this.nextAcq, waitingFor: this.waitingFor, reqNode: this.reqNode, reqTick: this.reqTick, reqClass: this.reqClass,
+      ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
       standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwyBack: this.rwyBack, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
