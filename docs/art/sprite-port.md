@@ -40,3 +40,16 @@ Verdict at the start of T05: `geometry.ts` is a loose reimplementation, not a po
 ## Out of scope for T05
 
 Liveries and the tier table (T06). Calibration overlays (T07, deferred). The upper deck and sponsons are ported because the data has them.
+
+## Tier mapping (T06)
+
+Source of truth: the table in `docs/ART_AND_ASSETS.md` section 2 and `render(tier=...)` in `air2.py`. Thresholds, bake resolution, cache limit and liveries live in `src/data/sprites.json`.
+
+| Sprite tier | Camera zoom | Python | What is drawn | Bake ppm |
+| --- | --- | --- | --- | --- |
+| 0 | below 1 px/m | `marker` | Heading arrow in the airline fin color, size `max(6, L / 2)` m | 2 |
+| 1 | 1 to 4 | `render(tier=1)` | Flat silhouette with shadow | 4 |
+| 2 | 4 to 16 | `render(tier=2)` | Reference style: gradients, windscreen, doors, windows, panel and flap lines, flap tracks, upper deck, livery tint | 8 |
+| 3 | above 16 | `render(tier=3)` | Tier 2 plus slats, spoilers, pylons, nacelle seams, prop nacelle intakes, nav lights and antennas | 16 |
+
+The quality governor drops one tier at level 2. Liveries (8 invented, plus a neutral default for any other index) color the fin, winglets, nacelle cowls (optional) and a fuselage crown band (optional) in the pass of each part. The cache is a least recently used map capped at `cache.maxEntries`.

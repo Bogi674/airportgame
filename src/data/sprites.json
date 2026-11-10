@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "note": "Aircraft sprite tiers, cache limit and liveries. Tiers follow docs/ART_AND_ASSETS.md section 2: 0 heading arrow, 1 flat silhouette with shadow, 2 reference style, 3 close up. minZoom is the lowest camera zoom in px per m that selects the tier. bakePpm is the resolution the tier is baked at.",
+  "tiers": {
+    "minZoom": [0, 1, 4, 16],
+    "bakePpm": [2, 4, 8, 16]
+  },
+  "cache": { "maxEntries": 96 },
+  "padM": 4,
+  "liveries": [
+    { "body": "#eef0f2", "fin": "#c8102e", "nacelle": null, "winglet": "#c8102e", "crown": "#1d2b53" },
+    { "body": "#f4f1e8", "fin": "#1f6fb2", "nacelle": "#1f6fb2", "winglet": "#1f6fb2", "crown": "#f2b705" },
+    { "body": "#e9eef0", "fin": "#2a9d8f", "nacelle": null, "winglet": "#2a9d8f", "crown": "#264653" },
+    { "body": "#f6f6f6", "fin": "#e76f51", "nacelle": "#e76f51", "winglet": "#e76f51", "crown": "#2b2d42" },
+    { "body": "#dfe5ea", "fin": "#6a4c93", "nacelle": null, "winglet": "#6a4c93", "crown": "#f4a261" },
+    { "body": "#f0ede4", "fin": "#2d6a4f", "nacelle": "#2d6a4f", "winglet": "#2d6a4f", "crown": "#d4a017" },
+    { "body": "#eaeaea", "fin": "#0b3c5d", "nacelle": null, "winglet": "#0b3c5d", "crown": "#d9b310" },
+    { "body": "#f8f1e5", "fin": "#9d0208", "nacelle": "#9d0208", "winglet": "#9d0208", "crown": "#370617" }
+  ],
+  "neutral": { "body": "#eef0f2", "fin": "#9aa3ad", "nacelle": null, "winglet": "#9aa3ad", "crown": null }
+}

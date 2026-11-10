@@ -16,7 +16,7 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 | T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M | | done | c38a2b5 4d4661b 4944ca9 7afca60 |
 | T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 | todo | |
 | T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L | T04 | done | 042c89a |
-| T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | todo | |
+| T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | done | HASH |
 | T07 | M3 | [Calibration overlays saved](tasks/T07-calibration.md) | M | T06 | deferred | |
 | T08 | M3 | [Network conflict sets and property tests](tasks/T08-conflict-sets.md) | M | T04 | todo | |
 | T09 | M3 | [Junction priority](tasks/T09-junction-priority.md) | M | T08 | todo | |
