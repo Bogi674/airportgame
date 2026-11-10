@@ -28,7 +28,7 @@ All done: the tower (T40), the grid task (T42) and the doc drift. The rows are i
 
 | Id | Milestone | Task | Size | Depends | Status | Commits |
 | --- | --- | --- | --- | --- | --- | --- |
-| T41 | M6 | [Flight offers and stand management](tasks/T41-flight-schedule.md) | L | T40 | todo |  |
+| T41 | M6 | [Flight offers and stand management](tasks/T41-flight-schedule.md) | L | T40 | doing |  |
 
 ## Phase 3. Passenger core
 

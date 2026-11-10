@@ -6,7 +6,8 @@ import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
 import { foldF64, foldInts, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
-import { standRefusal } from '@shared/standSizes';
+import { refuseFit, refuseUsage, STAND_BLOCK_BUFFER_MIN, type StandFacts } from '@shared/flightBlock';
+import { TICKS_PER_MINUTE } from '@shared/business';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { AIRFIELD, BUSINESS } from '@data/index';
@@ -37,6 +38,8 @@ const MOVEMENT_WINDOW_TICKS = 36000;
 const MOVEMENT_RING = BUSINESS.tower.levels.reduce((m, l) => Math.max(m, l.movementsPerHour), 0);
 const SLOTS = 8;
 const TURN_RATE = 0.35;
+/** The gap autoAssign keeps between two flights on one stand, in ticks. */
+const STAND_BLOCK_BUFFER_TICKS = STAND_BLOCK_BUFFER_MIN * TICKS_PER_MINUTE;
 
 export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround: 4, Pushback: 5, TaxiOut: 6, Holding: 7, LineUp: 8, Takeoff: 9, Backtrack: 10 } as const;
 export const FlState = { Free: 0, Scheduled: 1, Inbound: 2, OnGround: 3, Departing: 4, Done: 5 } as const;
@@ -197,6 +200,13 @@ export class Traffic {
   /** Usable approach type per runway direction, set by the sim from the obstacle surfaces. */
   obstacles: RunwayObstacles[] = [];
   hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean } | null = null;
+  private reachStand = 0;
+  /** Terminal reach of the stand in reachStand. Bound once, so the reused scratch facts allocate nothing per check. */
+  private readonly reachOf = (): boolean => {
+    const st = this.af.stands[this.reachStand];
+    return !this.hooks?.contactOk || this.hooks.contactOk(st.x, st.y);
+  };
+  private readonly standScratch: StandFacts = { closed: false, usage: 'any', size: 'small', surface: 'asphalt', type: 'remote', code: 'A', linked: false, contactOk: this.reachOf };
   weather: 'clear' | 'rain' | 'fog' | 'wind' = 'clear';
 
   // Weather and settings
@@ -581,22 +591,31 @@ export class Traffic {
 
   // Arrivals ---------------------------------------------------------------
 
-  private standFits(t: number, s: number): boolean {
+  /** Fills the reused scratch facts for one stand. Hot path, so nothing is allocated. */
+  private standFactsOf(s: number): StandFacts {
     const st = this.af.stands[s];
-    // Wingspan within the stand size and the stand surface on the type's list (docs/DESIGN_REVISION_2.md 3.1).
-    if (standRefusal(st, AIRCRAFT[t]) !== null) return false;
-    if (st.type === 'contact' && this.hooks?.contactOk && !this.hooks.contactOk(st.x, st.y)) return false;
-    return true;
+    const f = this.standScratch;
+    f.closed = st.closed === true;
+    f.usage = st.usage ?? 'any';
+    f.size = st.size;
+    f.surface = st.surface;
+    f.type = st.type;
+    f.code = st.code;
+    f.linked = this.net.standNode[s] >= 0;
+    this.reachStand = s;
+    f.contactOk = this.reachOf;
+    return f;
+  }
+
+  /** Wingspan within the stand size, the stand surface on the type's list and contact reach (docs/DESIGN_REVISION_2.md 3.1). */
+  private standFits(t: number, s: number): boolean {
+    return refuseFit(this.standFactsOf(s), AIRCRAFT[t]) === null;
   }
 
   /** True when a stand may take this aircraft type under its open or closed state and usage setting. */
   private standAllows(t: number, s: number): boolean {
     const st = this.af.stands[s];
-    if (st.closed === true) return false;
-    const ga = AIRCRAFT[t].capacity.seatsTypical < 20;
-    if (st.usage === 'ga' && !ga) return false;
-    if (st.usage === 'commercial' && ga) return false;
-    return true;
+    return st.closed !== true && refuseUsage(st.usage ?? 'any', AIRCRAFT[t]) === null;
   }
 
   private pickStand(t: number, fromNode: number, f = -1): number {
@@ -634,8 +653,8 @@ export class Traffic {
     order.sort((a, b) => this.fEta[a] - this.fEta[b] || a - b);
     for (const f of order) {
       const t = this.fType[f];
-      const from = this.fEta[f] - 3000;
-      const to = this.fEta[f] + this.fTurn[f] + 3000;
+      const from = this.fEta[f] - STAND_BLOCK_BUFFER_TICKS;
+      const to = this.fEta[f] + this.fTurn[f] + STAND_BLOCK_BUFFER_TICKS;
       let best = -1;
       let bestScore = Infinity;
       for (let s = 0; s < this.af.stands.length; s++) {
@@ -644,7 +663,7 @@ export class Traffic {
         let clash = false;
         for (let g = 0; g < MAX_FLIGHTS && !clash; g++) {
           if (g === f || this.fStand[g] !== id || (this.fState[g] !== FlState.Scheduled && this.fState[g] !== FlState.Inbound && this.fState[g] !== FlState.OnGround)) continue;
-          clash = this.fEta[g] < to && this.fEta[g] + this.fTurn[g] + 3000 > from;
+          clash = this.fEta[g] < to && this.fEta[g] + this.fTurn[g] + STAND_BLOCK_BUFFER_TICKS > from;
         }
         if (clash) continue;
         const score = (codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t])) * 100 + s * 0.01;
