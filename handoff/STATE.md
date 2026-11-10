@@ -1,22 +1,22 @@
 # STATE.md
 
-Where the project stands at handoff (2026-11-05). Update this file when a task changes what is true here.
+Where the project stands at handoff (2026-11-10). Update this file when a task changes what is true here.
 
 ## Health
 
-* 301 tests in 32 files pass. Lint, type check and the rules checker are clean.
+* 327 tests in 34 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 
 | Scenario | Mean | p99 |
 | --- | --- | --- |
-| small | 0.008 | 0.053 |
-| medium | 0.006 | 0.056 |
-| large | 0.009 | 0.088 |
-| busy50 | 0.028 | 0.881 |
-| terminal640 | 0.006 | 0.064 |
+| small | 0.009 | 0.057 |
+| medium | 0.009 | 0.079 |
+| large | 0.007 | 0.066 |
+| busy50 | 0.028 | 0.93 |
+| terminal640 | 0.005 | 0.048 |
 
-* Save format version 7 (`src/sim/save/migrations.ts`).
+* Save format version 9 (`src/sim/save/migrations.ts`).
 
 ## What works (player view)
 
@@ -30,7 +30,7 @@ A player can start a seeded game, buy land, and build an airport that airlines f
 * **Rapid exits** (30, 45, 90 degrees), the **parallel taxiway** prefab, **GA blocks**.
 * **Turn pads** in the sim only: the `turnPad` command builds a pad, departures that need the full length backtrack to it. The pad is not drawn yet and has no tool (task T01).
 * **Terminals** of any size on a 2 m grid that grows in 64 m chunks: foundations, floors, walls, glass, doors, zones, check in, security, baggage belt, seating, toilets, six shop types and the ATC room. Room validation stops departures when security can be bypassed.
-* **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, deadlock detection with an overlay.
+* **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, junction priority that orders aircraft at junctions by class and then request tick, deadlock detection with an overlay.
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
 * **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, saves to IndexedDB with autosave, export and import, crash panel.
 
@@ -39,7 +39,7 @@ A player can start a seeded game, buy land, and build an airport that airlines f
 Every unchecked line in `docs/ROADMAP.md` milestones M2 to M7. `handoff/TASKS.md` turns each into a task. In short:
 
 * M2: turn pad drawing and tool, the remaining runway marking details, the grading tool.
-* M3: the full sprite port (features, liveries, tiers), saved calibration overlays, network conflict sets, junction priority.
+* M3: saved calibration overlays.
 * M4: kiosk, bag drop, passport booth, gate desk; walking graph; service nodes and queues; cohorts and the departure journey; people atlas rendering; overlays; satisfaction as specified; the 20 000 cohort stress scenario.
 * M5: arrival journey, baggage network, hydrant dispenser and apron bus, turnaround task lists, service points and service roads, trailers, collision footprints and test, draw order, staff sprites.
 * M6: airline generator per `docs/AIRLINES.md`, route demand and seasonal slots, shop sales and tenant fill, staffing coverage overlay.
