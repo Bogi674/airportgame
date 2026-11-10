@@ -98,9 +98,9 @@ The 2026-11-10 order does not name these. Ask the user where they go before star
 
 | Id | Milestone | Task | Size | Depends | Status | Commits |
 | --- | --- | --- | --- | --- | --- | --- |
-| T09 | M3 | [Junction priority](tasks/T09-junction-priority.md) | M | T08 | todo |  |
-| T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T42 | todo |  |
-| T10 | M3 | [Milestone review M3](tasks/milestone-review.md) | S | T05 T06 T08 T09 | todo |  |
+| T09 | M3 | [Junction priority](tasks/T09-junction-priority.md) | M | T08 | done | de3539d |
+| T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T42 | done | reviewed with deferred rows, see work file |
+| T10 | M3 | [Milestone review M3](tasks/milestone-review.md) | S | T05 T06 T08 T09 | done | reviewed with deferred rows, see work file |
 | T35 | M7 | [Menus, wizard, load, settings, pause](tasks/T35-menus.md) | M | T34 | todo |  |
 | T36 | M7 | [Left rail flyouts, alert center, overlay list](tasks/T36-hud.md) | M | T34 | todo |  |
 | T37 | M7 | [Browser tests in three engines](tasks/T37-e2e-engines.md) | S | T34 | todo |  |

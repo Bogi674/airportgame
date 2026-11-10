@@ -4,19 +4,19 @@ Where the project stands (2026-11-10). Update this file when a task changes what
 
 ## Health
 
-* 330 tests in 33 files pass. Lint, type check and the rules checker are clean.
+* 335 tests in 34 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 
 | Scenario | Mean | p99 |
 | --- | --- | --- |
-| small | 0.008 | 0.053 |
-| medium | 0.006 | 0.056 |
-| large | 0.009 | 0.088 |
-| busy50 | 0.028 | 0.881 |
-| terminal640 | 0.006 | 0.064 |
+| small | 0.009 | 0.057 |
+| medium | 0.009 | 0.079 |
+| large | 0.007 | 0.066 |
+| busy50 | 0.028 | 0.93 |
+| terminal640 | 0.005 | 0.048 |
 
-* Save format version 8 (`src/sim/save/migrations.ts`).
+* Save format version 9 (`src/sim/save/migrations.ts`).
 
 ## What works (player view)
 
@@ -48,7 +48,7 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * Phase 6: the seeded event director (T50).
 * Phase 7: multi floor terminal designer, hangars, cargo (T51 to T53).
 * Deferred by the user: grading (T03), photo calibration (T07) and the runway marking remainder of T02.
-* Not placed in the order yet: junction priority (T09), the milestone reviews for M2 and M3, and the M7 UI shell and acceptance tasks (T35 to T38). The sprite port (T05, T06) and the network conflict sets (T08) are done.
+* Not placed in the order yet: the M7 UI shell and acceptance tasks (T35 to T38). The sprite port (T05, T06), the network conflict sets (T08) and junction priority (T09) are done, and the M2 and M3 reviews are recorded with deferred rows (`handoff/work/T04-review-m2.md`, `handoff/work/T10-review-m3.md`).
 
 ## Deviations from the docs already accepted
 
