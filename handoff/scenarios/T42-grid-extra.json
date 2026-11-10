@@ -1,0 +1,154 @@
+{
+  "buy": [
+    [
+      2880,
+      4880,
+      5720,
+      5640
+    ]
+  ],
+  "commands": [
+    {
+      "type": "buildRunway",
+      "x": 3000,
+      "y": 5000,
+      "headingDeg": 90,
+      "lengthM": 2600,
+      "code": "C",
+      "approach": "precision",
+      "surface": "asphalt",
+      "tier": 1
+    },
+    {
+      "type": "buildParallelTaxiway",
+      "runwayId": 1,
+      "side": "right",
+      "offsetM": 190,
+      "code": "C",
+      "connectors": 4,
+      "surface": "asphalt",
+      "tier": 1
+    },
+    {
+      "type": "buildApron",
+      "polygon": [
+        {
+          "x": 3800,
+          "y": 5205
+        },
+        {
+          "x": 4400,
+          "y": 5205
+        },
+        {
+          "x": 4400,
+          "y": 5420
+        },
+        {
+          "x": 3800,
+          "y": 5420
+        }
+      ],
+      "surface": "concrete",
+      "tier": 1
+    },
+    {
+      "type": "buildStands",
+      "x": 4350,
+      "y": 5330,
+      "headingDeg": 180,
+      "count": 6,
+      "spacingM": 45,
+      "standType": "remote",
+      "size": "medium"
+    }
+  ],
+  "camera": {
+    "x": 4100,
+    "y": 5250,
+    "zoom": 1.2
+  },
+  "viewport": {
+    "w": 1600,
+    "h": 1000
+  },
+  "actions": [
+    {
+      "tool": "tool-apron"
+    },
+    {
+      "tool": "apron-mode-rect"
+    },
+    {
+      "move": [
+        3850,
+        5230
+      ]
+    },
+    {
+      "down": [
+        3850,
+        5230
+      ]
+    },
+    {
+      "move": [
+        3990,
+        5330
+      ]
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": "apron-rect-grid",
+      "clip": {
+        "w": 1000,
+        "h": 700
+      }
+    },
+    {
+      "key": "Escape"
+    },
+    {
+      "up": [
+        3990,
+        5330
+      ]
+    },
+    {
+      "tool": "tool-terminal"
+    },
+    {
+      "move": [
+        4200,
+        5200
+      ]
+    },
+    {
+      "down": [
+        4200,
+        5260
+      ]
+    },
+    {
+      "move": [
+        4240,
+        5300
+      ]
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": "terminal-grid",
+      "clip": {
+        "w": 1000,
+        "h": 700
+      }
+    }
+  ],
+  "report": [
+    "airfield.aprons.length"
+  ]
+}
