@@ -4,7 +4,7 @@ Where the project stands at handoff (2026-11-05). Update this file when a task c
 
 ## Health
 
-* 226 tests in 30 files pass. Lint, type check and the rules checker are clean.
+* 301 tests in 32 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 

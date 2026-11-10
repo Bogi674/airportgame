@@ -110,3 +110,8 @@ Answers (2026-11-06): movements per hour per runway are 20 at level 1, 40 at lev
 Context: Open points from the T40 plan (handoff/work/T40-atc-tower.md).
 Answers (2026-11-06, user): the runway cap applies only when a tower exists, so the first runway can be built before the tower. More than one tower may be built; the highest level counts. Tower art proportions are chosen by the implementer at true scale per docs/ART_AND_ASSETS.md, and the user reviews the screenshots.
 Answers (2026-11-06, orchestrator, implementation only): queued movements retry on the existing RETRY_TICKS cadence of 30 game seconds. The 30 minute ATC wait has its own timer and does not change MAX_DELAY_TICKS, which stays the 20 minute limit for flights without a stand. The stress scenarios build a level 5 tower so they keep measuring traffic, not ATC starvation; the baseline is not updated.
+
+## 2026-11-10 T42: how the grid is chosen
+
+Context: T42 as built let the player pick one grid and lock it. The user asked for the Cities Skylines mechanism.
+Answer (2026-11-10): the grid is offered by proximity while the ghost hovers near a runway or taxiway, with free placement away from every grid. There is no picker. The reach is the pavement edge plus a screen scaled margin. The runway and taxiway tools also snap to the grid, as the lowest priority step. No hotkey for the Grid and Free toggle. This supersedes the 2026-11-05 line about an explicitly selected grid.
