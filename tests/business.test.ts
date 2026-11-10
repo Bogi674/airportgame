@@ -219,16 +219,35 @@ describe('zones, control room and slots', () => {
     expect(sim.business.readiness()).toContain('noAtc');
   });
 
-  it('slots default across the day, can be moved, and survive fewer rotations', () => {
+  it('slots default across the day and keep their pattern through a day', () => {
     const { sim } = airportWithTerminal();
     run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    const al = sim.business.airlines[0];
-    expect(al.slots).toHaveLength(2);
-    expect(al.slots[0]).toBeLessThan(al.slots[1]);
-    run(sim, { type: 'setSlot', airlineId: 0, index: 0, minute: 13 * 60 + 15 });
-    expect(sim.business.airlines[0].slots[0]).toBe(13 * 60 + 15);
+    const before = [...sim.business.airlines[0].slots];
+    expect(before).toHaveLength(2);
+    expect(before[0]).toBeLessThan(before[1]);
+    (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(TICKS_PER_DAY);
+    expect(sim.business.airlines[0].slots).toEqual(before);
+  });
+
+  it('a day close assigns a waiting flight at once when automatic stands are on', () => {
+    const { sim } = airportWithTerminal();
+    const f = sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
+    expect(sim.traffic.fStand[f]).toBe(-1);
+    (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(TICKS_PER_DAY);
+    expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('more rotations keep the earlier slots and append, fewer drop from the end', () => {
+    const { sim } = airportWithTerminal();
+    sim.business.rating = 60;
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    const two = [...sim.business.airlines[0].slots];
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 3 });
+    const three = sim.business.airlines[0].slots;
+    expect(three).toHaveLength(3);
+    expect(three.slice(0, 2)).toEqual(two);
     run(sim, { type: 'signAirline', airlineId: 0, rotations: 1 });
-    expect(sim.business.airlines[0].slots).toEqual([13 * 60 + 15]);
+    expect(sim.business.airlines[0].slots).toEqual([two[0]]);
   });
 });
 

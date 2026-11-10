@@ -48,7 +48,6 @@ export type Command =
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
   | { type: 'signAirline'; airlineId: number; rotations: number }
-  | { type: 'setSlot'; airlineId: number; index: number; minute: number }
   | { type: 'setAirlineFee'; airlineId: number; level: FeeLevel }
   | { type: 'takeLoan'; amount: number }
   | { type: 'repayLoan'; amount: number }

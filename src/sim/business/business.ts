@@ -179,14 +179,6 @@ export class Business {
     return null;
   }
 
-  /** Moves one rotation to another arrival minute. It applies to the next day's schedule, and today's if still ahead. */
-  setSlot(id: number, index: number, minute: number): void {
-    const a = this.airlines.find((x) => x.id === id);
-    if (!a || index < 0 || index >= a.slots.length) return;
-    a.slots[index] = Math.max(SLOT_FIRST, Math.min(SLOT_LAST, Math.round(minute / 5) * 5));
-    this.version++;
-  }
-
   setFee(id: number, level: FeeLevel): void {
     const a = this.airlines.find((x) => x.id === id);
     if (!a) return;
@@ -524,6 +516,8 @@ export class Business {
         this.traffic.scheduleArrival(t, midnight + minute * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t));
       }
     }
+    // Today's flights take free stands now; this runs in the business step, after the airfield copy is current.
+    if (this.traffic.autoStands) this.traffic.autoAssign();
     this.version++;
   }
 

@@ -161,11 +161,8 @@ function FinanceSheet({ send }: Props) {
 }
 
 const clock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-const SLOT_OPTIONS: number[] = [];
-for (let m = 6 * 60; m <= 21 * 60; m += 15) SLOT_OPTIONS.push(m);
-
-/** Slot manager: every signed rotation has an arrival slot the player can move. Busy hours are flagged. */
-function SlotsSheet({ send }: Props) {
+/** Slot list: every signed rotation has an arrival slot. Busy hours are flagged. Slots are read only until the sheet is rewritten. */
+function SlotsSheet() {
   const b = useGameStore((s) => s.business);
   const af = useGameStore((s) => s.airfield);
   if (!b) return null;
@@ -195,18 +192,9 @@ function SlotsSheet({ send }: Props) {
               {a.slots.map((m, i) => (
                 <label key={i} style="font-size:12px;display:flex;gap:6px;align-items:center">
                   {i + 1}
-                  <select
-                    data-testid={`slot-${a.id}-${i}`}
-                    value={m}
-                    style={perHour[Math.floor(m / 60)] > cap ? 'border-color:var(--bad)' : ''}
-                    onChange={(e) => send({ type: 'setSlot', airlineId: a.id, index: i, minute: Number((e.target as HTMLSelectElement).value) })}
-                  >
-                    {(SLOT_OPTIONS.includes(m) ? SLOT_OPTIONS : [...SLOT_OPTIONS, m].sort((x, y) => x - y)).map((o) => (
-                      <option key={o} value={o}>
-                        {clock(o)}
-                      </option>
-                    ))}
-                  </select>
+                  <span data-testid={`slot-${a.id}-${i}`} style={perHour[Math.floor(m / 60)] > cap ? 'color:var(--bad)' : ''}>
+                    {clock(m)}
+                  </span>
                 </label>
               ))}
             </div>
@@ -466,7 +454,7 @@ function SiteSheet() {
 export function Sheets({ send }: Props) {
   const sheet = useGameStore((s) => s.sheet);
   if (sheet === 'airlines') return <AirlinesSheet send={send} />;
-  if (sheet === 'slots') return <SlotsSheet send={send} />;
+  if (sheet === 'slots') return <SlotsSheet />;
   if (sheet === 'stands') return <StandsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;

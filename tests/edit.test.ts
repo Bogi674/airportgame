@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { buildTestAirport, ownedSim, run } from './helpers';
+import { STAND_SIZES } from '@data/index';
+import { Sim } from '@sim/sim';
+import { sizeForCode } from '@shared/standSizes';
+import { buildTestAirport, OPTIONS, ownedSim, run } from './helpers';
 
 function airport() {
   const sim = ownedSim();
@@ -125,6 +128,98 @@ describe('stand management', () => {
     run(sim, { type: 'autoAssignStands' });
     expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
     expect(landOne(sim, f)).toBe(sim.traffic.fStand[f]);
+  });
+
+  it('refuses a drop on a stand too small for the aircraft and keeps the flight unassigned', () => {
+    const sim = airport();
+    const wide = idx('b777_300er');
+    const stand = sim.airfield.data.stands[0];
+    const f = sim.traffic.scheduleArrival(wide, sim.traffic.nowTick + 100, 0, 600, -1);
+    expect(run(sim, { type: 'assignStand', flight: f, standId: stand.id })).toContain('standSpan');
+    expect(sim.traffic.fStand[f]).toBe(-1);
+  });
+
+  it('refuses a second flight on a stand whose block overlaps, and accepts a valid assignment', () => {
+    const sim = airport();
+    const stands = sim.airfield.data.stands;
+    const a = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
+    const b = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 200, 0, 600, -1);
+    expect(run(sim, { type: 'assignStand', flight: a, standId: stands[2].id })).toEqual([]);
+    expect(sim.traffic.fStand[a]).toBe(stands[2].id);
+    expect(run(sim, { type: 'assignStand', flight: b, standId: stands[2].id })).toContain('standBusy');
+    expect(sim.traffic.fStand[b]).toBe(-1);
+  });
+
+  it('a flight whose stand is occupied waits and is not given another stand', () => {
+    const sim = airport();
+    run(sim, { type: 'setAutoStands', on: true });
+    const stands = sim.airfield.data.stands;
+    const first = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 9000, -1);
+    run(sim, { type: 'assignStand', flight: first, standId: stands[0].id });
+    const second = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 400, 0, 600, -1);
+    sim.traffic.fStand[second] = stands[0].id;
+    let elsewhere = false;
+    for (let t = 0; t < 6000; t++) {
+      sim.step();
+      for (let a = 0; a < 256; a++) {
+        if (sim.traffic.active[a] === 1 && sim.traffic.flight[a] === second && sim.traffic.standId[a] >= 0 && sim.traffic.standId[a] !== stands[0].id) elsewhere = true;
+      }
+    }
+    expect(elsewhere).toBe(false);
+    expect(sim.traffic.fStand[second]).toBe(stands[0].id);
+  });
+
+  it('turning automatic stands on assigns a waiting flight at once', () => {
+    const sim = airport();
+    run(sim, { type: 'setAutoStands', on: false });
+    const f = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
+    run(sim, { type: 'setAutoStands', on: true });
+    expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a stand build assigns a waiting flight at once', () => {
+    const sim = airport();
+    const f = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
+    expect(sim.traffic.fStand[f]).toBe(-1);
+    const size = sizeForCode('C');
+    const built = run(sim, { type: 'buildStands', x: 3850, y: 5330, headingDeg: 180, count: 1, spacingM: STAND_SIZES[size].widthM, standType: 'remote', size });
+    expect(built).toEqual([]);
+    expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('demolishing a stand assigns a waiting flight at once', () => {
+    const sim = airport();
+    const stands = sim.airfield.data.stands;
+    const f = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
+    run(sim, { type: 'demolish', kind: 'stand', id: stands[stands.length - 1].id });
+    expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('automatic assignment leaves a flight with a stand already set alone', () => {
+    const sim = airport();
+    const stands = sim.airfield.data.stands;
+    const first = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
+    run(sim, { type: 'assignStand', flight: first, standId: stands[1].id });
+    run(sim, { type: 'setAutoStands', on: false });
+    const second = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 5000, 0, 600, -1);
+    run(sim, { type: 'setAutoStands', on: true });
+    expect(sim.traffic.fStand[first]).toBe(stands[1].id);
+    expect(sim.traffic.fStand[second]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a stand change made while paused survives a save and steps to the same hash', () => {
+    const live = airport();
+    const stands = live.airfield.data.stands;
+    const f = live.traffic.scheduleArrival(idx('atr72_600'), live.traffic.nowTick + 100, 0, 600, -1);
+    live.enqueue({ type: 'setStandProps', id: stands[0].id, usage: 'any' });
+    live.flushCommands();
+    expect(live.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
+    const save = JSON.parse(JSON.stringify(live.serialize())) as ReturnType<Sim['serialize']>;
+    for (let t = 0; t < 300; t++) live.step();
+    const restored = new Sim('GOLDEN-0001', OPTIONS);
+    restored.restore(save);
+    for (let t = 0; t < 300; t++) restored.step();
+    expect(restored.stateHash()).toBe(live.stateHash());
   });
 
   it('cancels a scheduled flight', () => {

@@ -6,7 +6,7 @@ import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
 import { foldF64, foldInts, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
-import { refuseFit, refuseUsage, STAND_BLOCK_BUFFER_MIN, type StandFacts } from '@shared/flightBlock';
+import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type StandFacts, type StandRefusal } from '@shared/flightBlock';
 import { TICKS_PER_MINUTE } from '@shared/business';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
@@ -201,6 +201,11 @@ export class Traffic {
   obstacles: RunwayObstacles[] = [];
   hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean } | null = null;
   private reachStand = 0;
+  /** Stand blocks gathered by one autoAssign pass: stand index and start and end tick. Reused, never reallocated. */
+  private readonly occStand = new Int32Array(MAX_FLIGHTS);
+  private readonly occStart = new Float64Array(MAX_FLIGHTS);
+  private readonly occEnd = new Float64Array(MAX_FLIGHTS);
+  private occCount = 0;
   /** Terminal reach of the stand in reachStand. Bound once, so the reused scratch facts allocate nothing per check. */
   private readonly reachOf = (): boolean => {
     const st = this.af.stands[this.reachStand];
@@ -591,6 +596,11 @@ export class Traffic {
 
   // Arrivals ---------------------------------------------------------------
 
+  /** True when a stand has a taxi node, so an aircraft can route to it. */
+  standLinkedPublic(index: number): boolean {
+    return this.net.standNode[index] >= 0;
+  }
+
   /** Fills the reused scratch facts for one stand. Hot path, so nothing is allocated. */
   private standFactsOf(s: number): StandFacts {
     const st = this.af.stands[s];
@@ -601,7 +611,7 @@ export class Traffic {
     f.surface = st.surface;
     f.type = st.type;
     f.code = st.code;
-    f.linked = this.net.standNode[s] >= 0;
+    f.linked = this.standLinkedPublic(s);
     this.reachStand = s;
     f.contactOk = this.reachOf;
     return f;
@@ -621,13 +631,15 @@ export class Traffic {
   private pickStand(t: number, fromNode: number, f = -1): number {
     // A stand the player or the scheduler assigned goes first. Without auto scheduling it is the only choice.
     if (f >= 0 && this.fStand[f] >= 0) {
-      const s = this.af.stands.findIndex((x) => x.id === this.fStand[f]);
+      // A flight with a stand set waits for that stand and never takes another one (T41 R22).
+      const s = this.standIndexOf(this.fStand[f]);
       if (s >= 0 && this.standOwner[s] === -1 && this.net.standNode[s] >= 0 && this.standFits(t, s) && this.standAllows(t, s)) {
         const n = this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
         if (n >= 0) return s;
       }
-      if (!this.autoStands) return -1;
-    } else if (!this.autoStands) return -1;
+      return -1;
+    }
+    if (!this.autoStands) return -1;
     let best = -1;
     let bestScore = Infinity;
     for (let s = 0; s < this.af.stands.length; s++) {
@@ -646,11 +658,56 @@ export class Traffic {
     return best;
   }
 
+  /** Index of a stand by its id in the airfield copy, or -1 when it no longer exists. */
+  private standIndexOf(id: number): number {
+    return this.af.stands.findIndex((x) => x.id === id);
+  }
+
+  /** True while a flight is still due to hold a stand: scheduled, inbound or on the ground. */
+  private occupies(g: number): boolean {
+    const st = this.fState[g];
+    return st === FlState.Scheduled || st === FlState.Inbound || st === FlState.OnGround;
+  }
+
+  /** Records one flight's stand block in the reused occupancy scratch, in ticks. */
+  private addOccupancy(g: number, s: number): void {
+    const k = this.occCount++;
+    this.occStand[k] = s;
+    this.occStart[k] = this.fEta[g];
+    this.occEnd[k] = this.fEta[g] + this.fTurn[g] + STAND_BLOCK_BUFFER_TICKS;
+  }
+
+  /** True when a recorded block on stand s overlaps the tick span from..to, buffer included. */
+  private clashes(s: number, from: number, to: number): boolean {
+    for (let k = 0; k < this.occCount; k++) if (this.occStand[k] === s && this.occStart[k] < to && this.occEnd[k] > from) return true;
+    return false;
+  }
+
+  /** Why a flight cannot take a stand: the stand rule first, then a clash with another flight's block. Null when it may. */
+  refuseAssign(f: number, standId: number): StandRefusal | null {
+    const s = this.standIndexOf(standId);
+    if (s < 0) return 'standNoLink';
+    const r = refuseStand(this.standFactsOf(s), AIRCRAFT[this.fType[f]]);
+    if (r !== null) return r;
+    const mine = blockWindow(this.fEta[f] / TICKS_PER_MINUTE, this.fTurn[f] / TICKS_PER_MINUTE);
+    for (let g = 0; g < MAX_FLIGHTS; g++) {
+      if (g === f || this.fStand[g] !== standId || !this.occupies(g)) continue;
+      if (blocksOverlap(mine, blockWindow(this.fEta[g] / TICKS_PER_MINUTE, this.fTurn[g] / TICKS_PER_MINUTE))) return 'standBusy';
+    }
+    return null;
+  }
+
   /** Gives every unassigned scheduled flight a stand that is free for its whole stay, earliest first. */
   autoAssign(): void {
     const order: number[] = [];
     for (let f = 0; f < MAX_FLIGHTS; f++) if (this.fState[f] === FlState.Scheduled && this.fStand[f] < 0) order.push(f);
     order.sort((a, b) => this.fEta[a] - this.fEta[b] || a - b);
+    this.occCount = 0;
+    for (let g = 0; g < MAX_FLIGHTS; g++) {
+      if (this.fStand[g] < 0 || !this.occupies(g)) continue;
+      const s = this.standIndexOf(this.fStand[g]);
+      if (s >= 0) this.addOccupancy(g, s);
+    }
     for (const f of order) {
       const t = this.fType[f];
       const from = this.fEta[f] - STAND_BLOCK_BUFFER_TICKS;
@@ -659,20 +716,17 @@ export class Traffic {
       let bestScore = Infinity;
       for (let s = 0; s < this.af.stands.length; s++) {
         if (this.net.standNode[s] < 0 || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
-        const id = this.af.stands[s].id;
-        let clash = false;
-        for (let g = 0; g < MAX_FLIGHTS && !clash; g++) {
-          if (g === f || this.fStand[g] !== id || (this.fState[g] !== FlState.Scheduled && this.fState[g] !== FlState.Inbound && this.fState[g] !== FlState.OnGround)) continue;
-          clash = this.fEta[g] < to && this.fEta[g] + this.fTurn[g] + STAND_BLOCK_BUFFER_TICKS > from;
-        }
-        if (clash) continue;
+        if (this.clashes(s, from, to)) continue;
         const score = (codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t])) * 100 + s * 0.01;
         if (score < bestScore) {
           bestScore = score;
           best = s;
         }
       }
-      if (best >= 0) this.fStand[f] = this.af.stands[best].id;
+      if (best >= 0) {
+        this.fStand[f] = this.af.stands[best].id;
+        this.addOccupancy(f, best);
+      }
     }
   }
 

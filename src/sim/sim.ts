@@ -42,6 +42,8 @@ export class Sim {
   private obstaclesSent = -1;
   private towersSent = -1;
   private networkVersion = -1;
+  /** Set by a stand command. The automatic assigner runs once in the next airfield sync. It is clear at every save point. */
+  private standsDirty = false;
   /** Bumped whenever the player buys land, which clears the cover on it. */
   private ownerVersion = 0;
   /** Airfield, terminal and ownership versions last looked at, and the inputs the results are for. */
@@ -128,10 +130,7 @@ export class Sim {
       case 2:
         this.airfield.update(this.tick);
         this.updateObstacles();
-        if (this.networkVersion !== this.airfield.version) {
-          this.networkVersion = this.airfield.version;
-          this.traffic.setAirfield(this.airfield.data);
-        }
+        this.syncAirfield();
         break;
       case 3:
         this.business.update(this.tick);
@@ -154,6 +153,22 @@ export class Sim {
    */
   flushCommands(): void {
     this.applyPending();
+    this.syncAirfield();
+  }
+
+  /**
+   * Brings traffic in line with the airfield and runs a pending automatic stand pass. Both the tick and the paused
+   * flush call it, so the standsDirty flag is always clear at a save point.
+   */
+  private syncAirfield(): void {
+    if (this.networkVersion !== this.airfield.version) {
+      this.networkVersion = this.airfield.version;
+      this.traffic.setAirfield(this.airfield.data);
+    }
+    if (this.standsDirty) {
+      this.standsDirty = false;
+      if (this.traffic.autoStands) this.traffic.autoAssign();
+    }
   }
 
   /** Advances the tick counter after all subsystems ran. */
@@ -194,14 +209,28 @@ export class Sim {
       case 'signAirline':
         this.report(this.business.signAirline(cmd.airlineId, cmd.rotations));
         break;
-      case 'assignStand':
-        if (this.traffic.fState[cmd.flight] === FlState.Scheduled) this.traffic.fStand[cmd.flight] = cmd.standId;
+      case 'assignStand': {
+        if (this.traffic.fState[cmd.flight] !== FlState.Scheduled) break;
+        if (cmd.standId === -1) {
+          this.traffic.fStand[cmd.flight] = -1;
+          this.business.version++;
+          break;
+        }
+        const refusal = this.traffic.refuseAssign(cmd.flight, cmd.standId);
+        if (refusal) {
+          this.report(refusal);
+          break;
+        }
+        this.traffic.fStand[cmd.flight] = cmd.standId;
+        this.business.version++;
         break;
+      }
       case 'cancelFlight':
         if (this.traffic.fState[cmd.flight] === FlState.Scheduled) this.traffic.fState[cmd.flight] = FlState.Done;
         break;
       case 'setAutoStands':
         this.traffic.autoStands = cmd.on;
+        this.standsDirty = true;
         this.business.version++;
         break;
       case 'autoAssignStands':
@@ -209,9 +238,6 @@ export class Sim {
         break;
       case 'buyGse':
         this.report(this.business.buyGse(cmd.kind, cmd.count));
-        break;
-      case 'setSlot':
-        this.business.setSlot(cmd.airlineId, cmd.index, cmd.minute);
         break;
       case 'setAirlineFee':
         this.business.setFee(cmd.airlineId, cmd.level);
@@ -230,8 +256,10 @@ export class Sim {
           let e = r.code;
           if (r.args) for (const k of Object.keys(r.args).sort()) e += `|${k}=${r.args[k]}`;
           this.eventQueue.push(e);
-        } else if (r.cashDelta !== 0) {
-          this.book('construction', r.cashDelta);
+        } else {
+          if (r.cashDelta !== 0) this.book('construction', r.cashDelta);
+          // Stands moved or removed: the automatic assigner runs in the airfield sync, once the copy is current.
+          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
         }
         // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
         if (this.airfield.towersVersion !== towersBefore) {
