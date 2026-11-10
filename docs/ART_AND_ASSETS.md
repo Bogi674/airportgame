@@ -232,7 +232,7 @@ All buildings are vector footprints with a roof style and, for gridded buildings
 | Terminal | Light grey flat roof, parapet edge, rooftop plant boxes, skylight strips | Glass facade line on the airside. Roof fades out above 6 px/m to reveal the interior |
 | Pier and concourse | As terminal, narrow | Jet bridge rotundas along the facade |
 | Jet bridge | Fixed rotunda circle, telescoping tunnel segments, cab with bumper | Drawn above vehicles, below aircraft. Extends and rotates to the door |
-| Control tower | Circular cab with a glass ring on a square base | Shadow longer than other buildings |
+| Control tower | Circular cab with a glass ring on a square base | Shadow longer than other buildings. Five looks by level on a 15 m pad, from a square cab with one window to a round cab with a full glass ring, walkway and radome. Sizes in `src/data/paint.json` under `tower` |
 | Fire station | Flat roof with red edge band | Bay doors facing the apron, vehicle apron |
 | Hangar | Curved roof with ribs | Door width and height decide which types fit |
 | Fuel farm | Round tanks with roof rings inside a bund wall | Pipe rack to the hydrant network |

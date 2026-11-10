@@ -1,9 +1,9 @@
 # T40: Standalone ATC tower with five levels
 
-Status: coding
+Status: done
 Branch: the branch the user names
 
-State on 2026-11-10: slices 1 to 3 are committed (c38a2b5, 4d4661b, 4944ca9) and the e2e playthrough builds a tower (7afca60). Slice 4 (drawing), slice 5 (the build tool and the overload readout) and slice 6 (docs) are left, so R7, R8 and R11 stay open.
+State on 2026-11-10: all slices are committed. Slice 4 drew the five looks, slice 5 was split into the build tool and the object panel with the overload alert. Two user decisions of 2026-11-10 changed slice 5: an existing tower is upgraded and demolished from the select tool panel, and the overload readout is the panel plus an alert, with no Slots sheet bars because T41 replaces that sheet.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ Copied from `handoff/tasks/T40-atc-tower.md`, which was repaired on 2026-11-06 t
 * [x] R8. Placement follows the T42 construction grid once that lands. Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
 * [x] R9. Save format bump with a migration that defaults `towers` to an empty list and keeps existing control rooms valid.
 * [x] R10. Determinism test: 2 000 ticks twice from one seed, identical `stateHash`, including a tower build and upgrade.
-* [ ] R11. Strings for every new text in `src/ui/strings/en.json`, appended next to related keys.
+* [x] R11. Strings for every new text in `src/ui/strings/en.json`, appended next to related keys.
 * [x] R12. Without a tower, GA and private aircraft only. No airline schedules commercial flights, and there is no default movement budget for commercial traffic.
 
 ## Read first (done)

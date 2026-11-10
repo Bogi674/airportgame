@@ -14,14 +14,14 @@ The Milestone column names the `docs/ROADMAP.md` milestone whose criteria the ta
 | --- | --- | --- | --- | --- | --- | --- |
 | T01 | M2 | [Turn pad drawing and placement tool](tasks/T01-turn-pad-ui.md) | M |  | done | 3eda81e ecc78c5 a7d88fe 309d7a9 |
 | T39 | M2 | [Turn pads sit beyond the runway threshold](tasks/T39-turn-pad-beyond.md) | S | T01 | done | b2a027f e53274e f781b57 1899039 |
+| T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M |  | done | c38a2b5 4d4661b 4944ca9 7afca60 8e85e5f c12e137 58e3a9f |
 
 ## Phase 1. Repair
 
-Finish the tower, close the grid task, fix doc drift. Players cannot get commercial flights until the T40 tool lands.
+Close the grid task. The tower (T40) and the doc drift are done.
 
 | Id | Milestone | Task | Size | Depends | Status | Commits |
 | --- | --- | --- | --- | --- | --- | --- |
-| T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M |  | doing | c38a2b5 4d4661b 4944ca9 7afca60 |
 | T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M | | doing | 728ec44 88caf98 5aa44de |
 
 ## Phase 2. Flight offers

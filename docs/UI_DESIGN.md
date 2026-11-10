@@ -116,7 +116,7 @@ Icon buttons with labels on hover:
 1. Airfield (runway, taxiway, rapid exit, holding point, apron, stand, stand row, prefabs)
 2. Terminal (shell, walls, doors, rooms, fixtures, shop units)
 3. Landside (roads, curbside, parking, stations)
-4. Buildings (tower, fire station, fuel farm, hangar, GSE depot)
+4. Buildings (tower, fire station, fuel farm, hangar, GSE depot). Until this category exists, the ATC tower card sits in Flight operations under Air traffic control, and a selected tower shows level, budget, runway cap, queue, Upgrade and Demolish in the object panel
 5. Overlays
 6. Operations (flights board, ground handling, ATC options, taxi flows)
 7. Airlines
