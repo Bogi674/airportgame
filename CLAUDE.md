@@ -105,6 +105,7 @@ npm run stress     headless benchmark, see docs/PERFORMANCE.md
 
 ## Workflow for each task
 
+0. For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user before editing any file.
 1. Read the current milestone in `docs/ROADMAP.md` and the open criteria.
 2. Read the docs listed above for the area you touch.
 3. Make a short plan in the chat before changing more than three files.

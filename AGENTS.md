@@ -4,6 +4,8 @@ You are continuing **Airfield Tycoon**, a browser airport management game in Typ
 
 This file is loaded into every session. Read it fully. Then follow `handoff/WORKFLOW.md` exactly. Do not improvise a different process.
 
+Before you write a plan for any code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`). Interview the user about the open decisions, one question at a time with your recommendation, and settle them before you edit any file.
+
 ## The five rules you must never break
 
 1. **One task per session.** Pick the first task marked `todo` in `handoff/TASKS.md`, unless the user names one. Never work on two tasks at once.
