@@ -21,7 +21,7 @@ There is no noise complaint system, no rival airport and no combat. Pressure com
 1. **Read the site**: terrain, wind rose, owned land, city direction and demand.
 2. **Build the airfield**: runway, taxiways, apron and stands.
 3. **Build the terminal**: check in, security, gates, shops, baggage, landside access.
-4. **Sign airlines**: contracts, fees and slots.
+4. **Sign airlines**: contracts, fees and rotations.
 5. **Operate**: flights arrive and depart, passengers flow, vehicles turn aircraft around.
 6. **Read the results**: overlays, alerts, finance and airline satisfaction.
 7. **Expand and refine**: more land, longer runways, bigger terminals, better tenants.
@@ -264,6 +264,8 @@ Revised by `docs/DESIGN_REVISION_2.md` sections 1 and 3. Four sizes, each contac
 * Lead in and push back: the stand centerline runs from the stop bar to the fork point at the fork radius from the taxilane, and two quarter circle arcs join the taxilane tangentially, one each way. Nothing crosses the taxilane. Neighbouring forks share the point where they meet.
 * Push back runs tail first along one arc onto the taxilane, then the aircraft taxis forward. The stand sets left or right, or by default the side away from the departure route. Before starting the aircraft needs the arc's taxilane node and the 28 m of taxilane beyond it clear.
 * MARS and cargo stands arrive with MVP 2 as variants of these sizes.
+
+Each signed airline offers its rotations for the day, and each rotation keeps one fixed aircraft type and one fixed schedule. The player drags a flight onto a stand where its block fits, and the stand row shows green or red while the drag is over it. A stand chosen for a rotation is remembered for that rotation, and an automation toggle assigns the flights the player has not placed.
 
 A stand takes its surface from what it is built on, and its markings follow the surface:
 

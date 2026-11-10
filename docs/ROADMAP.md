@@ -35,7 +35,7 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ## MVP 1 status
 
-A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. Walls, rooms, room checks and ground vehicles exist. The ATC tower sim is done, but the tower has no build tool and no drawing, so commercial flights cannot start from the UI until T40 lands. Cohorts, queues, the walking graph, arrivals, baggage, turnaround task lists, service roads, generated airlines, shop sales and the event deck are missing. The checklists below record what is done and what is simplified.
+A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. Walls, rooms, room checks and ground vehicles exist. The ATC tower is done with its build tool and drawing (T40), so commercial flights run from the UI. Cohorts, queues, the walking graph, arrivals, baggage, turnaround task lists, service roads, generated airlines, shop sales and the event deck are missing. The checklists below record what is done and what is simplified.
 
 Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS.md`: repair (tower tool and drawing, grid snapping, doc drift), flight offers, the passenger core, ground handling and baggage with boarding by jet bridge, stairs or bus, then tenants, airlines and finance, then the event director, then the multi floor terminal designer, hangars and cargo. This order wins over the milestone order below. The grading tool, photo calibration and the remaining runway marking details are deferred, and `docs/DESIGN_REVISION_3.md` replaces their look and proportion targets.
 
@@ -119,7 +119,7 @@ Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS
 ### M6. Airlines, shops, finance
 
 * [ ] Airline generator for regional and national scopes per `docs/AIRLINES.md`, limited to released aircraft (simplified: 7 invented airlines with 1 to 2 aircraft types each, rating gates, not the full AIRLINES.md model)
-* [ ] Route demand, seasonal slot requests, contracts with basic fees (contracts set rotations per day and a fee level, there are no routes or seasons)
+* [ ] Route demand, seasonal slot requests, contracts with basic fees (contracts set rotations per day and a fee level, there are no routes or seasons). The slot manager is now a read only flight offer list, and stands are chosen by drag and drop on the stand timeline (T41).
 * [x] Flights board sheet and airline sheet
 * [ ] Shop units with 6 categories, simple tenant fill by rating, sales and rent (rent only, sales are not tracked)
 * [x] Ledger with daily close, revenues and costs for MVP 1 scope, one term loan, Finance sheet

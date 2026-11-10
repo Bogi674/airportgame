@@ -133,3 +133,16 @@ Still open, ask before the task starts:
 * T50: the first deck, its weights, windows, choices and costs. See the spec.
 * T51, T52, T53: no design has been given yet.
 * Placement in the order of T09, the M2 and M3 milestone reviews, and the M7 tasks T35 to T38. The approved order does not name them. T05, T06, T08 and T42 were delivered on `main` by another session on 2026-11-10.
+
+## 2026-11-10 T41: decisions D1 to D7
+
+Context: Open points in the T41 plan (handoff/work/T41-flight-offers.md).
+Answers (2026-11-10, user):
+* D1: fixed type per rotation.
+* D2: stand choice remembered across days, save bump accepted.
+* D3: unassign and cancel stay, no penalty yet.
+* D4: the 5 minute buffer is the visible gap.
+* D5: a block that stops fitting is flagged red and the player fixes it, with waiting and diverting as the fallback.
+* D6: moot, T40 is done and the tower budget is used.
+* D7: no preview of tomorrow.
+Also (2026-11-10, user): when a task is fully green the orchestrator merges the work branch into main and pushes before reporting ready.

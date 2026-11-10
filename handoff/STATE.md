@@ -4,7 +4,7 @@ Where the project stands (2026-11-10). Update this file when a task changes what
 
 ## Health
 
-* 335 tests in 34 files pass. Lint, type check and the rules checker are clean.
+* 373 tests in 35 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 
@@ -16,7 +16,7 @@ Where the project stands (2026-11-10). Update this file when a task changes what
 | busy50 | 0.028 | 0.93 |
 | terminal640 | 0.005 | 0.048 |
 
-* Save format version 9 (`src/sim/save/migrations.ts`).
+* Save format version 10 (`src/sim/save/migrations.ts`).
 
 ## What works (player view)
 
@@ -32,6 +32,7 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * **ATC tower**: a free standing tower with five levels replaced the ATC room. The player builds it from Flight operations, Air traffic control, picks the level in the context bar, and upgrades or demolishes it from the object panel. It is the only ATC source and meters landings and takeoffs on a rolling hour budget per runway. Movements over the budget queue, the panel shows the queue and an alert fires when queueing starts. Five looks by level are drawn in the chunk bake.
 * **Construction grid**: a 2 m grid along the nearest runway or taxiway is offered by proximity. Aprons, stands, GA blocks, terminal foundations and towers snap to it, and the runway and taxiway tools use it as their lowest priority snap after their own node, end and segment snaps. Each tool has a grid or free toggle, with Alt as the override.
 * **Terminals** of any size on a 2 m grid that grows in 64 m chunks: foundations, floors, walls, glass, doors, zones, check in, security, baggage belt, seating, toilets and six shop types. The ATC room fixture is retired: it keeps its saved index, grants no coverage and cannot be built. Room validation stops departures when security can be bypassed.
+* **Flight offers and stand management**: each signed airline offers its rotations for the day in a read only sheet, with a fixed aircraft type and turnaround per rotation and a movements per hour bar against the tower budget. A flight goes onto a stand by dragging its block onto a stand row, which shows green or red and refuses a drop the stand cannot take, or by picking a stand in the sheet. A stand chosen for a rotation is remembered and applied each morning, and an automation toggle assigns the flights the player has not placed.
 * **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, deadlock detection with an overlay.
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
 * **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, saves to IndexedDB with autosave, export and import, crash panel.
@@ -41,7 +42,6 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 
 * Phase 1, repair: done (T40, T42).
-* Phase 2: flight offers and drag to stand (T41).
 * Phase 3, passenger core: floor index (T49), kiosk, bag drop, passport booth, gate desk, walking graph, service nodes and queues, cohorts and the departure journey, people atlas rendering, overlays, satisfaction as specified, the 20 000 cohort stress scenario (T11 to T18).
 * Phase 4, ground handling and baggage: arrival journey, turnaround task lists, hydrant dispenser and apron bus, service points and service roads, trailers, collision footprints and test, draw order, staff sprites, the working baggage system (T20 to T28, T43), stand markings per revision 3 (T47), stand access types with boarding by jet bridge, stairs or bus (T48).
 * Phase 5: tenants (T32, redesigned), generated airlines, route demand and seasonal slots, staffing coverage overlay.
@@ -66,4 +66,4 @@ Recorded in `docs/ARCHITECTURE.md` section 12. The ones a new agent trips over:
 ## Branches
 
 * `main`: everything above.
-* Work goes on the branch the user names. The user merges to `main`.
+* Work goes on the branch the user names. A finished task is merged to `main` and pushed by the orchestrator once it is fully green (user, 2026-11-10).

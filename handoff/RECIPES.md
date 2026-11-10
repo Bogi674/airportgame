@@ -39,8 +39,8 @@ Step by step patterns taken from code that already works. Follow the matching re
 1. Bump `SAVE_VERSION` in `src/sim/save/migrations.ts`.
 2. Add a step in `migrate`:
    ```ts
-   // Version 7 to 8: terminals gained gate desks. Older saves have none.
-   if (save.version < 8) save.version = 8;
+   // Version 9 to 10: airlines remember a stand per rotation. Older saves have none.
+   if (save.version < 10) save.version = 10;
    ```
    If old saves need converting (a renamed field, a new required field), convert them in that step, like version 3 to 4 does for stands.
 3. Make `loadState` tolerate the old shape (`?? default`).

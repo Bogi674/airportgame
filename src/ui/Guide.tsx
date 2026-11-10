@@ -7,7 +7,9 @@ export function Guide() {
   const b = useGameStore((s) => s.business);
   const hidden = useGameStore((s) => s.guideHidden);
   const hide = useGameStore((s) => s.setGuideHidden);
-  if (hidden) return null;
+  const sheetOpen = useGameStore((s) => s.sheet !== null);
+  // The card sits where the side sheets open, so it steps aside while one is shown.
+  if (hidden || sheetOpen) return null;
   const miss = b ? b.readiness : ['noTerminal'];
   const terminalReady = !!b && !miss.some((k) => k !== 'noAtc');
   const steps: { key: StringKey; done: boolean }[] = [

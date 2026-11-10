@@ -271,7 +271,9 @@ function SlotsSheet({ send }: Props) {
   );
 }
 
-const HOUR_PX = 44;
+const HOUR_PX = 72;
+/** A block shows its aircraft code only when it is this wide in pixels: the code is 32 px, plus 6 px padding and 2 px border. */
+const LABEL_MIN_PX = 40;
 
 function airlineHue(name: string): number {
   let h = 0;
@@ -393,6 +395,8 @@ function StandsSheet({ send }: Props) {
   const [dragFlight, setDragFlight] = useState<number | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const justDragged = useRef(false);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const scrolledToNow = useRef(false);
   const showNotice = useGameStore((s) => s.showNotice);
   // Unmounting mid drag must not leave a key listener or a captured pointer behind.
   useEffect(
@@ -402,6 +406,13 @@ function StandsSheet({ send }: Props) {
     },
     [],
   );
+  // Open the timeline one hour before the present, once, so the player's own scrolling is kept after that.
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el || !b || scrolledToNow.current) return;
+    scrolledToNow.current = true;
+    el.scrollLeft = Math.max(0, (b.minuteOfDay / 60 - 1) * HOUR_PX);
+  });
   if (!b) return null;
   const rows = b.board.filter((r) => r.flight >= 0);
   const spans = decodeStandBlocks(b.standBlocks);
@@ -489,7 +500,7 @@ function StandsSheet({ send }: Props) {
     const drawn = ((w.endMin - w.startMin) / 60) * HOUR_PX;
     const active = r.status !== 'scheduled';
     const shown = drop?.flight === r.flight ? drop.fault : fault;
-    const title = shown !== null ? faultText(shown) : `${r.airline} ${r.type}`;
+    const title = shown !== null ? faultText(shown) : `${r.airline} ${r.type}, ${clock(w.startMin)} to ${clock(w.endMin)}`;
     return (
       <div
         key={r.flight}
@@ -518,8 +529,7 @@ function StandsSheet({ send }: Props) {
           title={title}
           style={`left:0;top:0;width:${drawn}px;--h:${airlineHue(r.airline)}`}
         >
-          <b>{r.airline.split(' ')[0]}</b>
-          <span>{r.type}</span>
+          {drawn >= LABEL_MIN_PX && <span class="blk-code">{r.type}</span>}
         </button>
       </div>
     );
@@ -578,7 +588,7 @@ function StandsSheet({ send }: Props) {
           <button onClick={() => setPick(null)}>{t('sheet.close')}</button>
         </div>
       )}
-      <div class="tl-wrap">
+      <div ref={timelineRef} class="tl-wrap" style={`--hour-px:${HOUR_PX}px`}>
         <div class="tl" style={`min-width:${gridW + 250}px`}>
           <div class="tl-head">
             <div class="tl-label">{t('stands.stand')}</div>

@@ -270,3 +270,12 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-10: The movement budget is a ring of movement start ticks per runway, keyed by runway id so a network rebuild cannot reset it. The queue is the existing retry schedule, so the budget is enforced to within 30 game seconds, which the user accepted on 2026-11-06.
 * 2026-11-10: Tower art is data (`paint.json`, block `tower`) painted by `render/markings/towerPaint.ts` in the chunk bake and in the tool ghost, so the preview is the built look. The proportions are the implementer's choice at true scale, pending the user's screenshot review.
 * 2026-11-10: The tower overload readout is the tower panel plus an alert raised by the UI when `atcQueue` leaves zero. No cap bars were added to the Slots sheet, because T41 replaces it. The alert is UI side, so the sim event stream and the state hash are unchanged.
+* 2026-11-10: The stand block rule lives once in `src/shared/flightBlock.ts`, and the sim, the offers sheet and the stand timeline all call it. A preview must never promise a drop the sim refuses.
+* 2026-11-10: The surface refusal on assignment is `standSurfaceType`, because `standSurface` already names a build tool problem.
+* 2026-11-10: The aircraft type of a rotation is the usable type at index (airline id plus rotation index) modulo the usable count. The user asked for fixed schedules, and a remembered stand must keep fitting the same type.
+* 2026-11-10: Airlines remember one stand per rotation in `standPrefs`. Only the player's `assignStand` writes a preference, and each morning the shared rule decides whether it applies. Save version 10 adds the field, and older saves load with it empty.
+* 2026-11-10: A block that stops fitting its stand is flagged red and is never moved by the sim. The user chose this so the sim does not override the player.
+* 2026-11-10: Automation passes run on `setAutoStands`, a stand build, edit or demolish, day rollover and the explicit command, always through the airfield sync and never per tick. The sync also runs on a paused flush, so no pending pass crosses a save.
+* 2026-11-10: The state hash covers `fStand`, `fRot` and `standPrefs`.
+* 2026-11-10: The payload carries `standBlocks` uncapped, in absolute minutes, so the drop preview uses the sim's own numbers.
+* 2026-11-10: The offers sheet load bar counts landings and takeoffs per hour against the tower's rolling hour budget. An overloaded hour queues and never refuses an offer.
