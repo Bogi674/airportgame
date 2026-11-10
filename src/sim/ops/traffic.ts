@@ -550,6 +550,11 @@ export class Traffic {
     this.movCount[r]++;
   }
 
+  /** Landings plus takeoffs the tower allows per rolling hour across every runway, the total behind movementFree. 0 without a tower. */
+  movementBudget(): number {
+    return movementsPerHour(this.towerLevel) * this.af.runways.length;
+  }
+
   /** Movements waiting for budget right now: scheduled arrivals plus aircraft still on a stand before push back. */
   atcQueueLength(): number {
     let n = 0;

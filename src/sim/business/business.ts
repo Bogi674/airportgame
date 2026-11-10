@@ -15,6 +15,7 @@ import {
   type BusinessPayload,
   type FeeLevel,
   type LedgerCategory,
+  type OfferRow,
   FIXTURE_KEYS,
   type FixtureKey,
   type Terminal,
@@ -26,6 +27,7 @@ import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEd
 import type { Pt } from '@shared/geom';
 import { isShopFixture, fixtureKey, ZONE } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
+import { blockWindow } from '@shared/flightBlock';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -38,6 +40,9 @@ const CAT_INDEX: Record<LedgerCategory, number> = Object.fromEntries(LEDGER_CATE
 const FEE_MULT = [0.8, 1, 1.25] as const;
 const FEE_LF = [0.08, 0, -0.08] as const;
 const TERMINAL_SEAT_THRESHOLD = 15;
+/** Rows the flights board and the offers sheet show for scheduled flights. Display only, the sim keeps every flight. */
+const SCHEDULE_ROWS = 60;
+const MINUTES_PER_DAY = 24 * 60;
 
 export interface BusinessHost {
   getCash(): number;
@@ -633,43 +638,82 @@ export class Business {
       const f = t.flight[i];
       const al = f >= 0 ? t.fAirline[f] : -1;
       const stand = stands.find((s) => s.id === t.standId[i]);
+      const eta = f >= 0 ? minuteOfDay(t.fEta[f]) : 0;
+      const turnMin = f >= 0 ? Math.round(t.fTurn[f] / TICKS_PER_MINUTE) : 0;
       rows.push({
         airline: al >= 0 ? this.airlines[al].name : 'Test',
         type: AIRCRAFT[t.type[i]].icaoType,
         status: names[t.state[i]],
         stand: stand ? stand.number : '',
-        eta: f >= 0 ? minuteOfDay(t.fEta[f]) : 0,
+        eta,
         delayMin: f >= 0 ? Math.round(t.fDelay[f] / TICKS_PER_MINUTE) : 0,
         stageKm: f >= 0 ? t.fStage[f] : 0,
         flight: f,
         standId: t.standId[i],
-        turnMin: f >= 0 ? Math.round(t.fTurn[f] / TICKS_PER_MINUTE) : 0,
+        turnMin,
+        offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
       });
     }
-    for (let f = 0; f < 1024 && rows.length < 60; f++) {
+    for (let f = 0; f < 1024 && rows.length < SCHEDULE_ROWS; f++) {
       if (t.fState[f] !== FlState.Scheduled) continue;
       const al = t.fAirline[f];
+      const eta = minuteOfDay(t.fEta[f]);
+      const turnMin = Math.round(t.fTurn[f] / TICKS_PER_MINUTE);
       rows.push({
         airline: al >= 0 ? this.airlines[al].name : 'Test',
         type: AIRCRAFT[t.fType[f]].icaoType,
         status: 'scheduled',
         stand: '',
-        eta: minuteOfDay(t.fEta[f]),
+        eta,
         delayMin: Math.round(t.fDelay[f] / TICKS_PER_MINUTE),
         stageKm: t.fStage[f],
         flight: f,
         standId: t.fStand[f],
-        turnMin: Math.round(t.fTurn[f] / TICKS_PER_MINUTE),
+        turnMin,
+        offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
       });
     }
     void tick;
     return rows;
   }
 
+  /** Scheduled flights of signed airlines, earliest arrival then flight id, capped at the board's row count. */
+  offers(): OfferRow[] {
+    const t = this.traffic;
+    const flights: number[] = [];
+    for (let f = 0; f < 1024; f++) if (t.fState[f] === FlState.Scheduled && t.fAirline[f] >= 0) flights.push(f);
+    flights.sort((a, b) => t.fEta[a] - t.fEta[b] || a - b);
+    const rows: OfferRow[] = [];
+    for (let k = 0; k < flights.length && rows.length < SCHEDULE_ROWS; k++) {
+      const f = flights[k];
+      const spec = AIRCRAFT[t.fType[f]];
+      const arrMin = minuteOfDay(t.fEta[f]);
+      const turnMin = Math.round(t.turnaroundTicks(t.fType[f]) / TICKS_PER_MINUTE);
+      rows.push({
+        flight: f,
+        airline: t.fAirline[f],
+        type: spec.icaoType,
+        typeIdx: t.fType[f],
+        arrMin,
+        turnMin,
+        endMin: blockWindow(arrMin, turnMin).endMin,
+        code: spec.derivedForReading.code,
+        stageKm: t.fStage[f],
+        standId: t.fStand[f],
+      });
+    }
+    return rows;
+  }
+
   payload(tick: number): BusinessPayload {
     const dep = this.depCapacity();
+    const stands = this.airfield.data.stands;
     return {
       board: this.board(tick),
+      offers: this.offers(),
+      standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
+      standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
+      movementBudget: this.traffic.movementBudget(),
       version: this.version,
       day: dayIndex(tick),
       minuteOfDay: minuteOfDay(tick),

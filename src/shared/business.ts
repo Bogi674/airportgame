@@ -131,10 +131,44 @@ export interface BoardRow {
   flight: number;
   standId: number;
   turnMin: number;
+  /** Scheduled off block, minute of the day: the scheduled arrival plus the nominal turnaround. */
+  offBlockMin: number;
+}
+
+/** One scheduled rotation of a signed airline, as the flight offers sheet shows it. */
+export interface OfferRow {
+  /** Flight index for commands. */
+  flight: number;
+  /** Airline id, an index of the airline list. */
+  airline: number;
+  /** Aircraft type icao code, for display. Codes repeat across variants, so use typeIdx for data. */
+  type: string;
+  /** Index of the aircraft in the aircraft data list. */
+  typeIdx: number;
+  /** Scheduled arrival, minute of the day. */
+  arrMin: number;
+  /** Nominal turnaround in minutes, not stretched by ground handling slowdown. */
+  turnMin: number;
+  /** Arrival plus turnaround plus STAND_BLOCK_BUFFER_MIN: the minute the stand block ends. */
+  endMin: number;
+  /** Aircraft code letter, A to F, which the stand sizes and routing read. */
+  code: string;
+  /** Stage length in km, 0 for test flights. */
+  stageKm: number;
+  /** Stand the flight is assigned to, -1 for automatic. */
+  standId: number;
 }
 
 export interface BusinessPayload {
   board: BoardRow[];
+  /** Scheduled flights of signed airlines, earliest first, capped like the board. */
+  offers: OfferRow[];
+  /** 1 or 0 per stand, indexed like airfield.data.stands: a taxi node reaches the stand. */
+  standLinked: number[];
+  /** 1 or 0 per stand, indexed like airfield.data.stands: a contact stand has a terminal in reach, others are 1. */
+  standContact: number[];
+  /** Landings plus takeoffs the tower allows per rolling hour across every runway, 0 without a tower. */
+  movementBudget: number;
   version: number;
   day: number;
   minuteOfDay: number;

@@ -3,11 +3,14 @@ import { BUSINESS } from '@data/index';
 import { LEDGER_CATEGORIES, type FeeLevel } from '@shared/business';
 import type { Command } from '@sim/commands';
 import { useState } from 'preact/hooks';
-import type { BoardRow } from '@shared/business';
+import type { BoardRow, BusinessPayload, OfferRow } from '@shared/business';
+import type { Stand } from '@shared/airfield';
+import type { StandRefusal } from '@shared/flightBlock';
+import { standRefusalAt } from './standRule';
 import { Icon } from './icons';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
 import { useGameStore } from './stores/gameStore';
-import { t, tDynamic, tFormat, type StringKey } from './strings';
+import { noticeText, t, tDynamic, tFormat, type StringKey } from './strings';
 
 interface Props {
   send(cmd: Command): void;
@@ -161,46 +164,109 @@ function FinanceSheet({ send }: Props) {
 }
 
 const clock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-/** Slot list: every signed rotation has an arrival slot. Busy hours are flagged. Slots are read only until the sheet is rewritten. */
-function SlotsSheet() {
+/** Grid columns of an offer row: type, arrival, turnaround, stage and the stand select. */
+const OFFER_COLS = 'display:grid;grid-template-columns:70px 64px 90px 90px 1fr;gap:8px;align-items:center;font-size:12px';
+
+/** The refusal of the first stand when every stand refuses the offer's aircraft, otherwise null. */
+function allStandsRefuse(o: OfferRow, b: BusinessPayload, stands: Stand[]): StandRefusal | null {
+  let first: StandRefusal | null = null;
+  for (let i = 0; i < stands.length; i++) {
+    const r = standRefusalAt(b, i, stands[i], AIRCRAFT[o.typeIdx]);
+    if (r === null) return null;
+    if (first === null) first = r;
+  }
+  return first;
+}
+
+/** The reason the offers list is empty, or null when it has rows. */
+function offersEmptyKey(b: BusinessPayload, runways: number, stands: number): StringKey | null {
+  if (b.airlines.every((a) => a.rotations <= 0)) return 'slots.noAirline';
+  if (runways === 0) return 'slots.noRunway';
+  if (stands === 0) return 'slots.noStand';
+  if (b.offers.length === 0) return 'slots.noOffers';
+  return null;
+}
+
+/**
+ * Flight offers: every signed airline offers its scheduled flights for the day. A stand select per row
+ * assigns the stand. The load bar counts landings and takeoffs per hour against the tower budget. No time is editable.
+ */
+function SlotsSheet({ send }: Props) {
   const b = useGameStore((s) => s.business);
   const af = useGameStore((s) => s.airfield);
   if (!b) return null;
   const signed = b.airlines.filter((a) => a.rotations > 0);
   const perHour = new Array<number>(24).fill(0);
-  for (const a of signed) for (const m of a.slots) perHour[Math.floor(m / 60)]++;
-  const cap = Math.max(2, af.runways.length * 4);
+  for (const o of b.offers) {
+    perHour[Math.floor(o.arrMin / 60) % 24]++;
+    perHour[Math.floor((o.arrMin + o.turnMin) / 60) % 24]++;
+  }
   const peak = Math.max(1, ...perHour);
+  const emptyKey = offersEmptyKey(b, af.runways.length, af.stands.length);
   return (
     <Sheet title={t('slots.title')} testId="sheet-slots">
-      <div style="color:var(--muted);font-size:12px;margin-bottom:8px">{tFormat('slots.help', { cap })}</div>
-      <div class="section">{t('slots.load')}</div>
-      <div style="display:grid;grid-template-columns:repeat(16,1fr);gap:3px;align-items:end;height:64px;margin-bottom:12px" data-testid="slot-load">
-        {perHour.slice(6, 22).map((n, i) => (
-          <div key={i} title={`${String(i + 6).padStart(2, '0')}:00, ${n}`} style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10px;color:var(--muted)">
-            <div style={`width:100%;height:${Math.round((n / peak) * 40)}px;background:${n > cap ? 'var(--bad)' : 'var(--accent)'};border-radius:2px`} />
-            {String(i + 6).padStart(2, '0')}
+      <div style="color:var(--muted);font-size:12px;margin-bottom:8px">{tFormat('slots.help', { cap: b.movementBudget })}</div>
+      <div class="section">{tFormat('slots.load', { cap: b.movementBudget })}</div>
+      <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:64px;margin-bottom:12px" data-testid="slot-load">
+        {perHour.map((n, h) => (
+          <div key={h} title={`${String(h).padStart(2, '0')}:00, ${n}`} style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10px;color:var(--muted)">
+            <div style={`width:100%;height:${Math.round((n / peak) * 40)}px;background:${n > b.movementBudget ? 'var(--bad)' : 'var(--accent)'};border-radius:2px`} />
+            {String(h).padStart(2, '0')}
           </div>
         ))}
       </div>
-      {signed.length === 0 && <div>{t('slots.empty')}</div>}
-      <div style="display:grid;gap:8px">
-        {signed.map((a) => (
-          <div key={a.id} data-testid={`slots-${a.id}`} style="padding:8px;border:1px solid var(--line);border-radius:10px">
-            <div style="font-weight:600;margin-bottom:6px">{a.name}</div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-              {a.slots.map((m, i) => (
-                <label key={i} style="font-size:12px;display:flex;gap:6px;align-items:center">
-                  {i + 1}
-                  <span data-testid={`slot-${a.id}-${i}`} style={perHour[Math.floor(m / 60)] > cap ? 'color:var(--bad)' : ''}>
-                    {clock(m)}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {emptyKey !== null && <div>{t(emptyKey)}</div>}
+      {emptyKey === null && (
+        <div style="display:grid;gap:8px">
+          {signed.map((a) => {
+            const rows = b.offers.filter((o) => o.airline === a.id);
+            if (rows.length === 0) return null;
+            return (
+              <div key={a.id} data-testid={`slots-${a.id}`} style="padding:8px;border:1px solid var(--line);border-radius:10px">
+                <div style="font-weight:600;margin-bottom:6px">{a.name}</div>
+                <div style={`${OFFER_COLS};color:var(--muted);margin-bottom:4px`}>
+                  <span>{t('slots.type')}</span>
+                  <span>{t('slots.arrival')}</span>
+                  <span>{t('slots.turnaround')}</span>
+                  <span>{t('slots.stage')}</span>
+                  <span>{t('slots.stand')}</span>
+                </div>
+                {rows.map((o) => {
+                  const bad = allStandsRefuse(o, b, af.stands);
+                  return (
+                    <div key={o.flight} data-testid={`offer-row-${o.flight}`} style="margin-bottom:4px">
+                      <div style={OFFER_COLS}>
+                        <span>{o.type}</span>
+                        <span>{clock(o.arrMin)}</span>
+                        <span>{o.turnMin} min</span>
+                        <span>{formatInt(o.stageKm)} km</span>
+                        <select
+                          data-testid={`offer-stand-${o.flight}`}
+                          style="min-width:0"
+                          value={o.standId}
+                          onChange={(e) => send({ type: 'assignStand', flight: o.flight, standId: Number((e.target as HTMLSelectElement).value) })}
+                        >
+                          <option value={-1}>{t('slots.auto')}</option>
+                          {af.stands.map((st, i) => (
+                            <option key={st.id} value={st.id} disabled={st.id !== o.standId && standRefusalAt(b, i, st, AIRCRAFT[o.typeIdx]) !== null}>
+                              {st.number}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {bad !== null && (
+                        <div data-testid={`offer-bad-${o.flight}`} style="color:var(--bad);font-size:12px">
+                          {noticeText(bad, {})}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Sheet>
   );
 }
@@ -400,6 +466,7 @@ function FlightsSheet() {
               <th>{t('flights.stand')}</th>
               <th>{t('flights.stage')}</th>
               <th>{t('flights.eta')}</th>
+              <th>{t('flights.offBlock')}</th>
             </tr>
           </thead>
           <tbody>
@@ -414,6 +481,7 @@ function FlightsSheet() {
                   {eta(r.eta)}
                   {r.delayMin > 0 ? ` (+${r.delayMin})` : ''}
                 </td>
+                <td>{eta(r.offBlockMin)}</td>
               </tr>
             ))}
           </tbody>
@@ -454,7 +522,7 @@ function SiteSheet() {
 export function Sheets({ send }: Props) {
   const sheet = useGameStore((s) => s.sheet);
   if (sheet === 'airlines') return <AirlinesSheet send={send} />;
-  if (sheet === 'slots') return <SlotsSheet />;
+  if (sheet === 'slots') return <SlotsSheet send={send} />;
   if (sheet === 'stands') return <StandsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;

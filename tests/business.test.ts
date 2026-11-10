@@ -371,3 +371,46 @@ describe('stand choices with determinism', () => {
     expect(Array.from(c.traffic.fRot)).toEqual(Array.from(a.traffic.fRot));
   });
 });
+
+describe('flight offers in the business payload', () => {
+  it('lists signed flights earliest first with the stand block buffer on each', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 3 });
+    closeDay(sim, 1);
+    const { offers } = sim.business.payload(sim.traffic.nowTick);
+    expect(offers.length).toBeGreaterThan(0);
+    const key = (o: { flight: number }): [number, number] => [sim.traffic.fEta[o.flight], o.flight];
+    for (let i = 1; i < offers.length; i++) {
+      const [pe, pf] = key(offers[i - 1]);
+      const [ce, cf] = key(offers[i]);
+      expect(pe < ce || (pe === ce && pf < cf)).toBe(true);
+    }
+    for (const o of offers) {
+      expect(o.endMin - o.arrMin - o.turnMin).toBe(5);
+      expect(AIRCRAFT[o.typeIdx].icaoType).toBe(o.type);
+    }
+  });
+
+  it('a signed rotation offers one flight per rotation after the day closes', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    closeDay(sim, 1);
+    const offers = sim.business.payload(sim.traffic.nowTick).offers.filter((o) => o.airline === 0);
+    const rotations = newestByRotation(sim, 0, 2);
+    expect(rotations.every((f) => f >= 0)).toBe(true);
+    for (const f of rotations) expect(offers.filter((o) => o.flight === f)).toHaveLength(1);
+  });
+
+  it('carries one stand fact per stand and a movement budget only with a tower', () => {
+    const { sim } = airportWithTerminal();
+    const p = sim.business.payload(sim.traffic.nowTick);
+    expect(p.standLinked).toHaveLength(sim.airfield.data.stands.length);
+    expect(p.standContact).toHaveLength(sim.airfield.data.stands.length);
+    expect(p.movementBudget).toBeGreaterThan(0);
+    const bare = ownedSim();
+    bare.cash = 100_000_000;
+    buildTestAirport(bare, { standsPerRow: 4 });
+    buildTestTerminal(bare, { atc: false });
+    expect(bare.business.payload(bare.traffic.nowTick).movementBudget).toBe(0);
+  });
+});
