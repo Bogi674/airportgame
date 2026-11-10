@@ -141,6 +141,10 @@ export class ToolController {
       const b = floorBounds(g);
       return b ? [{ k: 'poly', pts: rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1) }] : [];
     }
+    if (kind === 'tower') {
+      const tw = af.towers?.find((x) => x.id === id);
+      return tw ? [{ k: 'poly', pts: towerRect(tw.x, tw.y, BUSINESS.tower.footprintM) }] : [];
+    }
     return [];
   }
 
@@ -541,7 +545,8 @@ export class ToolController {
         break;
       case 'demolish': {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
-        if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
+        if (hit?.kind === 'tower') this.deps.send({ type: 'demolishTower', id: hit.id });
+        else if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
         break;
       }
       case 'select': {
@@ -1695,6 +1700,8 @@ export class ToolController {
     } else if (hit.kind === 'apron') {
       const a = af.aprons.find((x) => x.id === hit.id);
       if (a) shapes.push({ k: 'poly', pts: a.polygon });
+    } else if (hit.kind === 'tower') {
+      shapes.push(...this.shapesFor('tower', hit.id));
     } else {
       const s = af.stands.find((x) => x.id === hit.id);
       if (s) shapes.push({ k: 'ring', x: s.x, y: s.y, r: 8 });

@@ -1,5 +1,6 @@
+import { BUSINESS } from '@data/index';
 import { apronContains } from '@shared/apronGeom';
-import { compassVector, type AirfieldPayload, type Runway } from './airfield';
+import { compassVector, towerRect, type AirfieldPayload, type Runway } from './airfield';
 import { closestOnSegment, distToSegment, type Pt } from './geom';
 import { cosLut, sinLut } from './trig';
 
@@ -52,14 +53,14 @@ export function runwayFrame(r: Runway, x: number, y: number): { s: number; later
   return { s, lateral };
 }
 
-export type PickKind = 'runway' | 'taxiway' | 'apron' | 'stand';
+export type PickKind = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower';
 export interface Pick {
   kind: PickKind;
   id: number;
   dist: number;
 }
 
-/** Nearest airfield object to a world point within `tol` meters, stands first, then runways, taxiways, aprons. */
+/** Nearest airfield object to a world point within `tol` meters, towers first, then stands, runways, taxiways, aprons. */
 export function pickObject(af: AirfieldPayload, x: number, y: number, tol: number): Pick | null {
   let best: Pick | null = null;
   const consider = (kind: PickKind, id: number, dist: number, bias: number): void => {
@@ -67,6 +68,13 @@ export function pickObject(af: AirfieldPayload, x: number, y: number, tol: numbe
     const score = dist + bias;
     if (!best || score < best.dist) best = { kind, id, dist: score };
   };
+  for (const tw of af.towers ?? []) {
+    // The footprint grown by the pick tolerance on every side, as an axis aligned square.
+    const side = BUSINESS.tower.footprintM + 2 * tol;
+    const corners = towerRect(tw.x, tw.y, side);
+    const inside = x >= corners[0].x && x <= corners[1].x && y >= corners[0].y && y <= corners[2].y;
+    if (inside) consider('tower', tw.id, 0, -1200);
+  }
   for (const s of af.stands) consider('stand', s.id, Math.hypot(s.x - x, s.y - y), -1000);
   for (const r of af.runways) {
     const d = distToSegment(x, y, r.x1, r.y1, r.x2, r.y2);
