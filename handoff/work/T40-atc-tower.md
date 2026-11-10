@@ -16,7 +16,7 @@ Copied from `handoff/tasks/T40-atc-tower.md`, which was repaired on 2026-11-06 t
 * [x] R5. A runway count above the level's cap is refused at build time with a problem code naming the level needed. The caps are 1, 1, 2, 2 and unlimited.
 * [x] R6. Upgrades are bought with cash only. There is no stage gate and no stage state in the sim.
 * [x] R7. Drawing: vector geometry in meters in the chunk painter, five distinct looks from a simple tower with a window to a tall 360 degree glazed tower. Drawn under aircraft and vehicles.
-* [ ] R8. Placement follows the T42 construction grid once that lands. Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
+* [x] R8. Placement follows the T42 construction grid once that lands. Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
 * [x] R9. Save format bump with a migration that defaults `towers` to an empty list and keeps existing control rooms valid.
 * [x] R10. Determinism test: 2 000 ticks twice from one seed, identical `stateHash`, including a tower build and upgrade.
 * [ ] R11. Strings for every new text in `src/ui/strings/en.json`, appended next to related keys.

@@ -1,4 +1,4 @@
-import type { Runway, Stand } from './airfield';
+import type { Runway, Stand, Tower } from './airfield';
 import type { Pt } from './geom';
 
 /** Translucent preview shapes drawn over the map while a build tool is active. All in meters. */
@@ -21,6 +21,8 @@ export interface GhostPreview {
   runway?: Runway;
   /** New stands, drawn with their forks and markings on the existing taxiways. */
   stands?: Stand[];
+  /** New ATC towers, drawn with the same painting as built ones. */
+  towers?: Tower[];
 }
 
 export interface Ghost {

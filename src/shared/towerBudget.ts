@@ -24,6 +24,11 @@ export function towerLevelOf(af: Pick<AirfieldPayload, 'towers'>): number {
   return level;
 }
 
+/** What a tower costs to build at a level: the build cost plus one upgrade per level above 1. */
+export function towerBuildCost(level: number): number {
+  return BUSINESS.tower.cost + (level - 1) * BUSINESS.tower.upgradeCost;
+}
+
 /** Movements per rolling hour per runway at a level, 0 without a tower. Levels above the ladder clamp to the top. */
 export function movementsPerHour(level: number): number {
   if (level < 1) return 0;

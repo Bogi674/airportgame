@@ -561,6 +561,7 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
     paintRunwayMarks(ctx, preview.runway, win, planFor(af));
   }
   if (preview.stands) paintStands(ctx, af, preview.stands, win);
+  if (preview.towers) paintTowers(ctx, preview.towers, win);
 }
 
 const FLOOR_COLOR = ['', '#a9aeb3', '#d3dadd', '#7f90a8'];

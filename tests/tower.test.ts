@@ -4,7 +4,7 @@ import { BUSINESS } from '@data/index';
 import { businessSchema } from '../src/data/schemas';
 import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
-import { levelForRunways, movementsPerHour, runwayCapOf, towerCapacity, towerLevelOf } from '@shared/towerBudget';
+import { levelForRunways, movementsPerHour, runwayCapOf, towerBuildCost, towerCapacity, towerLevelOf } from '@shared/towerBudget';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
 import { AcState } from '@sim/ops/traffic';
 import { buildTestAirport, ownedSim, run, OPTIONS } from './helpers';
@@ -37,6 +37,20 @@ describe('tower data', () => {
     expect(businessSchema.safeParse(withLevels(bad)).success).toBe(false);
     const falling = tower.levels.map((l, i) => (i === 2 ? { ...(l as object), movementsPerHour: 10 } : l));
     expect(businessSchema.safeParse(withLevels(falling)).success).toBe(false);
+  });
+});
+
+describe('tower build cost', () => {
+  it('is the build cost at level 1 and one upgrade per level above 1', () => {
+    expect(towerBuildCost(1)).toBe(100000);
+    expect(towerBuildCost(3)).toBe(200000);
+  });
+
+  it('is what a level 3 build takes from the cash', () => {
+    const sim = ownedSim();
+    const cash = sim.cash;
+    expect(build(sim, 3)).toEqual([]);
+    expect(cash - sim.cash).toBe(towerBuildCost(3));
   });
 });
 
