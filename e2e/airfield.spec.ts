@@ -12,6 +12,9 @@ async function screenOf(page: Page, wx: number, wy: number): Promise<{ x: number
   );
 }
 
+// The context bar grows upward with its content and with the font, so a taller window keeps the test points clear of it.
+test.use({ viewport: { width: 1280, height: 900 } });
+
 test('builds a runway, taxiway, apron and stands, and undoes them', async ({ page }) => {
   const errors = watchErrors(page);
   await startNewGame(page);
