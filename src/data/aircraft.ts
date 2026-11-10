@@ -110,6 +110,26 @@ export const AIRCRAFT: readonly AircraftSpec[] = file.parse(raw).aircraft.filter
 
 export const SPRITE_BASES = (raw as { spriteBases: Record<string, SpriteBase> }).spriteBases;
 
+export interface SpriteEngine {
+  kind: 'fan' | 'rear' | 'prop';
+  /** Lateral offset of the right engine centre. */
+  y: number;
+  /** Longitudinal position of the nacelle front, nose at 0. */
+  x: number;
+  len: number;
+  d: number;
+  flow?: 'separate' | 'longduct';
+  fan_end?: number;
+  core_r?: number;
+  chevrons?: boolean;
+  aft_fairing?: boolean;
+  fair_len?: number;
+  stage?: string;
+  prop_d?: number;
+  blades?: number;
+  phase?: number;
+}
+
 export interface SpriteBase {
   name: string;
   L: number;
@@ -120,6 +140,7 @@ export interface SpriteBase {
   nose_m: number;
   tail: number;
   tail_end: number;
+  tail_p?: number;
   wing: {
     x: number;
     c: number;
@@ -131,12 +152,31 @@ export interface SpriteBase {
     winglet?: string;
     ext?: number;
     high?: boolean;
+    root_y?: number;
+    rake?: number;
+    rake_extra?: number;
+    kink_round?: number;
+    aileron?: number;
+    tracks?: number[];
+    track_len?: number;
+    track_w?: number;
   };
   hstab: { x: number; c: number; sweep: number; span: number; tip: number; ttail?: boolean };
-  engines?: { kind: string; y: number; x: number; len: number; d: number }[];
-  nose_prop?: { d: number; blades: number };
+  fin?: { x0: number; x1: number; w: number; dorsal?: number };
+  engines?: SpriteEngine[];
+  nose_prop?: { d: number; blades: number; spinner?: number; phase?: number };
+  ws?: { y: number; d: number; c: number; style?: string; wf?: number; k?: number; kb?: number; side?: number; divs?: number[] };
   doors?: number[];
+  door_len?: number;
+  door_inset?: number;
+  door_w?: number;
+  overwing?: number[];
   windows?: number[] | null;
+  win_r?: number;
+  win_inset?: number;
+  rear_window?: number[];
+  upper?: { y0: number; y1: number; w: number; win: number[] };
+  sponsons?: number[][];
   tail_color?: string;
 }
 
