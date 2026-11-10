@@ -398,7 +398,7 @@ export function ObjectPanel({ send }: Props) {
   return (
     <div
       data-testid="object-panel"
-      style="position:absolute;right:12px;top:52px;width:260px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+      style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
     >
       <div style="font-weight:600">{tFormat('inspector.title', { kind: tDynamic(`inspector.${kind}`), name })}</div>
       {body}
