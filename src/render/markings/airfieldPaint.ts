@@ -9,6 +9,7 @@ import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
 import { paintStands } from './standPaint';
+import { paintTowers } from './towerPaint';
 import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -39,7 +40,7 @@ const lineM = (w: Window, meters: number, minPx = 0.9): number => Math.max(meter
 
 /** Paints the airfield pavement and markings of one chunk into its canvas context. */
 export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly TerminalGrid[], band: number, cx: number, cy: number): void {
-  if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0 && terminals.length === 0) return;
+  if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0 && (af.towers?.length ?? 0) === 0 && terminals.length === 0) return;
   const scale = BAND_RASTER_SCALE[band];
   const ox = cx * CHUNK_SIZE_M;
   const oy = cy * CHUNK_SIZE_M;
@@ -121,6 +122,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
   for (const r of af.runways) paintRunwayMarks(ctx, r, win, plan);
   for (const g of terminals) paintTerminal(ctx, g, win);
   paintStands(ctx, af, af.stands, win);
+  paintTowers(ctx, af.towers ?? [], win);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
