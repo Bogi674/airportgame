@@ -164,6 +164,7 @@ Key O opens a compact list. One overlay at a time plus optional labels. Active o
 
 ## 6. Building interactions
 
+* **Construction grid** (all placement tools except select and demolish): when the ghost hovers near a runway or taxiway, a cyan grid appears over the pavement, 2 m lines with brighter 10 m lines, culled to the viewport, drawn under the ghost and carrying no text. The context bar shows the Grid and Free buttons and the name of the offered grid. The grid thins out when zoomed far out, so no line is closer than 2 px.
 * **Runway**: click start, move, click end. The wind ring and runway numbers follow the cursor. Context bar shows length, heading, band and cost.
 * **Taxiway** (`docs/DESIGN_REVISION_2.md` section 2.2): click to add nodes, double click or Enter to finish. While the tool is open every node shows as a small white circle, junctions with their label. The snap target shows in snapping cyan: a ring with a dot on a node, a square on an open end, a diamond on a segment, with a tooltip ("Snap to J1", "Continue taxiway", "Split segment") in a dark box with a cyan border. The new arm previews in cyan at 30 percent. The length readout moves clear of the snap ring.
 * **Taxiway inspector**: a surface bar (Grass, Dirt, Gravel, Asphalt, Concrete) with the current and selected surface, the upgrade cost or downgrade refund and the works days, and Apply. Codes above C disable the unpaved surfaces. A taxiway under works shows the days left.
@@ -189,7 +190,7 @@ Key O opens a compact list. One overlay at a time plus optional labels. Active o
 | Q and E | Rotate placement or view |
 | R | Rotate 90 degrees |
 | Shift (hold) | Snap to 15 degree steps |
-| Alt (hold) | Free placement, no snapping |
+| Alt (hold) | Free placement, no snapping, including the construction grid |
 | A | Apron tool: switch free polygon and rectangle |
 | Ctrl (hold) | Apron tool: cut a piece out |
 | Space | Pause and resume |

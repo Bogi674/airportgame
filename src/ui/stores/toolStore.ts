@@ -11,9 +11,9 @@ export type SnapMode = 'grid' | 'free';
 
 /**
  * The tools that place on the construction grid (handoff/tasks/T42-grid-snapping.md, R3). The runway
- * and the taxiway tools stay out: they create the grids and keep their own node snapping.
+ * and taxiway tools use it as their lowest priority snap, after their own node, end and segment snaps.
  */
-export const GRID_TOOLS: readonly Tool[] = ['apron', 'stands', 'gaBlock', 'terminal', 'tower'];
+export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'stands', 'gaBlock', 'terminal', 'tower'];
 
 /** Snap mode of one tool: grid unless the player switched that tool to free. */
 export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): SnapMode {
@@ -62,7 +62,7 @@ interface ToolState {
   fixtureId: number;
   zoneType: 1 | 2 | 3 | 4;
   selection: Selection | null;
-  /** Id of the picked construction grid, or null while none is picked. Never changes on its own. */
+  /** Id of the construction grid offered near the cursor, or null when the cursor is out of reach of every grid. Set by the tool controller. */
   gridId: string | null;
   /** Snap mode per placement tool, persistent, with Alt as a temporary override while held. */
   snapMode: Partial<Record<Tool, SnapMode>>;

@@ -1,9 +1,9 @@
 # T42: Cities Skylines style grid and snapping
 
-Status: coding
-Branch: the branch the user names
+SUPERSEDED NOTE (2026-11-10): the user replaced the picked grid with a proximity offer, as in Cities Skylines. There is no picker, the grid of the nearest runway or taxiway segment within the pavement edge plus a screen margin is offered, and the runway and taxiway tools snap to it at the lowest priority. Q2, Q3 and Q5 are answered in `handoff/tasks/T42-grid-snapping.md`. Where the plan below says picked grid, picker, or leaves the runway and taxiway tools out, this note wins.
 
-State on 2026-11-10: slices 1 to 3 are committed (728ec44, 88caf98, 5aa44de). Left: the runway and taxiway tools snap to the active grid as well (user decision, 2026-11-06), which needs the snap radius from the user, then the docs slice. The requirement boxes below are ticked when that pass checks each one against the code.
+Status: done
+Branch: glm/mvp1
 
 ## Requirements
 
@@ -87,7 +87,7 @@ Notes from reading:
 
 1. DONE by another session in 728ec44: shared module, data key and 19 tests in `tests/constructionGrid.test.ts`. (R1, R2, R9)
 2. DONE by another session in 88caf98: the renderer overlay in `src/render/renderer.ts`, with `setGrid` and `drawGrid`. It maps the four viewport corners into the grid frame, culls to that range, draws minor and major lines as two passes at different alpha, projects endpoints to device pixels by hand so the width is fixed at every zoom (PITFALLS 15), and drops the grid when the lines would be closer than 2 px for minor and 3 px for major. No shared `gridLines` or `gridCenterline` is needed: the culling and projection stay in the renderer. Nothing calls `setGrid` yet, so no player sees a half wired feature.
-3. DONE in 5aa44de: the tool side, one complete feature. (R3, R4, R5, R6, R7, R10) Files: `src/ui/stores/toolStore.ts`, `src/ui/tools/controller.ts`, `src/ui/ContextBar.tsx`, `src/ui/strings/en.json`, `src/ui/MapView.tsx`. About 200 changed lines. The last step of this slice is the call to `renderer.setGrid`, so the grid the player picks is the grid they see.
+3. DONE in 5aa44de, 6df863a and ba5767f: the tool side, one complete feature. (R3, R4, R5, R6, R7, R10) Files: `src/ui/stores/toolStore.ts`, `src/ui/tools/controller.ts`, `src/ui/ContextBar.tsx`, `src/ui/strings/en.json`, `src/ui/MapView.tsx`. About 200 changed lines. The last step of this slice is the call to `renderer.setGrid`, so the grid the player picks is the grid they see.
 4. Docs. (R7, R8, R11) Files: `docs/ARCHITECTURE.md`, `docs/GAME_DESIGN.md`, `docs/UI_DESIGN.md`, `docs/ROADMAP.md`, `docs/PERFORMANCE.md`, `handoff/TASKS.md`, `handoff/STATE.md`. Run `npm run rules` again after the doc edits.
 5. Optional: an end to end test in `e2e/airfield.spec.ts` that builds a runway, picks its grid with the stands tool, places a row and asserts every stand sits on a node. `npm run e2e` is not part of `npm run verify`, so this slice is optional and must not be merged unless the suite passes.
 
@@ -148,6 +148,10 @@ verify: all checks passed.
 ```
 
 ## Report
+
+Final (2026-11-10): all five slices done. Slice 5 is an added assertion block in `e2e/airfield.spec.ts` (the grid is offered near the runway, not away from it, Free switches the label). The context bar keeps the Grid and Free buttons in the option row and the status text beside the hint, because a taller bar covered the runway start point at 1280 by 720. Verify: rules, types, lint, 301 tests, stress all pass, and the full chromium e2e suite passes (9 tests). Visual check scenarios are `handoff/scenarios/T42-grid-snapping.json` and `T42-grid-empty.json`, with no page errors.
+
+Earlier report (superseded):
 
 * What now works, in player terms: the shared grid math exists and is committed, so every runway and every taxiway segment now has a stable grid id, an origin, a heading and a 2 m lattice with 10 m highlighted lines, and the renderer can draw that lattice in screen crisp lines. Nothing is usable in the game yet: no tool snaps, nothing calls `setGrid`, and no picker exists. This plan is for the rest.
 * Commits: 728ec44 `construction grid: one shared lattice along a runway or taxiway` (slice 1) and 88caf98 `renderer: draw the construction grid in screen crisp lines` (slice 2), both made by another session while this plan was being written.

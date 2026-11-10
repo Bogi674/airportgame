@@ -111,6 +111,11 @@ Context: Open points from the T40 plan (handoff/work/T40-atc-tower.md).
 Answers (2026-11-06, user): the runway cap applies only when a tower exists, so the first runway can be built before the tower. More than one tower may be built; the highest level counts. Tower art proportions are chosen by the implementer at true scale per docs/ART_AND_ASSETS.md, and the user reviews the screenshots.
 Answers (2026-11-06, orchestrator, implementation only): queued movements retry on the existing RETRY_TICKS cadence of 30 game seconds. The 30 minute ATC wait has its own timer and does not change MAX_DELAY_TICKS, which stays the 20 minute limit for flights without a stand. The stress scenarios build a level 5 tower so they keep measuring traffic, not ATC starvation; the baseline is not updated.
 
+## 2026-11-10 T42: how the grid is chosen
+
+Context: T42 as built let the player pick one grid and lock it. The user asked for the Cities Skylines mechanism.
+Answer (2026-11-10): the grid is offered by proximity while the ghost hovers near a runway or taxiway, with free placement away from every grid. There is no picker. The reach is the pavement edge plus a screen scaled margin. The runway and taxiway tools also snap to the grid, as the lowest priority step. No hotkey for the Grid and Free toggle. This supersedes the 2026-11-05 line about an explicitly selected grid.
+
 ## 2026-11-10 plan: delivery order, deferrals and new tasks
 
 Context: The user reviewed the plan with `docs/DESIGN_REVISION_3.md` and approved the decisions below. `handoff/TASKS.md` is reordered to match.
@@ -127,5 +132,4 @@ Still open, ask before the task starts:
 * T32: categories, unit sizes, application and advertising numbers, the rent and sales model, and the growth measure. See the spec.
 * T50: the first deck, its weights, windows, choices and costs. See the spec.
 * T51, T52, T53: no design has been given yet.
-* T42: the snap radius for the runway and taxiway tools is still unapproved.
-* Placement in the order of T05, T06, T08, T09, the M2 and M3 milestone reviews, and the M7 tasks T35 to T38. The approved order does not name them.
+* Placement in the order of T09, the M2 and M3 milestone reviews, and the M7 tasks T35 to T38. The approved order does not name them. T05, T06, T08 and T42 were delivered on `main` by another session on 2026-11-10.

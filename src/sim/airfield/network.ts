@@ -1,4 +1,5 @@
-import { codeIndex, type AirfieldPayload, type CodeLetter, type Surface } from '@shared/airfield';
+import { CODES, codeIndex, type AirfieldPayload, type CodeLetter, type Surface } from '@shared/airfield';
+import { AIRFIELD } from '@data/index';
 import { atan2Det } from '@shared/trig';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { nearestOnLines, standForks } from '@shared/standFork';
@@ -76,6 +77,15 @@ export class TaxiNetwork {
   /** Reservation block per edge, or -1 for one way edges. Two way taxiway edges share one block per taxiway, so opposing aircraft never meet on it. */
   edgeBlock = new Int32Array(0);
   blockTotal = 0;
+  /**
+   * Conflict sets in compressed form: the edges that conflict with edge e are
+   * conflictEdge[conflictStart[e] .. conflictStart[e + 1]). Only taxiway, taxilane and rapid exit edges take part.
+   * Two edges of different taxiways conflict when, near a junction, their wingtip envelopes overlap.
+   */
+  conflictStart = new Int32Array(1);
+  conflictEdge = new Int32Array(0);
+  /** Radius around a junction inside which an aircraft on a conflicting edge blocks entry: the code's taxiway separation. */
+  edgeZoneM = new Float32Array(0);
   edgeSampleStart = new Int32Array(0);
   edgeSampleCount = new Int32Array(0);
   sampleX = new Float32Array(0);
@@ -536,9 +546,101 @@ export class TaxiNetwork {
     this.closed = new Uint8Array(this.nodeCount);
     this.heap = new Int32Array(this.nodeCount + 1);
     this.heapPos = new Int32Array(this.nodeCount);
+    this.buildConflicts();
     this.congestion = new Float64Array(E);
     this.maxSpeed = 1;
     for (let e = 0; e < E; e++) if (this.edgeKind[e] !== EdgeKind.Runway) this.maxSpeed = Math.max(this.maxSpeed, this.edgeSpeed[e]);
+  }
+
+  /**
+   * Conflict sets (docs/ARCHITECTURE.md section 5.4). For every junction, the edges with a sample within the
+   * taxiway separation of the node conflict when two of their samples are closer than the sum of their half
+   * envelopes. The half envelope is half the span of the edge's largest code plus half the wingtip clearance,
+   * which is half the code's taxiway separation, so two parallel taxiways at the standard separation just clear.
+   * Edges of the same taxiway never conflict, the following gap covers them.
+   */
+  private buildConflicts(): void {
+    const E = this.edgeCount;
+    const sep = (e: number): number => AIRFIELD.codes[CODES[this.edgeMaxCode[e]]].taxiSepM;
+    this.edgeZoneM = new Float32Array(E);
+    const takes = new Uint8Array(E);
+    for (let e = 0; e < E; e++) {
+      const k = this.edgeKind[e];
+      if (k === EdgeKind.Taxiway || k === EdgeKind.Taxilane || k === EdgeKind.RapidExit) {
+        takes[e] = 1;
+        this.edgeZoneM[e] = sep(e);
+      }
+    }
+    const pairs = new Set<number>();
+    const near: number[] = [];
+    for (let n = 0; n < this.nodeCount; n++) {
+      let junction = false;
+      let radius = 0;
+      let first = -1;
+      for (let p = this.adjStart[n]; p < this.adjStart[n + 1]; p++) {
+        const e = this.adjEdge[p];
+        if (!takes[e]) continue;
+        radius = Math.max(radius, sep(e));
+        if (first < 0) first = e;
+        else if (this.edgeSource[e] !== this.edgeSource[first]) junction = true;
+      }
+      if (!junction) continue;
+      near.length = 0;
+      for (let e = 0; e < E; e++) {
+        if (!takes[e]) continue;
+        const s0 = this.edgeSampleStart[e];
+        for (let k = 0; k < this.edgeSampleCount[e]; k++) {
+          if (Math.hypot(this.sampleX[s0 + k] - this.nodeX[n], this.sampleY[s0 + k] - this.nodeY[n]) <= radius) {
+            near.push(e);
+            break;
+          }
+        }
+      }
+      for (let a = 0; a < near.length; a++) {
+        for (let b = a + 1; b < near.length; b++) {
+          const ea = near[a];
+          const eb = near[b];
+          if (this.edgeSource[ea] === this.edgeSource[eb]) continue;
+          const key = ea * E + eb;
+          if (pairs.has(key)) continue;
+          if (this.envelopesOverlap(ea, eb, n, radius, (sep(ea) + sep(eb)) / 2)) {
+            pairs.add(key);
+            pairs.add(eb * E + ea);
+          }
+        }
+      }
+    }
+    const count = new Int32Array(E + 1);
+    for (const key of pairs) count[Math.floor(key / E) + 1]++;
+    for (let e = 0; e < E; e++) count[e + 1] += count[e];
+    this.conflictStart = count.slice();
+    this.conflictEdge = new Int32Array(pairs.size);
+    const fill = count.slice(0, E);
+    const sorted = Array.from(pairs).sort((x, y) => x - y);
+    for (const key of sorted) {
+      const a = Math.floor(key / E);
+      this.conflictEdge[fill[a]++] = key - a * E;
+    }
+  }
+
+  /** True when a sample of a and a sample of b, both within `radius` of the node, are closer than `limit`. */
+  private envelopesOverlap(a: number, b: number, node: number, radius: number, limit: number): boolean {
+    const sa = this.edgeSampleStart[a];
+    const sb = this.edgeSampleStart[b];
+    const nx = this.nodeX[node];
+    const ny = this.nodeY[node];
+    for (let i = 0; i < this.edgeSampleCount[a]; i++) {
+      const ax = this.sampleX[sa + i];
+      const ay = this.sampleY[sa + i];
+      if (Math.hypot(ax - nx, ay - ny) > radius) continue;
+      for (let j = 0; j < this.edgeSampleCount[b]; j++) {
+        const bx = this.sampleX[sb + j];
+        const by = this.sampleY[sb + j];
+        if (Math.hypot(bx - nx, by - ny) > radius) continue;
+        if (Math.hypot(ax - bx, ay - by) < limit) return true;
+      }
+    }
+    return false;
   }
 
   /** Position and heading at a distance along an edge, in travel direction `dir` (+1 forward). */

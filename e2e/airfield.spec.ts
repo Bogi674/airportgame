@@ -12,6 +12,9 @@ async function screenOf(page: Page, wx: number, wy: number): Promise<{ x: number
   );
 }
 
+// The context bar grows upward with its content and with the font, so a taller window keeps the test points clear of it.
+test.use({ viewport: { width: 1280, height: 900 } });
+
 test('builds a runway, taxiway, apron and stands, and undoes them', async ({ page }) => {
   const errors = watchErrors(page);
   await startNewGame(page);
@@ -80,6 +83,17 @@ test('builds a runway, taxiway, apron and stands, and undoes them', async ({ pag
   const mid = await screenOf(page, 4800, 5400);
   await page.mouse.click(box.x + mid.x, box.y + mid.y);
   await expect(page.getByTestId('object-panel')).toContainText('Runway');
+
+  // The construction grid is offered while a placement tool hovers near the runway, and not away from it.
+  await page.getByTestId('tool-stands').click();
+  await page.mouse.move(box.x + mid.x, box.y + mid.y);
+  await expect(page.getByTestId('snap-mode-label')).toContainText('Runway');
+  const far = await screenOf(page, 4500, 5400);
+  await page.mouse.move(box.x + far.x, box.y + far.y);
+  await expect(page.getByTestId('snap-mode-label')).toContainText('none');
+  await page.getByTestId('snap-mode-free').click();
+  await expect(page.getByTestId('snap-mode-label')).toContainText('Free');
+  await page.getByTestId('tool-select').click();
 
   await page.waitForTimeout(1200);
   await page.screenshot({ path: 'test-results/airfield.png' });

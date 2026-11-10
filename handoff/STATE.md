@@ -4,7 +4,7 @@ Where the project stands (2026-11-10). Update this file when a task changes what
 
 ## Health
 
-* 309 tests in 32 files pass. Lint, type check and the rules checker are clean.
+* 330 tests in 33 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 
@@ -30,7 +30,7 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * **Rapid exits** (30, 45, 90 degrees), the **parallel taxiway** prefab, **GA blocks**.
 * **Turn pads** with a placement tool, drawing and removal from the runway inspector. A pad sits beyond the runway threshold, and departures that need the full length backtrack to it. The look was rejected by the user and the work is frozen (`handoff/QUESTIONS.md`, 2026-11-05 T39).
 * **ATC tower**: a free standing tower with five levels replaced the ATC room. The player builds it from Flight operations, Air traffic control, picks the level in the context bar, and upgrades or demolishes it from the object panel. It is the only ATC source and meters landings and takeoffs on a rolling hour budget per runway. Movements over the budget queue, the panel shows the queue and an alert fires when queueing starts. Five looks by level are drawn in the chunk bake.
-* **Construction grid**: aprons, stands, GA blocks and terminal foundations snap to a 2 m grid along a picked runway or taxiway, with a free mode and Alt as the override. The runway and taxiway tools do not snap to it yet (task T42).
+* **Construction grid**: a 2 m grid along the nearest runway or taxiway is offered by proximity. Aprons, stands, GA blocks, terminal foundations and towers snap to it, and the runway and taxiway tools use it as their lowest priority snap after their own node, end and segment snaps. Each tool has a grid or free toggle, with Alt as the override.
 * **Terminals** of any size on a 2 m grid that grows in 64 m chunks: foundations, floors, walls, glass, doors, zones, check in, security, baggage belt, seating, toilets and six shop types. The ATC room fixture is retired: it keeps its saved index, grants no coverage and cannot be built. Room validation stops departures when security can be bypassed.
 * **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, deadlock detection with an overlay.
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
@@ -40,7 +40,7 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 
-* Phase 1, repair: grid snapping for the runway and taxiway tools (T42).
+* Phase 1, repair: done (T40, T42).
 * Phase 2: flight offers and drag to stand (T41).
 * Phase 3, passenger core: floor index (T49), kiosk, bag drop, passport booth, gate desk, walking graph, service nodes and queues, cohorts and the departure journey, people atlas rendering, overlays, satisfaction as specified, the 20 000 cohort stress scenario (T11 to T18).
 * Phase 4, ground handling and baggage: arrival journey, turnaround task lists, hydrant dispenser and apron bus, service points and service roads, trailers, collision footprints and test, draw order, staff sprites, the working baggage system (T20 to T28, T43), stand markings per revision 3 (T47), stand access types with boarding by jet bridge, stairs or bus (T48).
@@ -48,7 +48,7 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * Phase 6: the seeded event director (T50).
 * Phase 7: multi floor terminal designer, hangars, cargo (T51 to T53).
 * Deferred by the user: grading (T03), photo calibration (T07) and the runway marking remainder of T02.
-* Not placed in the order yet: the sprite port (T05, T06), conflict sets and junction priority (T08, T09), the milestone reviews for M2 and M3, and the M7 UI shell and acceptance tasks (T35 to T38).
+* Not placed in the order yet: junction priority (T09), the milestone reviews for M2 and M3, and the M7 UI shell and acceptance tasks (T35 to T38). The sprite port (T05, T06) and the network conflict sets (T08) are done.
 
 ## Deviations from the docs already accepted
 

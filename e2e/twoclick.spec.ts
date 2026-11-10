@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { startNewGame, watchErrors } from './helpers';
 
+// The context bar grows upward with its content and with the font, so a taller window keeps the test points clear of it.
+test.use({ viewport: { width: 1280, height: 900 } });
+
 test('a runway is placed with a start click and an end click, and the map scrolls at the edge', async ({ page }) => {
   const errors = watchErrors(page);
   await startNewGame(page);

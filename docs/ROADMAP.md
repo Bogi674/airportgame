@@ -71,6 +71,7 @@ Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS
 * [x] Apron, stand and stand row tools for contact, remote push back, remote taxi through and GA tie down (aprons merge and cut, free polygon and rectangle modes; stands come in four sizes with a lead in fork)
 * [x] Surfaces with PCR tiers, condition and resurfacing (taxiway works close the edges for their duration, runway edits close the runway, allowed codes per surface; aprons resurface at once)
 * [x] Alignment frames and snapping rules (`GAME_DESIGN.md` section 6)
+* [x] Construction grid along every runway and taxiway segment, offered by proximity and snapped to by aprons, stands, GA blocks, terminal foundations and, at lowest priority, the runway and taxiway tools (task T42)
 * [ ] Prefab pieces: runway end with turn pad, rapid exit, parallel taxiway with connectors, stand row, GA apron block (turn pad: sim, drawing, placement tool and inspector done, and revised to sit beyond the threshold; see `handoff/tasks/T01-turn-pad-ui.md` and `handoff/tasks/T39-turn-pad-beyond.md` in `handoff/TASKS.md` for the commit hashes)
 * [ ] Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes (simplified set: thresholds, designators, centerline, edges, aiming point, touchdown zone, hold marks, stand lines and boxes)
 * [ ] Grading tool with cut and fill cost (only an automatic grading cost is charged, terrain is not modified)
@@ -81,7 +82,7 @@ Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS
 * [x] Aircraft data loader with zod schema for the 10 MVP 1 types, derived code, wake and approach category tests
 * [ ] Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3 (geometry based top down sprites with tiers 0 to 3: silhouette, engines and livery, panel lines, then seams, window strips and flap tracks, not a full port of the prototype renderer)
 * [ ] Calibration overlays saved for all 10 types within tolerance (a test checks length and span of all 10 types against the data (2 and 4 percent), overlays against photos are not saved)
-* [ ] Taxi network builder with samples, blocks and conflict sets, property tests (built with 2 m samples and per taxiway blocks, conflict sets and property tests are missing)
+* [x] Taxi network builder with samples, blocks and conflict sets, property tests (2 m samples, per taxiway blocks, conflict sets in `conflictStart` and `conflictEdge`, property tests in `tests/networkProperties.test.ts`)
 * [x] Routing with direction, closures, max code, congestion cost and preferred flows (direction, closures, max code, strength, congestion cost and a per taxiway preferred flow that costs three times as much against it)
 * [ ] Reservations, following gaps, junction priority, holding points, runway exclusivity with wake separation (node and block reservations, following gaps, holding points, runway exclusivity and wake separation work, junction priority is first come)
 * [x] Push back with direction per stand (along the lead in and one fork arc: left, right or away from the departure route, switching side when blocked)

@@ -15,14 +15,14 @@ The Milestone column names the `docs/ROADMAP.md` milestone whose criteria the ta
 | T01 | M2 | [Turn pad drawing and placement tool](tasks/T01-turn-pad-ui.md) | M |  | done | 3eda81e ecc78c5 a7d88fe 309d7a9 |
 | T39 | M2 | [Turn pads sit beyond the runway threshold](tasks/T39-turn-pad-beyond.md) | S | T01 | done | b2a027f e53274e f781b57 1899039 |
 | T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M |  | done | c38a2b5 4d4661b 4944ca9 7afca60 8e85e5f c12e137 58e3a9f |
+| T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M |  | done | 728ec44 88caf98 5aa44de 6df863a ba5767f |
+| T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L |  | done | 042c89a |
+| T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | done | 0dff9ca |
+| T08 | M3 | [Network conflict sets and property tests](tasks/T08-conflict-sets.md) | M |  | done | 08b181c |
 
 ## Phase 1. Repair
 
-Close the grid task. The tower (T40) and the doc drift are done.
-
-| Id | Milestone | Task | Size | Depends | Status | Commits |
-| --- | --- | --- | --- | --- | --- | --- |
-| T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M | | doing | 728ec44 88caf98 5aa44de |
+All done: the tower (T40), the grid task (T42) and the doc drift. The rows are in the Done table.
 
 ## Phase 2. Flight offers
 
@@ -94,13 +94,10 @@ Includes boarding by jet bridge, stairs or bus.
 
 ## Not placed in the delivery order
 
-The 2026-11-10 order does not name these. Ask the user where they go before starting one. T05 and T06 now target `docs/DESIGN_REVISION_3.md` section 1.
+The 2026-11-10 order does not name these. Ask the user where they go before starting one. T05, T06 and T08 were delivered on `main` in the meantime and sit in the Done table.
 
 | Id | Milestone | Task | Size | Depends | Status | Commits |
 | --- | --- | --- | --- | --- | --- | --- |
-| T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L | | todo |  |
-| T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | todo |  |
-| T08 | M3 | [Network conflict sets and property tests](tasks/T08-conflict-sets.md) | M | | todo |  |
 | T09 | M3 | [Junction priority](tasks/T09-junction-priority.md) | M | T08 | todo |  |
 | T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T42 | todo |  |
 | T10 | M3 | [Milestone review M3](tasks/milestone-review.md) | S | T05 T06 T08 T09 | todo |  |
