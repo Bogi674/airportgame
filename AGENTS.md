@@ -6,6 +6,8 @@ This file is loaded into every session. Read it fully. Then follow `handoff/WORK
 
 Before you write a plan for any code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`). Interview the user about the open decisions, one question at a time with your recommendation, and settle them before you edit any file.
 
+Terse mode is always on for code work: no narration between tool calls, no recap of files read, no restating the request, and reports in a few lines. It covers talk only. Code, comments, commit messages, docs and UI strings keep full quality. In Claude Code the user can also ask for the crew (`.claude/skills/crew/SKILL.md`), which splits the work across an orchestrator, a Haiku coder and a Sonnet reviewer.
+
 ## The five rules you must never break
 
 1. **One task per session.** Pick the first task marked `todo` in `handoff/TASKS.md`, unless the user names one. Never work on two tasks at once.
@@ -29,7 +31,7 @@ Before you write a plan for any code request, run the `grill-me` skill (`.claude
 * Working title Airfield Tycoon. 2D top down, desktop browsers. The sim never depends on the renderer.
 * Stack: TypeScript strict, Vite, Canvas 2D, Preact, Zustand (UI state only), zod, Vitest, Playwright.
 * Allowed runtime dependencies: `preact`, `zustand`, `zod`, `polygon-clipping`. Never add another without the user's written approval. Dev dependencies also need approval.
-* Docs live in `docs/`. When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_2.md`, then the other docs.
+* Docs live in `docs/`. When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the other docs.
 
 ## Hard rules (from CLAUDE.md, never relaxed without the user's explicit approval)
 
