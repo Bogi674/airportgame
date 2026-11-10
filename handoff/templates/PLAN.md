@@ -1,7 +1,7 @@
 # <task id>: <task title>
 
 Status: planning | coding | verifying | done
-Branch: glm/mvp1
+Branch: the branch the user names
 
 ## Requirements
 

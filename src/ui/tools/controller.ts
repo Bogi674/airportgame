@@ -1,7 +1,7 @@
 import { apronContains } from '@shared/apronGeom';
-import { AIRFIELD, PAINT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, BUSINESS, PAINT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { sizeCode } from '@shared/standSizes';
-import { codeIndex, compassVector, CODES, runwaySide, type AirfieldPayload, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
+import { codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -29,6 +29,8 @@ import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
 import { typeOutlines } from '@render/markings/standLayout';
 import { gridById, gridsFor, snapToGrid, type ConstructionGrid } from '@shared/constructionGrid';
+import { towerBuildCost } from '@shared/towerBudget';
+import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
@@ -138,6 +140,10 @@ export class ToolController {
       if (!g) return [];
       const b = floorBounds(g);
       return b ? [{ k: 'poly', pts: rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1) }] : [];
+    }
+    if (kind === 'tower') {
+      const tw = af.towers?.find((x) => x.id === id);
+      return tw ? [{ k: 'poly', pts: towerRect(tw.x, tw.y, BUSINESS.tower.footprintM) }] : [];
     }
     return [];
   }
@@ -524,6 +530,9 @@ export class ToolController {
       case 'gaBlock':
         this.previewStands(p, mods);
         break;
+      case 'tower':
+        this.previewTower(p, mods);
+        break;
       case 'terminal':
         this.previewTerminal(p, mods);
         break;
@@ -588,12 +597,16 @@ export class ToolController {
       case 'gaBlock':
         this.commitStands(p, mods);
         break;
+      case 'tower':
+        this.commitTower(p, mods);
+        break;
       case 'terminal':
         this.finishTerminal(p);
         break;
       case 'demolish': {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
-        if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
+        if (hit?.kind === 'tower') this.deps.send({ type: 'demolishTower', id: hit.id });
+        else if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
         break;
       }
       case 'select': {
@@ -1523,6 +1536,34 @@ export class ToolController {
     else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, size: plan.size });
   }
 
+  // ATC tower --------------------------------------------------------------
+
+  /** Ghost of a tower: its footprint, the tower as it will look, and the cost of the chosen level. */
+  private previewTower(p: Pt, mods: Mods): void {
+    const level = useToolStore.getState().towerLevel;
+    const q = this.placeAt(p, mods);
+    const side = BUSINESS.tower.footprintM;
+    const rect = towerRect(q.x, q.y, side);
+    let problem = this.landProblem({ polygon: rect });
+    if (!problem && towerBlocked(this.af, rect)) problem = { code: 'towerOnPavement' };
+    if (!problem && (this.af.towers ?? []).some((t) => towersOverlap(rect, towerRect(t.x, t.y, side)))) problem = { code: 'towerOverlap' };
+    this.show(
+      {
+        valid: problem === null,
+        shapes: [{ k: 'poly', pts: rect }],
+        preview: { towers: [{ id: -1, cost: 0, x: q.x, y: q.y, level }] },
+        label: { x: q.x, y: q.y, text: tFormat('ghost.tower', { level, cost: formatMoney(towerBuildCost(level)) }) },
+      },
+      problem,
+      'hint.tower',
+    );
+  }
+
+  private commitTower(p: Pt, mods: Mods): void {
+    const q = this.placeAt(p, mods);
+    this.deps.send({ type: 'buildTower', x: q.x, y: q.y, level: useToolStore.getState().towerLevel });
+  }
+
   // Terminal ---------------------------------------------------------------
 
   private tStart: { cx: number; cy: number } | null = null;
@@ -1719,6 +1760,8 @@ export class ToolController {
     } else if (hit.kind === 'apron') {
       const a = af.aprons.find((x) => x.id === hit.id);
       if (a) shapes.push({ k: 'poly', pts: a.polygon });
+    } else if (hit.kind === 'tower') {
+      shapes.push(...this.shapesFor('tower', hit.id));
     } else {
       const s = af.stands.find((x) => x.id === hit.id);
       if (s) shapes.push({ k: 'ring', x: s.x, y: s.y, r: 8 });

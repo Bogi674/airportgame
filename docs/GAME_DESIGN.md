@@ -378,7 +378,10 @@ Vehicle rules:
 
 ### ATC
 
-* Tower capacity depends on controllers on shift and movements per hour each.
+* MVP 1: ATC comes from a free standing tower that the player builds anywhere on owned land that is not paved. The footprint is 15 m by 15 m at every level. Without a tower only GA and private aircraft fly. More than one tower may stand, and the highest level counts.
+* MVP 1: the tower has five levels, bought with cash only. Level 1 costs 100 000 and each upgrade costs 50 000. The movement budget per runway per rolling hour is 20, 40, 60, 80 and 100, counting landings and takeoffs only. The runway cap is 1, 1, 2, 2 and unlimited, and applies once a tower stands.
+* MVP 1: movements over the budget wait first in, first out. An arrival that waits 30 game minutes for a movement diverts. The tower panel shows the queue and an alert fires when queueing starts.
+* MVP 2: tower capacity depends on controllers on shift and movements per hour each.
 * Sequencing uses wake separation and a priority score. Options: departure metering, intersection departures, runway crossing rules.
 * Without radar, approach spacing is larger.
 * Low visibility procedures reduce capacity in fog.

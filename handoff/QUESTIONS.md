@@ -40,6 +40,7 @@ Context: ROADMAP.md line 119 asks for route demand, seasonal slot requests and c
 Options: A exact times per flight with stand and runway choice, B time windows auto assigned, C stand choice only with automatic times.
 Recommendation: A with automation as the default fallback, since the user asked for exact times and automation.
 Answer: A plus automation (2026-11-05): exact times per flight, plus an automate function.
+Superseded (2026-11-06): the user withdrew exact time editing. The T41 line in the 2026-11-06 T40 entry below and `handoff/tasks/T41-flight-schedule.md` govern: fixed schedules, fixed turnarounds, drag a flight onto a stand where the block fits.
 
 ## 2026-11-05 T40: stages, the control room, movement counting, runway caps
 
@@ -98,7 +99,6 @@ Answers (2026-11-06):
 * Grid mode: a persistent toggle per tool, with Alt as a temporary override. Confirmed.
 * T41: replace the exact per flight time model with Airport CEO style stand management. Every signed airline offers a set of flights with a fixed schedule and turnaround, and the player drags a flight onto a stand as long as the block fits. No exact time editing.
 Superseded proposals, do not treat them as approved: tower build cost 40 000 with upgrades 15 000, 25 000, 40 000 and 60 000, and the earlier movement ladder of 10, 20, 30, 45 and 50 per hour per runway. The 2 000 m grid draw length and the 40 m snap radius are also still unapproved.
-Note: `handoff/tasks/T40-atc-tower.md` still says in R1 that the footprint side grows with the level and still lists levels 2 to 5 as open. Reconcile the spec with this entry when T40 starts.
 
 ## 2026-11-06 T40: movement budget and divert window confirmed
 
@@ -115,3 +115,21 @@ Answers (2026-11-06, orchestrator, implementation only): queued movements retry 
 
 Context: T42 as built let the player pick one grid and lock it. The user asked for the Cities Skylines mechanism.
 Answer (2026-11-10): the grid is offered by proximity while the ghost hovers near a runway or taxiway, with free placement away from every grid. There is no picker. The reach is the pavement edge plus a screen scaled margin. The runway and taxiway tools also snap to the grid, as the lowest priority step. No hotkey for the Grid and Free toggle. This supersedes the 2026-11-05 line about an explicitly selected grid.
+
+## 2026-11-10 plan: delivery order, deferrals and new tasks
+
+Context: The user reviewed the plan with `docs/DESIGN_REVISION_3.md` and approved the decisions below. `handoff/TASKS.md` is reordered to match.
+Answers (2026-11-10):
+* Delivery order: 1 repair (finish the T40 tower tool and drawing, close T42, fix doc drift). 2 T41 flight offers. 3 passenger core, T11 to T18. 4 ground handling and baggage, T20 to T28 and T43, with boarding by jet bridge, stairs or bus. 5 tenants, airlines, finance. 6 procedural event director. 7 multi floor terminal designer, hangars, cargo.
+* Deferred: T03 grading, T07 photo calibration, and the runway marking remainder of T02. `docs/DESIGN_REVISION_3.md` replaces their look and proportion targets. M4 no longer depends on T05 to T07.
+* Floor index: the terminal data model gains a floor index before T12, with only floor 0 buildable for now. Filed as T49.
+* Tenants: T32 is redesigned. The player zones a unit and gives it a category, generated brands apply, the player accepts, and the tenant furnishes the unit from templates. Ads raise applications. Tenant variety is unlimited and grows with the airport.
+* Events: a seeded event director that draws from a data driven deck with player choices, so no two playthroughs match. Filed as T50.
+* New tasks from revision 3: stand markings per section 3 (T47), and stand access types with the jet bridge upgrade per section 4 (T48).
+* T41 depends on T40.
+Still open, ask before the task starts:
+* T48: the values in `docs/DESIGN_REVISION_3.md` section 4.4. Cost and works days per access type change, fixed link reach, the walking limit for stairs boarding, and whether types 3 and 4 fit every stand size.
+* T32: categories, unit sizes, application and advertising numbers, the rent and sales model, and the growth measure. See the spec.
+* T50: the first deck, its weights, windows, choices and costs. See the spec.
+* T51, T52, T53: no design has been given yet.
+* Placement in the order of T09, the M2 and M3 milestone reviews, and the M7 tasks T35 to T38. The approved order does not name them. T05, T06, T08 and T42 were delivered on `main` by another session on 2026-11-10.

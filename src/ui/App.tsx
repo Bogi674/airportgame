@@ -63,7 +63,13 @@ export function App() {
         onSite: (site) => useGameStore.getState().setSite(site),
         onOwnership: (o) => useGameStore.getState().setOwnership(o.owner, o.cash),
         onAirfield: (m) => useGameStore.getState().setAirfield(m.airfield, m.canUndo, m.canRedo),
-        onBusiness: (b) => useGameStore.getState().setBusiness(b),
+        onBusiness: (b) => {
+          const s = useGameStore.getState();
+          const prev = s.business;
+          s.setBusiness(b);
+          // Alert once when the queue starts to build, not on every update while it stays long.
+          if ((prev === null || prev.atcQueue === 0) && b.atcQueue > 0) s.pushAlert(tFormat('alert.atcOverload', { n: String(b.atcQueue) }), 'warn');
+        },
         onTerminals: (g) => useGameStore.getState().setTerminalGrids(g),
         onEvents: (list) => {
           for (const code of list) {

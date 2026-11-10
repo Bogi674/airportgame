@@ -1,0 +1,24 @@
+{
+  "buy": [[2880, 4880, 5720, 5640]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 1 },
+    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 190, "code": "C", "connectors": 4, "surface": "asphalt", "tier": 1 },
+    { "type": "buildApron", "polygon": [{ "x": 3800, "y": 5205 }, { "x": 4400, "y": 5205 }, { "x": 4400, "y": 5420 }, { "x": 3800, "y": 5420 }], "surface": "concrete", "tier": 1 },
+    { "type": "buildStands", "x": 4350, "y": 5330, "headingDeg": 180, "count": 6, "spacingM": 45, "standType": "remote", "size": "medium" },
+    { "type": "buildTower", "x": 4460, "y": 5300, "level": 1 },
+    { "type": "buildTower", "x": 4500, "y": 5300, "level": 2 },
+    { "type": "buildTower", "x": 4540, "y": 5300, "level": 3 },
+    { "type": "buildTower", "x": 4580, "y": 5300, "level": 4 },
+    { "type": "buildTower", "x": 4620, "y": 5300, "level": 5 }
+  ],
+  "camera": { "x": 4540, "y": 5305, "zoom": 5 },
+  "hideUi": true,
+  "actions": [
+    { "shot": "tower-levels", "clip": { "w": 1100, "h": 400 } },
+    { "camera": { "x": 4610, "y": 5305, "zoom": 16 } },
+    { "shot": "tower-detail", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 4300, "y": 5250, "zoom": 0.6 } },
+    { "shot": "tower-overview", "clip": { "w": 900, "h": 600 } }
+  ],
+  "report": ["airfield.towers.length", "cash"]
+}

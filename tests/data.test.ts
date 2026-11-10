@@ -56,6 +56,24 @@ describe('data files', () => {
   }
 });
 
+describe('tower paint', () => {
+  it('paint tower block has 5 levels', () => {
+    expect(paintJson.tower.levels).toHaveLength(5);
+  });
+
+  it('schema rejects a level with cabM 16', () => {
+    const bad = structuredClone(paintJson);
+    bad.tower.levels[4].cabM = 16;
+    expect(paintSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('schema rejects heights that do not rise', () => {
+    const bad = structuredClone(paintJson);
+    bad.tower.levels[1].heightM = bad.tower.levels[0].heightM;
+    expect(paintSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
 describe('revision 2 tables', () => {
   it('taxiway codes follow table 2.3', () => {
     const table = { A: [7.5, 13, 9.25, 0], B: [10.5, 18, 12.75, 0], C: [15, 25, 17.5, 5], D: [18, 30, 21, 5.5], E: [23, 38, 26.5, 5.5], F: [25, 42, 29.5, 7.5] } as const;

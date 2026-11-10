@@ -1,5 +1,6 @@
-import { AIRFIELD, SURFACE_SPEC } from '@data/index';
+import { AIRFIELD, BUSINESS, SURFACE_SPEC } from '@data/index';
 import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
+import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
 import { apronArea } from '@shared/apronGeom';
@@ -246,6 +247,49 @@ export function ObjectPanel({ send }: Props) {
         >
           {t('inspector.demolish')}
         </button>
+      </div>
+    );
+  }
+  if (kind === 'tower') {
+    const tw = af.towers?.find((x) => x.id === id);
+    if (!tw) return null;
+    const max = BUSINESS.tower.levels.length;
+    const queue = biz?.atcQueue ?? 0;
+    const outrankedBy = biz?.towerLevel ?? 0;
+    const cap = runwayCapOf(tw.level);
+    return (
+      <div
+        data-testid="object-panel"
+        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+      >
+        <div style="font-weight:600">{tFormat('inspector.title', { kind: t('inspector.tower'), name: '' }).trim()}</div>
+        <div data-testid="tower-level">
+          {t('inspector.towerLevel')}: {tFormat('inspector.towerLevelValue', { level: tw.level, max })}
+        </div>
+        {outrankedBy > tw.level && <div style="color:var(--muted);font-size:11px">{tFormat('inspector.towerOutranked', { level: outrankedBy })}</div>}
+        <div data-testid="tower-budget">
+          {t('inspector.towerBudget')}: {movementsPerHour(tw.level)}
+        </div>
+        <div data-testid="tower-runways">
+          {t('inspector.towerRunways')}: {cap === -1 ? t('inspector.unlimited') : cap}
+        </div>
+        <div data-testid="tower-queue" style={queue > 0 ? 'color:var(--warn)' : undefined}>
+          {t('inspector.towerQueue')}: {queue}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button data-testid="tower-upgrade" disabled={tw.level >= max} onClick={() => send({ type: 'upgradeTower', id })}>
+            {tFormat('inspector.towerUpgrade', { cost: formatMoney(BUSINESS.tower.upgradeCost) })}
+          </button>
+          <button
+            data-testid="demolish"
+            onClick={() => {
+              send({ type: 'demolishTower', id });
+              useToolStore.getState().set({ selection: null });
+            }}
+          >
+            {t('inspector.demolish')}
+          </button>
+        </div>
       </div>
     );
   }

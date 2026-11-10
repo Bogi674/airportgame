@@ -17,7 +17,7 @@ import {
 } from '@shared/airfield';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { padArea, padPolygon, padValue } from '@shared/turnPad';
-import { levelForRunways, runwayCapOf, towerLevelOf } from '@shared/towerBudget';
+import { levelForRunways, runwayCapOf, towerBuildCost, towerLevelOf } from '@shared/towerBudget';
 import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
@@ -658,7 +658,7 @@ export class Airfield {
     if (landProblem) return landProblem;
     if (towerBlocked(this.data, poly)) return { code: 'towerOnPavement' };
     for (const t of this.towerList) if (towersOverlap(poly, towerRect(t.x, t.y, side))) return { code: 'towerOverlap' };
-    const cost = BUSINESS.tower.cost + (level - 1) * BUSINESS.tower.upgradeCost;
+    const cost = towerBuildCost(level);
     const tower: Tower = { id: this.nextId++, cost, x: poly[0].x + side / 2, y: poly[0].y + side / 2, level };
     return this.place([{ type: 'tower', obj: tower }], cash);
   }
