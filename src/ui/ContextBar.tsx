@@ -22,23 +22,16 @@ function gridText(g: ConstructionGrid, af: AirfieldPayload): string {
 }
 
 /**
- * The construction grid controls: which grid is picked, and whether the active tool snaps to it.
- * The mode is persistent per tool, and Alt overrides it while it is held (T42 R2, R3, R4).
+ * The construction grid controls: which grid is offered near the cursor, and whether the active tool snaps to it.
+ * The mode is persistent per tool, and Alt overrides it while it is held (T42 R3, R4).
  */
 function GridControls({ tool }: { tool: Tool }) {
   const s = useToolStore();
   const af = useGameStore((g) => g.airfield);
-  const grids = gridsFor(af);
+  const offered = s.gridId === null ? null : gridsFor(af).find((g) => g.id === s.gridId) ?? null;
   const live: SnapMode = s.altHeld ? 'free' : snapModeOf(s.snapMode, tool);
   return (
     <>
-      <Select
-        label={t('opt.grid')}
-        value={s.gridId ?? ''}
-        testId="opt-grid"
-        options={[{ v: '', text: t('grid.none') }, ...grids.map((g) => ({ v: g.id, text: gridText(g, af) }))]}
-        onChange={(v) => s.set({ gridId: v === '' ? null : v })}
-      />
       <div style="display:flex;gap:4px;align-self:center" data-testid="snap-mode">
         {(['grid', 'free'] as const).map((m) => (
           <button key={m} data-testid={`snap-mode-${m}`} aria-pressed={live === m} onClick={() => s.set({ snapMode: { ...s.snapMode, [tool]: m } })}>
@@ -48,7 +41,7 @@ function GridControls({ tool }: { tool: Tool }) {
       </div>
       <span data-testid="snap-mode-label" style="align-self:center;color:var(--muted);font-size:11px">
         {t('opt.snap')}: {tDynamic(`snap.${live}`)}
-        {s.gridId === null ? `, ${t('grid.none').toLowerCase()}` : ''}
+        {`, ${offered === null ? t('grid.none').toLowerCase() : gridText(offered, af)}`}
       </span>
     </>
   );

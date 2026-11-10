@@ -325,6 +325,12 @@ export class ToolController {
         return g.p;
       }
     }
+    // The grid is the lowest priority snap: vertices, runway edges, centerlines and guides win (T42 R3).
+    const grid = this.snapGrid(mods);
+    if (grid) {
+      this.deps.setGuide(null, null);
+      return snapToGrid(p, grid).p;
+    }
     this.deps.setGuide(null, null);
     if (!prev || mods.alt) return p;
     const dx = p.x - prev.x;
@@ -357,8 +363,9 @@ export class ToolController {
   // Construction grid ------------------------------------------------------
 
   /**
-   * The grid the tools snap to right now: the picked one, when the active tool places on the grid
-   * and its snap mode is grid. Alt is the live override, so holding it returns null (T42 R3, R4).
+   * The grid the tools snap to right now: the one offered near the cursor, when the active tool
+   * places on the grid and its snap mode is grid. Alt is the live override, so holding it returns
+   * null (T42 R2, R3, R4).
    */
   private snapGrid(mods: Mods): ConstructionGrid | null {
     const st = useToolStore.getState();
@@ -370,17 +377,16 @@ export class ToolController {
 
   /**
    * The runway or taxiway segment grid under the cursor, measured to the centerline against half
-   * the pavement width plus shoulder, so any point on the pavement counts. It cannot reuse
-   * `pickObject`, which biases stands above runways (T42 R3). The nearest centerline wins.
+   * the pavement width plus shoulder and a screen scaled margin, so any point on the pavement counts.
+   * It cannot reuse `pickObject`, which biases stands above runways (T42 R2). The nearest centerline wins.
    */
   private gridUnder(p: Pt): ConstructionGrid | null {
     const slack = Math.max(4, 8 / this.deps.zoom());
     let best: ConstructionGrid | null = null;
     let bestD = Infinity;
     for (const g of gridsFor(this.af)) {
-      const reach = this.gridReach(g) + slack;
       const d = distToSegment(p.x, p.y, g.origin.x, g.origin.y, g.origin.x + g.ax * g.lengthM, g.origin.y + g.ay * g.lengthM);
-      if (d <= reach && d < bestD) {
+      if (d <= this.gridReach(g) + slack && d < bestD) {
         best = g;
         bestD = d;
       }
@@ -399,12 +405,25 @@ export class ToolController {
     return t ? t.widthM / 2 : 0;
   }
 
-  /** Picks the grid under the cursor while a grid tool is active and none is picked yet (T42 R3). */
-  private pickGridOnHover(p: Pt): void {
+  /**
+   * Offers the grid near the cursor, as Cities Skylines offers its grid to a hovering ghost: the
+   * grid of the runway or taxiway segment within reach is drawn, and snapped to unless the mode is
+   * free or Alt is held. Away from every grid there is none and placement is free. The grid already
+   * offered is kept while it is still in reach, so two close grids do not flicker (T42 R2).
+   */
+  private offerGrid(p: Pt): void {
     const st = useToolStore.getState();
-    if (st.gridId !== null || !GRID_TOOLS.includes(st.tool)) return;
-    const g = this.gridUnder(p);
-    if (g) st.set({ gridId: g.id });
+    if (!GRID_TOOLS.includes(st.tool)) return;
+    const kept = st.gridId === null ? null : gridById(this.af, st.gridId);
+    const g = kept && this.gridInReach(kept, p) ? kept : this.gridUnder(p);
+    const id = g ? g.id : null;
+    if (id !== st.gridId) st.set({ gridId: id });
+  }
+
+  /** True when the cursor is within the pavement edge plus margin of the grid's centerline. */
+  private gridInReach(g: ConstructionGrid, p: Pt): boolean {
+    const slack = Math.max(4, 8 / this.deps.zoom());
+    return distToSegment(p.x, p.y, g.origin.x, g.origin.y, g.origin.x + g.ax * g.lengthM, g.origin.y + g.ay * g.lengthM) <= this.gridReach(g) + slack;
   }
 
   /**
@@ -450,6 +469,7 @@ export class ToolController {
 
   down(p: Pt, mods: Mods): void {
     this.cursor = p;
+    this.offerGrid(p);
     this.frozen = false;
     const tool = useToolStore.getState().tool;
     if (tool === 'runway' && useToolStore.getState().runwayMode !== 'new') {
@@ -474,7 +494,7 @@ export class ToolController {
   move(p: Pt, mods: Mods): void {
     this.cursor = p;
     this.deps.setGuide(null, null);
-    this.pickGridOnHover(p);
+    this.offerGrid(p);
     const st = useToolStore.getState();
     switch (st.tool) {
       case 'runway':

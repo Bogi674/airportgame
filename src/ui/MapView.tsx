@@ -151,13 +151,16 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       if (s.airfield !== prev.airfield || s.terminalGrids !== prev.terminalGrids) controller.refreshSelection();
     });
 
-    // The picked construction grid is drawn only while a tool places on it (T42 R2, R6).
+    // The grid offered near the cursor is drawn only while a tool places on it (T42 R2, R6).
     const syncGrid = (): void => {
       const st = useToolStore.getState();
-      const picked = st.gridId === null ? null : gridById(useGameStore.getState().airfield, st.gridId);
-      // A grid whose runway or taxiway is gone cannot be snapped to, so the pick is dropped.
-      if (st.gridId !== null && picked === null) useToolStore.getState().set({ gridId: null });
-      renderer.setGrid(GRID_TOOLS.includes(st.tool) ? picked : null);
+      const offered = st.gridId === null ? null : gridById(useGameStore.getState().airfield, st.gridId);
+      // A grid whose runway or taxiway is gone cannot be snapped to, so the offer is dropped.
+      if (st.gridId !== null && offered === null) useToolStore.getState().set({ gridId: null });
+      const onGridTool = GRID_TOOLS.includes(st.tool);
+      // Leaving the grid tools clears the offer, so it cannot show again stale.
+      if (!onGridTool && st.gridId !== null) useToolStore.getState().set({ gridId: null });
+      renderer.setGrid(onGridTool ? offered : null);
     };
     const unsubGrid = useToolStore.subscribe((s, prev) => {
       if (s.tool !== prev.tool || s.gridId !== prev.gridId) syncGrid();
