@@ -22,28 +22,34 @@ function gridText(g: ConstructionGrid, af: AirfieldPayload): string {
 }
 
 /**
- * The construction grid controls: which grid is offered near the cursor, and whether the active tool snaps to it.
- * The mode is persistent per tool, and Alt overrides it while it is held (T42 R3, R4).
+ * The Grid and Free buttons of the active tool. The mode is persistent per tool, and Alt overrides it
+ * while it is held (T42 R3, R4). They sit in the option row, and the status text sits beside the hint,
+ * so the bar does not grow taller and cover the map.
  */
 function GridControls({ tool }: { tool: Tool }) {
+  const s = useToolStore();
+  const live: SnapMode = s.altHeld ? 'free' : snapModeOf(s.snapMode, tool);
+  return (
+    <div style="display:flex;gap:4px;align-self:center" data-testid="snap-mode">
+      {(['grid', 'free'] as const).map((m) => (
+        <button key={m} data-testid={`snap-mode-${m}`} aria-pressed={live === m} onClick={() => s.set({ snapMode: { ...s.snapMode, [tool]: m } })}>
+          {tDynamic(`snap.${m}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The snap mode in words and the grid offered near the cursor, shown beside the hint. */
+function GridStatus({ tool }: { tool: Tool }) {
   const s = useToolStore();
   const af = useGameStore((g) => g.airfield);
   const offered = s.gridId === null ? null : gridsFor(af).find((g) => g.id === s.gridId) ?? null;
   const live: SnapMode = s.altHeld ? 'free' : snapModeOf(s.snapMode, tool);
   return (
-    <>
-      <div style="display:flex;gap:4px;align-self:center" data-testid="snap-mode">
-        {(['grid', 'free'] as const).map((m) => (
-          <button key={m} data-testid={`snap-mode-${m}`} aria-pressed={live === m} onClick={() => s.set({ snapMode: { ...s.snapMode, [tool]: m } })}>
-            {tDynamic(`snap.${m}`)}
-          </button>
-        ))}
-      </div>
-      <span data-testid="snap-mode-label" style="align-self:center;color:var(--muted);font-size:11px">
-        {t('opt.snap')}: {tDynamic(`snap.${live}`)}
-        {`, ${offered === null ? t('grid.none').toLowerCase() : gridText(offered, af)}`}
-      </span>
-    </>
+    <span data-testid="snap-mode-label" style="color:var(--muted);font-size:11px">
+      {t('opt.snap')}: {tDynamic(`snap.${live}`)}, {offered === null ? t('grid.none').toLowerCase() : gridText(offered, af)}
+    </span>
   );
 }
 
@@ -122,7 +128,7 @@ export function ContextBar({ send }: Props) {
   return (
     <div
       data-testid="context-bar"
-      style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);max-width:760px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
+      style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);max-width:900px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
@@ -215,7 +221,12 @@ export function ContextBar({ send }: Props) {
         {s.tool === 'gaBlock' && <Num label={t('opt.standCount')} value={s.gaCount} min={1} max={20} onChange={(v) => s.set({ gaCount: v })} />}
       </div>
       {showCode && <ClassHelp />}
-      {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
+      {(s.hint || GRID_TOOLS.includes(s.tool)) && (
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          {GRID_TOOLS.includes(s.tool) && <GridStatus tool={s.tool} />}
+          {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
+        </div>
+      )}
       {problemBlock}
     </div>
   );

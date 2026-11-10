@@ -59,6 +59,7 @@ Other budgets:
 * Group draws by sprite to keep the GPU path warm.
 * People draw from one atlas per tier and are capped at 3 000 per frame, scaled to real density. Beyond that the density heat map carries the information.
 * Overlays render to their own canvas and update only on toggle or data change.
+* The construction grid overlay draws only while a placement tool offers a grid. It maps the four viewport corners into the grid frame, draws only the lines in that range as two stroked paths, and drops the minor lines below 2 px spacing and the whole grid below 3 px, so its cost is bounded by the viewport and not by the airfield.
 * Device pixel ratio: back the canvas at `min(devicePixelRatio, 2)` by default. The quality setting may go to 1.
 * Labels are cached as small bitmaps per text and size.
 

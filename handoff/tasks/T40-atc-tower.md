@@ -29,7 +29,7 @@ ATC stops being a four cell control room fixture inside a terminal and becomes a
 * R5. A runway count above the level's cap is refused at build time with a problem code naming the level needed. The caps are 1, 1, 2, 2 and unlimited.
 * R6. Upgrades are bought with cash only. There is no stage gate and no stage state in the sim. `docs/GAME_DESIGN.md` section 15 stages are not used as a ladder here; a separate task is filed later if stages are wanted.
 * R7. Drawing: the tower is vector geometry in meters in the chunk painter, with the cab ring and base per `docs/ART_AND_ASSETS.md`, in five distinct looks from a simple tower with a window to a tall 360 degree glazed tower. It is drawn under aircraft and vehicles.
-* R8. Placement follows the T42 construction grid once that lands: the tower origin snaps to the active grid node in grid mode. Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
+* R8. Placement follows the T42 construction grid once that lands: the tower origin snaps to the offered grid node in grid mode (T42 offers the grid by proximity, there is no picked grid). Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
 * R9. Save format bump with a migration that defaults `towers` to an empty list and keeps existing control rooms valid.
 * R10. Determinism test: 2 000 ticks twice from one seed, identical `stateHash`, including a tower build and upgrade.
 * R11. Strings for every new text in `src/ui/strings/en.json`, appended next to related keys.
