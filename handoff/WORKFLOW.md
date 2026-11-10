@@ -7,7 +7,7 @@ The spec driven loop for every task. Follow the steps in order. Each step names 
 ```
 git status                 must be clean; if not, ask the user what to do with the changes
 git fetch origin
-git checkout glm/mvp1      or the branch the user named; create it from origin/main the first time
+git checkout <branch>      the branch the user names; create it from origin/main the first time
 npm install                only if package.json changed since the last session
 ```
 

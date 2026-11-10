@@ -1,5 +1,7 @@
 # T07. Calibration overlays saved
 
+Deferred by the user on 2026-11-10. `docs/DESIGN_REVISION_3.md` section 2 replaces photo calibration for MVP 1 with a data check and a side by side comparison.
+
 Milestone M3. Roadmap line: "Calibration overlays saved for all 10 types within tolerance".
 
 ## Goal

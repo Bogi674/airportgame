@@ -8,7 +8,7 @@ This folder lets a smaller model continue the project at the quality of the prev
 
 1. Install opencode and connect the provider that serves GLM 5.3 Flash. Pick the model in opencode with `/models`, or set it in your global config `~/.config/opencode/opencode.json` as `"model": "<provider>/<model id>"` using the id your provider lists.
 2. In the repo: `npm install`, then `npx playwright install chromium` (for screenshots and e2e).
-3. Create the work branch: `git checkout -b glm/mvp1 origin/main`.
+3. Check out the branch the user names. Create it from `origin/main` the first time.
 4. Start opencode in the repo root. It loads `AGENTS.md` automatically, plus `handoff/WORKFLOW.md` and `handoff/PITFALLS.md` through `opencode.json`.
 
 The project `opencode.json` blocks pushes to `main` and force pushes, and asks before installing packages, pushing, rewriting the stress baseline or editing CI and the instruction files.

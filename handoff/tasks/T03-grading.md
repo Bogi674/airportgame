@@ -1,5 +1,7 @@
 # T03. Grading tool with cut and fill
 
+Deferred by the user on 2026-11-10. Do not start it unasked.
+
 Milestone M2. Roadmap line: "Grading tool with cut and fill cost (only an automatic grading cost is charged, terrain is not modified)".
 
 ## Goal

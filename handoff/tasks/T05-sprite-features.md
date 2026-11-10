@@ -1,5 +1,7 @@
 # T05. Sprite port: features and layer order
 
+Acceptance target since 2026-11-10: `docs/DESIGN_REVISION_3.md` section 1 and the sheets `docs/art/aircraft_mvp_lineup.png` and `docs/art/aircraft_style.png`. M4 no longer waits for this task.
+
 Milestone M3. Roadmap line: "Sprite baker in TypeScript ported from the prototypes: all features, layer order, livery, tiers 0 to 3". This task covers features and layer order. T06 covers liveries and tiers.
 
 ## Goal

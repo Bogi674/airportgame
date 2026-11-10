@@ -80,7 +80,7 @@ npm run e2e        Playwright browser tests
 
 ## Things you must never do
 
-* Never push to `main` or force push. Work on the branch the user gives you, or `glm/mvp1` if none.
+* Never push to `main` or force push. Work on the branch the user names.
 * Never run `npm run stress -- --update-baseline` unless the task spec says so or the user approves. A regression means your code got slower: fix it first.
 * Never reformat a whole JSON or source file. Edit only the lines you change. Strings in `src/ui/strings/en.json` are appended near related keys, never re sorted.
 * Never change a value in `src/data/*.json` that the task does not mention.

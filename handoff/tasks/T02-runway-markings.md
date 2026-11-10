@@ -1,5 +1,7 @@
 # T02. Runway marking details
 
+Deferred by the user on 2026-11-10. The runway marking remainder waits. The stand marking part is now T47, per `docs/DESIGN_REVISION_3.md` section 3.
+
 Milestone M2. Roadmap line: "Runway, taxiway and stand markings per `docs/ART_AND_ASSETS.md` sections 8 and 9, with surface rules and generated restraint envelopes". Taxiway and stand markings are complete (design revision 2). This task closes the runway gaps.
 
 ## Goal

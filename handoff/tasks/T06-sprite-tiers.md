@@ -1,5 +1,7 @@
 # T06. Sprite liveries and tiers 0 to 3
 
+Acceptance target since 2026-11-10: `docs/DESIGN_REVISION_3.md` section 1 and the sheets `docs/art/aircraft_mvp_lineup.png` and `docs/art/aircraft_style.png`. M4 no longer waits for this task.
+
 Milestone M3. Same roadmap line as T05.
 
 ## Goal

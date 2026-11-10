@@ -1,7 +1,9 @@
 # T42: Cities Skylines style grid and snapping
 
-Status: planning
-Branch: glm/mvp1
+Status: coding
+Branch: the branch the user names
+
+State on 2026-11-10: slices 1 to 3 are committed (728ec44, 88caf98, 5aa44de). Left: the runway and taxiway tools snap to the active grid as well (user decision, 2026-11-06), which needs the snap radius from the user, then the docs slice. The requirement boxes below are ticked when that pass checks each one against the code.
 
 ## Requirements
 
@@ -85,7 +87,7 @@ Notes from reading:
 
 1. DONE by another session in 728ec44: shared module, data key and 19 tests in `tests/constructionGrid.test.ts`. (R1, R2, R9)
 2. DONE by another session in 88caf98: the renderer overlay in `src/render/renderer.ts`, with `setGrid` and `drawGrid`. It maps the four viewport corners into the grid frame, culls to that range, draws minor and major lines as two passes at different alpha, projects endpoints to device pixels by hand so the width is fixed at every zoom (PITFALLS 15), and drops the grid when the lines would be closer than 2 px for minor and 3 px for major. No shared `gridLines` or `gridCenterline` is needed: the culling and projection stay in the renderer. Nothing calls `setGrid` yet, so no player sees a half wired feature.
-3. LEFT TO DO: the tool side, one complete feature. (R3, R4, R5, R6, R7, R10) Files: `src/ui/stores/toolStore.ts`, `src/ui/tools/controller.ts`, `src/ui/ContextBar.tsx`, `src/ui/strings/en.json`, `src/ui/MapView.tsx`. About 200 changed lines. The last step of this slice is the call to `renderer.setGrid`, so the grid the player picks is the grid they see.
+3. DONE in 5aa44de: the tool side, one complete feature. (R3, R4, R5, R6, R7, R10) Files: `src/ui/stores/toolStore.ts`, `src/ui/tools/controller.ts`, `src/ui/ContextBar.tsx`, `src/ui/strings/en.json`, `src/ui/MapView.tsx`. About 200 changed lines. The last step of this slice is the call to `renderer.setGrid`, so the grid the player picks is the grid they see.
 4. Docs. (R7, R8, R11) Files: `docs/ARCHITECTURE.md`, `docs/GAME_DESIGN.md`, `docs/UI_DESIGN.md`, `docs/ROADMAP.md`, `docs/PERFORMANCE.md`, `handoff/TASKS.md`, `handoff/STATE.md`. Run `npm run rules` again after the doc edits.
 5. Optional: an end to end test in `e2e/airfield.spec.ts` that builds a runway, picks its grid with the stands tool, places a row and asserts every stand sits on a node. `npm run e2e` is not part of `npm run verify`, so this slice is optional and must not be merged unless the suite passes.
 
