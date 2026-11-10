@@ -389,6 +389,7 @@ describe('flight offers in the business payload', () => {
       expect(o.endMin - o.arrMin - o.turnMin).toBe(5);
       expect(AIRCRAFT[o.typeIdx].icaoType).toBe(o.type);
     }
+    for (const r of sim.business.payload(sim.traffic.nowTick).board) expect(AIRCRAFT[r.typeIdx].icaoType).toBe(r.type);
   });
 
   it('a signed rotation offers one flight per rotation after the day closes', () => {
@@ -399,6 +400,25 @@ describe('flight offers in the business payload', () => {
     const rotations = newestByRotation(sim, 0, 2);
     expect(rotations.every((f) => f >= 0)).toBe(true);
     for (const f of rotations) expect(offers.filter((o) => o.flight === f)).toHaveLength(1);
+  });
+
+  it('lists four numbers per flight that holds a stand, matching the traffic state', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    closeDay(sim, 1);
+    const { standBlocks } = sim.business.payload(sim.traffic.nowTick);
+    let held = 0;
+    for (let f = 0; f < sim.traffic.fStand.length; f++) {
+      if (sim.traffic.fStand[f] >= 0 && sim.traffic.occupies(f)) held++;
+    }
+    expect(standBlocks.length).toBe(held * 4);
+    expect(held).toBeGreaterThan(0);
+    for (let i = 0; i < standBlocks.length; i += 4) {
+      const f = standBlocks[i + 1];
+      expect(standBlocks[i]).toBe(sim.traffic.fStand[f]);
+      expect(standBlocks[i + 2]).toBe(sim.traffic.flightBlock(f).startMin);
+      expect(standBlocks[i + 3]).toBe(sim.traffic.flightBlock(f).endMin);
+    }
   });
 
   it('carries one stand fact per stand and a movement budget only with a tower', () => {

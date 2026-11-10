@@ -49,6 +49,8 @@ interface GameState extends PerfReport {
   selectParcel(id: number): void;
   toggleParcelOverlay(): void;
   setNotice(code: string | null): void;
+  /** Shows a notice for NOTICE_MS. A newer notice replaces it and restarts the hold. */
+  showNotice(code: string): void;
   setAirfield(airfield: AirfieldPayload, canUndo: boolean, canRedo: boolean): void;
   setBusiness(b: BusinessPayload): void;
   setTerminalGrids(g: TerminalGrid[]): void;
@@ -63,7 +65,12 @@ interface GameState extends PerfReport {
 let alertId = 1;
 
 /** UI state only. The sim owns game state (hard rule: Zustand for UI state only). */
-export const useGameStore = create<GameState>((set) => ({
+/** How long a notice stays on screen. */
+const NOTICE_MS = 4000;
+/** The one timer that clears the notice, so an older timer never hides a newer notice. */
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+export const useGameStore = create<GameState>((set, get) => ({
   screen: 'menu',
   tick: 0,
   speed: 1,
@@ -144,6 +151,14 @@ export const useGameStore = create<GameState>((set) => ({
       if (eq > 0) args[parts[i].slice(0, eq)] = parts[i].slice(eq + 1);
     }
     set({ notice: { code: parts[0], args } });
+  },
+  showNotice: (code) => {
+    if (noticeTimer !== undefined) clearTimeout(noticeTimer);
+    get().setNotice(code);
+    noticeTimer = setTimeout(() => {
+      noticeTimer = undefined;
+      set({ notice: null });
+    }, NOTICE_MS);
   },
   setAirfield: (airfield, canUndo, canRedo) => set({ airfield, canUndo, canRedo }),
   setBusiness: (business) => set({ business }),

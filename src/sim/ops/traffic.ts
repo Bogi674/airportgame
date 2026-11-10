@@ -6,7 +6,7 @@ import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
 import { foldF64, foldInts, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
-import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type StandFacts, type StandRefusal } from '@shared/flightBlock';
+import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type BlockWindow, type StandFacts, type StandRefusal } from '@shared/flightBlock';
 import { TICKS_PER_MINUTE } from '@shared/business';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
@@ -672,7 +672,7 @@ export class Traffic {
   }
 
   /** True while a flight is still due to hold a stand: scheduled, inbound or on the ground. */
-  private occupies(g: number): boolean {
+  occupies(g: number): boolean {
     const st = this.fState[g];
     return st === FlState.Scheduled || st === FlState.Inbound || st === FlState.OnGround;
   }
@@ -691,16 +691,21 @@ export class Traffic {
     return false;
   }
 
+  /** A flight's stand block in absolute game minutes: arrival to the end of the turn plus the buffer. The one span math both the rule and the payload use. */
+  flightBlock(f: number): BlockWindow {
+    return blockWindow(this.fEta[f] / TICKS_PER_MINUTE, this.fTurn[f] / TICKS_PER_MINUTE);
+  }
+
   /** Why a flight cannot take a stand: the stand rule first, then a clash with another flight's block. Null when it may. */
   refuseAssign(f: number, standId: number): StandRefusal | null {
     const s = this.standIndexOf(standId);
     if (s < 0) return 'standNoLink';
     const r = refuseStand(this.standFactsOf(s), AIRCRAFT[this.fType[f]]);
     if (r !== null) return r;
-    const mine = blockWindow(this.fEta[f] / TICKS_PER_MINUTE, this.fTurn[f] / TICKS_PER_MINUTE);
+    const mine = this.flightBlock(f);
     for (let g = 0; g < MAX_FLIGHTS; g++) {
       if (g === f || this.fStand[g] !== standId || !this.occupies(g)) continue;
-      if (blocksOverlap(mine, blockWindow(this.fEta[g] / TICKS_PER_MINUTE, this.fTurn[g] / TICKS_PER_MINUTE))) return 'standBusy';
+      if (blocksOverlap(mine, this.flightBlock(g))) return 'standBusy';
     }
     return null;
   }

@@ -133,6 +133,10 @@ export interface BoardRow {
   turnMin: number;
   /** Scheduled off block, minute of the day: the scheduled arrival plus the nominal turnaround. */
   offBlockMin: number;
+  /** Index of the aircraft in the aircraft data list, for the stand rule. */
+  typeIdx: number;
+  /** Arrival in absolute game minutes, unwrapped, as the stand rule compares it. */
+  startMin: number;
 }
 
 /** One scheduled rotation of a signed airline, as the flight offers sheet shows it. */
@@ -151,6 +155,8 @@ export interface OfferRow {
   turnMin: number;
   /** Arrival plus turnaround plus STAND_BLOCK_BUFFER_MIN: the minute the stand block ends. */
   endMin: number;
+  /** Arrival in absolute game minutes, unwrapped, as the stand rule compares it. */
+  startMin: number;
   /** Aircraft code letter, A to F, which the stand sizes and routing read. */
   code: string;
   /** Stage length in km, 0 for test flights. */
@@ -169,6 +175,8 @@ export interface BusinessPayload {
   standContact: number[];
   /** Landings plus takeoffs the tower allows per rolling hour across every runway, 0 without a tower. */
   movementBudget: number;
+  /** Four numbers per flight that holds a stand (Scheduled, Inbound or OnGround): stand id, flight, start and end in absolute game minutes. Uncapped, the numbers the stand rule compares. */
+  standBlocks: number[];
   version: number;
   day: number;
   minuteOfDay: number;

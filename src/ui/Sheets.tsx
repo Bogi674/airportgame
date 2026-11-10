@@ -2,10 +2,10 @@ import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS } from '@data/index';
 import { LEDGER_CATEGORIES, type FeeLevel } from '@shared/business';
 import type { Command } from '@sim/commands';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BoardRow, BusinessPayload, OfferRow } from '@shared/business';
 import type { Stand } from '@shared/airfield';
-import type { StandRefusal } from '@shared/flightBlock';
+import { blockWindow, blocksOverlap, refuseBlock, type BlockWindow, type PlacedBlock, type StandRefusal } from '@shared/flightBlock';
 import { standRefusalAt } from './standRule';
 import { Icon } from './icons';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
@@ -279,57 +279,256 @@ function airlineHue(name: string): number {
   return h;
 }
 
+/** Pointer travel in pixels before a press on a block becomes a drag, so a plain click still selects. */
+const DRAG_START_PX = 4;
+/** Smallest hit area of a block in pixels, so a short turn stays easy to grab. */
+const MIN_HIT_PX = 24;
+const ROW_PX = 34;
+
+type FaultCode = StandRefusal | 'standBusy';
+
+/** Why a flight cannot hold a stand row: the stand rule first, then a clash with another block on that row. */
+interface RowFault {
+  code: FaultCode;
+  /** The flight whose block clashes, -1 when the stand itself refuses. */
+  flight: number;
+}
+
+interface DragState {
+  pointerId: number;
+  row: BoardRow;
+  el: HTMLElement;
+  startX: number;
+  startY: number;
+  /** Top of the block before any transform, in client pixels. */
+  baseTop: number;
+  started: boolean;
+  /** Stand id under the pointer, -1 for the unassigned lane, null for none. */
+  target: number | null;
+  onKey: (e: KeyboardEvent) => void;
+}
+
+interface DropState {
+  flight: number;
+  row: number;
+  fault: RowFault | null;
+}
+
+/** A block as the stand rule sees it: absolute game minutes and the flight that holds it. */
+interface Span {
+  flight: number;
+  standId: number;
+  startMin: number;
+  endMin: number;
+}
+
+/** Four numbers per block from the payload, see BusinessPayload.standBlocks. */
+function decodeStandBlocks(list: number[]): Span[] {
+  const out: Span[] = [];
+  for (let i = 0; i + 3 < list.length; i += 4) out.push({ standId: list[i], flight: list[i + 1], startMin: list[i + 2], endMin: list[i + 3] });
+  return out;
+}
+
+/** Where a block is drawn: minute of the day from arrival and the nominal turnaround. */
+const drawWindow = (r: BoardRow): BlockWindow => blockWindow(r.eta, r.turnMin);
+
+/** Clears the DOM and the listeners of a drag. It reads refs and the element only, so it is safe during unmount. */
+function releaseDrag(ref: { current: DragState | null }, d: DragState): void {
+  d.el.style.transform = '';
+  d.el.style.pointerEvents = '';
+  if (d.el.hasPointerCapture(d.pointerId)) d.el.releasePointerCapture(d.pointerId);
+  window.removeEventListener('keydown', d.onKey);
+  ref.current = null;
+}
+
+/** Lane packing: each block takes the first lane where no other block overlaps its window. */
+function packLanes(list: BoardRow[]): { r: BoardRow; lane: number }[] {
+  const lanes: BlockWindow[][] = [];
+  return list
+    .slice()
+    .sort((p, q) => p.eta - q.eta || p.flight - q.flight)
+    .map((r) => {
+      const w = drawWindow(r);
+      let lane = lanes.findIndex((ws) => ws.every((o) => !blocksOverlap(o, w)));
+      if (lane < 0) {
+        lane = lanes.length;
+        lanes.push([]);
+      }
+      lanes[lane].push(w);
+      return { r, lane };
+    });
+}
+
+/** The fault of one flight on a stand: the stand rule, then a clash with another flight's block. Null when it may hold the stand. */
+function rowFault(b: BusinessPayload, stands: Stand[], standId: number, r: BoardRow, spans: Span[]): RowFault | null {
+  const i = stands.findIndex((s) => s.id === standId);
+  if (i < 0) return { code: 'standNoLink', flight: -1 };
+  const refusal = standRefusalAt(b, i, stands[i], AIRCRAFT[r.typeIdx]);
+  if (refusal !== null) return { code: refusal, flight: -1 };
+  const others: PlacedBlock[] = spans.filter((o) => o.standId === standId && o.flight !== r.flight).map((o) => ({ flight: o.flight, window: { startMin: o.startMin, endMin: o.endMin } }));
+  const clash = refuseBlock(blockWindow(r.startMin, r.turnMin), others, r.flight);
+  return clash === null ? null : { code: clash.code, flight: clash.flight };
+}
+
+const faultText = (f: RowFault): string => (f.code === 'standBusy' ? tFormat('stands.conflict', { flight: f.flight }) : noticeText(f.code, {}));
+
+/** The row element under a pointer, its stand id (-1 for unassigned) and its top edge. */
+function rowUnder(e: PointerEvent): { id: number; top: number } | null {
+  const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-row]');
+  if (!el) return null;
+  return { id: Number(el.dataset.row), top: el.getBoundingClientRect().top };
+}
+
 /**
- * Stand management: a day timeline per stand. Flights sit on the stand they are assigned to, or in the
- * unassigned lane. Click a flight to move it, unassign it or cancel it. Stands can be opened, closed and
- * limited to commercial or general aviation flights, and the auto scheduler can be switched off.
+ * Stand management: a day timeline per stand. Blocks are the true stay of each flight, red when a stand
+ * refuses it or another block sits on the same stand. Drag a block onto a stand row with the pointer, or
+ * click it and pick a stand in the menu. Stands can be opened, closed and limited to commercial or general
+ * aviation flights, and the auto scheduler can be switched off.
  */
 function StandsSheet({ send }: Props) {
   const b = useGameStore((s) => s.business);
   const af = useGameStore((s) => s.airfield);
   const [pick, setPick] = useState<number | null>(null);
+  const [drop, setDrop] = useState<DropState | null>(null);
+  const [dragFlight, setDragFlight] = useState<number | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const justDragged = useRef(false);
+  const showNotice = useGameStore((s) => s.showNotice);
+  // Unmounting mid drag must not leave a key listener or a captured pointer behind.
+  useEffect(
+    () => () => {
+      const d = dragRef.current;
+      if (d !== null) releaseDrag(dragRef, d);
+    },
+    [],
+  );
   if (!b) return null;
   const rows = b.board.filter((r) => r.flight >= 0);
+  const spans = decodeStandBlocks(b.standBlocks);
   const nowMin = b.minuteOfDay;
   const unassigned = rows.filter((r) => r.standId < 0 && r.status === 'scheduled');
-  const block = (r: BoardRow, lane: number) => {
-    const start = Math.max(0, r.eta);
-    const len = Math.max(30, r.turnMin + 10);
-    const hue = airlineHue(r.airline);
+  const gridW = 24 * HOUR_PX;
+
+  const endDrag = (d: DragState): void => {
+    releaseDrag(dragRef, d);
+    setDrop(null);
+    setDragFlight(null);
+  };
+
+  const onBlockDown = (e: PointerEvent, r: BoardRow): void => {
+    if (r.status !== 'scheduled' || e.button !== 0 || dragRef.current !== null) return;
+    const el = e.currentTarget as HTMLElement;
+    const d: DragState = {
+      pointerId: e.pointerId,
+      row: r,
+      el,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseTop: el.getBoundingClientRect().top,
+      started: false,
+      target: null,
+      onKey: (k: KeyboardEvent) => {
+        if (k.key === 'Escape') endDrag(d);
+      },
+    };
+    // Capture at press time, so the pointerup always reaches this block even when the pointer leaves it.
+    el.setPointerCapture(e.pointerId);
+    justDragged.current = false;
+    dragRef.current = d;
+    window.addEventListener('keydown', d.onKey);
+  };
+
+  const onBlockMove = (e: PointerEvent): void => {
+    const d = dragRef.current;
+    if (d === null || e.pointerId !== d.pointerId) return;
+    if (!d.started) {
+      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < DRAG_START_PX) return;
+      d.started = true;
+      justDragged.current = true;
+      d.el.style.pointerEvents = 'none';
+      setDragFlight(d.row.flight);
+    }
+    // The block keeps its time and only moves vertically, onto the top of the row under the pointer.
+    const under = rowUnder(e);
+    d.el.style.transform = `translateY(${under === null ? e.clientY - d.startY : under.top + 4 - d.baseTop}px)`;
+    const next = under === null ? null : under.id;
+    if (next === d.target) return;
+    d.target = next;
+    setDrop(next === null ? null : { flight: d.row.flight, row: next, fault: next < 0 ? null : rowFault(b, af.stands, next, d.row, spans) });
+  };
+
+  const onBlockUp = (e: PointerEvent): void => {
+    const d = dragRef.current;
+    if (d === null || e.pointerId !== d.pointerId) return;
+    const under = d.started ? rowUnder(e) : null;
+    endDrag(d);
+    if (under === null) return;
+    if (under.id < 0) {
+      if (d.row.standId >= 0) send({ type: 'assignStand', flight: d.row.flight, standId: -1 });
+      return;
+    }
+    const fault = rowFault(b, af.stands, under.id, d.row, spans);
+    if (fault !== null) {
+      showNotice(fault.code);
+      return;
+    }
+    send({ type: 'assignStand', flight: d.row.flight, standId: under.id });
+  };
+
+  const onBlockCancel = (e: PointerEvent): void => {
+    const d = dragRef.current;
+    if (d !== null && e.pointerId === d.pointerId) endDrag(d);
+  };
+
+  const dropMark = (id: number): 'ok' | 'bad' | undefined => (drop?.row === id ? (drop.fault === null ? 'ok' : 'bad') : undefined);
+  const dropTestId = (id: number): string | undefined => (drop?.row === id ? (drop.fault === null ? 'drop-ok' : 'drop-bad') : undefined);
+
+  const renderBlock = (r: BoardRow, lane: number, fault: RowFault | null) => {
+    const w = drawWindow(r);
+    const left = (w.startMin / 60) * HOUR_PX;
+    const drawn = ((w.endMin - w.startMin) / 60) * HOUR_PX;
     const active = r.status !== 'scheduled';
+    const shown = drop?.flight === r.flight ? drop.fault : fault;
+    const title = shown !== null ? faultText(shown) : `${r.airline} ${r.type}`;
     return (
-      <button
+      <div
         key={r.flight}
-        class="blk"
-        data-testid={`flight-${r.flight}`}
-        aria-pressed={pick === r.flight}
-        disabled={active}
-        title={`${r.airline} ${r.type}`}
-        style={`left:${(start / 60) * HOUR_PX}px;width:${(len / 60) * HOUR_PX - 2}px;top:${4 + lane * 34}px;--h:${hue}`}
-        onClick={() => setPick(pick === r.flight ? null : r.flight)}
+        class="blk-hit"
+        data-testid={`offer-${r.flight}`}
+        onClick={() => {
+          // A click ends a press that was not a drag, and a drag never selects.
+          if (active || justDragged.current) {
+            justDragged.current = false;
+            return;
+          }
+          setPick(pick === r.flight ? null : r.flight);
+        }}
+        style={`left:${left}px;top:${4 + lane * ROW_PX}px;width:${Math.max(MIN_HIT_PX, drawn)}px`}
+        onPointerDown={(e) => onBlockDown(e, r)}
+        onPointerMove={onBlockMove}
+        onPointerUp={onBlockUp}
+        onPointerCancel={onBlockCancel}
       >
-        <b>{r.airline.split(' ')[0]}</b>
-        <span>{r.type}</span>
-      </button>
+        <button
+          class="blk"
+          data-testid={`flight-${r.flight}`}
+          data-bad={shown !== null ? 'true' : undefined}
+          aria-pressed={pick === r.flight}
+          disabled={active}
+          title={title}
+          style={`left:0;top:0;width:${drawn}px;--h:${airlineHue(r.airline)}`}
+        >
+          <b>{r.airline.split(' ')[0]}</b>
+          <span>{r.type}</span>
+        </button>
+      </div>
     );
   };
-  const lanes = (list: BoardRow[]): { r: BoardRow; lane: number }[] => {
-    const ends: number[] = [];
-    return list
-      .slice()
-      .sort((p, q) => p.eta - q.eta)
-      .map((r) => {
-        let lane = ends.findIndex((e) => e <= r.eta);
-        if (lane < 0) lane = ends.length;
-        ends[lane] = r.eta + Math.max(30, r.turnMin + 10);
-        return { r, lane };
-      });
-  };
+
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const picked = rows.find((r) => r.flight === pick) ?? null;
-  const gridW = 24 * HOUR_PX;
-  const unLanes = lanes(unassigned);
-  const unH = Math.max(1, ...unLanes.map((x) => x.lane + 1)) * 34 + 8;
+  const unLanes = packLanes(unassigned);
+  const unH = Math.max(1, ...unLanes.map((x) => x.lane + 1)) * ROW_PX + 8;
   return (
     <Sheet title={t('stands.title')} testId="sheet-stands">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
@@ -341,6 +540,7 @@ function StandsSheet({ send }: Props) {
           {t('stands.autoAssign')}
         </button>
         <span style="color:var(--muted);font-size:12px">{t('stands.help')}</span>
+        {dragFlight !== null && <span style="color:var(--accent);font-size:12px">{t('stands.dragHint')}</span>}
       </div>
       {picked && (
         <div class="panel" data-testid="flight-menu" style="padding:8px 10px;margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -390,22 +590,22 @@ function StandsSheet({ send }: Props) {
               ))}
             </div>
           </div>
-          <div class="tl-row" data-testid="lane-unassigned">
+          <div class="tl-row" data-testid="lane-unassigned" data-row={-1}>
             <div class="tl-label">
               <b>{t('stands.unassigned')}</b>
               <span class="sub">{unassigned.length}</span>
             </div>
-            <div class="tl-grid" style={`width:${gridW}px;height:${unH}px`}>
+            <div class="tl-grid" data-testid={dropTestId(-1)} data-drop={dropMark(-1)} style={`width:${gridW}px;height:${unH}px`}>
               <div class="tl-now" style={`left:${(nowMin / 60) * HOUR_PX}px`} />
-              {unLanes.map((x) => block(x.r, x.lane))}
+              {unLanes.map((x) => renderBlock(x.r, x.lane, null))}
             </div>
           </div>
           {af.stands.length === 0 && <div style="padding:12px;color:var(--muted)">{t('stands.none')}</div>}
           {af.stands.map((s) => {
-            const mine = lanes(rows.filter((r) => r.standId === s.id));
-            const h = Math.max(1, ...mine.map((x) => x.lane + 1)) * 34 + 8;
+            const mine = packLanes(rows.filter((r) => r.standId === s.id));
+            const h = Math.max(1, ...mine.map((x) => x.lane + 1)) * ROW_PX + 8;
             return (
-              <div key={s.id} class="tl-row" data-testid={`stand-row-${s.id}`}>
+              <div key={s.id} class="tl-row" data-testid={`stand-row-${s.id}`} data-row={s.id}>
                 <div class="tl-label">
                   <b>
                     {t('stands.stand')} {s.number}
@@ -427,6 +627,8 @@ function StandsSheet({ send }: Props) {
                 </div>
                 <div
                   class={`tl-grid${s.closed === true ? ' closed' : ''}`}
+                  data-testid={dropTestId(s.id)}
+                  data-drop={dropMark(s.id)}
                   style={`width:${gridW}px;height:${h}px`}
                   onClick={(e) => {
                     // Clicking an empty spot places the picked flight on this stand.
@@ -437,7 +639,7 @@ function StandsSheet({ send }: Props) {
                   }}
                 >
                   <div class="tl-now" style={`left:${(nowMin / 60) * HOUR_PX}px`} />
-                  {mine.map((x) => block(x.r, x.lane))}
+                  {mine.map((x) => renderBlock(x.r, x.lane, rowFault(b, af.stands, s.id, x.r, spans)))}
                 </div>
               </div>
             );

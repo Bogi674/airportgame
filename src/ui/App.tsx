@@ -26,7 +26,6 @@ import { ToolRail } from './ToolRail';
 import { TopBar } from './TopBar';
 import { t, tFormat } from './strings';
 
-const NOTICE_MS = 4000;
 const ALERT_MS = 9000;
 const AUTOSAVE_KEY = 'airfield.autosave';
 
@@ -82,10 +81,7 @@ export function App() {
               const id = latest[latest.length - 1]?.id;
               if (id !== undefined) setTimeout(() => useGameStore.getState().dismissAlert(id), ALERT_MS);
             } else {
-              useGameStore.getState().setNotice(code);
-              setTimeout(() => {
-                if (useGameStore.getState().notice?.code === name) useGameStore.getState().setNotice(null);
-              }, NOTICE_MS);
+              useGameStore.getState().showNotice(code);
             }
           }
         },

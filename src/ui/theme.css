@@ -73,6 +73,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .blk span { color: var(--muted); }
 .blk[aria-pressed='true'] { background: hsl(var(--h) 70% 50%); color: #fff; }
 .blk:disabled { opacity: 0.6; cursor: default; }
+.blk-hit { position: absolute; height: 28px; cursor: grab; z-index: 2; }
+.blk-hit .blk { left: 0; top: 0; }
+.blk[data-bad='true'] { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 30%, transparent); }
+.tl-grid[data-drop='ok'] { box-shadow: inset 0 0 0 2px var(--ok); background-color: color-mix(in srgb, var(--ok) 12%, transparent); }
+.tl-grid[data-drop='bad'] { box-shadow: inset 0 0 0 2px var(--bad); background-color: color-mix(in srgb, var(--bad) 12%, transparent); }
 
 .rail { top: 72px; gap: 6px; padding: 8px; }
 .round.small { width: 34px; height: 34px; }

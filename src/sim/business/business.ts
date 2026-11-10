@@ -652,6 +652,8 @@ export class Business {
         standId: t.standId[i],
         turnMin,
         offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
+        typeIdx: t.type[i],
+        startMin: f >= 0 ? t.fEta[f] / TICKS_PER_MINUTE : 0,
       });
     }
     for (let f = 0; f < 1024 && rows.length < SCHEDULE_ROWS; f++) {
@@ -671,10 +673,24 @@ export class Business {
         standId: t.fStand[f],
         turnMin,
         offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
+        typeIdx: t.fType[f],
+        startMin: t.fEta[f] / TICKS_PER_MINUTE,
       });
     }
     void tick;
     return rows;
+  }
+
+  /** Stand blocks of every flight that holds a stand, four numbers each. Traffic.flightBlock gives each span. */
+  private standBlocks(): number[] {
+    const out: number[] = [];
+    const t = this.traffic;
+    for (let f = 0; f < t.fStand.length; f++) {
+      if (t.fStand[f] < 0 || !t.occupies(f)) continue;
+      const w = t.flightBlock(f);
+      out.push(t.fStand[f], f, w.startMin, w.endMin);
+    }
+    return out;
   }
 
   /** Scheduled flights of signed airlines, earliest arrival then flight id, capped at the board's row count. */
@@ -697,6 +713,7 @@ export class Business {
         arrMin,
         turnMin,
         endMin: blockWindow(arrMin, turnMin).endMin,
+        startMin: t.fEta[f] / TICKS_PER_MINUTE,
         code: spec.derivedForReading.code,
         stageKm: t.fStage[f],
         standId: t.fStand[f],
@@ -714,6 +731,7 @@ export class Business {
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
       movementBudget: this.traffic.movementBudget(),
+      standBlocks: this.standBlocks(),
       version: this.version,
       day: dayIndex(tick),
       minuteOfDay: minuteOfDay(tick),
