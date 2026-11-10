@@ -133,6 +133,8 @@ Release 1.0 adds the remaining Phase 1 types with their own features (A330 long 
 
 ### 4.6 Calibration (required for every type)
 
+Revised by `docs/DESIGN_REVISION_3.md` section 2: for MVP 1 the data check plus a side by side match against `docs/art/aircraft_mvp_lineup.png` is enough, and no photo is required.
+
 1. Find a true top down photo or manufacturer 3 view with a known length.
 2. Scale it to px/m from the published length.
 3. Overlay the sprite at 55 percent opacity.
@@ -262,6 +264,8 @@ Generated from settings. Dimensions follow ICAO Annex 14. All in meters.
 * **Lights** (later release): edge, centerline, threshold and approach lights in a night layer.
 
 ## 9. Stand markings
+
+Revised again by `docs/DESIGN_REVISION_3.md` sections 3 and 4: the look target is `docs/art/surfaces_stands.png`, and stands have five access types.
 
 Revised by `docs/DESIGN_REVISION_2.md` sections 1 and 3 (reference sheets `docs/art/rev2_01`, `rev2_04` and `rev2_05`, geometry in `docs/reference/geometry/fig1.py`, `fig4_stand_data.py` and `fig5.py`). Everything is drawn from stand data and aircraft data by `render/markings/standLayout.ts` and `standPaint.ts`, in stand local meters: x across the stand, y away from the taxilane centerline (y = 0).
 
