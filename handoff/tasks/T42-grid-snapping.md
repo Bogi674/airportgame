@@ -25,7 +25,7 @@ The model is Cities Skylines: the road (here the runway or taxiway) is drawn fre
 Confirmed by the user on 2026-11-05 and 2026-11-06. The numbers that were marked proposed in the first draft of this file are gone: there is no snap radius and no fixed drawn length, because the grid is viewport local.
 
 * R1. One shared module `src/shared/constructionGrid.ts`: a grid is an origin, a heading, a spacing along and a spacing across. A function `gridsFor(airfield)` returns the snappable grid of every runway and of every taxiway segment, built from their geometry, cached by the airfield payload and its version. A function `snapToGrid(p, grid)` returns the nearest node of one grid as `{ p, snapped, headingDeg, gridId, i, j, major }`. Implemented and committed as 728ec44.
-* R2. One active grid at a time. The player picks it by hovering a runway or taxiway while a placement tool is active and no grid is picked yet, or from a picker in the context bar. Once picked, the grid never changes on its own.
+* R2. Proximity offer, as in Cities Skylines (user decision 2026-11-10). No grid is locked. The grid of the runway or taxiway segment nearest the cursor, within the pavement edge plus a screen scaled margin, is drawn and snapped to. The grid already offered is kept while it is still in reach. Away from every grid placement is free. There is no picker.
 * R3. Each placement tool gains a snap mode: grid, or free. Default grid for the apron polygon, the apron rectangle, stands and stand rows, GA blocks and new terminal foundations. The runway and taxiway tools keep their existing node, end and segment snapping, because they create the grids.
 * R4. In grid mode the cursor point snaps to the nearest grid node, and the heading snaps to the grid heading. In free mode the point is unquantized and the heading comes from the alignment frame as today. One modifier switches modes live: hold Alt for free, as today, and the context bar shows which mode is active.
 * R5. Terminal foundations keep the existing 2 m local grid inside the building, but the building's origin snaps to the active grid node.
@@ -44,17 +44,17 @@ Changing the taxiway tool's node snapping. Grid spacing changes per object (stan
 * Grid node spacing: 2 m along and 2 m across.
 * Major lines: every 10 m.
 * Both values live in `src/data/airfield_codes.json` under `constructionGrid`, with `spacingMinorM` and `spacingMajorM`, read through `AIRFIELD.constructionGrid`. The schema requires the major spacing to be a whole multiple of the minor one.
-* The grid is anchored to the runway or taxiway the player explicitly picks. It is not chosen by proximity.
+* The grid is offered by proximity to a runway or taxiway, as in Cities Skylines. It is not picked.
 * Grid and free placement is a persistent toggle, with Alt as a temporary override while held.
 * Guides are drawn only in the viewport.
-* Tools that use the grid: apron polygon, apron rectangle, stands and stand rows, GA block, new terminal origin. Standalone buildings come later. The runway and taxiway tools keep their existing node, end and segment snapping, and their priority order is unchanged. `handoff/QUESTIONS.md` records a later line saying those two tools also snap to the active grid; that line is not in the list above, so it is open question Q5 in `handoff/work/T42-grid-snapping.md` until the user settles it.
+* Tools that use the grid: apron polygon, apron rectangle, stands and stand rows, GA block, new terminal origin. Standalone buildings come later. The runway and taxiway tools also snap to the offered grid, as the lowest priority step after their node, end, segment, vertex, edge, centerline and guide snaps (user decision 2026-11-10).
 * No gameplay value is invented. The 2 m and 10 m values are the only numbers this task adds, and they come from the user.
 
 ## Interaction model
 
-* Pick the grid: hover a runway or taxiway while a placement tool is active and no grid is picked yet, or choose one in the context bar picker. After the first pick, hovering another object does not change the grid.
-* Toggle mode: the Grid and Free buttons in the context bar, with Alt as a temporary override while held. The context bar shows the active mode and the picked grid.
-* With no runway and no taxiway there is no grid, every tool falls back to today's behaviour, and the picker offers only the empty choice.
+* The grid appears when the ghost hovers near a runway or taxiway while a placement tool is active, and disappears when it leaves.
+* Toggle mode: the Grid and Free buttons in the context bar, with Alt as a temporary override while held. The context bar shows the active mode and the offered grid.
+* With no runway and no taxiway there is no grid, every tool falls back to today's behaviour, and nothing is offered.
 
 ## Numbers to confirm with the user before coding
 
@@ -67,7 +67,7 @@ Each question has a recommendation. Ask the user before coding the slice that de
 | # | Question | Options | Recommendation |
 | --- | --- | --- | --- |
 | Q1 | A bent taxiway has several straight segments. Which one anchors its grid? | A the longest straight segment, ties to the earliest. B the first segment. C the segment nearest the cursor when the grid is picked. D one grid per segment | Answered 2026-11-06: D. Every taxiway segment carries its own grid, with the stable id `taxi:<id>:<segment>` counting segments from 0. It is implemented and committed as 728ec44, with tests, so this row records the answer rather than a choice. The consequence is that the context bar picker lists one entry per segment of a bent taxiway |
-| Q2 | Does hovering pick the grid only while none is picked, or does hovering always pick the nearest one? | A hover picks only while none is picked, the picker changes it afterwards. B hover always picks the object under the cursor | A. The user asked for no automatic switching of a locked anchor. A click cannot pick the grid, because the click places the object |
-| Q3 | Does the persistent toggle need a keyboard shortcut? | A context bar buttons only. B a new hotkey | A. No binding is invented in this task |
+| Q2 | Does hovering pick the grid only while none is picked, or does hovering always pick the nearest one? | A hover picks only while none is picked, the picker changes it afterwards. B hover always picks the object under the cursor | Answered 2026-11-10: follow Cities Skylines, a proximity offer with no lock. Old note: A. The user asked for no automatic switching of a locked anchor. A click cannot pick the grid, because the click places the object |
+| Q3 | Does the persistent toggle need a keyboard shortcut? | A context bar buttons only. B a new hotkey | Answered 2026-11-10: A. Old note: A. No binding is invented in this task |
 | Q4 | Do rapid exits carry a grid? They are `Taxiway` records with `kind` `rapidExit` | A every `Taxiway` record gets a grid, per R1. B only `taxiway` and `taxilane` | A, per the wording of R1. The player can ignore them |
-| Q5 | Do the runway and taxiway tools snap to the active grid as well as to their own nodes? The commissioning message lists only aprons, stands and rows, GA blocks and the new terminal origin, while `handoff/QUESTIONS.md` (2026-11-06) records that the runway and taxiway tools snap to the grid too and keep their own node snapping | A the two tools stay out, per the list in Numbers above. B they snap to the grid after their node, end and segment steps | A, because the user's latest message wins and the list is explicit. B costs one lower priority step in `taxiSnap` and `snap` and changes nothing else, so it is cheap to add later |
+| Q5 | Do the runway and taxiway tools snap to the active grid as well as to their own nodes? The commissioning message lists only aprons, stands and rows, GA blocks and the new terminal origin, while `handoff/QUESTIONS.md` (2026-11-06) records that the runway and taxiway tools snap to the grid too and keep their own node snapping | A the two tools stay out, per the list in Numbers above. B they snap to the grid after their node, end and segment steps | Answered 2026-11-10: B, as the lowest priority step. Old note: A, because the user's latest message wins and the list is explicit. B costs one lower priority step in `taxiSnap` and `snap` and changes nothing else, so it is cheap to add later |

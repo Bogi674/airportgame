@@ -12,7 +12,7 @@ Size: S is one or two slices, M three or four, L five or more. Split an L task i
 | T39 | M2 | [Turn pads sit beyond the runway threshold](tasks/T39-turn-pad-beyond.md) | S | T01 | done | b2a027f e53274e f781b57 1899039 |
 | T02 | M2 | [Runway marking details](tasks/T02-runway-markings.md) | L | | todo | |
 | T03 | M2 | [Grading tool with cut and fill](tasks/T03-grading.md) | L | | todo | |
-| T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M | | todo | |
+| T42 | M2 | [Grid and snapping, Cities Skylines style](tasks/T42-grid-snapping.md) | M | | doing | |
 | T40 | M7 | [Standalone ATC tower with stage levels](tasks/T40-atc-tower.md) | M | | doing | |
 | T04 | M2 | [Milestone review M2](tasks/milestone-review.md) | S | T01 T02 T03 | todo | |
 | T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L | T04 | todo | |

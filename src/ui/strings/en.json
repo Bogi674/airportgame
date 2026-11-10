@@ -63,7 +63,6 @@
   "tool.demolish": "Demolish",
   "tool.undo": "Undo (Ctrl+Z)",
   "tool.redo": "Redo (Ctrl+Y)",
-  "opt.grid": "Grid",
   "opt.snap": "Snapping",
   "snap.grid": "Grid",
   "snap.free": "Free",
