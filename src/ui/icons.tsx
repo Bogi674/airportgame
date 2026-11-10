@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 
 export type IconName =
-  | 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish'
+  | 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'demolish'
   | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close' | 'handling' | 'flightops' | 'infra' | 'staff' | 'zoning' | 'lock' | 'overlay' | 'settings' | 'options'
   | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
@@ -16,6 +16,7 @@ const P: Record<IconName, ComponentChildren> = {
   stands: (<><path d="M5 20V7h14v13" strokeDasharray="0" /><path d="M12 6l-1 4-5 3v1.500l5-1 .5 3.500-2 1.500V20l2.500-.8 2.500.8v-1.500l-2-1.500.5-3.500 5 1V13l-5-3z" /></>),
   gaBlock: (<><path d="M4 19V8M12 19V8M20 19V8" /><path d="M4 6l2 2M12 6l2 2M20 6l2 2" /><path d="M2 19h20" /></>),
   terminal: (<><path d="M2 20h20" /><path d="M4 20v-7l8-4 8 4v7" /><path d="M8 20v-4h3v4M13 20v-4h3v4" /><path d="M12 9V4M10.500 4h3" /></>),
+  tower: (<><path d="M4 21h16" /><path d="M9.500 21l1.500-10h2l1.500 10" /><path d="M7 8h10l-1-3H8z" /><path d="M12 5V2" /><path d="M9 11h6" /></>),
   demolish: <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6" />,
   undo: <path d="M9 7L4 12l5 5M4 12h10a6 6 0 010 7" />,
   redo: <path d="M15 7l5 5-5 5M20 12H10a6 6 0 000 7" />,

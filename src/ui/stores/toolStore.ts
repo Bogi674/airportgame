@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
 
-export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'demolish';
+export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'demolish';
 
 export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
@@ -13,7 +13,7 @@ export type SnapMode = 'grid' | 'free';
  * The tools that place on the construction grid (handoff/tasks/T42-grid-snapping.md, R3). The runway
  * and taxiway tools use it as their lowest priority snap, after their own node, end and segment snaps.
  */
-export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'stands', 'gaBlock', 'terminal'];
+export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'stands', 'gaBlock', 'terminal', 'tower'];
 
 /** Snap mode of one tool: grid unless the player switched that tool to free. */
 export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): SnapMode {
@@ -21,7 +21,7 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
 }
 
 export interface Selection {
-  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal';
+  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower';
   id: number;
 }
 
@@ -49,6 +49,8 @@ interface ToolState {
   exitAngle: 30 | 45 | 90;
   connectors: number;
   gaCount: number;
+  /** ATC tower tool: the level to build, from 1 to the top of the tower ladder. */
+  towerLevel: number;
   /** Rotation of stand rows, GA blocks and new terminals in degrees, relative to the nearest runway (or the site axis). */
   rowHeading: number;
   /** Where the confirm or cancel popup is shown on screen, or null. */
@@ -93,6 +95,7 @@ export const useToolStore = create<ToolState>((set) => ({
   exitAngle: 30,
   connectors: 3,
   gaCount: 6,
+  towerLevel: 1,
   rowHeading: 0,
   confirmAt: null,
   tSub: 'foundation',

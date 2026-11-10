@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Marking palette and dimensions in meters (docs/DESIGN_REVISION_2.md sections 2.4 and 8). Minimum widths in device pixels at the bake scale.",
+  "note": "Marking palette and dimensions in meters (docs/DESIGN_REVISION_2.md sections 2.4 and 8). Minimum widths in device pixels at the bake scale. Tower art values in meters chosen by the implementer per the user decision of 2026-11-06, reviewed by screenshot.",
   "colors": {
     "yellow": "#f2c230",
     "red": "#e0414a",
@@ -30,5 +30,29 @@
     "signBeforeJunctionM": 40,
     "signHeightM": 2.4,
     "signCharWidthM": 1.3
+  },
+  "tower": {
+    "shadowPerM": 0.4,
+    "shadowColor": "rgba(0,0,0,0.24)",
+    "mullionWidthM": 0.12,
+    "mullionStepDeg": 22.5,
+    "mullionMinScale": 2,
+    "antennaRadiusM": 0.35,
+    "antennaRingFrac": 0.25,
+    "antennaStartDeg": 45,
+    "shadowOffsetM": 1.2,
+    "baseRoofInsetM": 1.2,
+    "outlineMinM": 0.1,
+    "outlinePx": 0.9,
+    "padEdgeMinM": 0.15,
+    "padEdgePx": 0.9,
+    "colors": { "pad": "#b9b6ad", "padEdge": "#8d8a82", "base": "#d9d6ce", "baseRoof": "#c6c3bb", "wall": "#e6e3dc", "glass": "#4f7f96", "roof": "#f0eee8", "walkway": "#9a978f", "antenna": "#2a2a2a", "radome": "#ffffff", "outline": "#1b1b1b" },
+    "levels": [
+      { "heightM": 8, "baseM": 7, "shaftM": 4, "cabM": 5, "cabSides": 4, "glassSweepDeg": 90, "glassBandM": 0.8, "walkwayM": 0, "antennas": 1, "radomeM": 0 },
+      { "heightM": 14, "baseM": 8, "shaftM": 4, "cabM": 6, "cabSides": 4, "glassSweepDeg": 270, "glassBandM": 0.9, "walkwayM": 0, "antennas": 1, "radomeM": 0 },
+      { "heightM": 22, "baseM": 10, "shaftM": 5, "cabM": 7.5, "cabSides": 8, "glassSweepDeg": 270, "glassBandM": 1, "walkwayM": 0, "antennas": 2, "radomeM": 0 },
+      { "heightM": 32, "baseM": 12, "shaftM": 6, "cabM": 9, "cabSides": 8, "glassSweepDeg": 360, "glassBandM": 1.1, "walkwayM": 10.5, "antennas": 2, "radomeM": 1.6 },
+      { "heightM": 45, "baseM": 14, "shaftM": 7, "cabM": 11, "cabSides": 32, "glassSweepDeg": 360, "glassBandM": 1.3, "walkwayM": 13, "antennas": 3, "radomeM": 2.4 }
+    ]
   }
 }

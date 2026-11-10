@@ -162,7 +162,10 @@ export const CATEGORIES: Category[] = [
     hue: 255,
     testId: 'tool-flightops',
     tool: null,
-    tabs: [{ id: 'scheduling', items: [sheet('airlines', 'airlines', 'airlines'), sheet('slots', 'slots', 'flightops'), sheet('standManagement', 'stands', 'flights'), sheet('board', 'flights', 'flights')] }],
+    tabs: [
+      { id: 'scheduling', items: [sheet('airlines', 'airlines', 'airlines'), sheet('slots', 'slots', 'flightops'), sheet('standManagement', 'stands', 'flights'), sheet('board', 'flights', 'flights')] },
+      { id: 'atc', items: [{ id: 'tower', thumb: 'tower', icon: 'tower', run: (s) => s.set({ tool: 'tower' }), active: (s) => s.tool === 'tower' }] },
+    ],
   },
   {
     id: 'terminal',

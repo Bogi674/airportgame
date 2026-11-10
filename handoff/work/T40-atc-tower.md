@@ -1,7 +1,9 @@
 # T40: Standalone ATC tower with five levels
 
-Status: doing
-Branch: glm/mvp1
+Status: done
+Branch: the branch the user names
+
+State on 2026-11-10: all slices are committed. Slice 4 drew the five looks, slice 5 was split into the build tool and the object panel with the overload alert. Two user decisions of 2026-11-10 changed slice 5: an existing tower is upgraded and demolished from the select tool panel, and the overload readout is the panel plus an alert, with no Slots sheet bars because T41 replaces that sheet.
 
 ## Requirements
 
@@ -9,15 +11,15 @@ Copied from `handoff/tasks/T40-atc-tower.md`, which was repaired on 2026-11-06 t
 
 * [x] R1. New sim object `Tower { id, x, y, level }` in the airfield payload. Placed on owned land only, with a footprint rectangle from data (`tower.footprintM`, 15 m by 15 m at every level).
 * [x] R2. New command `buildTower { x, y, level }`, plus `upgradeTower { id }` and `demolishTower { id }`. Money, land and overlap checks follow the GA block pattern.
-* [ ] R3. The tower is the only ATC source. `atcOk` is true when at least one tower stands. Range is the whole airport with no distance limit, so the old 3.5 km control room range does not apply. The control room fixture keeps its `FIXTURE_KEYS` index for save compatibility, grants no coverage, and is removed from the buildable list. Saves that had a control room and no tower lose ATC until a tower is built, with a warning on load.
-* [ ] R4. Capacity: the movement budget per hour per runway is 20 at level 1, 40 at level 2, 60 at level 3, 80 at level 4 and 100 at level 5. A movement is a landing or a takeoff. Taxiing is free, so a full turnaround costs 2 movements. The budget is a rolling 60 minute window, spent as the movement starts. When the budget is gone, further movements wait in a first in first out queue and are released as the budget frees. An aircraft that has already landed or is airborne is never held mid operation, and an aircraft already holding a runway reservation is never held either. Overload shows as an overload warning plus the queue length, not a hard refusal of the schedule.
+* [x] R3. The tower is the only ATC source. `atcOk` is true when at least one tower stands. Range is the whole airport with no distance limit, so the old 3.5 km control room range does not apply. The control room fixture keeps its `FIXTURE_KEYS` index for save compatibility, grants no coverage, and is removed from the buildable list. Saves that had a control room and no tower lose ATC until a tower is built, with a warning on load.
+* [x] R4. Capacity: the movement budget per hour per runway is 20 at level 1, 40 at level 2, 60 at level 3, 80 at level 4 and 100 at level 5. A movement is a landing or a takeoff. Taxiing is free, so a full turnaround costs 2 movements. The budget is a rolling 60 minute window, spent as the movement starts. When the budget is gone, further movements wait in a first in first out queue and are released as the budget frees. An aircraft that has already landed or is airborne is never held mid operation, and an aircraft already holding a runway reservation is never held either. Overload shows as an overload warning plus the queue length, not a hard refusal of the schedule.
 * [x] R5. A runway count above the level's cap is refused at build time with a problem code naming the level needed. The caps are 1, 1, 2, 2 and unlimited.
 * [x] R6. Upgrades are bought with cash only. There is no stage gate and no stage state in the sim.
-* [ ] R7. Drawing: vector geometry in meters in the chunk painter, five distinct looks from a simple tower with a window to a tall 360 degree glazed tower. Drawn under aircraft and vehicles.
-* [ ] R8. Placement follows the T42 construction grid once that lands. Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
+* [x] R7. Drawing: vector geometry in meters in the chunk painter, five distinct looks from a simple tower with a window to a tall 360 degree glazed tower. Drawn under aircraft and vehicles.
+* [x] R8. Placement follows the T42 construction grid once that lands. Until T42 lands, it places on 0 and 90 degree steps relative to the nearest frame, as `frameAt` does today.
 * [x] R9. Save format bump with a migration that defaults `towers` to an empty list and keeps existing control rooms valid.
 * [x] R10. Determinism test: 2 000 ticks twice from one seed, identical `stateHash`, including a tower build and upgrade.
-* [ ] R11. Strings for every new text in `src/ui/strings/en.json`, appended next to related keys.
+* [x] R11. Strings for every new text in `src/ui/strings/en.json`, appended next to related keys.
 * [x] R12. Without a tower, GA and private aircraft only. No airline schedules commercial flights, and there is no default movement budget for commercial traffic.
 
 ## Read first (done)

@@ -35,7 +35,9 @@ Cessna 172S, Cessna 208B Grand Caravan EX, King Air 360, ATR 72-600, Dash 8-400,
 
 ## MVP 1 status
 
-A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, sign airlines, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. The checklists below record what is done and what is simplified or missing. Terminal rooms and room checks, passengers on screen, ground vehicles and the full aircraft sprite port are not built, so MVP 1 is playable but not complete.
+A playable slice of MVP 1 exists and runs as one offline file (`npm run build:offline`, output `dist-offline/airfield-tycoon.html`). You can buy land, build runways, taxiways, aprons, stands and a terminal, watch aircraft land, turn around and take off, earn fees and run a ledger, save, load and export. Walls, rooms, room checks and ground vehicles exist. The ATC tower sim is done, but the tower has no build tool and no drawing, so commercial flights cannot start from the UI until T40 lands. Cohorts, queues, the walking graph, arrivals, baggage, turnaround task lists, service roads, generated airlines, shop sales and the event deck are missing. The checklists below record what is done and what is simplified.
+
+Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS.md`: repair (tower tool and drawing, grid snapping, doc drift), flight offers, the passenger core, ground handling and baggage with boarding by jet bridge, stairs or bus, then tenants, airlines and finance, then the event director, then the multi floor terminal designer, hangars and cargo. This order wins over the milestone order below. The grading tool, photo calibration and the remaining runway marking details are deferred, and `docs/DESIGN_REVISION_3.md` replaces their look and proportion targets.
 
 ## MVP 1 milestones
 

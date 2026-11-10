@@ -129,6 +129,14 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
           {[18, 48, 78].map((x) => <g key={x}><rect x={x - 9} y="14" width="18" height="30" fill="none" stroke="#e6e8ea" stroke-width="0.8" />{plane(x, 30, 90, 0.55)}</g>)}
         </Scene>
       );
+    case 'tower':
+      return (
+        <Scene bg="#8a8f97">
+          <rect x="32" y="8" width="32" height="44" rx="2" fill="#b9bec5" stroke="#e6e8ea" stroke-width="0.8" />
+          <circle cx="48" cy="30" r="13" fill="none" stroke="#e6e8ea" stroke-width="1.6" />
+          <circle cx="48" cy="30" r="7" fill="#4b4f57" stroke="#9aa4ae" stroke-width="0.8" />
+        </Scene>
+      );
     case 'foundation':
       return <Scene bg="#6f7f55"><rect x="14" y="10" width="68" height="40" fill="#8b8f94" stroke="#555" stroke-width="1.200" /></Scene>;
     case 'floor':

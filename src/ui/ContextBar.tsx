@@ -1,4 +1,4 @@
-import { SURFACE_SPEC } from '@data/index';
+import { BUSINESS, SURFACE_SPEC } from '@data/index';
 import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type AirfieldPayload, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
 import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
@@ -104,7 +104,7 @@ export function ContextBar({ send }: Props) {
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = SURFACE_SPEC[s.surface].pcrTiers;
-  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad';
+  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower';
   const showCode = showPavement && s.tool !== 'apron';
   const taxiTool = s.tool === 'taxiway' || s.tool === 'taxilane';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
@@ -219,6 +219,7 @@ export function ContextBar({ send }: Props) {
           </>
         )}
         {s.tool === 'gaBlock' && <Num label={t('opt.standCount')} value={s.gaCount} min={1} max={20} onChange={(v) => s.set({ gaCount: v })} />}
+        {s.tool === 'tower' && <Num label={t('opt.towerLevel')} value={s.towerLevel} min={1} max={BUSINESS.tower.levels.length} testId="opt-towerLevel" onChange={(v) => s.set({ towerLevel: v })} />}
       </div>
       {showCode && <ClassHelp />}
       {(s.hint || GRID_TOOLS.includes(s.tool)) && (

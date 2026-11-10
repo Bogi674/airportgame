@@ -1,5 +1,7 @@
 # T12. Walking graph
 
+Depends on T49 (user decision, 2026-11-10): the terminal data model gains a floor index first, and the graph is keyed by floor from the start. Only floor 0 exists for now.
+
 Milestone M4. Roadmap line: "Walking graph with cached distances and regional rebuild".
 
 ## Goal

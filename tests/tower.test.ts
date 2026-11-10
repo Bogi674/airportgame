@@ -4,7 +4,9 @@ import { BUSINESS } from '@data/index';
 import { businessSchema } from '../src/data/schemas';
 import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
-import { levelForRunways, movementsPerHour, runwayCapOf, towerCapacity, towerLevelOf } from '@shared/towerBudget';
+import { levelForRunways, movementsPerHour, runwayCapOf, towerBuildCost, towerCapacity, towerLevelOf } from '@shared/towerBudget';
+import { pickObject } from '@shared/airfieldGeom';
+import { EMPTY_AIRFIELD, type AirfieldPayload, type Apron } from '@shared/airfield';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
 import { AcState } from '@sim/ops/traffic';
 import { buildTestAirport, ownedSim, run, OPTIONS } from './helpers';
@@ -37,6 +39,20 @@ describe('tower data', () => {
     expect(businessSchema.safeParse(withLevels(bad)).success).toBe(false);
     const falling = tower.levels.map((l, i) => (i === 2 ? { ...(l as object), movementsPerHour: 10 } : l));
     expect(businessSchema.safeParse(withLevels(falling)).success).toBe(false);
+  });
+});
+
+describe('tower build cost', () => {
+  it('is the build cost at level 1 and one upgrade per level above 1', () => {
+    expect(towerBuildCost(1)).toBe(100000);
+    expect(towerBuildCost(3)).toBe(200000);
+  });
+
+  it('is what a level 3 build takes from the cash', () => {
+    const sim = ownedSim();
+    const cash = sim.cash;
+    expect(build(sim, 3)).toEqual([]);
+    expect(cash - sim.cash).toBe(towerBuildCost(3));
   });
 });
 
@@ -487,5 +503,37 @@ describe('tower determinism and saves', () => {
     expect(c.stateHash()).toBe(b.stateHash());
     for (let t = 0; t < 1000; t++) c.step();
     expect(c.stateHash()).toBe(a.stateHash());
+  });
+});
+
+describe('picking a tower in the inspector', () => {
+  const TOL = 14;
+  const TOWER = { id: 7, cost: BUILD, x: 1000, y: 1000, level: 1 };
+  const scene = (extra: Partial<AirfieldPayload> = {}): AirfieldPayload => ({ ...EMPTY_AIRFIELD, towers: [TOWER], ...extra });
+
+  it('picks a tower for a point inside its footprint', () => {
+    expect(pickObject(scene(), 1000, 1000, TOL)).toMatchObject({ kind: 'tower', id: 7 });
+    expect(pickObject(scene(), 1005, 992, TOL)).toMatchObject({ kind: 'tower', id: 7 });
+  });
+
+  it('picks the tower ahead of an apron under the same point', () => {
+    const apron: Apron = {
+      id: 3,
+      cost: 0,
+      polygon: [
+        { x: 950, y: 950 },
+        { x: 1050, y: 950 },
+        { x: 1050, y: 1050 },
+        { x: 950, y: 1050 },
+      ],
+      surface: 'asphalt',
+      pcr: 0,
+      condition: 100,
+    };
+    expect(pickObject(scene({ aprons: [apron] }), 1000, 1000, TOL)).toMatchObject({ kind: 'tower', id: 7 });
+  });
+
+  it('picks nothing 30 m away from the footprint', () => {
+    expect(pickObject(scene(), 1030, 1000, TOL)).toBeNull();
   });
 });

@@ -167,6 +167,31 @@ export type StandSizesData = z.infer<typeof standSizesSchema>;
 export type StandSize = keyof StandSizesData['sizes'];
 
 const positive = z.number().positive();
+const nonnegative = z.number().nonnegative();
+
+/** Tower art levels in meters. Every level sits inside the 15 m paint window, so no ring can reach past it. */
+const towerLevelSchema = z.strictObject({
+  heightM: positive,
+  baseM: positive,
+  shaftM: positive,
+  cabM: positive,
+  cabSides: z.number().int().positive(),
+  glassSweepDeg: positive,
+  glassBandM: positive,
+  walkwayM: nonnegative,
+  antennas: z.number().int().nonnegative(),
+  radomeM: nonnegative,
+});
+
+const towerLevelsSchema = z
+  .array(towerLevelSchema)
+  .length(5)
+  .refine((levels) => levels.every((l) => l.baseM <= 15 && l.cabM <= 15 && l.walkwayM <= 15), {
+    message: 'tower base, cab and walkway must fit 15 m',
+  })
+  .refine((levels) => levels.every((l, i) => i === 0 || levels[i - 1].heightM < l.heightM), {
+    message: 'tower heights must strictly rise by level',
+  });
 
 export const paintSchema = z.strictObject({
   version: z.literal(1),
@@ -192,6 +217,36 @@ export const paintSchema = z.strictObject({
     signBeforeJunctionM: positive,
     signHeightM: positive,
     signCharWidthM: positive,
+  }),
+  tower: z.strictObject({
+    shadowPerM: positive,
+    shadowColor: z.string(),
+    mullionWidthM: positive,
+    mullionStepDeg: positive,
+    mullionMinScale: positive,
+    antennaRadiusM: positive,
+    antennaRingFrac: positive,
+    antennaStartDeg: nonnegative,
+    shadowOffsetM: positive,
+    baseRoofInsetM: positive,
+    outlineMinM: positive,
+    outlinePx: positive,
+    padEdgeMinM: positive,
+    padEdgePx: positive,
+    colors: z.strictObject({
+      pad: z.string(),
+      padEdge: z.string(),
+      base: z.string(),
+      baseRoof: z.string(),
+      wall: z.string(),
+      glass: z.string(),
+      roof: z.string(),
+      walkway: z.string(),
+      antenna: z.string(),
+      radome: z.string(),
+      outline: z.string(),
+    }),
+    levels: towerLevelsSchema,
   }),
 });
 
