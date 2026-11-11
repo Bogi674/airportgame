@@ -34,6 +34,7 @@ import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../terminal/walkGraph';
 import { nearestNode, walkDistance } from '../terminal/walkDistance';
+import { buildServiceNodes, rebuildServiceNodes, serviceJoin, serviceUpdate, serviceWait, type ServiceNodes } from '../terminal/serviceNodes';
 import type { Rng } from '../rng';
 import type { SiteSpec } from '../world/site';
 import type { Airfield } from '../airfield/airfield';
@@ -62,6 +63,10 @@ export class Business {
   readonly walkGraphs: WalkGraph[] = [];
   /** Counts walk graph rebuilds. Node ids are stale after a change. */
   walkVersion = 0;
+  /** Service node tables of every grid, same order as grids. Derived from the grids and the queues in them, never saved. */
+  readonly serviceNodes: ServiceNodes[] = [];
+  /** Counts service table rebuilds. Node ids are stale after a change. */
+  serviceVersion = 0;
   /** Counts per building, rebuilt after every edit. */
   terminals: Terminal[] = [];
   terminalVersion = 0;
@@ -125,6 +130,7 @@ export class Business {
   private depWindow = 0;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
+  private readonly serviceRng: Rng;
   private flightPax = new Int32Array(1024);
   private flightDockedAt = new Int32Array(1024);
   private readonly usableScratch: number[] = [];
@@ -138,6 +144,7 @@ export class Business {
   ) {
     this.rng = rng.fork('business');
     this.marketRng = rng.fork('market');
+    this.serviceRng = rng.fork('service');
     this.generateAirlines();
     traffic.hooks = {
       docked: (f) => this.onDocked(f),
@@ -322,17 +329,22 @@ export class Business {
     if (fresh) {
       this.nextTerminalId++;
       this.grids.push(grid);
-      this.walkGraphs.push(buildWalkGraph(grid));
+      const wg = buildWalkGraph(grid);
+      this.walkGraphs.push(wg);
+      this.serviceNodes.push(buildServiceNodes(grid, wg));
     } else if (cellCount(grid) > 0) {
       const i = this.grids.indexOf(grid);
       this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(edit.x0, edit.x1), Math.min(edit.y0, edit.y1), Math.max(edit.x0, edit.x1), Math.max(edit.y0, edit.y1));
+      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!);
     }
     if (cellCount(grid) === 0) {
       const i = this.grids.indexOf(grid);
       this.grids.splice(i, 1);
       this.walkGraphs.splice(i, 1);
+      this.serviceNodes.splice(i, 1);
     }
     this.walkVersion++;
+    this.serviceVersion++;
     this.refreshTerminals();
     return null;
   }
@@ -343,9 +355,37 @@ export class Business {
     this.host.book('construction', Math.round(this.grids[i].cost * 0.25));
     this.grids.splice(i, 1);
     this.walkGraphs.splice(i, 1);
+    this.serviceNodes.splice(i, 1);
     this.walkVersion++;
+    this.serviceVersion++;
     this.refreshTerminals();
     return null;
+  }
+
+  /** Index of a grid by id, -1 when no grid has that id. */
+  private gridIndex(grid: number): number {
+    return this.grids.findIndex((g) => g.id === grid);
+  }
+
+  /**
+   * Joins a cohort to a service node of a grid. False when no grid has that id or the node refuses the cohort.
+   * Node ids are stale after serviceVersion changes, so look them up again after an edit.
+   */
+  serviceJoin(grid: number, node: number, cohort: number, size: number): boolean {
+    const i = this.gridIndex(grid);
+    return i >= 0 && serviceJoin(this.serviceNodes[i]!, node, cohort, size);
+  }
+
+  /** Seconds a person joining a node of a grid now would wait, Infinity when no grid or node has that id. Stale after serviceVersion changes. */
+  serviceWait(grid: number, node: number, tick: number): number {
+    const i = this.gridIndex(grid);
+    return i < 0 ? Infinity : serviceWait(this.serviceNodes[i]!, node, tick);
+  }
+
+  /** The service node table of a grid, null when no grid has that id. Stale after serviceVersion changes. */
+  serviceTable(grid: number): ServiceNodes | null {
+    const i = this.gridIndex(grid);
+    return i < 0 ? null : this.serviceNodes[i]!;
   }
 
   /** Walking distance in metres between two walk nodes of a grid, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
@@ -511,6 +551,7 @@ export class Business {
   /** Called every tick, cheap. Does its work only on day and hour boundaries. */
   update(tick: number): void {
     if (tick % 100 === 0) this.updateServiceLevel();
+    if (tick % 10 === 0) for (let i = 0; i < this.serviceNodes.length; i++) serviceUpdate(this.serviceNodes[i]!, tick, this.serviceRng);
     // The terminal load window decays every 10 game minutes.
     if (tick % (10 * TICKS_PER_MINUTE) === 0) this.depWindow *= 1 - 10 / 60;
     if (tick % TICKS_PER_DAY === dayStartOffset()) this.dailyClose(tick);
@@ -862,6 +903,9 @@ export class Business {
     this.walkGraphs.length = 0;
     for (const g of this.grids) this.walkGraphs.push(buildWalkGraph(g));
     this.walkVersion++;
+    this.serviceNodes.length = 0;
+    for (let i = 0; i < this.grids.length; i++) this.serviceNodes.push(buildServiceNodes(this.grids[i]!, this.walkGraphs[i]!));
+    this.serviceVersion++;
     this.airlines.length = 0;
     this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id), standPrefs: a.standPrefs ?? new Array<number>(a.rotations).fill(-1) })));
     this.rating = o.rating;
@@ -909,6 +953,17 @@ export class Business {
         // The pairing of two cell fixtures is state. Only nonzero footprints hash, so layouts without them keep their hash.
         if (g.fixtureRot[i] !== 0) acc = foldU32(foldU32(acc, i), g.fixtureRot[i]);
       }
+    }
+    // Queues only enter the hash once someone waits, so idle games keep their hashes.
+    if (this.serviceNodes.some((sn) => sn.active > 0 || sn.evictedCount > 0)) {
+      for (const sn of this.serviceNodes) {
+        acc = foldU32(acc, sn.count);
+        for (let k = 0; k < sn.count; k++) {
+          acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, sn.kind[k]!), sn.queueLen[k]!), sn.busyUntil[k]!), sn.serving[k]!), sn.servingSize[k]!);
+        }
+        acc = foldU32(acc, sn.evictedCount);
+      }
+      acc = foldU32(acc, this.serviceRng.getState());
     }
     return foldU32(acc, this.weather.length);
   }

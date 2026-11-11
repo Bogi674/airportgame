@@ -16,7 +16,7 @@ const EXP_TERMS = 14;
 const EXP_HALVINGS = 4;
 /** Uniforms summed for an approximate standard normal: 12 uniforms have mean 6 and variance 1. */
 const NORMAL_ROLLS = 12;
-/** Finished cohorts remembered per service node. */
+/** Finished cohorts the done buffer holds per node. The buffer is shared by all nodes of a table: count * 16 entries per call. */
 export const DONE_PER_NODE = 16;
 
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
@@ -168,6 +168,45 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
   return nodes;
 }
 
+/** Index of the node of a table at logical cell (lx, ly) with the given kind, -1 when there is none. */
+function findNode(sn: ServiceNodes, lx: number, ly: number, kind: number): number {
+  for (let k = 0; k < sn.count; k++) if (sn.lx[k] === lx && sn.ly[k] === ly && sn.kind[k] === kind) return k;
+  return -1;
+}
+
+/**
+ * Builds the table of a grid after a change and carries the queues of `prev` over. A node is the same when its
+ * logical cell and fixture kind match. Cohorts at a node that no longer exists are evicted: its serving cohort,
+ * then its queue in order. Evicted cohorts are kept on the new table, after the ones already evicted before.
+ * Allocates, so it runs at command time only.
+ */
+export function rebuildServiceNodes(prev: ServiceNodes, g: TerminalGrid, wg: WalkGraph): ServiceNodes {
+  const next = buildServiceNodes(g, wg);
+  const evicted: number[] = Array.from(prev.evicted.subarray(0, prev.evictedCount));
+  for (let p = 0; p < prev.count; p++) {
+    const k = findNode(next, prev.lx[p]!, prev.ly[p]!, prev.kind[p]!);
+    if (k < 0) {
+      if (prev.serving[p]! >= 0) evicted.push(prev.serving[p]!);
+      for (let q = 0; q < prev.qCount[p]!; q++) evicted.push(prev.qCohort[p * prev.slots + ((prev.qHead[p]! + q) % prev.slots)]!);
+      continue;
+    }
+    next.queueLen[k] = prev.queueLen[p]!;
+    next.busyUntil[k] = prev.busyUntil[p]!;
+    next.serving[k] = prev.serving[p]!;
+    next.servingSize[k] = prev.servingSize[p]!;
+    next.qHead[k] = prev.qHead[p]!;
+    next.qCount[k] = prev.qCount[p]!;
+    for (let s = 0; s < prev.slots; s++) {
+      next.qCohort[k * next.slots + s] = prev.qCohort[p * prev.slots + s]!;
+      next.qSize[k * next.slots + s] = prev.qSize[p * prev.slots + s]!;
+    }
+    next.active += prev.qCount[p]! + (prev.serving[p]! >= 0 ? 1 : 0);
+  }
+  next.evicted = Int32Array.from(evicted);
+  next.evictedCount = evicted.length;
+  return next;
+}
+
 /**
  * exp of a number in the range of a lognormal draw, from a Taylor series of x / 16 with 14 terms, squared
  * four times. Only + - * / so the result is the same on every platform.
@@ -206,9 +245,14 @@ export function lnSeries(x: number): number {
  */
 export function lognormalFactor(rng: Rng, cv: number): number {
   const s2 = lnSeries(1 + cv * cv);
+  return lognormalDraw(rng, Math.sqrt(s2), s2);
+}
+
+/** One lognormal draw from precomputed sigma and sigma squared, so a caller with many draws computes them once. */
+function lognormalDraw(rng: Rng, sigma: number, s2: number): number {
   let z = -NORMAL_ROLLS / 2;
   for (let i = 0; i < NORMAL_ROLLS; i++) z += rng.next();
-  return expSeries(Math.sqrt(s2) * z - s2 / 2);
+  return expSeries(sigma * z - s2 / 2);
 }
 
 /** Ticks per game second, see docs/ARCHITECTURE.md. */
@@ -244,6 +288,8 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
   sn.doneCount = 0;
   if (sn.active === 0) return;
   const cv = BUSINESS.terminal.service.cv;
+  const s2 = lnSeries(1 + cv * cv);
+  const sigma = Math.sqrt(s2);
   const doneCap = sn.doneCohort.length;
   for (let k = 0; k < sn.count; k++) {
     let finish = -1;
@@ -265,7 +311,7 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
       sn.qCount[k] -= 1;
       sn.queueLen[k] -= size;
       const start = finish >= 0 ? finish : tick;
-      const f = lognormalFactor(rng, cv);
+      const f = lognormalDraw(rng, sigma, s2);
       sn.serving[k] = sn.qCohort[slot];
       sn.servingSize[k] = size;
       sn.busyUntil[k] = start + Math.max(1, Math.round((size * sn.meanS[k] * f * TICKS_PER_S) / sn.servers[k]));

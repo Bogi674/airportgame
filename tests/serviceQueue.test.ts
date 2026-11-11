@@ -67,11 +67,13 @@ describe('service queue saturation', () => {
     expect(done).toBeLessThanOrEqual(330);
   });
 
-  it('a security lane of cohorts of 5 finishes about 300 an hour', () => {
+  it('a security lane of cohorts of 5 finishes about 300 an hour over four hours', () => {
     const sn = singleNodes('security');
-    const done = saturate(sn, 0, 5, 36000, 10, rngFor(2));
-    expect(done).toBeGreaterThanOrEqual(270);
-    expect(done).toBeLessThanOrEqual(330);
+    const hours = 4;
+    const done = saturate(sn, 0, 5, 36000 * hours, 10, rngFor(2));
+    const perHour = done / hours;
+    expect(perHour).toBeGreaterThanOrEqual(270);
+    expect(perHour).toBeLessThanOrEqual(330);
   });
 
   it('a toilet block of 6 servers finishes about 240 people an hour', () => {
