@@ -40,7 +40,7 @@ M4 no longer waits for the sprite and calibration tasks T05 to T07 (user decisio
 | T11 | M4 | [Kiosk, bag drop, passport booth, gate desk](tasks/T11-fixtures.md) | M | T41 | done | 155ce2d 9b6a90e c9dd591 00f3ed4 |
 | T12 | M4 | [Walking graph](tasks/T12-walking-graph.md) | L | T11 T49 | done | d9ed24b 6dd5ab2 cc3f86d 8bb7197 |
 | T13 | M4 | [Service nodes and queues](tasks/T13-service-nodes.md) | M | T12 | done |  |
-| T14 | M4 | [Cohorts and the departure journey](tasks/T14-cohorts-departure.md) | L | T13 | todo |  |
+| T14 | M4 | [Cohorts and the departure journey](tasks/T14-cohorts-departure.md) | L | T13 | doing |  |
 | T15 | M4 | [People rendering from the atlas](tasks/T15-people-atlas.md) | L | T14 | todo |  |
 | T16 | M4 | [Density, queue and walking distance overlays](tasks/T16-terminal-overlays.md) | M | T14 | todo |  |
 | T17 | M4 | [Satisfaction and airport rating](tasks/T17-satisfaction.md) | M | T14 | todo |  |
