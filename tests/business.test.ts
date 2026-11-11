@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, type TerminalGrid } from '@shared/business';
 import { BUSINESS } from '@data/index';
+import { businessSchema } from '../src/data/schemas/business';
 import { Sim } from '@sim/sim';
 import { SAVE_VERSION } from '@sim/save/migrations';
 import { FlState } from '@sim/ops/traffic';
@@ -775,5 +776,25 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
       return sim.stateHash();
     };
     expect(make()).toBe(make());
+  });
+});
+
+describe('business schema rejects bad service data', () => {
+  const valid = (): unknown => structuredClone(BUSINESS);
+
+  it('accepts the shipped data', () => {
+    expect(businessSchema.safeParse(valid()).success).toBe(true);
+  });
+
+  it('rejects an extra key in the terminal service block', () => {
+    const d = valid() as { terminal: { service: Record<string, unknown> } };
+    d.terminal.service.extra = 1;
+    expect(businessSchema.safeParse(d).success).toBe(false);
+  });
+
+  it('rejects a fractional server count', () => {
+    const d = valid() as { modules: { checkIn: { servers: number } } };
+    d.modules.checkIn.servers = 1.5;
+    expect(businessSchema.safeParse(d).success).toBe(false);
   });
 });

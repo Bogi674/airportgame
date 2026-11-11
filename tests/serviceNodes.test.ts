@@ -193,3 +193,31 @@ describe('lognormal math', () => {
     for (let i = 0; i < 100; i++) expect(lognormalFactor(a, 0.4)).toBe(lognormalFactor(b, 0.4));
   });
 });
+
+describe('service nodes on a grid with a negative origin', () => {
+  it('reports logical cells from the grid origin and counts the queue there', () => {
+    const g = newGrid(1, 0, 0, 0);
+    ensureCells(g, -40, -20, 20, 20);
+    expect(g.x0).toBeLessThan(0);
+    expect(g.y0).toBeLessThan(0);
+    for (let y = -10; y < 10; y++) for (let x = -10; x < 10; x++) g.floor[cellIndex(g, x, y)] = 1;
+    place(g, -3, 5, 'checkIn');
+    const { nodes } = nodesOf(g);
+    expect(nodes.count).toBe(1);
+    expect(nodes.lx[0]).toBe(-3);
+    expect(nodes.ly[0]).toBe(5);
+    expect(nodes.queueCap[0]).toBe(40 * 4);
+  });
+});
+
+describe('service queue expansion stops at fixtures', () => {
+  it('a fixture next to the anchor is neither counted nor passed through', () => {
+    const g = handGrid(0, 0, 20, 1);
+    setFloor(g, 0, 0, 20, 1);
+    place(g, 10, 0, 'checkIn');
+    place(g, 11, 0, 'seating');
+    const { nodes } = nodesOf(g);
+    // Only the cells 6 to 9 on the left are reachable in this one row corridor: 4 cells.
+    expect(nodes.queueCap[0]).toBe(4 * 4);
+  });
+});

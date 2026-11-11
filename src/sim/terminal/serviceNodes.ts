@@ -81,7 +81,6 @@ function timing(key: ServiceKey): { servers: number; meanS: number } {
  */
 function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array): number {
   const W = g.w;
-  seen.fill(0);
   seen[start] = 1;
   dist[start] = 0;
   queue[0] = start;
@@ -104,6 +103,7 @@ function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: numb
       counted++;
     }
   }
+  for (let i = 0; i < tail; i++) seen[queue[i]!] = 0;
   return counted;
 }
 
@@ -173,7 +173,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
  * four times. Only + - * / so the result is the same on every platform.
  */
 export function expSeries(x: number): number {
-  const u = x / 2 ** EXP_HALVINGS;
+  const u = x / 16;
   let term = 1;
   let sum = 1;
   for (let k = 1; k < EXP_TERMS; k++) {
