@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Renderer } from '@render/renderer';
 import type { Command } from '@sim/commands';
-import type { GameOptions } from '@shared/protocol';
+import type { TerminalGrid } from '@shared/business';
+import type { GameOptions, WalkGraphView } from '@shared/protocol';
 import type { Preset } from '@shared/site';
 import type { Speed } from '@shared/time';
 import { SimClient } from '../worker/client';
@@ -52,6 +53,11 @@ export function App() {
   const saveId = useRef(1);
   const speedBefore = useRef<Speed>(1);
   const lastAutoDay = useRef(-1);
+  const rendererRef = useRef<Renderer | null>(null);
+  /** The walk graph query in flight: its id and the grid it was asked for, so a stale answer is ignored. */
+  const walkQuery = useRef<{ id: number; grid: TerminalGrid } | null>(null);
+  const walkQueryId = useRef(0);
+  const selection = useToolStore((s) => s.selection);
 
   const client = useMemo(
     () =>
@@ -70,6 +76,10 @@ export function App() {
           if ((prev === null || prev.atcQueue === 0) && b.atcQueue > 0) s.pushAlert(tFormat('alert.atcOverload', { n: String(b.atcQueue) }), 'warn');
         },
         onTerminals: (g) => useGameStore.getState().setTerminalGrids(g),
+        onQueryResult: (id, data) => {
+          const req = walkQuery.current;
+          if (req && req.id === id && data !== null) rendererRef.current?.setWalkGraph(data as WalkGraphView, req.grid);
+        },
         onEvents: (list) => {
           for (const code of list) {
             const { name } = parseEvent(code);
@@ -162,6 +172,7 @@ export function App() {
 
   const onRenderer = useCallback((r: Renderer | null) => {
     (window as unknown as { __renderer?: Renderer | null }).__renderer = r;
+    rendererRef.current = r;
     setRenderer(r);
   }, []);
 
@@ -201,6 +212,20 @@ export function App() {
   useEffect(() => {
     renderer?.setTerminals(store.terminalGrids);
   }, [renderer, store.terminalGrids]);
+
+  // The walk overlay asks the sim for the graph of the selected terminal. Grid edits change the grids state, so they ask again.
+  useEffect(() => {
+    if (!renderer) return;
+    const grid = store.walkOverlay && selection?.kind === 'terminal' ? store.terminalGrids.find((g) => g.id === selection.id) : undefined;
+    if (!grid) {
+      walkQuery.current = null;
+      renderer.setWalkGraph(null, null);
+      return;
+    }
+    const id = ++walkQueryId.current;
+    walkQuery.current = { id, grid };
+    client.query(id, 'walkGraph', { grid: grid.id });
+  }, [renderer, client, store.walkOverlay, selection, store.terminalGrids]);
 
   useEffect(() => {
     renderer?.setSelectedParcel(store.selectedParcel);

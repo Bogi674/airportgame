@@ -43,3 +43,4 @@ Mistakes that already cost time on this project. Read before writing code.
 22. **Do not tick a roadmap box for a partial feature.** Add a note in parentheses saying what is missing instead.
 23. **Do not invent numbers.** Every gameplay number comes from the docs or the task spec. If it is missing, ask.
 24. **Reference Python under `docs/reference/` is normative math.** Port formulas exactly, including constants, and cite the file and function in a comment.
+25. **Walk graph node ids are compact and renumbered on every rebuild.** Never store one across an edit; compare `Business.walkVersion` and call `nearestNode` again.

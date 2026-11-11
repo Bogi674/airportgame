@@ -31,6 +31,7 @@ export interface ClientEvents {
   onBusiness?(b: BusinessPayload): void;
   onTerminals?(grids: TerminalGrid[]): void;
   onSaved?(id: number, data: string, tick: number): void;
+  onQueryResult?: (id: number, data: unknown) => void;
 }
 
 /** Main thread side of the sim protocol. Owns the worker, batches commands per frame, recycles buffers. */
@@ -62,6 +63,11 @@ export class SimClient {
   /** Asks the worker for the full state. The answer arrives through `onSaved`. */
   requestSave(id: number): void {
     this.post({ type: 'save', id });
+  }
+
+  /** Asks the worker a question by kind. The answer arrives through `onQueryResult` with the same id. */
+  query(id: number, kind: string, args: unknown): void {
+    this.post({ type: 'query', id, kind, args });
   }
 
   setSpeed(multiplier: Speed): void {
@@ -104,6 +110,9 @@ export class SimClient {
         break;
       case 'saved':
         this.events.onSaved?.(msg.id, msg.data, msg.tick);
+        break;
+      case 'queryResult':
+        this.events.onQueryResult?.(msg.id, msg.data);
         break;
       case 'perf':
         this.events.onPerf?.(msg.report);

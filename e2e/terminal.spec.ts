@@ -74,3 +74,58 @@ test('lays a terminal with foundation, flooring, walls and fixtures using the mo
   await page.mouse.move(box.x + 700, box.y + 200);
   expect(errors).toEqual([]);
 });
+
+test('the walk overlay toggle shows the walking graph of the selected terminal', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  await page.evaluate(() => {
+    const site = window.__store?.getState().site as unknown as { parcelId: Uint16Array; parcelType: Uint8Array };
+    const ids = new Set<number>();
+    for (let y = 5300; y <= 5600; y += 10) for (let x = 3800; x <= 4300; x += 10) ids.add(site.parcelId[Math.floor(y / 10) * 800 + Math.floor(x / 10)]);
+    window.__send?.({ type: 'buyParcels', ids: [...ids].filter((id) => site.parcelType[id] !== 6) });
+    const c = window.__renderer?.camera;
+    if (c) {
+      c.x = 4040;
+      c.y = 5460;
+      c.zoom = 4;
+      c.rotation = 0;
+    }
+  });
+  await page.waitForTimeout(800);
+  const box = await page.getByTestId('map').boundingBox();
+  if (!box) throw new Error('no map');
+  const at = async (wx: number, wy: number): Promise<{ x: number; y: number }> => {
+    const s = await page.evaluate(
+      ([x, y]) => {
+        const out = { x: 0, y: 0 };
+        window.__renderer?.camera.worldToScreen(x, y, out);
+        return out;
+      },
+      [wx, wy],
+    );
+    return { x: box.x + s.x, y: box.y + s.y };
+  };
+
+  await page.getByTestId('tool-terminal').click();
+  await page.getByTestId('tsub-foundation').click();
+  const a = await at(4000, 5440);
+  const b = await at(4080, 5470);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.__store?.getState().business?.terminals.length ?? 0)).toBeGreaterThan(0);
+
+  await page.getByTestId('tool-select').click();
+  const inside = await at(4040, 5455);
+  await page.mouse.click(inside.x, inside.y);
+  await expect(page.getByTestId('terminal-panel')).toBeVisible();
+
+  const toggle = page.getByTestId('walk-toggle');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(errors).toEqual([]);
+});

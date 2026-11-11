@@ -34,11 +34,13 @@ interface GameState extends PerfReport {
   pauseOpen: boolean;
   guideHidden: boolean;
   debugOverlay: boolean;
+  walkOverlay: boolean;
   quality: 'auto' | 'low' | 'medium' | 'high';
   setQuality(q: 'auto' | 'low' | 'medium' | 'high'): void;
   crash: { message: string; tick: number; seed: string; commands: unknown[] } | null;
   setCrash(c: { message: string; tick: number; seed: string; commands: unknown[] } | null): void;
   toggleDebugOverlay(): void;
+  toggleWalkOverlay(): void;
   game: { seed: string; preset: Preset };
   setScreen(screen: 'menu' | 'game'): void;
   setPerf(report: PerfReport, tick: number): void;
@@ -91,6 +93,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pauseOpen: false,
   guideHidden: false,
   debugOverlay: false,
+  walkOverlay: false,
   quality: ((): 'auto' | 'low' | 'medium' | 'high' => {
     try {
       const v = localStorage.getItem('airfield.quality');
@@ -110,6 +113,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   crash: null,
   setCrash: (crash) => set({ crash }),
   toggleDebugOverlay: () => set((s) => ({ debugOverlay: !s.debugOverlay })),
+  toggleWalkOverlay: () => set((s) => ({ walkOverlay: !s.walkOverlay })),
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
   simMsPerTick: 0,
   tickBacklog: 0,

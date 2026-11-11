@@ -154,6 +154,12 @@ function loop(): void {
   loopHandle = setTimeout(loop, 4);
 }
 
+/** The grid id of a walkGraph query, null when the args are not an object with a number grid. */
+function gridArg(args: unknown): number | null {
+  if (typeof args !== 'object' || args === null || !('grid' in args)) return null;
+  return typeof args.grid === 'number' ? args.grid : null;
+}
+
 scope.onmessage = (event) => {
   const msg = event.data;
   try {
@@ -184,10 +190,17 @@ scope.onmessage = (event) => {
       case 'returnBuffer':
         pool.release(msg.buffer);
         break;
-      case 'query':
-        // Queries arrive with the panels that need them. M0 answers with null.
-        scope.postMessage({ type: 'queryResult', id: msg.id, data: null });
+      case 'query': {
+        // Only the walkGraph kind is answered, for the debug overlay. Every other kind gets null.
+        const grid = msg.kind === 'walkGraph' ? gridArg(msg.args) : null;
+        const data = sim && grid !== null ? sim.business.walkGraphView(grid) : null;
+        if (data) {
+          scope.postMessage({ type: 'queryResult', id: msg.id, data }, [data.nodeX.buffer, data.nodeY.buffer, data.nodeKind.buffer, data.edgeStart.buffer, data.edgeTo.buffer]);
+        } else {
+          scope.postMessage({ type: 'queryResult', id: msg.id, data: null });
+        }
         break;
+      }
     }
   } catch (err) {
     scope.postMessage({

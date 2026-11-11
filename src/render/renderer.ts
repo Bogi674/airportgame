@@ -8,6 +8,8 @@ import { paintGhostObjects } from './markings/airfieldPaint';
 import type { Ghost, GhostShape } from '@shared/ghost';
 import type { TerminalGrid } from '@shared/business';
 import type { ConstructionGrid } from '@shared/constructionGrid';
+import type { WalkGraphView } from '@shared/protocol';
+import { cornerWorld } from '@shared/terminalOps';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
@@ -26,6 +28,13 @@ const GRID_MINOR_ALPHA = 0.2;
 const GRID_MAJOR_ALPHA = 0.5;
 const GRID_MINOR_MIN_GAP_PX = 2;
 const GRID_MAJOR_MIN_GAP_PX = 3;
+
+/** Walking graph overlay: edge stroke and node radius in CSS pixels, and the colours of each node kind. */
+const WALK_EDGE_PX = 1;
+const WALK_NODE_PX = 2.5;
+const WALK_EDGE_COLOR = 'rgba(120, 190, 255, 0.55)';
+/** Node kinds in WALK_NODE order: 1 lattice, 2 door, 3 fixture. */
+const WALK_NODE_COLORS = ['', 'rgba(120, 190, 255, 0.9)', '#f2b33d', '#5fd08a'] as const;
 
 /** Canvas 2D renderer. Static layer from baked chunks, dynamic layer from interpolated snapshots. */
 export class Renderer {
@@ -55,6 +64,10 @@ export class Renderer {
   private readonly resizeObserver: ResizeObserver;
   private dpr = 1;
   private qualityDprCap = 2;
+  /** Walking graph of the selected terminal, with world and screen positions per node (x, y pairs). */
+  private walk: WalkGraphView | null = null;
+  private walkWorld = new Float32Array(0);
+  private walkScreen = new Float32Array(0);
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -202,6 +215,23 @@ export class Renderer {
     this.selected = selected;
   }
 
+  /** Shows the walking graph of one terminal grid, or hides it with nulls. Node positions are computed here, not per frame. */
+  setWalkGraph(view: WalkGraphView | null, grid: TerminalGrid | null): void {
+    if (!view || !grid) {
+      this.walk = null;
+      return;
+    }
+    const n = view.nodeX.length;
+    this.walkWorld = new Float32Array(n * 2);
+    this.walkScreen = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const p = cornerWorld(grid, view.nodeX[i]! + 0.5, view.nodeY[i]! + 0.5);
+      this.walkWorld[2 * i] = p.x;
+      this.walkWorld[2 * i + 1] = p.y;
+    }
+    this.walk = view;
+  }
+
   setGhost(ghost: Ghost | null): void {
     this.ghost = ghost;
   }
@@ -258,6 +288,7 @@ export class Renderer {
     if (this.overlay) {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
+    if (this.walk) this.drawWalkGraph(ctx, z * c, z * s, -z * s, z * c, e, f);
     if (this.hover || this.selected) this.drawHighlights(z * c, z * s, -z * s, z * c, e, f);
     if (this.grid) this.drawGrid(this.grid, z * c, z * s, -z * s, z * c, e, f);
     if (this.guide) this.drawGuide(z * c, z * s, -z * s, z * c, e, f);
@@ -265,6 +296,50 @@ export class Renderer {
     this.drawPeople(z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
+  }
+
+  /**
+   * Edges as one stroke and nodes as one fill per kind, in device pixels so the lines keep a fixed
+   * width at every zoom. The world to screen mapping is the same matrix the other layers use.
+   */
+  private drawWalkGraph(ctx: CanvasRenderingContext2D, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const view = this.walk;
+    if (!view) return;
+    const n = view.nodeX.length;
+    const world = this.walkWorld;
+    const screen = this.walkScreen;
+    for (let i = 0; i < n; i++) {
+      const x = world[2 * i]!;
+      const y = world[2 * i + 1]!;
+      screen[2 * i] = a * x + cc * y + e;
+      screen[2 * i + 1] = b * x + d * y + f;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      for (let k = view.edgeStart[i]!; k < view.edgeStart[i + 1]!; k++) {
+        const j = view.edgeTo[k]!;
+        if (j <= i) continue;
+        ctx.moveTo(screen[2 * i]!, screen[2 * i + 1]!);
+        ctx.lineTo(screen[2 * j]!, screen[2 * j + 1]!);
+      }
+    }
+    ctx.lineWidth = WALK_EDGE_PX * this.dpr;
+    ctx.strokeStyle = WALK_EDGE_COLOR;
+    ctx.stroke();
+    const r = WALK_NODE_PX * this.dpr;
+    for (let kind = 1; kind < WALK_NODE_COLORS.length; kind++) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        if (view.nodeKind[i] !== kind) continue;
+        const x = screen[2 * i]!;
+        const y = screen[2 * i + 1]!;
+        ctx.moveTo(x + r, y);
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+      }
+      ctx.fillStyle = WALK_NODE_COLORS[kind]!;
+      ctx.fill();
+    }
   }
 
   private drawGuide(a: number, b: number, cc: number, d: number, e: number, f: number): void {

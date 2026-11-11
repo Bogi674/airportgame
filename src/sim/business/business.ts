@@ -25,12 +25,15 @@ import {
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
+import type { WalkGraphView } from '@shared/protocol';
 import { isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { blockWindow } from '@shared/flightBlock';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
+import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../terminal/walkGraph';
+import { nearestNode, walkDistance } from '../terminal/walkDistance';
 import type { Rng } from '../rng';
 import type { SiteSpec } from '../world/site';
 import type { Airfield } from '../airfield/airfield';
@@ -55,6 +58,10 @@ export class Business {
   version = 0;
   /** Full grids of every terminal building. */
   readonly grids: TerminalGrid[] = [];
+  /** Walking graph of every grid, same order as grids. Derived, never saved. */
+  readonly walkGraphs: WalkGraph[] = [];
+  /** Counts walk graph rebuilds. Node ids are stale after a change. */
+  walkVersion = 0;
   /** Counts per building, rebuilt after every edit. */
   terminals: Terminal[] = [];
   terminalVersion = 0;
@@ -315,8 +322,17 @@ export class Business {
     if (fresh) {
       this.nextTerminalId++;
       this.grids.push(grid);
+      this.walkGraphs.push(buildWalkGraph(grid));
+    } else if (cellCount(grid) > 0) {
+      const i = this.grids.indexOf(grid);
+      this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(edit.x0, edit.x1), Math.min(edit.y0, edit.y1), Math.max(edit.x0, edit.x1), Math.max(edit.y0, edit.y1));
     }
-    if (cellCount(grid) === 0) this.grids.splice(this.grids.indexOf(grid), 1);
+    if (cellCount(grid) === 0) {
+      const i = this.grids.indexOf(grid);
+      this.grids.splice(i, 1);
+      this.walkGraphs.splice(i, 1);
+    }
+    this.walkVersion++;
     this.refreshTerminals();
     return null;
   }
@@ -326,7 +342,42 @@ export class Business {
     if (i < 0) return 'nothingThere';
     this.host.book('construction', Math.round(this.grids[i].cost * 0.25));
     this.grids.splice(i, 1);
+    this.walkGraphs.splice(i, 1);
+    this.walkVersion++;
     this.refreshTerminals();
+    return null;
+  }
+
+  /** Walking distance in metres between two walk nodes of a grid, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
+  walkDistance(grid: number, fromNode: number, toNode: number): number {
+    for (let i = 0; i < this.grids.length; i++) {
+      if (this.grids[i]!.id === grid) return walkDistance(this.walkGraphs[i]!, fromNode, toNode);
+    }
+    return Infinity;
+  }
+
+  /** Walk node a person in array cell cell of a grid starts from, -1 when no grid has that id. Stale after walkVersion changes. */
+  nearestNode(grid: number, cell: number): number {
+    for (let i = 0; i < this.grids.length; i++) {
+      if (this.grids[i]!.id === grid) return nearestNode(this.walkGraphs[i]!, cell);
+    }
+    return -1;
+  }
+
+  /** Copies of the node and edge arrays of a grid's walk graph for the debug overlay, null when no grid has that id. */
+  walkGraphView(grid: number): WalkGraphView | null {
+    for (let i = 0; i < this.grids.length; i++) {
+      if (this.grids[i]!.id !== grid) continue;
+      const wg = this.walkGraphs[i]!;
+      return {
+        grid,
+        nodeX: wg.nodeX.slice(),
+        nodeY: wg.nodeY.slice(),
+        nodeKind: wg.nodeKind.slice(),
+        edgeStart: wg.edgeStart.slice(),
+        edgeTo: wg.edgeTo.slice(),
+      };
+    }
     return null;
   }
 
@@ -808,6 +859,9 @@ export class Business {
     if (fl && fl.length === this.fleet.length) this.fleet = fl.slice();
     this.grids.length = 0;
     for (const sg of o.grids) this.grids.push(loadGrid(sg));
+    this.walkGraphs.length = 0;
+    for (const g of this.grids) this.walkGraphs.push(buildWalkGraph(g));
+    this.walkVersion++;
     this.airlines.length = 0;
     this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id), standPrefs: a.standPrefs ?? new Array<number>(a.rotations).fill(-1) })));
     this.rating = o.rating;

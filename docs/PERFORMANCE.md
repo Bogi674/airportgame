@@ -42,7 +42,7 @@ Other budgets:
 * Collision checks run at docking, at reservation and when a stand changes, never as all pairs per tick.
 * Walking distances are cached per region and rebuilt only for edited regions.
 * Finance and the market run once per game day on aggregates.
-* Time slicing: any job that may exceed 2 ms (network rebuild, large walking graph rebuild, save serialization) runs as a resumable job across ticks with progress reported.
+* Time slicing: any job that may exceed 2 ms (network rebuild, large walking graph rebuild, save serialization) runs as a resumable job across ticks with progress reported. The walking graph rebuild is an exception: it runs synchronously at command time, because a regional rebuild takes about 3 ms and a full rebuild of the stress terminal about 10 ms (ARCHITECTURE section 12, 2026-11-11).
 
 ## 4. Worker communication
 
