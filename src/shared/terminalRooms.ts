@@ -15,7 +15,7 @@ const passable = (type: number): boolean => type === WALL.None || type === WALL.
  * True when a person can step from array cell (x, y) to its neighbour in direction d (0 left, 1 right,
  * 2 up, 3 down). Works in array coordinates of the building's grid.
  */
-function canStep(g: TerminalGrid, x: number, y: number, d: number): boolean {
+export function canStep(g: TerminalGrid, x: number, y: number, d: number): boolean {
   const W = g.w;
   if (d === 0) return x > 0 && passable(g.vWall[y * (W + 1) + x]) && g.floor[y * W + x - 1] > 0;
   if (d === 1) return x < W - 1 && passable(g.vWall[y * (W + 1) + x + 1]) && g.floor[y * W + x + 1] > 0;
@@ -25,6 +25,52 @@ function canStep(g: TerminalGrid, x: number, y: number, d: number): boolean {
 
 const DX = [-1, 1, 0, 0];
 const DY = [0, 0, -1, 1];
+
+/**
+ * True when a room can step from array cell (x, y) to its neighbour in direction d, the same directions
+ * as canStep. Both cells need floor and the edge between them must be open, so a door splits rooms.
+ */
+function roomStep(g: TerminalGrid, x: number, y: number, d: number): boolean {
+  const W = g.w;
+  if (d === 0) return x > 0 && g.vWall[y * (W + 1) + x] === WALL.None && g.floor[y * W + x - 1] > 0;
+  if (d === 1) return x < W - 1 && g.vWall[y * (W + 1) + x + 1] === WALL.None && g.floor[y * W + x + 1] > 0;
+  if (d === 2) return y > 0 && g.hWall[y * W + x] === WALL.None && g.floor[(y - 1) * W + x] > 0;
+  return y < g.h - 1 && g.hWall[(y + 1) * W + x] === WALL.None && g.floor[(y + 1) * W + x] > 0;
+}
+
+/**
+ * Labels each array cell with the id of its room, or -1 for a cell without floor. Rooms are found by a
+ * flood fill that passes only through open edges, so walls, glass and doors all separate rooms. Ids count
+ * up from 0 in the order each room's first cell appears in index order.
+ */
+export function labelRooms(g: TerminalGrid): Int32Array {
+  const W = g.w;
+  const n = g.w * g.h;
+  const label = new Int32Array(n).fill(-1);
+  const queue = new Int32Array(n);
+  let rooms = 0;
+  for (let start = 0; start < n; start++) {
+    if (g.floor[start] <= 0 || label[start] !== -1) continue;
+    label[start] = rooms;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start;
+    while (head < tail) {
+      const i = queue[head++];
+      const x = i % W;
+      const y = (i - x) / W;
+      for (let d = 0; d < 4; d++) {
+        if (!roomStep(g, x, y, d)) continue;
+        const j = (y + DY[d]) * W + x + DX[d];
+        if (label[j] !== -1) continue;
+        label[j] = rooms;
+        queue[tail++] = j;
+      }
+    }
+    rooms++;
+  }
+  return label;
+}
 
 /**
  * Checks that passengers can really get through a building. They walk from the check in desks through
