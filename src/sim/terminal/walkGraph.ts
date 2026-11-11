@@ -292,6 +292,41 @@ const blockXOf = (g: TerminalGrid, c: number): number => Math.floor(((c % g.w) +
 const blockYOf = (g: TerminalGrid, c: number): number => Math.floor((Math.floor(c / g.w) + g.y0) / L);
 const inRect = (bx: number, by: number, r: BlockRect): boolean => bx >= r.bx0 && bx <= r.bx1 && by >= r.by0 && by <= r.by1;
 
+/** Block range that covers every cell of the grid. */
+function gridRect(g: TerminalGrid): BlockRect {
+  return {
+    bx0: Math.floor(g.x0 / L),
+    by0: Math.floor(g.y0 / L),
+    bx1: Math.floor((g.x0 + g.w - 1) / L),
+    by1: Math.floor((g.y0 + g.h - 1) / L),
+  };
+}
+
+/** True when array cell c of the graph lies in a block of r. */
+function cellInRect(wg: WalkGraph, c: number, r: BlockRect): boolean {
+  const ax = c % wg.w;
+  const ay = (c - ax) / wg.w;
+  return inRect(Math.floor((ax + wg.x0) / L), Math.floor((ay + wg.y0) / L), r);
+}
+
+/**
+ * Pushes the edges of the old graph whose two cells both lie outside the blocks of r, as triples over cells.
+ * Must run before the nodes are refilled, because it reads the old node cells.
+ */
+function keptEdges(wg: WalkGraph, r: BlockRect, out: number[]): void {
+  for (let a = 0; a < wg.nodeCount; a++) {
+    const ca = wg.nodeCell[a]!;
+    if (cellInRect(wg, ca, r)) continue;
+    for (let e = wg.edgeStart[a]!; e < wg.edgeStart[a + 1]!; e++) {
+      const b = wg.edgeTo[e]!;
+      if (b <= a) continue;
+      const cb = wg.nodeCell[b]!;
+      if (cellInRect(wg, cb, r)) continue;
+      out.push(ca, cb, wg.edgeLen[e]!);
+    }
+  }
+}
+
 /**
  * Pushes the edges that touch the blocks of r as triples (cellA, cellB, lengthM) with cellA below cellB, each
  * pair once. Sight edges join nodes in nearby blocks, and the fallbacks join a node to its lattice node and
@@ -377,32 +412,51 @@ function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[
 function packEdges(wg: WalkGraph, triples: number[]): void {
   const pairs = triples.length / 3;
   const m = pairs * 2;
-  const from = new Int32Array(m);
-  const to = new Int32Array(m);
-  const len = new Float32Array(m);
+  const n = wg.nodeCount;
+  wg.edgeStart = new Int32Array(n + 1);
+  wg.edgeTo = new Int32Array(m);
+  wg.edgeLen = new Float32Array(m);
+  // Counting sort by from node: count each node's degree, prefix sum, then place each edge at its node's cursor.
+  const start = wg.edgeStart;
+  for (let p = 0; p < pairs; p++) {
+    start[wg.cellNode[triples[3 * p]!]! + 1]! += 1;
+    start[wg.cellNode[triples[3 * p + 1]!]! + 1]! += 1;
+  }
+  for (let i = 1; i <= n; i++) start[i]! += start[i - 1]!;
+  const cursor = start.slice(0, n);
   for (let p = 0; p < pairs; p++) {
     const a = wg.cellNode[triples[3 * p]!]!;
     const b = wg.cellNode[triples[3 * p + 1]!]!;
     const l = triples[3 * p + 2]!;
-    from[2 * p] = a;
-    to[2 * p] = b;
-    len[2 * p] = l;
-    from[2 * p + 1] = b;
-    to[2 * p + 1] = a;
-    len[2 * p + 1] = l;
+    wg.edgeTo[cursor[a]!] = b;
+    wg.edgeLen[cursor[a]!] = l;
+    cursor[a]! += 1;
+    wg.edgeTo[cursor[b]!] = a;
+    wg.edgeLen[cursor[b]!] = l;
+    cursor[b]! += 1;
   }
-  const order = Array.from({ length: m }, (_, i) => i);
-  order.sort((i, j) => from[i]! - from[j]! || to[i]! - to[j]!);
-  wg.edgeStart = new Int32Array(wg.nodeCount + 1);
-  wg.edgeTo = new Int32Array(m);
-  wg.edgeLen = new Float32Array(m);
-  for (let e = 0; e < m; e++) wg.edgeStart[from[e]! + 1]! += 1;
-  for (let i = 1; i <= wg.nodeCount; i++) wg.edgeStart[i]! += wg.edgeStart[i - 1]!;
-  for (let k = 0; k < m; k++) {
-    const e = order[k]!;
-    wg.edgeTo[k] = to[e]!;
-    wg.edgeLen[k] = len[e]!;
+  // Each node's range is short, so an insertion sort by target id, moving the lengths with it, is cheapest.
+  for (let a = 0; a < n; a++) {
+    for (let e = start[a]! + 1; e < start[a + 1]!; e++) {
+      const to = wg.edgeTo[e]!;
+      const len = wg.edgeLen[e]!;
+      let k = e;
+      while (k > start[a]! && wg.edgeTo[k - 1]! > to) {
+        wg.edgeTo[k] = wg.edgeTo[k - 1]!;
+        wg.edgeLen[k] = wg.edgeLen[k - 1]!;
+        k--;
+      }
+      wg.edgeTo[k] = to;
+      wg.edgeLen[k] = len;
+    }
   }
+}
+
+/** Empties every cached row and source in place, for a graph whose node count did not change. */
+function resetCache(c: WalkCache): void {
+  c.rowSource.fill(-1);
+  c.sourceRow.fill(-1);
+  c.clock = 0;
 }
 
 /** Builds the walk nodes and the edges of one grid. */
@@ -428,17 +482,42 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
     edgeLen: new Float32Array(0),
     cache: newWalkCache(0),
   };
-  const rect: BlockRect = {
-    bx0: Math.floor(g.x0 / L),
-    by0: Math.floor(g.y0 / L),
-    bx1: Math.floor((g.x0 + g.w - 1) / L),
-    by1: Math.floor((g.y0 + g.h - 1) / L),
-  };
+  const rect = gridRect(g);
   fillNodes(g, wg, rect);
   compactNodes(g, wg);
   const triples: number[] = [];
   collectEdges(g, wg, rect, triples);
   packEdges(wg, triples);
   wg.cache = newWalkCache(wg.nodeCount);
+  return wg;
+}
+
+/**
+ * Brings wg up to date after an edit that touched the logical cells from (lx0, ly0) to (lx1, ly1), both
+ * inclusive. The blocks within dirtyMarginCells of the edit are recomputed in place, and the other nodes and
+ * edges are kept. Every cached row is dropped on any rebuild: a shortest path tree spans every reachable node,
+ * and node ids held by callers are stale after any rebuild.
+ */
+export function updateWalkGraph(wg: WalkGraph, g: TerminalGrid, lx0: number, ly0: number, lx1: number, ly1: number): WalkGraph {
+  if (wg.x0 !== g.x0 || wg.y0 !== g.y0 || wg.w !== g.w || wg.h !== g.h) return buildWalkGraph(g);
+  const M = BUSINESS.terminal.walk.dirtyMarginCells;
+  const whole = gridRect(g);
+  const rect: BlockRect = {
+    bx0: Math.max(whole.bx0, Math.floor((lx0 - M) / L)),
+    by0: Math.max(whole.by0, Math.floor((ly0 - M) / L)),
+    bx1: Math.min(whole.bx1, Math.floor((lx1 + M) / L)),
+    by1: Math.min(whole.by1, Math.floor((ly1 + M) / L)),
+  };
+  const blockCount = (r: BlockRect): number => Math.max(0, r.bx1 - r.bx0 + 1) * Math.max(0, r.by1 - r.by0 + 1);
+  if (blockCount(rect) * 4 > blockCount(whole)) return buildWalkGraph(g);
+  const triples: number[] = [];
+  const oldNodeCount = wg.nodeCount;
+  keptEdges(wg, rect, triples);
+  fillNodes(g, wg, rect);
+  compactNodes(g, wg);
+  collectEdges(g, wg, rect, triples);
+  packEdges(wg, triples);
+  if (wg.nodeCount === oldNodeCount) resetCache(wg.cache);
+  else wg.cache = newWalkCache(wg.nodeCount);
   return wg;
 }
