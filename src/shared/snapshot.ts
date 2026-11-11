@@ -3,9 +3,10 @@
  * (docs/ARCHITECTURE.md section 1). Bump SNAPSHOT_VERSION on every layout change.
  */
 
-export const SNAPSHOT_VERSION = 3;
+export const SNAPSHOT_VERSION = 4;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
+export const SNAPSHOT_PEOPLE_CAPACITY = 3000;
 
 /** Header slots, Int32. */
 export const enum SnapHeader {
@@ -13,6 +14,7 @@ export const enum SnapHeader {
   Tick = 1,
   AircraftCount = 2,
   VehicleCount = 3,
+  PeopleCount = 4,
   Size = 8,
 }
 
@@ -32,6 +34,10 @@ export interface SnapshotViews {
   vehicleY: Float32Array;
   vehicleHeading: Float32Array;
   vehicleKind: Uint8Array;
+  peopleX: Float32Array;
+  peopleY: Float32Array;
+  peopleProfile: Uint8Array;
+  peopleSize: Uint8Array;
 }
 
 const align4 = (n: number): number => (n + 3) & ~3;
@@ -55,7 +61,13 @@ const OFF_VY = OFF_VX + VCAP * 4;
 const OFF_VH = OFF_VY + VCAP * 4;
 const OFF_VKIND = OFF_VH + VCAP * 4;
 
-export const SNAPSHOT_BYTES = OFF_VKIND + align4(VCAP);
+const PCAP = SNAPSHOT_PEOPLE_CAPACITY;
+const OFF_PX = OFF_VKIND + align4(VCAP);
+const OFF_PY = OFF_PX + PCAP * 4;
+const OFF_PPROFILE = OFF_PY + PCAP * 4;
+const OFF_PSIZE = OFF_PPROFILE + align4(PCAP);
+
+export const SNAPSHOT_BYTES = OFF_PSIZE + align4(PCAP);
 
 export function createSnapshotBuffer(): ArrayBuffer {
   return new ArrayBuffer(SNAPSHOT_BYTES);
@@ -78,5 +90,9 @@ export function createSnapshotViews(buffer: ArrayBuffer): SnapshotViews {
     vehicleY: new Float32Array(buffer, OFF_VY, VCAP),
     vehicleHeading: new Float32Array(buffer, OFF_VH, VCAP),
     vehicleKind: new Uint8Array(buffer, OFF_VKIND, VCAP),
+    peopleX: new Float32Array(buffer, OFF_PX, PCAP),
+    peopleY: new Float32Array(buffer, OFF_PY, PCAP),
+    peopleProfile: new Uint8Array(buffer, OFF_PPROFILE, PCAP),
+    peopleSize: new Uint8Array(buffer, OFF_PSIZE, PCAP),
   };
 }

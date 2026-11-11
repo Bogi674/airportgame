@@ -5,6 +5,8 @@ import { Sim } from '@sim/sim';
 import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
+import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews } from '@shared/snapshot';
+import { cornerWorld } from '@shared/terminalOps';
 import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run, type TerminalOptions } from './helpers';
 
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
@@ -433,5 +435,64 @@ describe('boarding and departure revenue', () => {
       b.step();
     }
     expect(b.stateHash()).toBe(a.stateHash());
+  });
+});
+
+/** Steps until a cohort queues and another walks, at most maxTicks steps. */
+function stepToMidJourney(sim: Sim, maxTicks: number): boolean {
+  for (let t = 0; t < maxTicks; t++) {
+    sim.step();
+    const counts = stageCounts(sim.cohorts);
+    const queued = (counts[Stage.CheckIn] ?? 0) + (counts[Stage.Security] ?? 0) + (counts[Stage.Gate] ?? 0);
+    const walking = (counts[Stage.ToCheckIn] ?? 0) + (counts[Stage.ToSecurity] ?? 0) + (counts[Stage.ToGate] ?? 0);
+    if (queued > 0 && walking > 0) return true;
+  }
+  return false;
+}
+
+describe('snapshot sample of cohort positions', () => {
+  it('samples walking and queued cohorts inside the terminal bounds', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    const n = views.header[SnapHeader.PeopleCount]!;
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThanOrEqual(Math.min(PROFILES.sampleCap, SNAPSHOT_PEOPLE_CAPACITY));
+    const g = sim.business.grids[0]!;
+    const corners = [
+      cornerWorld(g, g.x0, g.y0),
+      cornerWorld(g, g.x0 + g.w, g.y0),
+      cornerWorld(g, g.x0, g.y0 + g.h),
+      cornerWorld(g, g.x0 + g.w, g.y0 + g.h),
+    ];
+    const minX = Math.min(...corners.map((p) => p.x)) - 2;
+    const maxX = Math.max(...corners.map((p) => p.x)) + 2;
+    const minY = Math.min(...corners.map((p) => p.y)) - 2;
+    const maxY = Math.max(...corners.map((p) => p.y)) + 2;
+    for (let i = 0; i < n; i++) {
+      expect(views.peopleX[i]).toBeGreaterThanOrEqual(minX);
+      expect(views.peopleX[i]).toBeLessThanOrEqual(maxX);
+      expect(views.peopleY[i]).toBeGreaterThanOrEqual(minY);
+      expect(views.peopleY[i]).toBeLessThanOrEqual(maxY);
+    }
+  });
+
+  it('no cohorts give a sample of zero', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    expect(views.header[SnapHeader.PeopleCount]).toBe(0);
+  });
+
+  it('writing a snapshot does not change the state hash', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
+    const before = sim.stateHash();
+    sim.writeSnapshot(createSnapshotViews(createSnapshotBuffer()));
+    expect(sim.stateHash()).toBe(before);
   });
 });

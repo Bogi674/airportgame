@@ -1,12 +1,14 @@
 import { PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { FIXTURE_KEYS, TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE } from '@shared/business';
 import type { Business } from '../business/business';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
+import { SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
+import { cosLut, sinLut } from '@shared/trig';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
 export const Stage = {
@@ -35,6 +37,7 @@ const DONE_EVERY = 10;
 const TICKS_PER_SECOND = 10;
 const RECIPE_RANGE = 4294967296;
 const PERCENT = 100;
+const DEG = Math.PI / 180;
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
@@ -239,6 +242,45 @@ export class Cohorts {
       if (st !== Stage.CheckIn && st !== Stage.Security && st !== Stage.Gate) this.unlink(c);
       this.free(c);
     }
+  }
+
+  /**
+   * Writes a sample of the live cohorts' positions for the renderer: the centre of the service node each one is at
+   * or walking to. A stride keeps the sample under the cap. Reads only, the sim state does not change, and nothing is allocated.
+   */
+  writeSample(views: SnapshotViews): void {
+    const cap = Math.min(PROFILES.sampleCap, SNAPSHOT_PEOPLE_CAPACITY);
+    let live = 0;
+    for (let c = 0; c < this.hi; c++) if (this.stage[c] !== Stage.Free) live++;
+    const stride = Math.max(1, Math.ceil(live / cap));
+    let n = 0;
+    for (let g = 0; g < this.business.grids.length && n < cap; g++) {
+      const t = this.table(g);
+      if (!t) continue;
+      const grid = this.business.grids[g]!;
+      // Axes of the grid, as terminalOps gridAxes gives them. Constant per grid, so computed once here.
+      const a = grid.headingDeg * DEG;
+      const ux = sinLut(a);
+      const uy = -cosLut(a);
+      const vx = -uy;
+      const vy = ux;
+      for (let c = 0; c < this.hi && n < cap; c += stride) {
+        if (this.building[c] !== g) continue;
+        const st = this.stage[c];
+        if (st === Stage.Free || st === Stage.Curb || st === Stage.Missed) continue;
+        const k = this.node[c]!;
+        if (k < 0 || k >= t.count) continue;
+        // Half a cell past the anchor corner is the centre of the node's cell, 1 m on each axis.
+        const cx = t.lx[k]! + 0.5;
+        const cy = t.ly[k]! + 0.5;
+        views.peopleX[n] = grid.ox + (ux * cx + vx * cy) * TERMINAL_CELL_M;
+        views.peopleY[n] = grid.oy + (uy * cx + vy * cy) * TERMINAL_CELL_M;
+        views.peopleProfile[n] = this.profile[c]!;
+        views.peopleSize[n] = this.size[c]!;
+        n++;
+      }
+    }
+    views.header[SnapHeader.PeopleCount] = n;
   }
 
   /** Passengers of the flight that have boarded so far. */

@@ -593,6 +593,7 @@
   "ghost.terminal": "{n} cells, {cost}",
   "ghost.terminalWall": "{n} edges, {cost}",
   "terminal.summary": "{cells} cells, {area} m2",
+  "terminal.arrivals": "Arrivals {arr} per hour",
   "terminal.leased": "{n} shops leased",
   "inspector.terminalHint": "Use the terminal tool to add or change anything.",
   "notice.terminalBounds": "That is outside the terminal's building area (320 m square).",
