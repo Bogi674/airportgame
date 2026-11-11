@@ -55,7 +55,7 @@ function prevailingWind(freq: Float32Array, mean: Float32Array): { deg: number; 
 
 /** Floating HUD: information chips at the top left, game controls at the top right. No bar. */
 export function TopBar({ onSpeed, onMenu }: Props) {
-  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, quality, setQuality } = useGameStore();
+  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, walkOverlay, toggleWalkOverlay, quality, setQuality } = useGameStore();
   const [settings, setSettings] = useState(false);
   const rating = business ? business.rating : 0;
   const rate = Math.max(0, Math.min(100, rating));
@@ -111,6 +111,9 @@ export function TopBar({ onSpeed, onMenu }: Props) {
           {sheetBtn('flights', 'flights', t('top.flights'))}
           {sheetBtn('site', 'site', t('top.sites'))}
           <button class="round" data-testid="debug-toggle" title={t('hud.debug')} aria-label={t('hud.debug')} aria-pressed={debugOverlay} onClick={toggleDebugOverlay}>
+            <Icon name="overlay" size={16} />
+          </button>
+          <button class="round" data-testid="walk-toggle" title={t('hud.walkGraph')} aria-label={t('hud.walkGraph')} aria-pressed={walkOverlay} onClick={toggleWalkOverlay}>
             <Icon name="overlay" size={16} />
           </button>
           <button class="round" data-testid="parcel-toggle" title={t('hud.parcels')} aria-label={t('hud.parcels')} aria-pressed={parcelOverlay} onClick={toggleParcelOverlay}>

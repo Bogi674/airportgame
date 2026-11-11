@@ -251,6 +251,7 @@
   "inspector.preferred.forward": "Along the drawn direction",
   "inspector.preferred.reverse": "Against the drawn direction",
   "hud.debug": "Traffic overlay: amber rings wait on a reservation, red rings were in a deadlock",
+  "hud.walkGraph": "Walking graph of the selected terminal",
   "flights.stage": "Stage",
   "settings.quality": "Graphics quality",
   "settings.quality.auto": "Automatic",
