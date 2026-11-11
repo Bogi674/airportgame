@@ -48,6 +48,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `paint.json` | marking colors and taxiway paint dimensions |
 | `business.json` | terminal modules, shops, airlines, fees, loans |
 | `gse.json` | ground vehicles at true size |
+| `people.json` | recipe weights per passenger profile, integers 0 to 1000 |
 | `wake.json` | wake separation and runway occupancy |
 | `schemas/*.ts`, `index.ts` | strict zod schemas; `index.ts` exports parsed constants (`AIRFIELD`, `SURFACE_SPEC`, `STAND_SIZES`, `PAINT`, `BUSINESS`, `GSE`) |
 
@@ -96,7 +97,12 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `markings/airfieldPaint.ts` | paints runways, taxiways, aprons, terminals from the plan |
 | `markings/standLayout.ts`, `standPaint.ts` | stand markings from data |
 | `sprites/*` | aircraft and vehicle sprites from geometry |
-| `people.ts` | the render sample of people |
+| `people.ts` | the render sample of people, drawn from the atlas |
+| `peopleSelect.ts` | nearest to camera first selection of sample groups under the cap |
+| `peoplePack.ts` | footprint packing of group members inside a 2 m cell |
+| `sprites/peopleRecipes.ts` | the 30 people recipes and the weighted pick per profile |
+| `sprites/peopleShapes.ts` | pure shape ops for people: body, head, hair, items, walk frames |
+| `sprites/peopleAtlas.ts` | the people atlas: rasterized tiers baked lazily and cached |
 
 ### `src/ui`
 

@@ -99,7 +99,8 @@ Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS
 * [x] Walking graph with cached distances and regional rebuild (T12, debug overlay toggle in the top bar)
 * [x] Service nodes and queues (T13, a terminal load model replaces queues)
 * [x] Cohorts and the departure journey from curb to aircraft (cohorts walk, queue and board, departures hold up to 10 minutes for gate bound cohorts, arrivals stay aggregated until T20)
-* [ ] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap (a render sample of up to 3 000 dots, 1 500 under the governor, walks between the fixtures laid, no atlas, recipes or walk cycle)
+* [x] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap (30 recipes, three tiers baked lazily, queued groups stand in queue cells without overlap, cap 3 000 figures or 1 500 under the governor. Walking figures between nodes wait for the route following task)
+* [ ] People walk and dwell along routes with spacing: needs a from node in the cohort store and a save migration
 * [ ] Density, queue and walking distance overlays (not built)
 * [ ] Satisfaction and airport rating (rating from on time share, satisfaction, facilities and infrastructure)
 * [ ] Stress: 20 000 cohorts under the medium budget (not applicable, no cohorts)

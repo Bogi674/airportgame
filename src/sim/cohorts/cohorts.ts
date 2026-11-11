@@ -7,8 +7,8 @@ import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
-import { SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
-import { cosLut, sinLut } from '@shared/trig';
+import { HEADING_STEPS, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
+import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
 export const Stage = {
@@ -121,6 +121,8 @@ export class Cohorts {
   private tick = 0;
   /** The business service version the queued cohorts were last checked against. */
   private seenVersion: number;
+  /** One mark per cell of the grid being sampled, 1 once a figure stands there in the current sample. */
+  private occupied = new Uint8Array(0);
 
   constructor(rng: Rng, business: Business, traffic: Traffic) {
     this.rng = rng.fork('cohorts');
@@ -131,6 +133,7 @@ export class Cohorts {
     this.flGate = new Int32Array(traffic.fState.length);
     this.flActive = new Int32Array(traffic.fState.length);
     this.seenVersion = business.serviceVersion;
+    this.ensureOccupancy();
   }
 
   /** A free slot, or -1 when the store is full. */
@@ -244,40 +247,66 @@ export class Cohorts {
     }
   }
 
+  /** Sizes the cell marks for the largest grid. Runs when the tables change or a save loads, never per snapshot. */
+  private ensureOccupancy(): void {
+    let largest = 0;
+    for (const g of this.business.grids) largest = Math.max(largest, g.w * g.h);
+    if (this.occupied.length < largest) this.occupied = new Uint8Array(largest);
+  }
+
   /**
-   * Writes a sample of the live cohorts' positions for the renderer: the centre of the service node each one is at
-   * or walking to. A stride keeps the sample under the cap. Reads only, the sim state does not change, and nothing is allocated.
+   * Writes the queued cohorts for the renderer. Each one stands in the queue cell of its rank at its node and faces
+   * the cell it was reached from, the node cell for the first ring. A cell already held by a figure in this sample
+   * is skipped, so no two figures share a spot. Walking and airside cohorts are not sampled. Reads only, the sim
+   * state does not change, and nothing is allocated.
    */
   writeSample(views: SnapshotViews): void {
     const cap = Math.min(PROFILES.sampleCap, SNAPSHOT_PEOPLE_CAPACITY);
-    let live = 0;
-    for (let c = 0; c < this.hi; c++) if (this.stage[c] !== Stage.Free) live++;
-    const stride = Math.max(1, Math.ceil(live / cap));
     let n = 0;
     for (let g = 0; g < this.business.grids.length && n < cap; g++) {
       const t = this.table(g);
       if (!t) continue;
       const grid = this.business.grids[g]!;
+      this.occupied.fill(0, 0, grid.w * grid.h);
       // Axes of the grid, as terminalOps gridAxes gives them. Constant per grid, so computed once here.
       const a = grid.headingDeg * DEG;
       const ux = sinLut(a);
       const uy = -cosLut(a);
       const vx = -uy;
       const vy = ux;
-      for (let c = 0; c < this.hi && n < cap; c += stride) {
-        if (this.building[c] !== g) continue;
-        const st = this.stage[c];
-        if (st === Stage.Free || st === Stage.Curb || st === Stage.Missed) continue;
-        const k = this.node[c]!;
-        if (k < 0 || k >= t.count) continue;
-        // Half a cell past the anchor corner is the centre of the node's cell, 1 m on each axis.
-        const cx = t.lx[k]! + 0.5;
-        const cy = t.ly[k]! + 0.5;
-        views.peopleX[n] = grid.ox + (ux * cx + vx * cy) * TERMINAL_CELL_M;
-        views.peopleY[n] = grid.oy + (uy * cx + vy * cy) * TERMINAL_CELL_M;
-        views.peopleProfile[n] = this.profile[c]!;
-        views.peopleSize[n] = this.size[c]!;
-        n++;
+      for (let k = 0; k < t.count && n < cap; k++) {
+        const ranks = Math.min(t.qCount[k]!, t.qCellLen[k]!);
+        const off = t.qCellOffset[k]!;
+        for (let i = 0; i < ranks && n < cap; i++) {
+          const cell = off + i;
+          const lx = t.qCellX[cell]!;
+          const ly = t.qCellY[cell]!;
+          const mark = (ly - grid.y0) * grid.w + (lx - grid.x0);
+          if (this.occupied[mark] === 1) continue;
+          this.occupied[mark] = 1;
+          const parent = t.qCellParent[cell]!;
+          const frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
+          const frontY = parent < 0 ? t.ly[k]! : t.qCellY[off + parent]!;
+          const c = t.qCohort[k * t.slots + ((t.qHead[k]! + i) % t.slots)]!;
+          // The step from this cell toward the cell it was reached from, snapped to its dominant grid axis.
+          const dx = frontX - lx;
+          const dy = frontY - ly;
+          const sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
+          const sy = sx === 0 ? Math.sign(dy) : 0;
+          // Figure forward is local minus y, which maps to (sin, -cos) at heading zero, so the grid frame angle
+          // of the step is atan2(sy, sx) turned by the grid heading.
+          const heading = Math.round(((a + atan2Det(sy, sx)) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
+          // Half a cell past the cell corner is its centre, 1 m on each axis.
+          const cx = lx + 0.5;
+          const cy = ly + 0.5;
+          views.peopleX[n] = grid.ox + (ux * cx + vx * cy) * TERMINAL_CELL_M;
+          views.peopleY[n] = grid.oy + (uy * cx + vy * cy) * TERMINAL_CELL_M;
+          views.peopleProfile[n] = this.profile[c]!;
+          views.peopleSize[n] = this.size[c]!;
+          views.peopleSeed[n] = this.recipeSeed[c]!;
+          views.peopleHeading[n] = heading;
+          n++;
+        }
       }
     }
     views.header[SnapHeader.PeopleCount] = n;
@@ -310,6 +339,7 @@ export class Cohorts {
 
   /** The service tables were rebuilt: walking cohorts lose their node ids, which may have renumbered. */
   private resetWalkers(): void {
+    this.ensureOccupancy();
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate) this.node[c] = -1;
@@ -565,6 +595,7 @@ export class Cohorts {
 
   /** Restores the store from a save. `undefined` (a save from before cohorts) gives an empty store. */
   loadState(s: CohortsSave | undefined): void {
+    this.ensureOccupancy();
     if (!s) {
       this.generated = 0;
       this.boarded = 0;
