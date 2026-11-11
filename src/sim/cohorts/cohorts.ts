@@ -277,6 +277,8 @@ export class Cohorts {
         views.peopleY[n] = grid.oy + (uy * cx + vy * cy) * TERMINAL_CELL_M;
         views.peopleProfile[n] = this.profile[c]!;
         views.peopleSize[n] = this.size[c]!;
+        views.peopleSeed[n] = this.recipeSeed[c]!;
+        views.peopleState[n] = st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate ? 1 : 0;
         n++;
       }
     }

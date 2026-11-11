@@ -5,7 +5,7 @@ import { Sim } from '@sim/sim';
 import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
-import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews } from '@shared/snapshot';
+import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import { cornerWorld } from '@shared/terminalOps';
 import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run, type TerminalOptions } from './helpers';
 
@@ -476,6 +476,32 @@ describe('snapshot sample of cohort positions', () => {
       expect(views.peopleX[i]).toBeLessThanOrEqual(maxX);
       expect(views.peopleY[i]).toBeGreaterThanOrEqual(minY);
       expect(views.peopleY[i]).toBeLessThanOrEqual(maxY);
+    }
+    let anySeed = false;
+    for (let i = 0; i < n; i++) {
+      expect(views.peopleState[i] === 0 || views.peopleState[i] === 1).toBe(true);
+      if (views.peopleSeed[i] !== 0) anySeed = true;
+    }
+    expect(anySeed).toBe(true);
+  });
+
+  it('the people seed and state samples repeat for the same seed and ticks', () => {
+    const sampleOf = (): SnapshotViews => {
+      const sim = terminalSim('people-sample');
+      scheduleLong(sim);
+      expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
+      const views = createSnapshotViews(createSnapshotBuffer());
+      sim.writeSnapshot(views);
+      return views;
+    };
+    const a = sampleOf();
+    const b = sampleOf();
+    const n = a.header[SnapHeader.PeopleCount]!;
+    expect(b.header[SnapHeader.PeopleCount]).toBe(n);
+    expect(n).toBeGreaterThan(0);
+    for (let i = 0; i < n; i++) {
+      expect(b.peopleSeed[i]).toBe(a.peopleSeed[i]);
+      expect(b.peopleState[i]).toBe(a.peopleState[i]);
     }
   });
 

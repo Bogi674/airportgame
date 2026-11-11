@@ -3,7 +3,7 @@
  * (docs/ARCHITECTURE.md section 1). Bump SNAPSHOT_VERSION on every layout change.
  */
 
-export const SNAPSHOT_VERSION = 4;
+export const SNAPSHOT_VERSION = 5;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
 export const SNAPSHOT_PEOPLE_CAPACITY = 3000;
@@ -38,6 +38,10 @@ export interface SnapshotViews {
   peopleY: Float32Array;
   peopleProfile: Uint8Array;
   peopleSize: Uint8Array;
+  /** Cohort recipe seed, picks the person's look so the same cohort always draws the same way. */
+  peopleSeed: Uint32Array;
+  /** 1 while the cohort walks to a node, 0 while it waits in a queue or is served. */
+  peopleState: Uint8Array;
 }
 
 const align4 = (n: number): number => (n + 3) & ~3;
@@ -67,7 +71,10 @@ const OFF_PY = OFF_PX + PCAP * 4;
 const OFF_PPROFILE = OFF_PY + PCAP * 4;
 const OFF_PSIZE = OFF_PPROFILE + align4(PCAP);
 
-export const SNAPSHOT_BYTES = OFF_PSIZE + align4(PCAP);
+const OFF_PSEED = OFF_PSIZE + align4(PCAP);
+const OFF_PSTATE = OFF_PSEED + PCAP * 4;
+
+export const SNAPSHOT_BYTES = OFF_PSTATE + align4(PCAP);
 
 export function createSnapshotBuffer(): ArrayBuffer {
   return new ArrayBuffer(SNAPSHOT_BYTES);
@@ -94,5 +101,7 @@ export function createSnapshotViews(buffer: ArrayBuffer): SnapshotViews {
     peopleY: new Float32Array(buffer, OFF_PY, PCAP),
     peopleProfile: new Uint8Array(buffer, OFF_PPROFILE, PCAP),
     peopleSize: new Uint8Array(buffer, OFF_PSIZE, PCAP),
+    peopleSeed: new Uint32Array(buffer, OFF_PSEED, PCAP),
+    peopleState: new Uint8Array(buffer, OFF_PSTATE, PCAP),
   };
 }
