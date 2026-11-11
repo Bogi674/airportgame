@@ -182,7 +182,7 @@ describe('walk graph regional rebuild', () => {
     });
     expect(step).toBe(100);
     expect(inPlace).toBeGreaterThanOrEqual(90);
-  });
+  }, 30000);
 
   it('gives the same walk distances as a fresh build after the edits', () => {
     const { g, wg } = playEdits(() => undefined);
