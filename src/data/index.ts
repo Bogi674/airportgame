@@ -2,6 +2,7 @@ import airfieldCodesJson from './airfield_codes.json';
 import businessJson from './business.json';
 import gseJson from './gse.json';
 import paintJson from './paint.json';
+import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
 import standSizesJson from './stand_sizes.json';
 import surfacesJson from './surfaces.json';
@@ -9,12 +10,14 @@ import {
   airfieldCodesSchema,
   businessSchema,
   paintSchema,
+  profilesSchema,
   spritesSchema,
   standSizesSchema,
   surfacesSchema,
   type AirfieldCodes,
   type BusinessData,
   type PaintData,
+  type ProfilesData,
   type SpritesData,
   type StandSizesData,
   type SurfacesData,
@@ -28,6 +31,8 @@ export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
 export const SURFACE_SPEC: SurfacesData['surfaces'] = SURFACE_DATA.surfaces;
 /** Marking palette and dimensions. */
 export const PAINT: PaintData = paintSchema.parse(paintJson);
+/** Passenger profiles, shared sizing and boarding rules. */
+export const PROFILES: ProfilesData = profilesSchema.parse(profilesJson);
 /** Aircraft sprite tiers, cache limit and liveries. */
 export const SPRITES: SpritesData = spritesSchema.parse(spritesJson);
 const STAND_DATA: StandSizesData = standSizesSchema.parse(standSizesJson);
