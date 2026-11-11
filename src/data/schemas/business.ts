@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-const module = z.object({ cost: z.number().nonnegative(), capacityPerHour: z.number().nonnegative(), staff: z.number().nonnegative() });
+const module = z.object({
+  cost: z.number().nonnegative(),
+  capacityPerHour: z.number().nonnegative(),
+  staff: z.number().nonnegative(),
+  servers: z.number().positive().optional(),
+  serviceSeconds: z.number().positive().optional(),
+});
 const shop = z.object({ cost: z.number().positive(), rentPerDay: z.number().positive(), spendPerPax: z.number().positive(), minRating: z.number().min(0).max(100) });
 
 const towerLevel = z.strictObject({
@@ -41,7 +47,7 @@ export const businessSchema = z.object({
     loanTermDays: z.number().int().positive(),
   }),
   terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive(), atcRangeM: z.number().positive() }),
-  modules: z.object({ checkIn: module, security: module, belt: module, seating: module, toilet: module, atc: module }),
+  modules: z.object({ checkIn: module, security: module, belt: module, seating: module, toilet: module, atc: module, kiosk: module, bagDrop: module, passport: module, gateDesk: module }),
   tower,
   shops: z.object({ convenience: shop, quickFood: shop, cafe: shop, dutyFree: shop, booksGifts: shop, pharmacy: shop }),
   airlines: z.object({ regionalNames: z.array(z.string()).min(4), nationalNames: z.array(z.string()).min(4), suffixes: z.array(z.string()).min(2) }),

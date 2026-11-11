@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
+import { FIXTURE_KEYS, FIXTURE_SPAN, LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
+import { BUSINESS } from '@data/index';
 import { Sim } from '@sim/sim';
 import { FlState } from '@sim/ops/traffic';
 import { cellIndex, floorBounds, originFor } from '@shared/terminalOps';
@@ -385,6 +386,32 @@ describe('stand choices with determinism', () => {
     closeDay(c, 1);
     expect(Array.from(c.traffic.fStand)).toEqual(Array.from(a.traffic.fStand));
     expect(Array.from(c.traffic.fRot)).toEqual(Array.from(a.traffic.fRot));
+  });
+});
+
+describe('fixture ids, spans and module data', () => {
+  it('keeps the old fixture ids and appends the four new ones at 13 to 16', () => {
+    expect(FIXTURE_KEYS.slice(0, 12)).toEqual(['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc']);
+    expect(FIXTURE_KEYS.indexOf('kiosk') + 1).toBe(13);
+    expect(FIXTURE_KEYS.indexOf('bagDrop') + 1).toBe(14);
+    expect(FIXTURE_KEYS.indexOf('passport') + 1).toBe(15);
+    expect(FIXTURE_KEYS.indexOf('gateDesk') + 1).toBe(16);
+  });
+
+  it('gives two cell spans to bag drop and gate desk only', () => {
+    const twoCell = FIXTURE_KEYS.filter((k) => FIXTURE_SPAN[k] === 2);
+    expect(twoCell).toEqual(['bagDrop', 'gateDesk']);
+    expect(FIXTURE_KEYS.every((k) => FIXTURE_SPAN[k] === 1 || FIXTURE_SPAN[k] === 2)).toBe(true);
+  });
+
+  it('keeps capacityPerHour equal to servers times 3600 over service seconds where both are given', () => {
+    const modules = Object.values(BUSINESS.modules);
+    const timed = modules.filter((m) => m.servers !== undefined && m.serviceSeconds !== undefined);
+    expect(timed.length).toBe(4);
+    for (const m of timed) {
+      if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error('missing servers');
+      expect(m.capacityPerHour).toBe((m.servers * 3600) / m.serviceSeconds);
+    }
   });
 });
 

@@ -13,7 +13,7 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
@@ -42,6 +42,29 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   booksGifts: [2, 3],
   pharmacy: [2, 3],
   atc: [4],
+  kiosk: [1],
+  bagDrop: [1],
+  passport: [3],
+  gateDesk: [3],
+};
+/** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
+export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
+  checkIn: 1,
+  security: 1,
+  belt: 1,
+  seating: 1,
+  toilet: 1,
+  convenience: 1,
+  quickFood: 1,
+  cafe: 1,
+  dutyFree: 1,
+  booksGifts: 1,
+  pharmacy: 1,
+  atc: 1,
+  kiosk: 1,
+  bagDrop: 2,
+  passport: 1,
+  gateDesk: 2,
 };
 
 export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
