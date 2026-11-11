@@ -1,8 +1,12 @@
 import { FIXTURE_KEYS, WALL, ZONE, type TerminalGrid } from './business';
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
+const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const SEATING = FIXTURE_KEYS.indexOf('seating') + 1;
+const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
+/** fixtureRot of the tail cell of a two cell fixture is 5 to 8. Only anchors (0 to 4) decide reach. */
+const TAIL_ROT = 5;
 
 /** Walls and glass block people, doors and open edges let them through. */
 const passable = (type: number): boolean => type === WALL.None || type === WALL.Door;
@@ -27,16 +31,19 @@ const DY = [0, 0, -1, 1];
  * the public hall to a security lane, and only through a lane into a secure zone with seating. Staff
  * only floor is closed to passengers. Returns issue keys, empty when the building works. The walls,
  * doors and zones the player laid decide the result, so a layout is judged by how it is built.
+ * Check in desks and kiosks are the landside sources. A gate desk must be reachable from a lane.
  */
 export function terminalIssues(g: TerminalGrid): string[] {
   const issues: string[] = [];
-  let hasCheckIn = false;
+  let hasSource = false;
   let hasSecurity = false;
+  let hasGateDesk = false;
   for (let i = 0; i < g.fixture.length; i++) {
-    if (g.fixture[i] === CHECK_IN) hasCheckIn = true;
+    if (g.fixture[i] === CHECK_IN || g.fixture[i] === KIOSK) hasSource = true;
     else if (g.fixture[i] === SECURITY) hasSecurity = true;
+    else if (g.fixture[i] === GATE_DESK && g.fixtureRot[i] < TAIL_ROT) hasGateDesk = true;
   }
-  if (!hasCheckIn || !hasSecurity) return issues;
+  if (!hasSource || !hasSecurity) return issues;
 
   const W = g.w;
   const seen = new Uint8Array(g.w * g.h);
@@ -46,9 +53,9 @@ export function terminalIssues(g: TerminalGrid): string[] {
   const lanes: number[] = [];
   let touchesLane = false;
   let bypass = false;
-  // Landside: from the check in desks over public and unzoned floor, never over lanes or secure floor.
+  // Landside: from the check in desks and kiosks over public and unzoned floor, never over lanes or secure floor.
   for (let i = 0; i < g.fixture.length; i++) {
-    if (g.fixture[i] === CHECK_IN && seen[i] === 0) {
+    if ((g.fixture[i] === CHECK_IN || g.fixture[i] === KIOSK) && seen[i] === 0) {
       seen[i] = 1;
       queue[tail++] = i;
     }
@@ -90,6 +97,7 @@ export function terminalIssues(g: TerminalGrid): string[] {
     }
   }
   let seats = false;
+  let gateReached = false;
   while (head < tail) {
     const i = queue[head++];
     const x = i % W;
@@ -101,8 +109,10 @@ export function terminalIssues(g: TerminalGrid): string[] {
       air[j] = 1;
       queue[tail++] = j;
       if (g.fixture[j] === SEATING) seats = true;
+      if (g.fixture[j] === GATE_DESK && g.fixtureRot[j] < TAIL_ROT) gateReached = true;
     }
   }
   if (!seats) issues.push('noSeatingLink');
+  if (hasGateDesk && !gateReached) issues.push('noGateDeskLink');
   return issues;
 }

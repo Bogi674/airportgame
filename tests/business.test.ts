@@ -623,3 +623,136 @@ describe('flight offers in the business payload', () => {
     expect(bare.business.payload(bare.traffic.nowTick).movementBudget).toBe(0);
   });
 });
+
+describe('capacity, readiness and room rules for kiosk, bag drop, passport and gate desk', () => {
+  const KEY = (k: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.indexOf(k) + 1;
+
+  function airportWith(o: { checkIn?: number } = {}): Sim {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildTestTerminal(sim, o)).toEqual([]);
+    return sim;
+  }
+
+  function fixtureAt(sim: Sim, key: number, x: number, y: number, rot: 0 | 1 | 2 | 3 = 0): string[] {
+    const g = sim.business.grids[0];
+    const edit: TerminalEdit = { op: 'fixture', x0: x, y0: y, x1: x + 1, y1: y + 1, variant: key, rot };
+    return run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: 90, edit });
+  }
+
+  function wallEdit(sim: Sim, op: 'wall' | 'removeWall', x0: number, y0: number, x1: number, y1: number, variant: number): string[] {
+    const g = sim.business.grids[0];
+    const edit: TerminalEdit = { op, x0, y0, x1, y1, variant };
+    return run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: 90, edit });
+  }
+
+  /** A second building with a security lane and secure seating, and no gate desk. */
+  function secondHall(sim: Sim): void {
+    const { ox, oy } = originFor(4000, 5600, 90);
+    const edit = (building: number, e: TerminalEdit): string[] => run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e });
+    expect(edit(-1, { op: 'foundation', x0: 150, y0: 40, x1: 170, y1: 50, variant: 0 })).toEqual([]);
+    const id = sim.business.grids[sim.business.grids.length - 1].id;
+    expect(edit(id, { op: 'floor', x0: 150, y0: 40, x1: 170, y1: 50, variant: 2 })).toEqual([]);
+    expect(edit(id, { op: 'zone', x0: 150, y0: 40, x1: 170, y1: 50, variant: 3 })).toEqual([]);
+    expect(edit(id, { op: 'fixture', x0: 150, y0: 42, x1: 151, y1: 43, variant: KEY('security'), rot: 0 })).toEqual([]);
+    expect(edit(id, { op: 'fixture', x0: 160, y0: 46, x1: 161, y1: 47, variant: KEY('seating'), rot: 0 })).toEqual([]);
+  }
+
+  it('check in capacity counts kiosks and bag drops at their module rates', () => {
+    const sim = airportWith({ checkIn: 0 });
+    expect(fixtureAt(sim, KEY('kiosk'), 42, 42)).toEqual([]);
+    expect(fixtureAt(sim, KEY('kiosk'), 44, 42)).toEqual([]);
+    expect(fixtureAt(sim, KEY('bagDrop'), 46, 42)).toEqual([]);
+    const term = 2 * BUSINESS.modules.kiosk.capacityPerHour + BUSINESS.modules.bagDrop.capacityPerHour;
+    expect(term).toBe(186);
+    expect(sim.business.roomIssues).toEqual([]);
+    expect(sim.business.depCapacity()).toBe(Math.min(term, 3 * BUSINESS.modules.security.capacityPerHour));
+  });
+
+  it('a kiosk alone counts as check in, a bag drop alone does not', () => {
+    const kiosk = airportWith({ checkIn: 0 });
+    expect(fixtureAt(kiosk, KEY('kiosk'), 42, 42)).toEqual([]);
+    expect(kiosk.business.readiness()).not.toContain('noCheckIn');
+    expect(kiosk.business.roomIssues).toEqual([]);
+    const bag = airportWith({ checkIn: 0 });
+    expect(fixtureAt(bag, KEY('bagDrop'), 42, 42)).toEqual([]);
+    expect(bag.business.readiness()).toContain('noCheckIn');
+  });
+
+  it('a kiosk alone is a landside source, so a wall closing the lanes is a missing security link', () => {
+    const sim = airportWith({ checkIn: 0 });
+    expect(fixtureAt(sim, KEY('kiosk'), 42, 42)).toEqual([]);
+    expect(sim.business.roomIssues).toEqual([]);
+    expect(wallEdit(sim, 'wall', 72, 42, 72, 45, 1)).toEqual([]);
+    expect(sim.business.roomIssues).toContain('noSecurityLink');
+  });
+
+  it('a kiosk alone is a landside source, so a gap beside the lanes is a security bypass', () => {
+    const sim = airportWith({ checkIn: 0 });
+    expect(fixtureAt(sim, KEY('kiosk'), 42, 42)).toEqual([]);
+    expect(wallEdit(sim, 'removeWall', 72, 48, 72, 49, 0)).toEqual([]);
+    expect(sim.business.roomIssues).toContain('securityBypass');
+  });
+
+  it('intlCapacity is two passport booths at 80 an hour', () => {
+    const sim = airportWith();
+    expect(fixtureAt(sim, KEY('passport'), 90, 48)).toEqual([]);
+    expect(fixtureAt(sim, KEY('passport'), 92, 48)).toEqual([]);
+    expect(sim.business.intlCapacity()).toBe(160);
+    expect(sim.business.payload(sim.traffic.nowTick).intlCapacity).toBe(160);
+  });
+
+  it('noGateDeskLink when a gate desk is walled off from security, cleared by a door', () => {
+    const sim = airportWith();
+    expect(fixtureAt(sim, KEY('gateDesk'), 88, 42)).toEqual([]);
+    expect(sim.business.roomIssues).toEqual([]);
+    expect(wallEdit(sim, 'wall', 80, 40, 80, 52, 1)).toEqual([]);
+    expect(sim.business.roomIssues).toContain('noGateDeskLink');
+    expect(sim.business.depCapacity()).toBe(0);
+    expect(wallEdit(sim, 'removeWall', 80, 46, 80, 47, 0)).toEqual([]);
+    expect(wallEdit(sim, 'wall', 80, 46, 80, 47, 3)).toEqual([]);
+    expect(sim.business.roomIssues).toEqual([]);
+  });
+
+  it('noGateDesk when a second terminal with security and seating has no gate desk', () => {
+    const sim = airportWith();
+    expect(fixtureAt(sim, KEY('gateDesk'), 88, 42)).toEqual([]);
+    secondHall(sim);
+    expect(sim.business.grids).toHaveLength(2);
+    expect(sim.business.readiness()).toContain('noGateDesk');
+  });
+
+  it('noGateDesk is not raised when no terminal has a gate desk', () => {
+    const sim = airportWith();
+    secondHall(sim);
+    expect(sim.business.readiness()).not.toContain('noGateDesk');
+  });
+
+  it('staff sum includes bag drops, passports and gate desks', () => {
+    const sim = airportWith();
+    const before = sim.business.staffCount();
+    expect(fixtureAt(sim, KEY('bagDrop'), 42, 44)).toEqual([]);
+    expect(fixtureAt(sim, KEY('bagDrop'), 42, 46)).toEqual([]);
+    expect(fixtureAt(sim, KEY('passport'), 90, 48)).toEqual([]);
+    expect(fixtureAt(sim, KEY('passport'), 92, 48)).toEqual([]);
+    expect(fixtureAt(sim, KEY('gateDesk'), 88, 42)).toEqual([]);
+    expect(fixtureAt(sim, KEY('gateDesk'), 88, 44)).toEqual([]);
+    // Two of each: 2 x 0.5 + 2 x 1 + 2 x 1 = 5, a whole number, so rounding adds it exactly.
+    expect(sim.business.staffCount()).toBe(before + 5);
+  });
+
+  it('same seed and commands give the same hash with all four new fixtures', () => {
+    const make = (): number => {
+      const sim = airportWith();
+      expect(fixtureAt(sim, KEY('kiosk'), 42, 44)).toEqual([]);
+      expect(fixtureAt(sim, KEY('bagDrop'), 42, 46)).toEqual([]);
+      expect(fixtureAt(sim, KEY('passport'), 90, 48)).toEqual([]);
+      expect(fixtureAt(sim, KEY('gateDesk'), 88, 42)).toEqual([]);
+      run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+      for (let t = 0; t < 2000; t++) sim.step();
+      return sim.stateHash();
+    };
+    expect(make()).toBe(make());
+  });
+});

@@ -238,6 +238,8 @@ export interface BusinessPayload {
   serviceSlowdown: number;
   depCapacity: number;
   arrCapacity: number;
+  /** Passengers the passport booths can clear per hour. */
+  intlCapacity: number;
   /** Ledger history, newest day last, one row of LEDGER_CATEGORIES.length numbers per day, plus today. */
   history: number[][];
   today: number[];

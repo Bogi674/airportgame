@@ -242,6 +242,8 @@
   "ready.noSecurityLink": "Passengers cannot walk from the check in desks to a security lane. Join them with floor, open edges or doors.",
   "ready.securityBypass": "Passengers can reach the secure zone without a security lane. Close the gap with a wall.",
   "ready.noSeatingLink": "No secure seating is reachable through a security lane.",
+  "ready.noGateDesk": "A terminal with gates has no gate desk",
+  "ready.noGateDeskLink": "No walkable path from security to a gate desk",
   "ready.noBelt": "Add a baggage belt.",
   "ready.noAtc": "Build an ATC tower inside the airport.",
   "inspector.preferred": "Preferred flow",

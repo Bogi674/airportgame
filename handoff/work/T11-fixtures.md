@@ -63,6 +63,6 @@ The layer follows every place the `leased` layer is created, grown, copied, hash
 
 - [x] S1 keys, zones, span table, module data, schema, id test
 - [x] S2 footprint layer, planEdit, summarize, save v12
-- [ ] S3 capacity, readiness, room rules, determinism
+- [x] S3 capacity, readiness, room rules, determinism
 - [ ] S4 render, build menu, rotate, strings, visual check
 - [ ] S5 docs: roadmap tick, ARCHITECTURE decisions, TASKS, STATE
