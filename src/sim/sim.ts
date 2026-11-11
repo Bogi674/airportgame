@@ -9,6 +9,7 @@ import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, Traffic } from './ops/traffic';
 import { Business } from './business/business';
+import { Cohorts, type CohortsSave } from './cohorts/cohorts';
 import { ATC_MIN_CELLS, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
@@ -34,6 +35,7 @@ export class Sim {
   readonly airfield = new Airfield();
   readonly traffic: Traffic;
   readonly business: Business;
+  readonly cohorts: Cohorts;
   readonly gse: Gse;
   private businessSent = -1;
   private gridsSent = -1;
@@ -81,7 +83,12 @@ export class Sim {
     };
     this.gse = new Gse(this.traffic);
     this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
-    this.traffic.hooks = { ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }), contactOk: (x, y) => this.business.hasTerminalNear(x, y) };
+    this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
+    this.traffic.hooks = {
+      ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }),
+      contactOk: (x, y) => this.business.hasTerminalNear(x, y),
+      scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
+    };
   }
 
   /** Changes cash and records it in today's ledger. */
@@ -401,7 +408,8 @@ export class Sim {
 
   /** The full game state as plain data. The site is not saved, the seed regenerates it. */
   serialize(): SaveData {
-    return {
+    // Cohorts are not in SaveData yet, so the object is built first to skip the literal's excess property check.
+    const save = {
       version: SAVE_VERSION,
       seed: this.seed,
       options: this.options,
@@ -413,7 +421,9 @@ export class Sim {
       airfield: this.airfield.saveState(),
       traffic: this.traffic.saveState(),
       business: this.business.saveState(),
+      cohorts: this.cohorts.saveState(),
     };
+    return save;
   }
 
   /** Replaces the state of a fresh sim with saved state. The save is migrated to the current version first. */
@@ -432,6 +442,7 @@ export class Sim {
     this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
+    this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts);
     // A save from before the tower that relied on a control room has no coverage now (handoff/tasks/T40-atc-tower.md R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
@@ -456,6 +467,7 @@ export class Sim {
     h = this.airfield.hash(h);
     h = this.traffic.hash(h);
     h = this.business.hash(h);
+    h = this.cohorts.hash(h);
     return h;
   }
 

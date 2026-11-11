@@ -32,7 +32,7 @@ import { blockWindow } from '@shared/flightBlock';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
-import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../terminal/walkGraph';
+import { buildWalkGraph, updateWalkGraph, WALK_NODE, type WalkGraph } from '../terminal/walkGraph';
 import { nearestNode, walkDistance } from '../terminal/walkDistance';
 import { buildServiceNodes, rebuildServiceNodes, serviceJoin, serviceLoad, serviceSave, serviceUpdate, serviceWait, type ServiceNodes, type ServiceSave } from '../terminal/serviceNodes';
 import type { Rng } from '../rng';
@@ -468,7 +468,7 @@ export class Business {
 
   // Hooks from traffic -------------------------------------------------------
 
-  private paxFor(f: number): number {
+  paxFor(f: number): number {
     const a = this.traffic.fAirline[f] >= 0 ? this.airlines[this.traffic.fAirline[f]] : null;
     const seats = AIRCRAFT[this.traffic.fType[f]].capacity.seatsTypical;
     const lf = a ? this.loadFactor(a) : 0.7;
@@ -482,8 +482,51 @@ export class Business {
     return al >= 0 ? FEE_MULT[this.airlines[al].feeLevel] : 1;
   }
 
-  private needsTerminal(f: number): boolean {
+  needsTerminal(f: number): boolean {
     return AIRCRAFT[this.traffic.fType[f]].capacity.seatsTypical >= TERMINAL_SEAT_THRESHOLD;
+  }
+
+  /** Walk node of the lowest id door of a grid, the curb where passengers arrive. Index into grids, -1 when there is none. */
+  curbNode(grid: number): number {
+    const wg = this.walkGraphs[grid];
+    if (!wg) return -1;
+    for (let n = 0; n < wg.nodeCount; n++) if (wg.nodeKind[n] === WALK_NODE.Door) return n;
+    return -1;
+  }
+
+  /**
+   * Grid index a flight's passengers use: the eligible grids in index order, picked by flight index. A grid is eligible
+   * with a curb and, among its service nodes with queue room, a check in point, a security lane and a gate desk.
+   * Returns -1 when no grid is eligible.
+   */
+  cohortGrid(f: number): number {
+    let count = 0;
+    for (let i = 0; i < this.grids.length; i++) if (this.servesCohorts(i)) count++;
+    if (count === 0) return -1;
+    let want = f % count;
+    for (let i = 0; i < this.grids.length; i++) {
+      if (!this.servesCohorts(i)) continue;
+      if (want === 0) return i;
+      want--;
+    }
+    return -1;
+  }
+
+  private servesCohorts(grid: number): boolean {
+    if (this.curbNode(grid) < 0) return false;
+    const t = this.serviceNodes[grid];
+    if (!t) return false;
+    let checkIn = false;
+    let security = false;
+    let gate = false;
+    for (let n = 0; n < t.count; n++) {
+      if (t.queueCap[n] <= 0) continue;
+      const key = fixtureKey(t.kind[n]);
+      if (key === 'checkIn' || key === 'kiosk') checkIn = true;
+      else if (key === 'security') security = true;
+      else if (key === 'gateDesk') gate = true;
+    }
+    return checkIn && security && gate;
   }
 
   private onDocked(f: number): void {

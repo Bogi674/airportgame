@@ -63,6 +63,7 @@ export interface TerminalOptions {
   belt?: number;
   seating?: number;
   toilet?: number;
+  gateDesk?: number;
   shop?: boolean;
   /** Build the ATC tower too. Set false to test the no ATC case. */
   atc?: boolean;
@@ -87,6 +88,11 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
   edit(id, { op: 'wall', x0: 40, y0: 52, x1: 100, y1: 52, variant: 1 });
   edit(id, { op: 'wall', x0: 70, y0: 52, x1: 72, y1: 52, variant: 3 });
+  // A door needs floor on both sides to be a walk node, so a gate desk layout gets a strip outside the door.
+  if ((o.gateDesk ?? 0) > 0) {
+    edit(id, { op: 'foundation', x0: 68, y0: 52, x1: 74, y1: 53, variant: 0 });
+    edit(id, { op: 'floor', x0: 68, y0: 52, x1: 74, y1: 53, variant: 2 });
+  }
   const row = (key: number, n: number, x: number, y: number): void => {
     if (n > 0) edit(id, { op: 'fixture', x0: x, y0: y, x1: x + n, y1: y + 1, variant: key });
   };
@@ -100,6 +106,7 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   row(3, o.belt ?? 2, 62, 42);
   row(4, o.seating ?? 6, 76, 46);
   row(5, o.toilet ?? 2, 84, 46);
+  row(16, o.gateDesk ?? 0, 66, 42);
   if (o.shop) row(6, 1, 86, 46);
   if (o.atc !== false) problems.push(...run(sim, { type: 'buildTower', x: TEST_TOWER.x, y: TEST_TOWER.y, level: 5 }));
   return problems;

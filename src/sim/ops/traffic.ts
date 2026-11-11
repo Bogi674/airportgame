@@ -201,7 +201,7 @@ export class Traffic {
   /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
   /** Usable approach type per runway direction, set by the sim from the obstacle surfaces. */
   obstacles: RunwayObstacles[] = [];
-  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean } | null = null;
+  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean } | null = null;
   private reachStand = 0;
   /** Stand blocks gathered by one autoAssign pass: stand index and start and end tick. Reused, never reallocated. */
   private readonly occStand = new Int32Array(MAX_FLIGHTS);
@@ -473,6 +473,7 @@ export class Traffic {
     this.fLate[f] = 0;
     this.fStage[f] = stageKm;
     this.fStand[f] = -1;
+    this.hooks?.scheduled?.(f);
     return f;
   }
 
