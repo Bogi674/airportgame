@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { FIXTURE_KEYS, FIXTURE_SPAN, LEDGER_CATEGORIES, TICKS_PER_DAY } from '@shared/business';
+import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, type TerminalGrid } from '@shared/business';
 import { BUSINESS } from '@data/index';
 import { Sim } from '@sim/sim';
+import { SAVE_VERSION } from '@sim/save/migrations';
 import { FlState } from '@sim/ops/traffic';
-import { cellIndex, floorBounds, originFor } from '@shared/terminalOps';
+import { EMPTY_AIRFIELD } from '@shared/airfield';
+import type { BuildContext } from '@shared/validate';
+import { cellIndex, ensureCells, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 function airportWithTerminal() {
@@ -386,6 +389,149 @@ describe('stand choices with determinism', () => {
     closeDay(c, 1);
     expect(Array.from(c.traffic.fStand)).toEqual(Array.from(a.traffic.fStand));
     expect(Array.from(c.traffic.fRot)).toEqual(Array.from(a.traffic.fRot));
+  });
+});
+
+describe('two cell fixture footprints', () => {
+  const BAG = FIXTURE_KEYS.indexOf('bagDrop') + 1;
+  const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
+  const env = { ctx: {} as BuildContext, af: EMPTY_AIRFIELD, others: [] as TerminalGrid[] };
+
+  /** A 32 by 32 concrete floor with no zones, so each fixture takes the first zone it allows. */
+  function floorGrid(): TerminalGrid {
+    const g = newGrid(1, 0, 0, 90);
+    ensureCells(g, 0, 0, 32, 32);
+    g.floor.fill(FLOOR.Concrete);
+    return g;
+  }
+  const place = (g: TerminalGrid, x: number, y: number, rot: 0 | 1 | 2 | 3, variant = BAG) =>
+    planEdit(g, { op: 'fixture', x0: x, y0: y, x1: x + 1, y1: y + 1, variant, rot }, env);
+  const erase = (g: TerminalGrid, x: number, y: number) => planEdit(g, { op: 'erase', x0: x, y0: y, x1: x + 1, y1: y + 1, variant: 0 }, env);
+
+  it('places a two cell fixture in each direction and charges it once', () => {
+    const steps: [0 | 1 | 2 | 3, number, number][] = [
+      [0, 1, 0],
+      [1, 0, 1],
+      [2, -1, 0],
+      [3, 0, -1],
+    ];
+    for (const [rot, dx, dy] of steps) {
+      const g = floorGrid();
+      const plan = place(g, 10, 10, rot);
+      expect(plan.problem).toBeNull();
+      expect(plan.cost).toBe(BUSINESS.modules.bagDrop.cost);
+      plan.apply();
+      const a = cellIndex(g, 10, 10);
+      const t = cellIndex(g, 10 + dx, 10 + dy);
+      expect(g.fixture[a]).toBe(BAG);
+      expect(g.fixture[t]).toBe(BAG);
+      expect(g.fixtureRot[a]).toBe(1 + rot);
+      expect(g.fixtureRot[t]).toBe(5 + rot);
+      expect(g.leased[a] + g.leased[t]).toBe(0);
+      expect(g.zone[a]).toBe(1);
+      expect(g.zone[t]).toBe(1);
+      expect(fixturePartner(g, a)).toBe(t);
+      expect(fixturePartner(g, t)).toBe(a);
+    }
+  });
+
+  it('refuses a tail that is off the grid, off the floor, occupied or in the wrong zone', () => {
+    expect(place(floorGrid(), 31, 10, 0).problem?.code).toBe('terminalNeedsFoundation');
+    expect(place(floorGrid(), 0, 10, 2).problem?.code).toBe('terminalNeedsFoundation');
+    const off = floorGrid();
+    off.floor[cellIndex(off, 11, 10)] = 0;
+    expect(place(off, 10, 10, 0).problem?.code).toBe('terminalNeedsFoundation');
+    const taken = floorGrid();
+    taken.fixture[cellIndex(taken, 11, 10)] = CHECK_IN;
+    const refused = place(taken, 10, 10, 0);
+    expect(refused.problem).not.toBeNull();
+    expect(refused.changes).toBe(0);
+    const zoned = floorGrid();
+    zoned.zone[cellIndex(zoned, 11, 10)] = 3;
+    expect(place(zoned, 10, 10, 0).problem?.code).toBe('wrongZone');
+  });
+
+  it('keeps one cell fixtures on one cell and ignores the rotation', () => {
+    const g = floorGrid();
+    planEdit(g, { op: 'fixture', x0: 10, y0: 10, x1: 11, y1: 11, variant: CHECK_IN, rot: 2 }, env).apply();
+    expect(g.fixture[cellIndex(g, 10, 10)]).toBe(CHECK_IN);
+    expect(g.fixture[cellIndex(g, 9, 10)]).toBe(0);
+    expect(g.fixtureRot[cellIndex(g, 10, 10)]).toBe(0);
+  });
+
+  it('erasing either half clears both cells and the lease', () => {
+    for (const [x, y] of [
+      [10, 10],
+      [11, 10],
+    ]) {
+      const g = floorGrid();
+      place(g, 10, 10, 0).apply();
+      g.leased[cellIndex(g, 10, 10)] = 1;
+      const plan = erase(g, x, y);
+      expect(plan.problem).toBeNull();
+      plan.apply();
+      for (const [cx, cy] of [
+        [10, 10],
+        [11, 10],
+      ]) {
+        const i = cellIndex(g, cx, cy);
+        expect(g.fixture[i]).toBe(0);
+        expect(g.fixtureRot[i]).toBe(0);
+        expect(g.leased[i]).toBe(0);
+      }
+    }
+  });
+
+  it('counts a two cell fixture once', () => {
+    const g = floorGrid();
+    place(g, 10, 10, 3).apply();
+    expect(summarize(g).counts.bagDrop).toBe(1);
+  });
+
+  it('charges a placed two cell fixture once and keeps its direction through a save', () => {
+    const { sim, id } = airportWithTerminal();
+    const g = sim.business.grids[0];
+    const before = sim.cash;
+    const edit: TerminalEdit = { op: 'fixture', x0: 50, y0: 46, x1: 51, y1: 47, variant: BAG, rot: 1 };
+    expect(run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit })).toEqual([]);
+    expect(before - sim.cash).toBe(BUSINESS.modules.bagDrop.cost);
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(JSON.parse(JSON.stringify(sim.serialize())));
+    const h = c.business.grids[0];
+    expect(Array.from(h.fixtureRot)).toEqual(Array.from(g.fixtureRot));
+    expect(h.fixtureRot[cellIndex(h, 50, 46)]).toBe(2);
+    expect(h.fixtureRot[cellIndex(h, 50, 47)]).toBe(6);
+  });
+
+  it('hashes the pairing, so the same fixture cells paired the other way hash differently', () => {
+    const { sim, id } = airportWithTerminal();
+    const g = sim.business.grids[0];
+    const edit: TerminalEdit = { op: 'fixture', x0: 50, y0: 46, x1: 51, y1: 47, variant: BAG, rot: 0 };
+    expect(run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit })).toEqual([]);
+    const paired = sim.business.hash(0);
+    const a = cellIndex(g, 50, 46);
+    const t = cellIndex(g, 51, 46);
+    g.fixtureRot[a] = 5;
+    g.fixtureRot[t] = 1;
+    expect(sim.business.hash(0)).not.toBe(paired);
+    g.fixtureRot[a] = 1;
+    g.fixtureRot[t] = 5;
+    expect(sim.business.hash(0)).toBe(paired);
+  });
+
+  it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
+    expect(SAVE_VERSION).toBe(12);
+    const { sim } = airportWithTerminal();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
+    data.version = 11;
+    for (const g of data.business.grids) delete g.fixtureRot;
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(data);
+    expect(c.business.grids.length).toBeGreaterThan(0);
+    for (const g of c.business.grids) {
+      expect(g.fixtureRot.length).toBe(g.fixture.length);
+      expect(g.fixtureRot.every((v) => v === 0)).toBe(true);
+    }
   });
 });
 

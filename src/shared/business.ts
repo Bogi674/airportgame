@@ -102,6 +102,11 @@ export interface TerminalGrid {
   /** Painted zone per cell, see ZONE. */
   zone: Uint8Array;
   fixture: Uint8Array;
+  /**
+   * Footprint of a fixture per cell: 0 for an empty cell or a one cell fixture, 1 + rot on the anchor of a two cell
+   * fixture and 5 + rot on its tail. Rot 0 to 3 is the direction from anchor to tail: +column, +row, -column, -row.
+   */
+  fixtureRot: Uint8Array;
   /** Horizontal wall edges, (h + 1) rows of w columns. Index row * w + column, the edge above that cell. */
   hWall: Uint8Array;
   /** Vertical wall edges, h rows of (w + 1) columns. Index row * (w + 1) + column, the edge left of that cell. */

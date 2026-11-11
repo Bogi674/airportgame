@@ -4,6 +4,7 @@ import type { AirfieldPayload } from './airfield';
 import {
   FIXTURE_COUNT,
   FIXTURE_KEYS,
+  FIXTURE_SPAN,
   FLOOR,
   TERMINAL_CELL_M,
   TERMINAL_CHUNK,
@@ -36,7 +37,37 @@ export interface TerminalEdit {
   y1: number;
   /** Floor type, wall type or fixture id, depending on the op. */
   variant: number;
+  /** Direction from anchor to tail of a two cell fixture, default 0. Ignored for one cell fixtures. */
+  rot?: 0 | 1 | 2 | 3;
 }
+
+/** Column and row step from anchor to tail for each fixture rotation. */
+const ROT_STEP: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+];
+
+/** Cell index of the other half of a two cell fixture, or -1 when the cell has none or it is outside the grid. */
+export function fixturePartner(g: TerminalGrid, cell: number): number {
+  const code = g.fixtureRot[cell];
+  if (code === 0) return -1;
+  const tail = code >= 5;
+  const [dx, dy] = ROT_STEP[tail ? code - 5 : code - 1];
+  const sign = tail ? -1 : 1;
+  const c = cellOf(g, cell);
+  return cellIndex(g, c.x + sign * dx, c.y + sign * dy);
+}
+
+/** Clears one cell's fixture, its footprint and its lease. */
+function clearFixtureCell(g: TerminalGrid, i: number): void {
+  g.fixture[i] = 0;
+  g.fixtureRot[i] = 0;
+  g.leased[i] = 0;
+}
+
+const cellKey = (x: number, y: number): string => `${x},${y}`;
 
 /** Unit vectors of a grid: u along cell x, v along cell y (to the right of u on a map with y down). */
 export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: number; vy: number } {
@@ -48,7 +79,7 @@ export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: numb
 
 /** An empty building. Its grid is allocated as edits reach into it. */
 export function newGrid(id: number, ox: number, oy: number, headingDeg: number): TerminalGrid {
-  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
+  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
 }
 
 /** The grid of one floor of one building, or undefined. */
@@ -110,6 +141,7 @@ export function ensureCells(g: TerminalGrid, x0: number, y0: number, x1: number,
   g.floor = cells(g.floor);
   g.zone = cells(g.zone);
   g.fixture = cells(g.fixture);
+  g.fixtureRot = cells(g.fixtureRot);
   g.leased = cells(g.leased);
   g.hWall = hEdges;
   g.vWall = vEdges;
@@ -174,7 +206,8 @@ export function summarize(g: TerminalGrid): Terminal {
   for (let i = 0; i < g.zone.length; i++) if (g.floor[i] > 0) zones[g.zone[i]]++;
   for (let i = 0; i < g.fixture.length; i++) {
     const f = g.fixture[i];
-    if (f > 0) {
+    // The tail of a two cell fixture is not counted again.
+    if (f > 0 && g.fixtureRot[i] < 5) {
       counts[fixtureKey(f)]++;
       if (g.leased[i] === 1) leased++;
     }
@@ -248,6 +281,11 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
   if (area) {
     if (x1 <= x0 || y1 <= y0) return none({ code: 'terminalBounds' });
     let blocked: Problem | null = null;
+    const span = e.op === 'fixture' ? (FIXTURE_SPAN[fixtureKey(e.variant)] ?? 1) : 1;
+    const rot = e.rot ?? 0;
+    if (span === 2 && (!Number.isInteger(rot) || rot < 0 || rot > 3)) return none({ code: 'nothingThere' });
+    // Cells a fixture of this edit already takes, so two anchors never claim one tail.
+    const claimed = new Set<string>();
     // Cells are written by logical coordinates, after the grid has grown to cover the edit.
     const at = (cx: number, cy: number): number => cellIndex(g, cx, cy);
     for (let cy = y0; cy < y1; cy++) {
@@ -280,18 +318,46 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
             g.floor[at(cx, cy)] = e.variant;
           });
         } else if (e.op === 'fixture') {
-          if (cur.floor === 0 || cur.fixture !== 0) continue;
+          if (cur.floor === 0 || cur.fixture !== 0 || claimed.has(cellKey(cx, cy))) continue;
           const allowed = FIXTURE_ZONES[fixtureKey(e.variant)] ?? [];
           if (cur.zone !== 0 && !allowed.includes(cur.zone)) {
             blocked = blocked ?? { code: 'wrongZone', args: {} };
             continue;
           }
+          let tail: { x: number; y: number } | null = null;
+          if (span === 2) {
+            const [dx, dy] = ROT_STEP[rot];
+            const tx = cx + dx;
+            const ty = cy + dy;
+            const t = cellAt(g, tx, ty);
+            // A tail outside the grid or off the floor has nothing to stand on.
+            if (t.floor === 0) {
+              blocked = blocked ?? { code: 'terminalNeedsFoundation' };
+              continue;
+            }
+            if (t.fixture !== 0 || claimed.has(cellKey(tx, ty))) continue;
+            if (t.zone !== 0 && !allowed.includes(t.zone)) {
+              blocked = blocked ?? { code: 'wrongZone', args: {} };
+              continue;
+            }
+            claimed.add(cellKey(tx, ty));
+            tail = { x: tx, y: ty };
+          }
+          claimed.add(cellKey(cx, cy));
           cost += FIXTURE_COST(e.variant);
           writes.push(() => {
             const i = at(cx, cy);
             g.fixture[i] = e.variant;
+            g.fixtureRot[i] = tail ? 1 + rot : 0;
             g.leased[i] = 0;
             if (g.zone[i] === 0) g.zone[i] = allowed[0] ?? 0;
+            if (tail) {
+              const j = at(tail.x, tail.y);
+              g.fixture[j] = e.variant;
+              g.fixtureRot[j] = 5 + rot;
+              g.leased[j] = 0;
+              if (g.zone[j] === 0) g.zone[j] = allowed[0] ?? 0;
+            }
           });
         } else if (e.op === 'zone') {
           if (cur.floor === 0 || cur.zone === e.variant) continue;
@@ -307,10 +373,12 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
           if (cur.floor === 0 && cur.fixture === 0) continue;
           writes.push(() => {
             const i = at(cx, cy);
+            // A two cell fixture leaves with its other half, which may lie outside the erased rectangle.
+            const partner = fixturePartner(g, i);
             g.floor[i] = 0;
             g.zone[i] = 0;
-            g.fixture[i] = 0;
-            g.leased[i] = 0;
+            clearFixtureCell(g, i);
+            if (partner >= 0) clearFixtureCell(g, partner);
           });
         }
       }

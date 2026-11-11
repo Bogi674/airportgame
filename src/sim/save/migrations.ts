@@ -1,9 +1,10 @@
 import type { GameOptions } from '@shared/protocol';
 import type { CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
+import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 export interface SaveData {
   version: number;
@@ -67,6 +68,14 @@ export function migrate(raw: unknown): SaveData {
       g.level = 0;
     }
     save.version = 11;
+  }
+  // Version 11 to 12: terminal grids gained a fixture footprint layer, zero on every cell. Older grids have no two cell fixtures.
+  if (save.version < 12) {
+    const business = (save as { business?: { grids?: { fixture: string; fixtureRot?: string }[] } }).business;
+    for (const g of business?.grids ?? []) {
+      g.fixtureRot ??= packTyped(new Uint8Array(unpackTyped(g.fixture, Uint8Array).length));
+    }
+    save.version = 12;
   }
   return save as SaveData;
 }
