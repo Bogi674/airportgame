@@ -1,6 +1,7 @@
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
 import { canStep, labelRooms } from '@shared/terminalRooms';
+import { newWalkCache, type WalkCache } from './walkDistance';
 
 /** Kinds of walk node. A node is a cell that walking routes must know about. */
 export const WALK_NODE = { Lattice: 1, Door: 2, Fixture: 3 } as const;
@@ -69,6 +70,8 @@ export interface WalkGraph {
   edgeTo: Int32Array;
   /** Per edge: walking length in metres. */
   edgeLen: Float32Array;
+  /** Cached walking distance rows over the edges above, see walkDistance. */
+  cache: WalkCache;
 }
 
 /** Collects the floor cells of the block that start at (ax0, ay0) and connect to the start in blockQueue. */
@@ -423,6 +426,7 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
     edgeStart: new Int32Array(1),
     edgeTo: new Int32Array(0),
     edgeLen: new Float32Array(0),
+    cache: newWalkCache(0),
   };
   const rect: BlockRect = {
     bx0: Math.floor(g.x0 / L),
@@ -435,5 +439,6 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
   const triples: number[] = [];
   collectEdges(g, wg, rect, triples);
   packEdges(wg, triples);
+  wg.cache = newWalkCache(wg.nodeCount);
   return wg;
 }
