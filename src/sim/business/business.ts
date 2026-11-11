@@ -960,8 +960,14 @@ export class Business {
         acc = foldU32(acc, sn.count);
         for (let k = 0; k < sn.count; k++) {
           acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, sn.kind[k]!), sn.queueLen[k]!), sn.busyUntil[k]!), sn.serving[k]!), sn.servingSize[k]!);
+          // The ring in queue order, so the same people in a different order hash differently.
+          for (let q = 0; q < sn.qCount[k]!; q++) {
+            const slot = k * sn.slots + ((sn.qHead[k]! + q) % sn.slots);
+            acc = foldU32(foldU32(acc, sn.qCohort[slot]!), sn.qSize[slot]!);
+          }
         }
         acc = foldU32(acc, sn.evictedCount);
+        for (let e = 0; e < sn.evictedCount; e++) acc = foldU32(acc, sn.evicted[e]!);
       }
       acc = foldU32(acc, this.serviceRng.getState());
     }

@@ -3,6 +3,7 @@ import { FIXTURE_KEYS, type FixtureKey } from '../src/shared/business';
 import { Sim } from '../src/sim/sim';
 import { buildTestAirport, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 import { SERVICE_KEYS, type ServiceKey, type ServiceNodes } from '../src/sim/terminal/serviceNodes';
+import { originFor } from '../src/shared/terminalOps';
 
 const KEY = (k: FixtureKey): number => FIXTURE_KEYS.indexOf(k) + 1;
 
@@ -25,6 +26,33 @@ function laneNode(sn: ServiceNodes): number {
 function findAt(sn: ServiceNodes, lx: number, ly: number, kind: number): number {
   for (let k = 0; k < sn.count; k++) if (sn.lx[k] === lx && sn.ly[k] === ly && sn.kind[k] === kind) return k;
   return -1;
+}
+
+/** Every security lane node on a table, in node order. */
+function laneNodes(sn: ServiceNodes): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < sn.count; k++) if (sn.kind[k] === KEY('security')) out.push(k);
+  return out;
+}
+
+/** True when cohort c is being served at a node of the table or waits in one of its queues. */
+function holds(sn: ServiceNodes, c: number): boolean {
+  for (let k = 0; k < sn.count; k++) {
+    if (sn.serving[k] === c) return true;
+    for (let q = 0; q < sn.qCount[k]!; q++) if (sn.qCohort[k * sn.slots + ((sn.qHead[k]! + q) % sn.slots)] === c) return true;
+  }
+  return false;
+}
+
+/** A small terminal with a foundation, a floor and one check in desk, at the given north position. Returns its id. */
+function smallTerminal(sim: Sim, py: number): number {
+  const { ox, oy } = originFor(3960, py, 90);
+  const before = sim.business.grids.length;
+  expect(run(sim, { type: 'terminalBuild', building: -1, ox, oy, headingDeg: 90, edit: { op: 'foundation', x0: 40, y0: 40, x1: 60, y1: 50, variant: 0 } })).toEqual([]);
+  const id = sim.business.grids[before]!.id;
+  expect(run(sim, { type: 'terminalBuild', building: id, ox, oy, headingDeg: 90, edit: { op: 'floor', x0: 40, y0: 40, x1: 60, y1: 50, variant: 2 } })).toEqual([]);
+  expect(run(sim, { type: 'terminalBuild', building: id, ox, oy, headingDeg: 90, edit: { op: 'fixture', x0: 42, y0: 42, x1: 43, y1: 43, variant: KEY('checkIn') } })).toEqual([]);
+  return id;
 }
 
 /** Edit a fixture or erase cells of the first terminal. Returns problems, empty on success. */
@@ -80,22 +108,64 @@ describe('service tables follow the terminal', () => {
     expect(sn.active).toBe(1);
   });
 
-  it('removing the lane evicts its serving cohort, then its queue, in order', () => {
+  it('evictions accumulate in order across rebuilds, and a surviving node keeps its cohorts', () => {
     const { sim, gid } = terminalSim();
-    const lane = laneNode(sim.business.serviceTable(gid)!);
-    expect(sim.business.serviceJoin(gid, lane, 10, 2)).toBe(true);
-    expect(sim.business.serviceJoin(gid, lane, 11, 2)).toBe(true);
-    const busy = sim.business.serviceTable(gid)!;
-    for (let t = 0; t < 10 && busy.serving[lane]! < 0; t++) sim.step();
-    expect(busy.serving[lane]).toBe(10);
-    expect(busy.queueLen[lane]).toBe(2);
-    const lx = busy.lx[lane]!;
-    const ly = busy.ly[lane]!;
-    expect(terminalEdit(sim, gid, { op: 'erase', x0: lx, y0: ly, x1: lx + 1, y1: ly + 1, variant: 0 })).toEqual([]);
-    const sn = sim.business.serviceTable(gid)!;
-    expect(findAt(sn, lx, ly, KEY('security'))).toBe(-1);
+    const [a, b, c] = laneNodes(sim.business.serviceTable(gid)!);
+    expect(c).toBeDefined();
+    expect(sim.business.serviceJoin(gid, a!, 10, 2)).toBe(true);
+    expect(sim.business.serviceJoin(gid, a!, 11, 2)).toBe(true);
+    expect(sim.business.serviceJoin(gid, b!, 20, 2)).toBe(true);
+    expect(sim.business.serviceJoin(gid, b!, 21, 2)).toBe(true);
+    expect(sim.business.serviceJoin(gid, c!, 40, 2)).toBe(true);
+    expect(sim.business.serviceJoin(gid, c!, 41, 2)).toBe(true);
+    for (let t = 0; t < 10 && laneNodes(sim.business.serviceTable(gid)!).some((k) => sim.business.serviceTable(gid)!.serving[k]! < 0); t++) sim.step();
+    const at = (k: number) => {
+      const sn = sim.business.serviceTable(gid)!;
+      return { lx: sn.lx[k]!, ly: sn.ly[k]! };
+    };
+    const laneA = at(a!);
+    const laneB = at(b!);
+    const laneC = at(c!);
+    expect(sim.business.serviceTable(gid)!.active).toBe(6);
+
+    expect(terminalEdit(sim, gid, { op: 'erase', x0: laneA.lx, y0: laneA.ly, x1: laneA.lx + 1, y1: laneA.ly + 1, variant: 0 })).toEqual([]);
+    let sn = sim.business.serviceTable(gid)!;
     expect(sn.evictedCount).toBe(2);
     expect(Array.from(sn.evicted.subarray(0, sn.evictedCount))).toEqual([10, 11]);
+    expect(sn.active).toBe(4);
+    let kB = findAt(sn, laneB.lx, laneB.ly, KEY('security'));
+    expect(sn.serving[kB]).toBe(20);
+    expect(sn.qCohort[kB * sn.slots + sn.qHead[kB]!]).toBe(21);
+    expect(sn.queueLen[kB]).toBe(2);
+
+    expect(terminalEdit(sim, gid, { op: 'erase', x0: laneC.lx, y0: laneC.ly, x1: laneC.lx + 1, y1: laneC.ly + 1, variant: 0 })).toEqual([]);
+    sn = sim.business.serviceTable(gid)!;
+    expect(sn.evictedCount).toBe(4);
+    expect(Array.from(sn.evicted.subarray(0, sn.evictedCount))).toEqual([10, 11, 40, 41]);
+    expect(sn.active).toBe(2);
+    kB = findAt(sn, laneB.lx, laneB.ly, KEY('security'));
+    expect(sn.serving[kB]).toBe(20);
+    expect(sn.qCohort[kB * sn.slots + sn.qHead[kB]!]).toBe(21);
+  });
+
+  it('a queue in a second terminal survives edits to the first and the first being erased and demolished', () => {
+    const { sim, gid: first } = terminalSim();
+    const second = smallTerminal(sim, 5700);
+    const third = smallTerminal(sim, 6000);
+    expect(sim.business.serviceJoin(second, 0, 77, 2)).toBe(true);
+    const check = (): void => {
+      expect(sim.business.serviceNodes.length).toBe(sim.business.grids.length);
+      expect(holds(sim.business.serviceTable(second)!, 77)).toBe(true);
+    };
+    check();
+    expect(terminalEdit(sim, first, { op: 'wall', x0: 50, y0: 45, x1: 50, y1: 46, variant: 1 })).toEqual([]);
+    check();
+    expect(terminalEdit(sim, first, { op: 'erase', x0: 0, y0: 0, x1: 200, y1: 200, variant: 0 })).toEqual([]);
+    expect(sim.business.grids.some((g) => g.id === first)).toBe(false);
+    check();
+    expect(sim.business.demolishTerminal(third)).toBeNull();
+    expect(sim.business.serviceTable(third)).toBeNull();
+    check();
   });
 
   it('demolishing the terminal drops its table', () => {
@@ -149,6 +219,19 @@ describe('service queues in the sim', () => {
     const lane = laneNode(read.sim.business.serviceTable(read.gid)!);
     expect(read.sim.business.serviceJoin(read.gid, lane, 1, 2)).toBe(true);
     expect(read.sim.stateHash()).not.toBe(plain.sim.stateHash());
+  });
+
+  it('the same join script with different cohort ids hashes differently', () => {
+    const hashWithIds = (base: number): number => {
+      const { sim, gid } = terminalSim('ID-SEED');
+      const lane = laneNode(sim.business.serviceTable(gid)!);
+      expect(sim.business.serviceJoin(gid, lane, base, 2)).toBe(true);
+      expect(sim.business.serviceJoin(gid, lane, base + 1, 2)).toBe(true);
+      for (let t = 0; t < 20; t++) sim.step();
+      return sim.stateHash();
+    };
+    expect(hashWithIds(1000)).toBe(hashWithIds(1000));
+    expect(hashWithIds(1000)).not.toBe(hashWithIds(2000));
   });
 
   it('a save and restore with empty queues keeps the hash and the table count', () => {
