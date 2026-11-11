@@ -4,6 +4,8 @@ import { PEOPLE } from '../src/data/index';
 import { peopleSchema } from '../src/data/schemas/people';
 import { RECIPE_COUNT, memberHash, pickRecipe } from '../src/render/sprites/peopleRecipes';
 import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/peopleShapes';
+import { peopleTierForZoom } from '../src/render/sprites/peopleAtlas';
+import { PeopleSelection } from '../src/render/peopleSelect';
 
 const SEED_COUNT = 6000;
 const PROFILE_TOTAL = PEOPLE.profiles.length;
@@ -107,5 +109,48 @@ describe('personOps', () => {
     const recipe = PEOPLE.recipes[0];
     if (!recipe) throw new Error('no recipes in people.json');
     expect(opsFor(recipe, 1, 2)).toEqual(opsFor(recipe, 1, 2));
+  });
+});
+
+describe('peopleTierForZoom', () => {
+  it('picks the highest tier whose minZoom is at or below the zoom', () => {
+    expect(peopleTierForZoom(3.9)).toBe(-1);
+    expect(peopleTierForZoom(4)).toBe(0);
+    expect(peopleTierForZoom(8)).toBe(1);
+    expect(peopleTierForZoom(24)).toBe(2);
+    expect(peopleTierForZoom(40)).toBe(2);
+  });
+});
+
+describe('PeopleSelection', () => {
+  const n = 5;
+  const x = Float32Array.from([3, 1, 2, 1, 9]);
+  const y = Float32Array.from([0, 0, 0, 0, 0]);
+  const size = Uint8Array.from([2, 2, 2, 2, 2]);
+
+  it('keeps snapshot order under the cap', () => {
+    const sel = new PeopleSelection();
+    const count = sel.select(x, y, size, n, 0, 0, 100);
+    expect(count).toBe(n);
+    expect(Array.from(sel.order.subarray(0, count))).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('sorts nearest first over the cap and keeps the figure sum within it', () => {
+    const sel = new PeopleSelection();
+    const count = sel.select(x, y, size, n, 0, 0, 6);
+    expect(count).toBe(3);
+    const drawn = Array.from(sel.order.subarray(0, count));
+    expect(drawn).toEqual([1, 3, 2]);
+    const figures = drawn.reduce((sum, i) => sum + (size[i] ?? 0), 0);
+    expect(figures).toBeLessThanOrEqual(6);
+  });
+
+  it('orders equal distances by index and repeats the same order', () => {
+    const sel = new PeopleSelection();
+    const first = sel.select(x, y, size, n, 0, 0, 4);
+    const a = Array.from(sel.order.subarray(0, first));
+    const second = sel.select(x, y, size, n, 0, 0, 4);
+    expect(a).toEqual([1, 3]);
+    expect(Array.from(sel.order.subarray(0, second))).toEqual(a);
   });
 });

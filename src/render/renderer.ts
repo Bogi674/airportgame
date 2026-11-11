@@ -60,6 +60,8 @@ export class Renderer {
   private readonly governor = new QualityGovernor();
   private lastRender = 0;
   private speed = 1;
+  /** Walking clock in game seconds, drives the gait frames of the people sample. */
+  private walkClockS = 0;
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
   private dpr = 1;
@@ -131,23 +133,17 @@ export class Renderer {
 
   setTerminals(terminals: TerminalGrid[]): void {
     this.baker.setTerminals(terminals);
-    this.people.setTerminals(terminals);
     this.chunks.markAllDirty();
   }
 
-  /** Passengers handled today and the game speed, which drive the walking dots. */
-  setFlow(paxToday: number, speed: number): void {
-    this.people.setPassengers(paxToday);
+  /** Game speed, which scales the walking clock of the people sample. */
+  setSpeed(speed: number): void {
     this.speed = speed;
   }
 
   /** Shows rings around aircraft that wait on a reservation or were part of a deadlock. */
   setDebugOverlay(on: boolean): void {
     this.debug = on;
-  }
-
-  get peopleCount(): number {
-    return this.people.size;
   }
 
   private prevOwner: Uint8Array | null = null;
@@ -293,7 +289,7 @@ export class Renderer {
     if (this.grid) this.drawGrid(this.grid, z * c, z * s, -z * s, z * c, e, f);
     if (this.guide) this.drawGuide(z * c, z * s, -z * s, z * c, e, f);
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
-    this.drawPeople(z * c, z * s, -z * s, z * c, e, f);
+    this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
   }
@@ -811,15 +807,16 @@ export class Renderer {
     }
   }
 
-  private drawPeople(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+  private drawPeople(curr: SnapshotViews | null, a: number, b: number, cc: number, d: number, e: number, f: number): void {
     const now = performance.now();
     const dt = this.lastFrame === 0 ? 0 : Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
-    this.people.update(dt, this.speed);
-    if (this.camera.zoom < 1.2 || this.people.size === 0) return;
+    this.walkClockS += dt * this.speed;
+    if (!curr) return;
     this.camera.visibleBounds(this.bounds);
     this.ctx.setTransform(a, b, cc, d, e, f);
-    this.people.draw(this.ctx, this.bounds[0], this.bounds[1], this.bounds[2], this.bounds[3]);
+    const bo = this.bounds;
+    this.people.draw(this.ctx, curr, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3], this.walkClockS);
   }
 
   /** Ground vehicles, drawn under the aircraft. Skipped when zoomed out where they are a pixel. */

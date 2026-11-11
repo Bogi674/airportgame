@@ -206,8 +206,8 @@ export function App() {
   }, [renderer, store.debugOverlay]);
 
   useEffect(() => {
-    renderer?.setFlow(store.business?.paxToday ?? 0, store.speed);
-  }, [renderer, store.business?.paxToday, store.speed]);
+    renderer?.setSpeed(store.speed);
+  }, [renderer, store.speed]);
 
   useEffect(() => {
     renderer?.setTerminals(store.terminalGrids);

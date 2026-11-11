@@ -78,6 +78,11 @@ function path(out: ShapeOp[], d: string, fill: string, p: Paint = {}): void {
   out.push({ k: 'path', d, fill, stroke: p.stroke, sw: p.sw, op: p.op });
 }
 
+/** The ground shadow of person(), drawn under the figure at detail 2. */
+export function shadowOps(out: ShapeOp[]): void {
+  ellipse(out, 0.03, 0.04, 0.3, 0.2, OUT);
+}
+
 /** Port of people2.py darker(). Scales each channel by f and truncates. */
 function darker(hexc: string, f = 0.78): string {
   const h = hexc.replace(/^#+/, '');
@@ -262,7 +267,7 @@ function personLayers(out: ShapeOp[], r: PersonLook, frame: number, detail: numb
     return;
   }
 
-  if (withShadow) ellipse(out, 0.03, 0.04, 0.3, 0.2, OUT);
+  if (withShadow) shadowOps(out);
 
   // Wheelchair frame under the body, or feet with a gait.
   if (seated) {
