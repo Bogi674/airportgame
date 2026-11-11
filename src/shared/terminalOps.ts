@@ -42,7 +42,7 @@ export interface TerminalEdit {
 }
 
 /** Column and row step from anchor to tail for each fixture rotation. */
-const ROT_STEP: readonly (readonly [number, number])[] = [
+export const ROT_STEP: readonly (readonly [number, number])[] = [
   [1, 0],
   [0, 1],
   [-1, 0],

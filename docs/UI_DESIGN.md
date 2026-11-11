@@ -191,6 +191,7 @@ Key O opens a compact list. One overlay at a time plus optional labels. Active o
 | WASD or arrows | Pan |
 | Q and E | Rotate placement or view |
 | R | Rotate 90 degrees |
+| R (terminal fixture, two cell fixture chosen) | Turn the fixture 90 degrees, the ghost follows |
 | Shift (hold) | Snap to 15 degree steps |
 | Alt (hold) | Free placement, no snapping, including the construction grid |
 | A | Apron tool: switch free polygon and rectangle |

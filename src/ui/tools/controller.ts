@@ -35,6 +35,7 @@ import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore } from '../stores/toolStore';
+import { fixtureEdit, footprintRect, isTwoCell, nextFixtureRot } from './fixtureRot';
 
 export interface Mods {
   shift: boolean;
@@ -664,6 +665,11 @@ export class ToolController {
     if ((e.key === 'a' || e.key === 'A') && st.tool === 'apron' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       this.cancel();
       st.set({ apronMode: st.apronMode === 'rect' ? 'polygon' : 'rect' });
+      return true;
+    }
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && isTwoCell(st.fixtureId)) {
+      st.set({ fixtureRot: nextFixtureRot(st.fixtureRot) });
+      this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
     if ((e.key === 'r' || e.key === 'R') && (st.tool === 'stands' || st.tool === 'gaBlock' || st.tool === 'terminal')) {
@@ -1657,7 +1663,7 @@ export class ToolController {
     if (sub === 'floor') return { op: 'floor', x0, y0, x1, y1, variant: st.floorType };
     if (sub === 'erase') return { op: 'erase', x0, y0, x1, y1, variant: 0 };
     if (sub === 'zone') return { op: 'zone', x0, y0, x1, y1, variant: st.zoneType };
-    return { op: 'fixture', x0, y0, x1, y1, variant: st.fixtureId };
+    return fixtureEdit(x0, y0, x1, y1, st.fixtureId, st.fixtureRot);
   }
 
   /** The grid edge closest to a fractional cell position. */
@@ -1700,7 +1706,8 @@ export class ToolController {
       shapes.push({ k: 'strip', pts: [a0, a1], w: 0.8 });
       label = tFormat('ghost.terminalWall', { n: plan.changes, cost: formatMoney(plan.cost) });
     } else {
-      shapes.push({ k: 'poly', pts: rectWorld(g, edit.x0, edit.y0, edit.x1, edit.y1) });
+      const fp = footprintRect(edit);
+      shapes.push({ k: 'poly', pts: rectWorld(g, fp.x0, fp.y0, fp.x1, fp.y1) });
       label = tFormat('ghost.terminal', { n: plan.changes, cost: formatMoney(plan.cost) });
     }
     // Before a drag starts, a hovered cell with nothing to do is not an error.

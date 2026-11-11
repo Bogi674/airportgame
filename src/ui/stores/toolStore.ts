@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
+import type { FixtureRot } from '../tools/fixtureRot';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'demolish';
 
@@ -60,6 +61,8 @@ interface ToolState {
   floorType: 1 | 2 | 3;
   wallType: 1 | 2;
   fixtureId: number;
+  /** Rotation of the two cell fixture about to be placed. R cycles it. */
+  fixtureRot: FixtureRot;
   zoneType: 1 | 2 | 3 | 4;
   selection: Selection | null;
   /** Id of the construction grid offered near the cursor, or null when the cursor is out of reach of every grid. Set by the tool controller. */
@@ -102,6 +105,7 @@ export const useToolStore = create<ToolState>((set) => ({
   floorType: 2,
   wallType: 1,
   fixtureId: 1,
+  fixtureRot: 0,
   zoneType: 1,
   selection: null,
   gridId: null,

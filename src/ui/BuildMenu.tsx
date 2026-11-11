@@ -175,7 +175,7 @@ export const CATEGORIES: Category[] = [
     tool: 'terminal',
     tabs: [
       { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase')] },
-      { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security')] },
+      { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk')] },
       { id: 'facilities', items: [fx('belt', 'belt'), fx('seating', 'seating'), fx('toilet', 'toilet')] },
       { id: 'shops', items: [fx('convenience', 'shop'), fx('quickFood', 'shop'), fx('cafe', 'shop'), fx('dutyFree', 'shop'), fx('booksGifts', 'shop'), fx('pharmacy', 'shop')] },
     ],
