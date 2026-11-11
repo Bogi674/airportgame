@@ -1,14 +1,14 @@
 # T13: Service nodes and queues
 
-Status: doing
+Status: done
 Branch: claude/ecstatic-rubin-7yq9uc
 
 ## Requirements
 
-* [ ] R1 Service nodes are created from fixtures whenever terminal grids change (at command time)
-* [ ] R2 API for T14: join, update, waitEstimate in seconds
-* [ ] R3 Data in `business.json` (coefficient of variation, queue density) with schema
-* [ ] R4 Tests: security lane about 300 people per hour within 10 percent, overflow stops joins, determinism
+* [x] R1 Service nodes are created from fixtures whenever terminal grids change (at command time)
+* [x] R2 API for T14: join, update, waitEstimate in seconds
+* [x] R3 Data in `business.json` (coefficient of variation, queue density) with schema
+* [x] R4 Tests: security lane about 300 people per hour within 10 percent, overflow stops joins, determinism
 
 ## Design
 
@@ -50,4 +50,17 @@ Security rate, save format, server model, queue density: answered by the user on
 
 ## Verify
 
+```
+PASS  rules
+PASS  types
+PASS  lint
+PASS  tests (44 files, 508 tests)
+PASS  stress
+verify: all checks passed.
+build: passed
+e2e: 13 passed
+```
+
 ## Report
+
+All four requirements met. Reviewer found no logic bugs. Test gaps from the reviews of slices 1, 2 and 4 are closed, and the hash now covers queue and evicted contents. No save change, no new dependency, no visual change. T14 must save service state and the service rng together with the cohort table (PITFALLS 27).
