@@ -52,6 +52,34 @@
    "cost": 90000,
    "capacityPerHour": 0,
    "staff": 1.5
+  },
+  "kiosk": {
+   "cost": 6000,
+   "capacityPerHour": 48,
+   "staff": 0,
+   "servers": 1,
+   "serviceSeconds": 75
+  },
+  "bagDrop": {
+   "cost": 24000,
+   "capacityPerHour": 90,
+   "staff": 0.5,
+   "servers": 1,
+   "serviceSeconds": 40
+  },
+  "passport": {
+   "cost": 18000,
+   "capacityPerHour": 80,
+   "staff": 1,
+   "servers": 1,
+   "serviceSeconds": 45
+  },
+  "gateDesk": {
+   "cost": 12000,
+   "capacityPerHour": 720,
+   "staff": 1,
+   "servers": 1,
+   "serviceSeconds": 5
   }
  },
  "tower": {

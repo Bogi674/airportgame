@@ -92,6 +92,9 @@ export class Business {
   /** Layout problems of the main terminal building, from the walls, doors and zones laid. */
   roomIssues: string[] = [];
   secureSeating = 0;
+  /** True when some building has a gate desk, and whether some building with security and secure seating has none. */
+  private anyGateDesk = false;
+  private gatelessHall = false;
   private totals: Record<FixtureKey, number> = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
   /** Sample of foundation cell centres, for the contact stand reach test. */
   private reach: number[] = [];
@@ -242,15 +245,26 @@ export class Business {
   private computeFacilities(): void {
     let cells = 0;
     this.secureSeating = 0;
+    this.anyGateDesk = false;
+    this.gatelessHall = false;
     for (const g of this.grids) {
+      let seats = 0;
+      let lanes = 0;
+      let gates = 0;
       for (let i = 0; i < g.fixture.length; i++) {
         const f = g.fixture[i];
         if (f === 0) continue;
         const k = fixtureKey(f);
         if (k === 'atc') {
           cells++;
-        } else if (k === 'seating' && g.zone[i] === ZONE.Secure) this.secureSeating++;
+        } else if (k === 'seating' && g.zone[i] === ZONE.Secure) {
+          this.secureSeating++;
+          seats++;
+        } else if (k === 'security') lanes++;
+        else if (k === 'gateDesk' && g.fixtureRot[i] < 5) gates++;
       }
+      if (gates > 0) this.anyGateDesk = true;
+      if (seats > 0 && lanes > 0 && gates === 0) this.gatelessHall = true;
     }
     this.atcCells = cells;
     let main: TerminalGrid | null = null;
@@ -268,9 +282,10 @@ export class Business {
     const out: string[] = [];
     if (this.terminals.length === 0) out.push('noTerminal');
     else {
-      if (this.totals.checkIn === 0) out.push('noCheckIn');
+      if (this.totals.checkIn + this.totals.kiosk === 0) out.push('noCheckIn');
       if (this.totals.security === 0) out.push('noSecurity');
       if (this.secureSeating === 0) out.push('noSeating');
+      if (this.anyGateDesk && this.gatelessHall) out.push('noGateDesk');
       for (const k of this.roomIssues) out.push(k);
       if (this.totals.belt === 0) out.push('noBelt');
     }
@@ -317,7 +332,11 @@ export class Business {
 
   /** Departing passengers the terminals can process per hour. */
   depCapacity(): number {
-    const base = Math.min(this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour, this.totals.security * BUSINESS.modules.security.capacityPerHour);
+    const checkInTerm =
+      this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour +
+      this.totals.kiosk * BUSINESS.modules.kiosk.capacityPerHour +
+      this.totals.bagDrop * BUSINESS.modules.bagDrop.capacityPerHour;
+    const base = Math.min(checkInTerm, this.totals.security * BUSINESS.modules.security.capacityPerHour);
     // Without seats in the secure zone passengers wait standing and the lounge backs up.
     if (this.roomIssues.length > 0) return 0;
     return this.secureSeating > 0 ? base : Math.floor(base / 2);
@@ -325,6 +344,10 @@ export class Business {
 
   arrCapacity(): number {
     return this.totals.belt * BUSINESS.modules.belt.capacityPerHour;
+  }
+
+  intlCapacity(): number {
+    return this.totals.passport * BUSINESS.modules.passport.capacityPerHour;
   }
 
   /** Contact stands need a terminal building close by. */
@@ -346,7 +369,7 @@ export class Business {
 
   staffCount(): number {
     let s = 0;
-    for (const k of ['checkIn', 'security', 'belt', 'toilet', 'atc'] as const) s += this.totals[k] * BUSINESS.modules[k].staff;
+    for (const k of ['checkIn', 'security', 'belt', 'toilet', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk'] as const) s += this.totals[k] * BUSINESS.modules[k].staff;
     s += this.airfield.data.stands.length * 1.5;
     if (this.airfield.data.runways.length > 0) s += 4 + this.airfield.data.runways.length * 2;
     return Math.round(s);
@@ -751,6 +774,7 @@ export class Business {
       fleet: this.fleet,
       serviceSlowdown: this.traffic.serviceSlowdown,
       arrCapacity: this.arrCapacity(),
+      intlCapacity: this.intlCapacity(),
       towerLevel: towerLevelOf(this.airfield.data),
       atcQueue: this.traffic.atcQueueLength(),
       history: this.history.map((h) => Array.from(h)),
@@ -828,6 +852,8 @@ export class Business {
         if (g.fixture[i] === 0) continue;
         const c = cellOf(g, i);
         acc = foldU32(foldU32(foldU32(acc, c.x + 65536), c.y + 65536), g.fixture[i]);
+        // The pairing of two cell fixtures is state. Only nonzero footprints hash, so layouts without them keep their hash.
+        if (g.fixtureRot[i] !== 0) acc = foldU32(foldU32(acc, i), g.fixtureRot[i]);
       }
     }
     return foldU32(acc, this.weather.length);
@@ -854,6 +880,7 @@ interface SavedGrid {
   floor: string;
   zone?: string;
   fixture: string;
+  fixtureRot: string;
   hWall: string;
   vWall: string;
   leased: string;
@@ -894,7 +921,7 @@ function fitStandPrefs(old: number[], rotations: number): number[] {
 }
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
@@ -905,10 +932,11 @@ function loadGrid(sg: SavedGrid): TerminalGrid {
   const y0 = sg.y0 ?? 0;
   const w = sg.w ?? LEGACY_GRID;
   const h = sg.h ?? LEGACY_GRID;
-  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
+  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
   unpackInto(sg.floor, g.floor, Uint8Array);
   if (sg.zone) unpackInto(sg.zone, g.zone, Uint8Array);
   unpackInto(sg.fixture, g.fixture, Uint8Array);
+  unpackInto(sg.fixtureRot, g.fixtureRot, Uint8Array);
   unpackInto(sg.hWall, g.hWall, Uint8Array);
   unpackInto(sg.vWall, g.vWall, Uint8Array);
   unpackInto(sg.leased, g.leased, Uint8Array);

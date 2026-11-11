@@ -4,7 +4,7 @@ import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
 import { FLOOR, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
-import { cellIndex, hEdgeIndex, vEdgeIndex, worldToCell } from '@shared/terminalOps';
+import { cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
 import { CHUNK_SIZE_M } from '@shared/math';
 import { BAND_RASTER_SCALE } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
@@ -565,8 +565,8 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
 }
 
 const FLOOR_COLOR = ['', '#a9aeb3', '#d3dadd', '#7f90a8'];
-const FIXTURE_COLOR = ['', '#3f7fd8', '#e08a2e', '#8b95a0', '#3aa89a', '#9a5cc8', '#d85c5c', '#e0a030', '#b87a4a', '#c8a8e8', '#5aa860', '#4ab0b8'];
-const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk', 'Rx'];
+const FIXTURE_COLOR = ['', '#3f7fd8', '#e08a2e', '#8b95a0', '#3aa89a', '#9a5cc8', '#d85c5c', '#e0a030', '#b87a4a', '#c8a8e8', '#5aa860', '#4ab0b8', '#2c3441', '#4f6d8f', '#8a9bb3', '#c49a3c', '#9c8a6c'];
+const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk', 'Rx', 'T', 'K', 'D', 'P', 'G'];
 
 /** Draws one terminal building as a cutaway: floors, walls, doors and fixtures. */
 const ZONE_TINT = ['', 'rgba(70,140,230,0.22)', 'rgba(235,170,50,0.26)', 'rgba(70,190,120,0.24)', 'rgba(220,80,80,0.26)'];
@@ -688,31 +688,62 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
       if (!filled(cx, cy + 1)) ctx.fillRect(px, py + C - 0.3, C, 0.3);
     }
   }
-  // Fixtures.
-  for (let cy = y0; cy <= y1; cy++) {
-    for (let cx = x0; cx <= x1; cx++) {
-      const f0 = g.fixture[at(cx, cy)];
-      if (f0 === 0) continue;
+  // Fixtures. A two cell fixture is one body from its anchor across the tail, so the loops widen by one
+  // cell to catch an anchor just outside the window whose tail is inside it. Tail cells (code 5 to 8) are skipped.
+  const fx0 = Math.max(g.x0, x0 - 1);
+  const fy0 = Math.max(g.y0, y0 - 1);
+  const fx1 = Math.min(g.x0 + g.w - 1, x1 + 1);
+  const fy1 = Math.min(g.y0 + g.h - 1, y1 + 1);
+  for (let cy = fy0; cy <= fy1; cy++) {
+    for (let cx = fx0; cx <= fx1; cx++) {
+      const i = at(cx, cy);
+      const code = g.fixtureRot[i];
+      if (g.fixture[i] === 0 || code >= 5) continue;
       // A short shadow under each fixture lifts it off the floor in the same cheap way.
       ctx.fillStyle = 'rgba(0,0,0,0.22)';
-      ctx.fillRect(cx * C + 0.45, cy * C + 0.45, C - 0.4, C - 0.4);
+      if (code === 0) {
+        ctx.fillRect(cx * C + 0.45, cy * C + 0.45, C - 0.4, C - 0.4);
+      } else {
+        const [sx, sy] = ROT_STEP[code - 1];
+        ctx.fillRect((cx + Math.min(0, sx)) * C + 0.45, (cy + Math.min(0, sy)) * C + 0.45, (1 + Math.abs(sx)) * C - 0.4, (1 + Math.abs(sy)) * C - 0.4);
+      }
     }
   }
-  for (let cy = y0; cy <= y1; cy++) {
-    for (let cx = x0; cx <= x1; cx++) {
-      const f = g.fixture[at(cx, cy)];
-      if (f === 0) continue;
-      ctx.fillStyle = FIXTURE_COLOR[f];
-      ctx.fillRect(cx * C + 0.2, cy * C + 0.2, C - 0.4, C - 0.4);
-      if (f === 4) {
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.fillRect(cx * C + 0.5, cy * C + 0.7, C - 1, 0.6);
-      } else if (win.scale >= 2 && FIXTURE_LETTER[f]) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 1px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(FIXTURE_LETTER[f], cx * C + C / 2, cy * C + C / 2);
+  for (let cy = fy0; cy <= fy1; cy++) {
+    for (let cx = fx0; cx <= fx1; cx++) {
+      const i = at(cx, cy);
+      const f = g.fixture[i];
+      const code = g.fixtureRot[i];
+      if (f === 0 || code >= 5) continue;
+      if (code === 0) {
+        ctx.fillStyle = FIXTURE_COLOR[f];
+        ctx.fillRect(cx * C + 0.2, cy * C + 0.2, C - 0.4, C - 0.4);
+        if (f === 4) {
+          ctx.fillStyle = 'rgba(255,255,255,0.55)';
+          ctx.fillRect(cx * C + 0.5, cy * C + 0.7, C - 1, 0.6);
+        } else if (win.scale >= 2 && FIXTURE_LETTER[f]) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 1px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(FIXTURE_LETTER[f], cx * C + C / 2, cy * C + C / 2);
+        }
+      } else {
+        // Body spans the anchor and its tail, inset like a single cell fixture.
+        const [sx, sy] = ROT_STEP[code - 1];
+        const bx = (cx + Math.min(0, sx)) * C;
+        const by = (cy + Math.min(0, sy)) * C;
+        const bw = (1 + Math.abs(sx)) * C;
+        const bh = (1 + Math.abs(sy)) * C;
+        ctx.fillStyle = FIXTURE_COLOR[f];
+        ctx.fillRect(bx + 0.2, by + 0.2, bw - 0.4, bh - 0.4);
+        if (win.scale >= 2 && FIXTURE_LETTER[f]) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 1px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(FIXTURE_LETTER[f], bx + bw / 2, by + bh / 2);
+        }
       }
     }
   }

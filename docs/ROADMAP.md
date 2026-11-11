@@ -95,7 +95,7 @@ Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS
 
 * [x] Building shell placement with local grid and rotation (the player lays foundation cells on a local 2 m grid, rotated in steps with R, a new building starts with the first foundation; the grid grows in 64 m chunks with no size cap, revision 2 section 5)
 * [x] Walls, doors, floors, rooms with types, room validation (foundations, flooring, walls, glass, doors, painted zones and room validation: passengers must be able to walk from check in through a security lane into secure floor with seats, a gap in the wall is a security bypass and stops departures)
-* [ ] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in desk, security lane, baggage belt, seating, toilets and six shop types are placed cell by cell, kiosks, bag drop, passport booth and gate desks are missing)
+* [x] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in desk, security lane, baggage belt, seating, toilets and six shop types are placed cell by cell, kiosks, bag drop, passport booth and gate desks added in T11 with two cell footprints and save format 12)
 * [ ] Walking graph with cached distances and regional rebuild (not built)
 * [ ] Service nodes and queues (a terminal load model replaces queues)
 * [ ] Cohorts and the departure journey from curb to aircraft (passengers are aggregated per flight and limited by terminal capacity, no cohorts)

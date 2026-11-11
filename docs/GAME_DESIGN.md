@@ -321,6 +321,8 @@ A building has no fixed size (`docs/DESIGN_REVISION_2.md` section 5). Its footpr
 | Bench | 2 by 2 m, 3 seats | n/a | n/a | Comfort |
 | Toilet block | 4 by 6 m | 6 | 90 s | Demand scales with dwell time |
 
+Bag drop and gate desk occupy two cells and rotate in 90 degree steps with R.
+
 ### Passenger journey
 
 Departure: access, drop off or parking or station, landside walk, check in (or bag drop only), security, passport control if international, airside dwell and retail, gate, boarding, aircraft.

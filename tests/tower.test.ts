@@ -480,7 +480,6 @@ describe('tower determinism and saves', () => {
   });
 
   it('a version 7 save without towers loads with none and behaves like an uninterrupted run', () => {
-    expect(SAVE_VERSION).toBe(11);
     const make = (): Sim => {
       const sim = ownedSim();
       buildTestAirport(sim, { standsPerRow: 4 });

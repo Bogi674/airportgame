@@ -165,6 +165,14 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
       return <Scene bg="#d3dadd"><rect x="22" y="14" width="22" height="32" rx="3" fill="#9a5cc8" /><rect x="52" y="14" width="22" height="32" rx="3" fill="#b88ad8" /></Scene>;
     case 'shop':
       return <Scene bg="#d3dadd"><rect x="16" y="14" width="64" height="32" rx="3" fill="#e0a030" /><rect x="24" y="22" width="48" height="12" fill="rgba(255,255,255,0.5)" /><path d="M14 14h68l-4-6H18z" fill="#d85c5c" /></Scene>;
+    case 'kiosk':
+      return <Scene bg="#d3dadd"><rect x="34" y="12" width="28" height="36" rx="3" fill="#4f6d8f" /><rect x="39" y="18" width="18" height="12" fill="rgba(255,255,255,0.5)" /></Scene>;
+    case 'bagDrop':
+      return <Scene bg="#d3dadd"><rect x="10" y="18" width="76" height="24" rx="3" fill="#8a9bb3" /><rect x="22" y="24" width="4" height="12" fill="rgba(255,255,255,0.6)" /><rect x="34" y="24" width="4" height="12" fill="rgba(255,255,255,0.6)" /><rect x="46" y="24" width="4" height="12" fill="rgba(255,255,255,0.6)" /><rect x="66" y="22" width="14" height="10" fill="#2c3441" /></Scene>;
+    case 'passport':
+      return <Scene bg="#d3dadd"><rect x="30" y="14" width="36" height="32" rx="3" fill="#c49a3c" /><rect x="38" y="22" width="20" height="10" fill="rgba(255,255,255,0.5)" /></Scene>;
+    case 'gateDesk':
+      return <Scene bg="#d3dadd"><rect x="12" y="18" width="72" height="24" rx="3" fill="#9c8a6c" /><rect x="22" y="24" width="12" height="12" fill="rgba(255,255,255,0.5)" /><rect x="60" y="24" width="14" height="12" fill="#5aa860" /></Scene>;
     case 'zonePublic':
     case 'zoneCommercial':
     case 'zoneSecure':

@@ -118,7 +118,7 @@ Also save mid run, restore into a fresh sim, run both on, and compare hashes whe
 
 1. Append the key at the end of `FIXTURE_KEYS` in `src/shared/business.ts`. Never insert in the middle; ids are saved.
 2. Add its zones to `FIXTURE_ZONES` and its module data (cost, footprint, servers, service time) to `src/data/business.json` and the schema.
-3. Teach `terminalOps.ts` its footprint if it is larger than one cell, and `terminalRooms.ts` any room rule.
+3. Teach `terminalOps.ts` its footprint if it is larger than one cell (set `FIXTURE_SPAN` in `src/shared/business.ts`, and write the partner cell in the `fixtureRot` layer as anchor `1 + rot`, tail `5 + rot`), and `terminalRooms.ts` any room rule.
 4. Add a build menu card with `fx(key, thumb)` in `BuildMenu.tsx`.
 5. Count it where the business sums fixtures (`summarize` in `terminalOps.ts`).
 6. Test placement, the footprint, and the capacity it adds.

@@ -327,6 +327,7 @@ export class Sim {
       floor: g.floor.slice(),
       zone: g.zone.slice(),
       fixture: g.fixture.slice(),
+      fixtureRot: g.fixtureRot.slice(),
       hWall: g.hWall.slice(),
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),

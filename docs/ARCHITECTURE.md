@@ -140,7 +140,7 @@ Built from player polylines when they change, never during ticks.
 
 ## 7. Terminal model
 
-* Grid layers: floors, walls, doors, rooms with types, fixtures, shop units.
+* Grid layers: floors, walls, doors, rooms with types, fixtures, fixture rotation (`fixtureRot`, two cell fixtures), shop units.
 * Walking graph built from rooms and doors, with a 6 m waypoint lattice in large rooms. Distances computed lazily and cached. Edits rebuild only the affected region.
 * Walk time is `distance / walkSpeed` with a congestion factor from local density.
 * Service nodes: servers, seeded service time distribution, queue capacity and queue area. Queue geometry is cosmetic.
@@ -283,3 +283,9 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-11: Save format 11 stores `building` and `level` per terminal grid. The migration makes every older grid its own building on level 0.
 * 2026-11-11: The `terminalBuild` command carries an optional `level` that defaults to 0, so older command logs replay unchanged. Any other level is refused with `floorNotBuildable` until the multi floor designer (T51).
 * 2026-11-11: The state hash covers `building` and `level` of every terminal grid.
+* 2026-11-11: Two cell fixtures use a `fixtureRot` layer (`Uint8Array`, one value per cell) on the terminal grid. Zero means an empty cell or a one cell fixture. The anchor holds `1 + rot` and the tail holds `5 + rot`, where `rot` 0 to 3 is the direction from anchor to tail: 0 = +column, 1 = +row, 2 = -column, 3 = -row. Both cells hold the fixture id in `fixture`. The partner of an anchor is `cell + dir(rot)` and of a tail `cell - dir(rot)`. Save format 12 adds the layer, and the migration fills zeros.
+* 2026-11-11: Interim capacity rule until T14: check in capacity per hour is desks, kiosks and bag drops summed with their module `capacityPerHour` (30, 48, 90), a plain sum. Check in sources for the landside BFS are check in and kiosk cells, and `noCheckIn` only applies when check in plus kiosk is 0.
+* 2026-11-11: Interim gate desk rules until gate areas exist. Room issue `noGateDeskLink`: the grid holds at least one gate desk and the airside BFS from security lanes over Secure floor reaches none. It is a room issue, so it zeroes `depCapacity` like the others. Readiness issue `noGateDesk`: any terminal has a gate desk, and this terminal has secure seating and security but no gate desk.
+* 2026-11-11: The passport booth is airside, in the Secure zone, because zones do not model international. `intlCapacity(totals)` is `passport * cap(passport)`, exported beside `arrCapacity` and published wherever `depCapacity` and `arrCapacity` are, for later tasks to consume.
+* 2026-11-11: Module costs for the new fixtures are kiosk 6000, bag drop 24000, passport 18000 and gate desk 12000, with staff 0, 0.5, 1 and 1. The user chose this set on 2026-11-11.
+* 2026-11-11: R rotates a pending two cell fixture (bag drop or gate desk) in 90 degree steps. `TerminalEdit` carries `rot` (default 0, ignored for one cell fixtures), and a placement is refused unless both cells are inside the grid, floor, free and zone legal. Erasing either cell clears the fixture, `fixtureRot` and `leased` on both cells, and the refund is charged once per fixture.
