@@ -25,6 +25,7 @@ import {
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
+import type { WalkGraphView } from '@shared/protocol';
 import { isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { blockWindow } from '@shared/flightBlock';
@@ -361,6 +362,23 @@ export class Business {
       if (this.grids[i]!.id === grid) return nearestNode(this.walkGraphs[i]!, cell);
     }
     return -1;
+  }
+
+  /** Copies of the node and edge arrays of a grid's walk graph for the debug overlay, null when no grid has that id. */
+  walkGraphView(grid: number): WalkGraphView | null {
+    for (let i = 0; i < this.grids.length; i++) {
+      if (this.grids[i]!.id !== grid) continue;
+      const wg = this.walkGraphs[i]!;
+      return {
+        grid,
+        nodeX: wg.nodeX.slice(),
+        nodeY: wg.nodeY.slice(),
+        nodeKind: wg.nodeKind.slice(),
+        edgeStart: wg.edgeStart.slice(),
+        edgeTo: wg.edgeTo.slice(),
+      };
+    }
+    return null;
   }
 
   /** Departing passengers the terminals can process per hour. */

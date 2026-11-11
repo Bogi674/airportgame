@@ -22,6 +22,22 @@ export interface OwnershipPayload {
   cash: number;
 }
 
+/**
+ * Nodes and edges of one terminal grid's walking graph for the debug overlay. nodeX and nodeY are logical cells,
+ * nodeKind is 1 lattice, 2 door, 3 fixture, edges are compressed adjacency.
+ */
+export interface WalkGraphView {
+  grid: number;
+  nodeX: Int16Array;
+  nodeY: Int16Array;
+  nodeKind: Uint8Array;
+  edgeStart: Int32Array;
+  edgeTo: Int32Array;
+}
+
+/** Args of the walkGraph query. */
+export type WalkGraphQuery = { grid: number };
+
 export const PROTOCOL_VERSION = 1;
 
 /** Main thread to sim worker. */

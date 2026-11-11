@@ -97,4 +97,28 @@ describe('walk graph per terminal in the sim', () => {
     expect(a.business.walkGraphs.length).toBeGreaterThan(0);
     a.business.walkGraphs.forEach((wg, i) => expectSameGraph(b.business.walkGraphs[i]!, wg));
   });
+
+  it('walkGraphView copies the graph arrays of the terminal grid, and unknown ids give null', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim, { standsPerRow: 4 });
+    buildTestTerminal(sim);
+    const b = sim.business;
+    const g = b.grids[0]!;
+    const wg = b.walkGraphs[0]!;
+    const view = b.walkGraphView(g.id);
+    expect(view).not.toBeNull();
+    expect(view!.grid).toBe(g.id);
+    expect(Array.from(view!.nodeX)).toEqual(Array.from(wg.nodeX));
+    expect(Array.from(view!.nodeY)).toEqual(Array.from(wg.nodeY));
+    expect(Array.from(view!.nodeKind)).toEqual(Array.from(wg.nodeKind));
+    expect(Array.from(view!.edgeStart)).toEqual(Array.from(wg.edgeStart));
+    expect(Array.from(view!.edgeTo)).toEqual(Array.from(wg.edgeTo));
+    expect(view!.nodeX).not.toBe(wg.nodeX);
+    expect(view!.nodeY).not.toBe(wg.nodeY);
+    expect(view!.nodeKind).not.toBe(wg.nodeKind);
+    expect(view!.edgeStart).not.toBe(wg.edgeStart);
+    expect(view!.edgeTo).not.toBe(wg.edgeTo);
+    expect(view!.edgeStart.length).toBe(view!.nodeX.length + 1);
+    expect(b.walkGraphView(-1)).toBeNull();
+  });
 });
