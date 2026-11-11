@@ -251,4 +251,31 @@ describe('cohort journey from curb to boarded', () => {
     expect(sim.business.serviceTable(g.id)!.evictedCount).toBe(0);
     expect(sim.cohorts.boarded).toBeGreaterThan(0);
   });
+
+  it('an edit between wheel visits, saved before the next visit, restores to the same hash', () => {
+    const a = terminalSim();
+    scheduleLong(a);
+    const g = a.business.grids[0]!;
+    // Stop on a tick the wheel does not visit, with a cohort walking, so the edit lands between visits.
+    let ready = false;
+    for (let t = 0; t < RUN_TICKS && !ready; t++) {
+      a.step();
+      ready = a.tick % 5 === 1 && (stageCounts(a.cohorts)[Stage.ToCheckIn] ?? 0) > 0;
+    }
+    expect(ready).toBe(true);
+    const before = a.business.serviceVersion;
+    // A wall edit renumbers the service tables without evicting anyone.
+    a.enqueue({ type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'wall', x0: 50, y0: 45, x1: 50, y1: 46, variant: 1 } });
+    a.step();
+    expect(a.business.serviceVersion).toBeGreaterThan(before);
+    const data: unknown = JSON.parse(JSON.stringify(a.serialize()));
+    const b = new Sim(a.seed, OPTIONS);
+    b.restore(data);
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 300; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
 });

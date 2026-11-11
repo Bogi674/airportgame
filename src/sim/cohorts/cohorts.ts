@@ -218,9 +218,11 @@ export class Cohorts {
   /** Runs the cohorts due at this tick. The wheel is visited every STEP ticks. */
   update(tick: number): void {
     this.tick = tick;
+    // Node ids go stale on the tick of an edit, so walkers are reset on every tick and no edit is pending at a tick boundary.
+    if (this.business.serviceVersion !== this.seenVersion) this.resetWalkers();
     if (tick % STEP !== 0) return;
-    // Evictions still pending in a table mean a rebuild is owed, even after a load that reset the version check.
-    if (this.business.serviceVersion !== this.seenVersion || this.evictionsPending()) this.rebuildQueues();
+    // Evicted cohorts are moved on the wheel beat. Evictions still pending after a load are picked up here too.
+    if (this.evictionsPending()) this.evictQueues();
     if (tick % DONE_EVERY === 0) this.drainDone();
     const b = (tick / STEP) & (WHEEL - 1);
     let c = this.wheelHead[b];
@@ -233,12 +235,17 @@ export class Cohorts {
     }
   }
 
-  /** The service tables were rebuilt: node ids are stale, and evicted cohorts go back to the step they queued from. */
-  private rebuildQueues(): void {
+  /** The service tables were rebuilt: walking cohorts lose their node ids, which may have renumbered. */
+  private resetWalkers(): void {
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate) this.node[c] = -1;
     }
+    this.seenVersion = this.business.serviceVersion;
+  }
+
+  /** Cohorts evicted from a removed queue node go back to the step they queued from. */
+  private evictQueues(): void {
     for (let g = 0; g < this.business.grids.length; g++) {
       const t = this.table(g);
       if (!t) continue;
@@ -248,7 +255,6 @@ export class Cohorts {
       }
       t.evictedCount = 0;
     }
-    this.seenVersion = this.business.serviceVersion;
   }
 
   private evictionsPending(): boolean {
