@@ -4,7 +4,7 @@ Where the project stands (2026-11-10). Update this file when a task changes what
 
 ## Health
 
-* 373 tests in 35 files pass. Lint, type check and the rules checker are clean.
+* 377 tests in 35 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 
@@ -42,7 +42,8 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 
 * Phase 1, repair: done (T40, T42).
-* Phase 3, passenger core: floor index (T49), kiosk, bag drop, passport booth, gate desk, walking graph, service nodes and queues, cohorts and the departure journey, people atlas rendering, overlays, satisfaction as specified, the 20 000 cohort stress scenario (T11 to T18).
+* Phase 3, floor index: done (T49), save format 11.
+* Phase 3, passenger core: kiosk, bag drop, passport booth, gate desk, walking graph, service nodes and queues, cohorts and the departure journey, people atlas rendering, overlays, satisfaction as specified, the 20 000 cohort stress scenario (T11 to T18).
 * Phase 4, ground handling and baggage: arrival journey, turnaround task lists, hydrant dispenser and apron bus, service points and service roads, trailers, collision footprints and test, draw order, staff sprites, the working baggage system (T20 to T28, T43), stand markings per revision 3 (T47), stand access types with boarding by jet bridge, stairs or bus (T48).
 * Phase 5: tenants (T32, redesigned), generated airlines, route demand and seasonal slots, staffing coverage overlay.
 * Phase 6: the seeded event director (T50).

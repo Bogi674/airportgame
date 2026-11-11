@@ -1,16 +1,16 @@
 # T49: Floor index in the terminal data model
 
-Status: coding
+Status: done
 Branch: claude/eager-cerf-s72vbq
 
 ## Requirements
 
-* [ ] R1 The terminal data model addresses cells, edges, fixtures and rooms by floor index as well as by cell.
-* [ ] R2 Only floor 0 is buildable. A build command for another floor is refused with a problem code.
-* [ ] R3 Save version bump with a migration that puts every existing terminal on floor 0.
-* [ ] R4 No behaviour change: capacity, room validation, drawing and costs give the same results as before for every existing test.
-* [ ] R5 No allocation is added to a tick or render loop, and the stress numbers hold.
-* [ ] R6 No UI for floors. The floor selector belongs to T51.
+* [x] R1 The terminal data model addresses cells, edges, fixtures and rooms by floor index as well as by cell.
+* [x] R2 Only floor 0 is buildable. A build command for another floor is refused with a problem code.
+* [x] R3 Save version bump with a migration that puts every existing terminal on floor 0.
+* [x] R4 No behaviour change: capacity, room validation, drawing and costs give the same results as before for every existing test.
+* [x] R5 No allocation is added to a tick or render loop, and the stress numbers hold.
+* [x] R6 No UI for floors. The floor selector belongs to T51.
 
 ## Read first (done)
 
@@ -55,4 +55,28 @@ None. The player sees no difference (R6). The e2e terminal test must stay green.
 
 ## Verify
 
+PASS rules
+PASS types
+PASS lint
+PASS tests
+PASS stress
+verify: all checks passed.
+E2E Chromium: smoke, terminal and playthrough pass.
+
 ## Report
+
+* What now works, in player terms: Nothing visible changes. Terminals now record which floor they are, and saves from before load onto floor 0.
+* Commits: 72af04a terminal: floor index on grids, save format 11
+35842a9 terminal: only floor 0 can be built
+* Verify summary: all checks passed (PASS rules, PASS types, PASS lint, PASS tests, PASS stress, verify: all checks passed.)
+* Stress, mean and p99 ms per tick for every scenario:
+  * small: total 0.00654 mean, 0.04495 p99
+  * medium: total 0.00574 mean, 0.04893 p99
+  * large: total 0.00667 mean, 0.06637 p99
+  * busy50: total 0.02413 mean, 0.81070 p99
+  * terminal640: total 0.00642 mean, 0.06239 p99
+* Screenshots: none, no visible change.
+* Compared with the reference sheet: no visible change, so nothing to compare.
+* Roadmap lines ticked: none, T49 has no roadmap box of its own.
+* Decisions added to docs/ARCHITECTURE.md: the four 2026-11-11 bullets at the end of the Decisions list (grid per floor, save format 11, optional command level, state hash covers building and level).
+* Simplified or left out, and the new task created for it: nothing.
