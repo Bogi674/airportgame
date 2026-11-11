@@ -278,4 +278,25 @@ describe('service queues survive a save', () => {
     }
     expect(restored.stateHash()).toBe(sim.stateHash());
   });
+
+  it('a save taken with evicted cohorts pending restores them and keeps the hash', () => {
+    const { sim, gid } = terminalSim('EVICT-SAVE-SEED');
+    const lane = laneNodes(sim.business.serviceTable(gid)!)[0]!;
+    const lx = sim.business.serviceTable(gid)!.lx[lane]!;
+    const ly = sim.business.serviceTable(gid)!.ly[lane]!;
+    for (let c = 0; c < 3; c++) expect(sim.business.serviceJoin(gid, lane, 300 + c, 2)).toBe(true);
+    for (let t = 0; t < 5; t++) sim.step();
+    expect(terminalEdit(sim, gid, { op: 'erase', x0: lx, y0: ly, x1: lx + 1, y1: ly + 1, variant: 0 })).toEqual([]);
+    expect(sim.business.serviceTable(gid)!.evictedCount).toBeGreaterThan(0);
+
+    const restored = new Sim('EVICT-SAVE-SEED', OPTIONS);
+    restored.restore(JSON.parse(JSON.stringify(sim.serialize())));
+    expect(restored.business.serviceTable(gid)!.evictedCount).toBe(sim.business.serviceTable(gid)!.evictedCount);
+    expect(restored.stateHash()).toBe(sim.stateHash());
+    for (let t = 0; t < 300; t++) {
+      sim.step();
+      restored.step();
+    }
+    expect(restored.stateHash()).toBe(sim.stateHash());
+  });
 });

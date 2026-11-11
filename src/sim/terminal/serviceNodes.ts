@@ -342,6 +342,9 @@ export interface ServiceSave {
   qSize: string;
   qHead: string;
   qCount: string;
+  evictedCount: number;
+  /** The first evictedCount entries of the evicted list. */
+  evicted: string;
 }
 
 /** Packs the queue state of a service table for a save. */
@@ -356,16 +359,20 @@ export function serviceSave(sn: ServiceNodes): ServiceSave {
     qSize: packTyped(sn.qSize),
     qHead: packTyped(sn.qHead),
     qCount: packTyped(sn.qCount),
+    evictedCount: sn.evictedCount,
+    evicted: packTyped(sn.evicted.subarray(0, sn.evictedCount)),
   };
 }
 
 /**
  * Restores the queue state of a table built from the same grid. False and no change when the node count or any
- * array length differs, so a save from another layout cannot write past the table. Finished and evicted cohorts
- * are not saved and start empty.
+ * array length differs, so a save from another layout cannot write past the table. Finished cohorts are not
+ * saved and start empty.
  */
 export function serviceLoad(sn: ServiceNodes, s: ServiceSave): boolean {
   if (s.count !== sn.count) return false;
+  const evicted = unpackTyped(s.evicted, Int32Array);
+  if (evicted.length !== s.evictedCount) return false;
   const pairs: [ArrayLike<number>, { length: number; set(src: ArrayLike<number>): void }][] = [
     [unpackTyped(s.queueLen, Int32Array), sn.queueLen],
     [unpackTyped(s.busyUntil, Int32Array), sn.busyUntil],
@@ -378,8 +385,9 @@ export function serviceLoad(sn: ServiceNodes, s: ServiceSave): boolean {
   ];
   if (pairs.some(([src, dst]) => src.length !== dst.length)) return false;
   for (const [src, dst] of pairs) dst.set(src);
+  sn.evicted = evicted;
+  sn.evictedCount = evicted.length;
   sn.doneCount = 0;
-  sn.evictedCount = 0;
   sn.active = 0;
   for (let k = 0; k < sn.count; k++) sn.active += sn.qCount[k]! + (sn.serving[k]! >= 0 ? 1 : 0);
   return true;
