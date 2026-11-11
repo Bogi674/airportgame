@@ -45,4 +45,4 @@ Mistakes that already cost time on this project. Read before writing code.
 24. **Reference Python under `docs/reference/` is normative math.** Port formulas exactly, including constants, and cite the file and function in a comment.
 25. **Walk graph node ids are compact and renumbered on every rebuild.** Never store one across an edit; compare `Business.walkVersion` and call `nearestNode` again.
 26. **Service node ids are stale after `Business.serviceVersion` changes.** Find the node again by its logical cell and fixture kind, as `rebuildServiceNodes` does, and never keep a node index across an edit.
-27. **Service queues and the service rng are not in the save yet.** T14 must add them, with a migration, before any cohort joins a queue in a real game. Otherwise a restored save diverges, as pitfall 2 describes.
+27. **Service queues, evicted cohorts and the service rng are saved since version 13.** A mid queue save restores identically. The done buffer is still unsaved, so it must be consumed in the tick that produced it.

@@ -151,6 +151,8 @@ Struct of arrays with capacity 200 000: `flightId`, `size`, `profile`, `stage`, 
 
 Journey stages advance by timers and node transitions. Cohorts split for shops and merge at the next common node. Flights generate cohorts from arrival time distributions by profile and access mode.
 
+The store lives in `src/sim/cohorts/cohorts.ts`. Each cohort carries a `building` (terminal grid index). Slots come from a free list, and waiting cohorts sit in a timer wheel of 4 096 buckets of 5 ticks. The journey runs in the `cohorts` subsystem slot after `business`. The snapshot carries a sample of up to 3 000 cohort positions for the renderer.
+
 ## 9. Rendering pipeline
 
 * Layer order and detail tiers per `docs/ART_AND_ASSETS.md` sections 2 and 3.
@@ -314,3 +316,19 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-11: The passport booth is airside, in the Secure zone, because zones do not model international. `intlCapacity(totals)` is `passport * cap(passport)`, exported beside `arrCapacity` and published wherever `depCapacity` and `arrCapacity` are, for later tasks to consume.
 * 2026-11-11: Module costs for the new fixtures are kiosk 6000, bag drop 24000, passport 18000 and gate desk 12000, with staff 0, 0.5, 1 and 1. The user chose this set on 2026-11-11.
 * 2026-11-11: R rotates a pending two cell fixture (bag drop or gate desk) in 90 degree steps. `TerminalEdit` carries `rot` (default 0, ignored for one cell fixtures), and a placement is refused unless both cells are inside the grid, floor, free and zone legal. Erasing either cell clears the fixture, `fixtureRot` and `leased` on both cells, and the refund is charged once per fixture.
+* 2026-11-11, departure cohorts (T14). Decisions:
+  * Profile table as proposed by the orchestrator, with its values in `src/data/profiles.json`. Reason: the numbers are tunable data and not balanced yet.
+  * One default profile mix for every airline. Reason: user decision, airline specific mixes wait for the airline generator (T30).
+  * Boarding hold: an aircraft waits up to 10 game minutes past its turnaround timer, only for cohorts already walking to or queuing at a gate desk. Everyone else misses. Reason: user decision, so passengers close to the gate are not lost at once.
+  * Leisure lead is 90 minutes. Flights carry no domestic or international flag yet. Reason: simplest option until flights carry that flag.
+  * Check in opening and closing times, passport control, bag drop and patience are not simulated. Reason: simplest option, they wait for later tasks.
+  * Check in desks and kiosks are equivalent check in points. Reason: simplest option, they differ only in capacity data.
+  * The curb is the lowest id door walk node of the terminal grid. Reason: a stable choice that survives renumbering.
+  * A flight uses one terminal grid: eligible grids are those with a curb, a check in point, a security node and a gate desk, and the grid is `eligible[f % eligible.length]`. No eligible grid means no cohorts and zero boarded. Reason: simplest deterministic rule.
+  * Aircraft under `TERMINAL_SEAT_THRESHOLD` seats keep the old rule: full passengers, no cohorts. Reason: small aircraft keep the aggregated model.
+  * Cohorts of a flight are resolved at pushback. This also fixes flight slot reuse. Reason: a slot reused by a later flight must not carry the old cohorts.
+* 2026-11-11: Service queues, evicted cohorts and the service rng are saved since save version 13, so a mid queue save restores identically. Reason: PITFALLS 27 required it before any cohort joins a queue. The done buffer is not saved and is consumed in the tick that produced it.
+* 2026-11-11: A cohort's node index is reset on the tick of a terminal edit. Reason: service node ids renumber on every rebuild, so a kept index could point at another node.
+* 2026-11-11: Demolishing a terminal resolves its cohorts as missed and shifts later grid indices. Reason: a demolished grid cannot serve them, and cohorts store the grid index in `building`.
+* 2026-11-11: The aggregated departure capacity and its panel row are removed. Revenue and passenger counts come from boarded cohorts. Reason: one source of truth for departing passengers.
+* 2026-11-11: The medium stress scenario includes a cohort terminal. Reason: the budget must hold with cohorts running, not only in the empty case.

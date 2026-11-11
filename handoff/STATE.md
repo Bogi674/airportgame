@@ -16,7 +16,7 @@ Where the project stands (2026-11-11). Update this file when a task changes what
 | busy50 | 0.028 | 0.93 |
 | terminal640 | 0.005 | 0.048 |
 
-* Save format version 12 (`src/sim/save/migrations.ts`).
+* Save format version 13 (`src/sim/save/migrations.ts`).
 
 ## What works (player view)
 
@@ -34,12 +34,13 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * **Terminals** of any size on a 2 m grid that grows in 64 m chunks: foundations, floors, walls, glass, doors, zones, check in, security, baggage belt, seating, toilets and six shop types. The ATC room fixture is retired: it keeps its saved index, grants no coverage and cannot be built. Room validation stops departures when security can be bypassed.
 * **Flight offers and stand management**: each signed airline offers its rotations for the day in a read only sheet, with a fixed aircraft type and turnaround per rotation and a movements per hour bar against the tower budget. A flight goes onto a stand by dragging its block onto a stand row, which shows green or red and refuses a drop the stand cannot take, or by picking a stand in the sheet. A stand chosen for a rotation is remembered and applied each morning, and an automation toggle assigns the flights the player has not placed.
 * **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, deadlock detection with an overlay.
+* **Passengers**: departing cohorts by profile, journey curb to gate, boarding hold, missed flights, snapshot sample.
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
 * **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, saves to IndexedDB with autosave, export and import, crash panel.
 
 ## What does not exist yet
 
-Next task: T14 cohorts and the departure journey (depends on T13, done).
+Next task: T15 people rendering from the atlas (depends on T14, done).
 
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 
