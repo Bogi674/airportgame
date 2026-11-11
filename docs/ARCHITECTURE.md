@@ -141,7 +141,7 @@ Built from player polylines when they change, never during ticks.
 ## 7. Terminal model
 
 * Grid layers: floors, walls, doors, rooms with types, fixtures, fixture rotation (`fixtureRot`, two cell fixtures), shop units.
-* Walking graph built from rooms and doors, with a 6 m waypoint lattice in large rooms. Distances computed lazily and cached. Edits rebuild only the affected region.
+* Walking graph per grid (one floor), with one node per group of connected floor cells in each 6 m block, plus door and fixture nodes, and edges within a block and to the 8 neighbour and 8 knight move blocks where sight is clear. Derived, never saved. Distances computed lazily and cached. Edits rebuild only the affected region.
 * Walk time is `distance / walkSpeed` with a congestion factor from local density.
 * Service nodes: servers, seeded service time distribution, queue capacity and queue area. Queue geometry is cosmetic.
 
@@ -284,6 +284,17 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-11: The `terminalBuild` command carries an optional `level` that defaults to 0, so older command logs replay unchanged. Any other level is refused with `floorNotBuildable` until the multi floor designer (T51).
 * 2026-11-11: The state hash covers `building` and `level` of every terminal grid.
 * 2026-11-11: Two cell fixtures use a `fixtureRot` layer (`Uint8Array`, one value per cell) on the terminal grid. Zero means an empty cell or a one cell fixture. The anchor holds `1 + rot` and the tail holds `5 + rot`, where `rot` 0 to 3 is the direction from anchor to tail: 0 = +column, 1 = +row, 2 = -column, 3 = -row. Both cells hold the fixture id in `fixture`. The partner of an anchor is `cell + dir(rot)` and of a tail `cell - dir(rot)`. Save format 12 adds the layer, and the migration fills zeros.
+* 2026-11-11, walking graph (T12). Decisions:
+  * One graph per grid (one floor of one building), in `src/sim/terminal/walkGraph.ts`. Derived, never saved, not hashed, rebuilt in `Business.loadState`. Save version stays 12.
+  * Blocks of 3 by 3 cells (6 m) aligned to the logical origin. Each group of connected floor cells inside a block gets one lattice node, at the block centre when possible, so corridors narrower than 6 m stay on the graph. Extra nodes: both cells beside a door edge and every fixture anchor except seating. Doors are wall edges, so the spec's "door cell" became the two cells beside the edge.
+  * Edges join nodes in the same block, the 8 neighbour blocks and the 8 knight move blocks when a supercover line of sight is clear. Knight moves keep the open room error under 3 percent (user decision, the spec asked for 5 percent). Fallback edges with a 4 direction cell path length join step adjacent groups and extra nodes without sight, so graph connectivity equals cell connectivity.
+  * Adjacency is sorted by (from, to), so a regional rebuild and a full rebuild give identical arrays. This is tested over random edits.
+  * Regional rebuild recomputes blocks within 8 cells of the edit bounds (`terminal.walk.dirtyMarginCells`): 6 for the 12 m rule, 1 for a two cell fixture tail and wall edges, 1 spare. More than a quarter of the blocks, or a grown grid, rebuilds all.
+  * Every cached distance row of a grid is dropped on any rebuild. A shortest path tree spans every reachable node, so the spec rule "drop rows whose tree touches a dirty node" drops them all in practice.
+  * `walkDistance` always reads the row of the smaller node id, so results never depend on cache contents and survive save and restore. LRU of 64 source rows (`terminal.walk.cacheSources`, user decision), preallocated per graph.
+  * Node ids are stale after `Business.walkVersion` changes. Callers resolve them again with `nearestNode`.
+  * The build runs synchronously at command time (user decision): about 10 ms full and 3 ms regional for the 640 by 120 m stress terminal. This is an exception to the resumable job rule in PERFORMANCE section 3.
+  * Debug overlay: TopBar toggle, graph fetched on demand through the worker `query` message with kind `walkGraph`. The snapshot is unchanged.
 * 2026-11-11: Interim capacity rule until T14: check in capacity per hour is desks, kiosks and bag drops summed with their module `capacityPerHour` (30, 48, 90), a plain sum. Check in sources for the landside BFS are check in and kiosk cells, and `noCheckIn` only applies when check in plus kiosk is 0.
 * 2026-11-11: Interim gate desk rules until gate areas exist. Room issue `noGateDeskLink`: the grid holds at least one gate desk and the airside BFS from security lanes over Secure floor reaches none. It is a room issue, so it zeroes `depCapacity` like the others. Readiness issue `noGateDesk`: any terminal has a gate desk, and this terminal has secure seating and security but no gate desk.
 * 2026-11-11: The passport booth is airside, in the Secure zone, because zones do not model international. `intlCapacity(totals)` is `passport * cap(passport)`, exported beside `arrCapacity` and published wherever `depCapacity` and `arrCapacity` are, for later tasks to consume.

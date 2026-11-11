@@ -1,15 +1,15 @@
 # T12: Walking graph
 
-Status: coding
+Status: done
 Branch: claude/ecstatic-rubin-7yq9uc
 
 ## Requirements
 
-* [ ] R1 Graph and cache, deterministic (fixed node order, ties broken by node index)
-* [ ] R2 `walkDistance` and `nearestNode`
-* [ ] R3 Regional rebuild equals full rebuild (property test over random edits)
-* [ ] R4 Stress terminal build under 100 ms, 2 by 2 wall edit regional rebuild under 10 ms
-* [ ] R5 Debug overlay toggle showing nodes and edges of the selected terminal
+* [x] R1 Graph and cache, deterministic (fixed node order, ties broken by node index)
+* [x] R2 `walkDistance` and `nearestNode`
+* [x] R3 Regional rebuild equals full rebuild (property test over random edits)
+* [x] R4 Stress terminal build under 100 ms, 2 by 2 wall edit regional rebuild under 10 ms
+* [x] R5 Debug overlay toggle showing nodes and edges of the selected terminal
 
 ## Design
 
@@ -52,4 +52,8 @@ Build mode, LRU size, lattice accuracy, overlay delivery: answered by the user o
 
 ## Verify
 
+Filled by the orchestrator.
+
 ## Report
+
+Filled by the orchestrator.
