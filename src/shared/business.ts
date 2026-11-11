@@ -55,10 +55,17 @@ export const TERMINAL_CELL_M = 2;
 export const TERMINAL_CHUNK = 32;
 /** A new building puts its first cell this far from the grid corner, so it can grow in every direction. */
 export const TERMINAL_MARGIN = 40;
+/** Lowest and highest floor a building can have, 0 is the apron level. */
+export const TERMINAL_LEVEL_MIN = -2;
+export const TERMINAL_LEVEL_MAX = 3;
 
-/** One terminal building: the floor, fixtures and walls the player laid. */
+/** One floor of one terminal building: the floor, fixtures and walls the player laid. */
 export interface TerminalGrid {
   id: number;
+  /** Building this floor belongs to. Floors of one building share it. */
+  building: number;
+  /** Floor index: 0 is the apron level, negative floors are basements, positive floors are upper floors. */
+  level: number;
   /** World position of the grid corner and the heading of its x axis (compass degrees). */
   ox: number;
   oy: number;

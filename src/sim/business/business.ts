@@ -25,7 +25,7 @@ import {
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
-import { isShopFixture, fixtureKey, ZONE } from '@shared/business';
+import { isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { blockWindow } from '@shared/flightBlock';
 import type { BuildContext } from '@shared/validate';
@@ -822,7 +822,7 @@ export class Business {
       for (const s of a.standPrefs) acc = foldU32(acc, s);
     }
     for (const g of this.grids) {
-      acc = foldU32(foldU32(acc, g.id), cellCount(g));
+      acc = foldU32(foldU32(foldU32(foldU32(acc, g.id), cellCount(g)), g.building), g.level - TERMINAL_LEVEL_MIN);
       for (let i = 0; i < g.fixture.length; i++) {
         if (g.fixture[i] === 0) continue;
         const c = cellOf(g, i);
@@ -862,6 +862,9 @@ interface SavedGrid {
   y0?: number;
   w?: number;
   h?: number;
+  /** Saves before format 11 have one floor per building, on level 0. */
+  building?: number;
+  level?: number;
 }
 
 const cellCountOf = (g: TerminalGrid): number => cellCount(g);
@@ -890,11 +893,13 @@ function fitStandPrefs(old: number[], rotations: number): number[] {
 }
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
   const g = newGrid(sg.id, sg.ox, sg.oy, sg.headingDeg);
+  g.building = sg.building ?? sg.id;
+  g.level = sg.level ?? 0;
   const x0 = sg.x0 ?? 0;
   const y0 = sg.y0 ?? 0;
   const w = sg.w ?? LEGACY_GRID;

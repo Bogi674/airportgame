@@ -3,7 +3,7 @@ import type { CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 export interface SaveData {
   version: number;
@@ -59,5 +59,14 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 9) save.version = 9;
   // Version 9 to 10: airlines remember a stand per rotation and flights carry their rotation index. Older saves load with no remembered stands.
   if (save.version < 10) save.version = 10;
+  // Version 10 to 11: every terminal grid is one floor of a building and carries a building id and a floor level. Older grids are their own building on level 0.
+  if (save.version < 11) {
+    const business = (save as { business?: { grids?: Record<string, unknown>[] } }).business;
+    for (const g of business?.grids ?? []) {
+      g.building = g.id;
+      g.level = 0;
+    }
+    save.version = 11;
+  }
   return save as SaveData;
 }
