@@ -129,14 +129,41 @@ describe('walkDistance cache', () => {
     }
   });
 
-  it('gives the first answer again after the first row is evicted', () => {
+  it('evicts the least recently used row and stamps a row on every use', () => {
     const { wg } = openFloor();
+    const cache = wg.cache;
     const last = wg.nodeCount - 1;
-    expect(last).toBeGreaterThan(BUSINESS.terminal.walk.cacheSources + 1);
+    const n = BUSINESS.terminal.walk.cacheSources;
+    expect(last).toBeGreaterThan(n + 1);
     const first = walkDistance(wg, 0, last);
-    for (let a = 1; a <= BUSINESS.terminal.walk.cacheSources + 1; a++) walkDistance(wg, a, last);
-    expect(wg.cache.sourceRow[0]).toBe(-1);
+    for (let a = 1; a < n; a++) walkDistance(wg, a, last);
+    expect(cache.rowSource.indexOf(-1)).toBe(-1);
+    // Source 0 is refreshed, so source 1 holds the lowest stamp and is the one evicted.
+    walkDistance(wg, 0, last);
+    walkDistance(wg, n, last);
+    expect(cache.sourceRow[0]).toBeGreaterThanOrEqual(0);
+    expect(cache.sourceRow[1]).toBe(-1);
+    expect(cache.sourceRow[n]).toBeGreaterThanOrEqual(0);
     expect(walkDistance(wg, 0, last)).toBe(first);
+  });
+
+  it('breaks ties between equal stamps by the lowest row index', () => {
+    const { wg } = openFloor();
+    const cache = wg.cache;
+    const last = wg.nodeCount - 1;
+    const n = BUSINESS.terminal.walk.cacheSources;
+    expect(last).toBeGreaterThan(n + 1);
+    for (let a = 0; a < n; a++) walkDistance(wg, a, last);
+    cache.rowStamp.fill(7);
+    // Source 0 sits in row 0, the lowest index among equal stamps.
+    walkDistance(wg, n, last);
+    expect(cache.sourceRow[0]).toBe(-1);
+    expect(cache.sourceRow[n]).toBe(0);
+    // Source n now sits in row 0, so it is the next one evicted among equal stamps.
+    cache.rowStamp.fill(7);
+    walkDistance(wg, n + 1, last);
+    expect(cache.sourceRow[n]).toBe(-1);
+    expect(cache.sourceRow[n + 1]).toBe(0);
   });
 
   it('matches a Bellman-Ford over the edges for 50 seeded random pairs', () => {
