@@ -34,7 +34,7 @@ import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../terminal/walkGraph';
 import { nearestNode, walkDistance } from '../terminal/walkDistance';
-import { buildServiceNodes, rebuildServiceNodes, serviceJoin, serviceUpdate, serviceWait, type ServiceNodes } from '../terminal/serviceNodes';
+import { buildServiceNodes, rebuildServiceNodes, serviceJoin, serviceLoad, serviceSave, serviceUpdate, serviceWait, type ServiceNodes, type ServiceSave } from '../terminal/serviceNodes';
 import type { Rng } from '../rng';
 import type { SiteSpec } from '../world/site';
 import type { Airfield } from '../airfield/airfield';
@@ -886,6 +886,7 @@ export class Business {
       flightsToday: this.flightsToday, lostToday: this.lostToday, depWindow: this.depWindow,
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
       rng: this.rng.getState(), marketRng: this.marketRng.getState(),
+      service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(),
     };
   }
 
@@ -895,6 +896,7 @@ export class Business {
       loanOriginal: number; weather: WeatherKind; weatherStart: number; weatherEnd: number; pendingKind: WeatherKind; nextTerminalId: number;
       day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number; depWindow: number;
       flightPax: string; flightDockedAt: string; rng: number; marketRng: number;
+      service?: ServiceSave[]; serviceRng?: number;
     };
     const fl = (raw as { fleet?: number[] }).fleet;
     if (fl && fl.length === this.fleet.length) this.fleet = fl.slice();
@@ -905,6 +907,9 @@ export class Business {
     this.walkVersion++;
     this.serviceNodes.length = 0;
     for (let i = 0; i < this.grids.length; i++) this.serviceNodes.push(buildServiceNodes(this.grids[i]!, this.walkGraphs[i]!));
+    const savedService = o.service ?? [];
+    for (let i = 0; i < this.serviceNodes.length; i++) if (savedService[i]) serviceLoad(this.serviceNodes[i]!, savedService[i]!);
+    if (o.serviceRng !== undefined) this.serviceRng.setState(o.serviceRng);
     this.serviceVersion++;
     this.airlines.length = 0;
     this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id), standPrefs: a.standPrefs ?? new Array<number>(a.rotations).fill(-1) })));

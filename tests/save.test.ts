@@ -93,6 +93,23 @@ describe('saves', () => {
     });
   });
 
+  it('a version 12 save migrates to the current version and restores with empty queues', () => {
+    const sim = prepared();
+    for (let t = 0; t < 300; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      business: { service?: unknown; serviceRng?: unknown };
+    };
+    data.version = 12;
+    delete data.business.service;
+    delete data.business.serviceRng;
+    expect(migrate(data).version).toBe(SAVE_VERSION);
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    expect(() => c.restore(data)).not.toThrow();
+    expect(c.business.serviceNodes.length).toBe(sim.business.serviceNodes.length);
+    expect(c.business.serviceNodes.every((sn) => sn.active === 0)).toBe(true);
+  });
+
   it('gridOnLevel finds the floor of a building or returns undefined', () => {
     const ground = newGrid(4, 0, 0, 0);
     const upper = { ...newGrid(5, 0, 0, 0), building: 4, level: 1 };

@@ -253,3 +253,29 @@ describe('service queues in the sim', () => {
     expect(sim.business.serviceWait(gid, lane, sim.tick)).toBeLessThan(before);
   });
 });
+
+describe('service queues survive a save', () => {
+  it('a save taken while people queue restores to an identical run', () => {
+    const { sim, gid } = terminalSim('QUEUE-SAVE-SEED');
+    const lane = laneNode(sim.business.serviceTable(gid)!);
+    for (let c = 0; c < 4; c++) expect(sim.business.serviceJoin(gid, lane, 100 + c, 2)).toBe(true);
+    for (let t = 0; t < 30; t++) sim.step();
+    expect(sim.business.serviceTable(gid)!.queueLen[lane]).toBeGreaterThan(0);
+
+    const restored = new Sim('QUEUE-SAVE-SEED', OPTIONS);
+    restored.restore(JSON.parse(JSON.stringify(sim.serialize())));
+    expect(restored.stateHash()).toBe(sim.stateHash());
+    expect(restored.business.serviceTable(gid)!.queueLen[lane]).toBe(sim.business.serviceTable(gid)!.queueLen[lane]);
+
+    for (let t = 0; t < 300; t++) {
+      sim.step();
+      restored.step();
+    }
+    expect(restored.stateHash()).toBe(sim.stateHash());
+    for (let t = 0; t < 300; t++) {
+      sim.step();
+      restored.step();
+    }
+    expect(restored.stateHash()).toBe(sim.stateHash());
+  });
+});

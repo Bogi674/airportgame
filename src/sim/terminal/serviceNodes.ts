@@ -2,6 +2,7 @@ import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, ZONE, fixtureKey, type TerminalGrid } from '@shared/business';
 import { canStep } from '@shared/terminalRooms';
 import type { Rng } from '../rng';
+import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
 
 /** Fixtures that serve people one at a time. Each anchor of these is a service node. */
@@ -328,4 +329,58 @@ export function serviceWait(sn: ServiceNodes, node: number, tick: number): numbe
   if (node < 0 || node >= sn.count) return Infinity;
   const left = sn.serving[node] >= 0 ? Math.max(0, sn.busyUntil[node] - tick) / TICKS_PER_S : 0;
   return left + (sn.queueLen[node] * sn.meanS[node]) / sn.servers[node];
+}
+
+/** The queue state of a service table as saved. Grid derived arrays are not saved, they come from the grid. */
+export interface ServiceSave {
+  count: number;
+  queueLen: string;
+  busyUntil: string;
+  serving: string;
+  servingSize: string;
+  qCohort: string;
+  qSize: string;
+  qHead: string;
+  qCount: string;
+}
+
+/** Packs the queue state of a service table for a save. */
+export function serviceSave(sn: ServiceNodes): ServiceSave {
+  return {
+    count: sn.count,
+    queueLen: packTyped(sn.queueLen),
+    busyUntil: packTyped(sn.busyUntil),
+    serving: packTyped(sn.serving),
+    servingSize: packTyped(sn.servingSize),
+    qCohort: packTyped(sn.qCohort),
+    qSize: packTyped(sn.qSize),
+    qHead: packTyped(sn.qHead),
+    qCount: packTyped(sn.qCount),
+  };
+}
+
+/**
+ * Restores the queue state of a table built from the same grid. False and no change when the node count or any
+ * array length differs, so a save from another layout cannot write past the table. Finished and evicted cohorts
+ * are not saved and start empty.
+ */
+export function serviceLoad(sn: ServiceNodes, s: ServiceSave): boolean {
+  if (s.count !== sn.count) return false;
+  const pairs: [ArrayLike<number>, { length: number; set(src: ArrayLike<number>): void }][] = [
+    [unpackTyped(s.queueLen, Int32Array), sn.queueLen],
+    [unpackTyped(s.busyUntil, Int32Array), sn.busyUntil],
+    [unpackTyped(s.serving, Int32Array), sn.serving],
+    [unpackTyped(s.servingSize, Int32Array), sn.servingSize],
+    [unpackTyped(s.qCohort, Int32Array), sn.qCohort],
+    [unpackTyped(s.qSize, Int32Array), sn.qSize],
+    [unpackTyped(s.qHead, Uint16Array), sn.qHead],
+    [unpackTyped(s.qCount, Uint16Array), sn.qCount],
+  ];
+  if (pairs.some(([src, dst]) => src.length !== dst.length)) return false;
+  for (const [src, dst] of pairs) dst.set(src);
+  sn.doneCount = 0;
+  sn.evictedCount = 0;
+  sn.active = 0;
+  for (let k = 0; k < sn.count; k++) sn.active += sn.qCount[k]! + (sn.serving[k]! >= 0 ? 1 : 0);
+  return true;
 }
