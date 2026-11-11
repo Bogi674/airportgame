@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, type TerminalGrid } from '@shared/business';
 import { BUSINESS } from '@data/index';
+import { businessSchema } from '../src/data/schemas/business';
 import { Sim } from '@sim/sim';
 import { SAVE_VERSION } from '@sim/save/migrations';
 import { FlState } from '@sim/ops/traffic';
@@ -9,6 +10,27 @@ import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BuildContext } from '@shared/validate';
 import { cellIndex, ensureCells, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
+
+describe('service node data', () => {
+  it('terminal service queue settings match the business data', () => {
+    expect(BUSINESS.terminal.service).toEqual({ cv: 0.4, queueDensityPerM2: 1, queueReachCells: 4, queueSlots: 32 });
+  });
+
+  it('every queue fixture has at least one server and a positive service time', () => {
+    const keys = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet'] as const;
+    for (const k of keys) {
+      const m = BUSINESS.modules[k];
+      expect(m.servers, k).toBeGreaterThanOrEqual(1);
+      expect(m.serviceSeconds, k).toBeGreaterThan(0);
+    }
+  });
+
+  it('security capacity is 3600 over its service seconds', () => {
+    const s = BUSINESS.modules.security;
+    expect(s.serviceSeconds).toBeDefined();
+    expect(3600 / (s.serviceSeconds ?? 0)).toBe(s.capacityPerHour);
+  });
+});
 
 function airportWithTerminal() {
   const sim = ownedSim();
@@ -25,7 +47,7 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     const cells = 60 * 12;
     expect(sim.business.terminals[0].cells).toBe(cells);
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
-    expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * 150));
+    expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * BUSINESS.modules.security.capacityPerHour));
     expect(sim.business.arrCapacity()).toBe(2 * 260);
     // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
     const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
@@ -553,7 +575,7 @@ describe('fixture ids, spans and module data', () => {
   it('keeps capacityPerHour equal to servers times 3600 over service seconds where both are given', () => {
     const modules = Object.values(BUSINESS.modules);
     const timed = modules.filter((m) => m.servers !== undefined && m.serviceSeconds !== undefined);
-    expect(timed.length).toBe(4);
+    expect(timed.length).toBe(7);
     for (const m of timed) {
       if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error('missing servers');
       expect(m.capacityPerHour).toBe((m.servers * 3600) / m.serviceSeconds);
@@ -754,5 +776,25 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
       return sim.stateHash();
     };
     expect(make()).toBe(make());
+  });
+});
+
+describe('business schema rejects bad service data', () => {
+  const valid = (): unknown => structuredClone(BUSINESS);
+
+  it('accepts the shipped data', () => {
+    expect(businessSchema.safeParse(valid()).success).toBe(true);
+  });
+
+  it('rejects an extra key in the terminal service block', () => {
+    const d = valid() as { terminal: { service: Record<string, unknown> } };
+    d.terminal.service.extra = 1;
+    expect(businessSchema.safeParse(d).success).toBe(false);
+  });
+
+  it('rejects a fractional server count', () => {
+    const d = valid() as { modules: { checkIn: { servers: number } } };
+    d.modules.checkIn.servers = 1.5;
+    expect(businessSchema.safeParse(d).success).toBe(false);
   });
 });

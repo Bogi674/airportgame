@@ -39,14 +39,14 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 
 ## What does not exist yet
 
-Next task: T13 service nodes and queues (depends on T12, done).
+Next task: T14 cohorts and the departure journey (depends on T13, done).
 
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 
 * Phase 1, repair: done (T40, T42).
 * Phase 3, floor index: done (T49), save format 11.
 * Phase 3, fixtures: kiosk, bag drop, passport booth and gate desk: done (T11), save format 12.
-* Phase 3, passenger core: walking graph (T12, done), service nodes and queues, cohorts and the departure journey, people atlas rendering, overlays, satisfaction as specified, the 20 000 cohort stress scenario (T12 to T18).
+* Phase 3, passenger core: walking graph (T12, done), service nodes and queues (T13, done), cohorts and the departure journey, people atlas rendering, overlays, satisfaction as specified, the 20 000 cohort stress scenario (T12 to T18).
 * Phase 4, ground handling and baggage: arrival journey, turnaround task lists, hydrant dispenser and apron bus, service points and service roads, trailers, collision footprints and test, draw order, staff sprites, the working baggage system (T20 to T28, T43), stand markings per revision 3 (T47), stand access types with boarding by jet bridge, stairs or bus (T48).
 * Phase 5: tenants (T32, redesigned), generated airlines, route demand and seasonal slots, staffing coverage overlay.
 * Phase 6: the seeded event director (T50).

@@ -4,7 +4,7 @@ const module = z.object({
   cost: z.number().nonnegative(),
   capacityPerHour: z.number().nonnegative(),
   staff: z.number().nonnegative(),
-  servers: z.number().positive().optional(),
+  servers: z.number().int().positive().optional(),
   serviceSeconds: z.number().positive().optional(),
 });
 const shop = z.object({ cost: z.number().positive(), rentPerDay: z.number().positive(), spendPerPax: z.number().positive(), minRating: z.number().min(0).max(100) });
@@ -46,7 +46,7 @@ export const businessSchema = z.object({
     loanMax: z.number().positive(),
     loanTermDays: z.number().int().positive(),
   }),
-  terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive(), atcRangeM: z.number().positive(), walk: z.object({ latticeCells: z.number().int().positive(), dirtyMarginCells: z.number().int().positive(), cacheSources: z.number().int().positive() }) }),
+  terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive(), atcRangeM: z.number().positive(), walk: z.object({ latticeCells: z.number().int().positive(), dirtyMarginCells: z.number().int().positive(), cacheSources: z.number().int().positive() }), service: z.strictObject({ cv: z.number().positive().max(1), queueDensityPerM2: z.number().positive(), queueReachCells: z.number().int().positive(), queueSlots: z.number().int().positive() }) }),
   modules: z.object({ checkIn: module, security: module, belt: module, seating: module, toilet: module, atc: module, kiosk: module, bagDrop: module, passport: module, gateDesk: module }),
   tower,
   shops: z.object({ convenience: shop, quickFood: shop, cafe: shop, dutyFree: shop, booksGifts: shop, pharmacy: shop }),

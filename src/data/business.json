@@ -21,18 +21,23 @@
   "doorPerEdge": 1500,
   "contactReachM": 90,
   "atcRangeM": 3500,
-  "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64 }
+  "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64 },
+  "service": { "cv": 0.4, "queueDensityPerM2": 1, "queueReachCells": 4, "queueSlots": 32 }
  },
  "modules": {
   "checkIn": {
    "cost": 9000,
    "capacityPerHour": 30,
-   "staff": 1.5
+   "staff": 1.5,
+   "servers": 1,
+   "serviceSeconds": 120
   },
   "security": {
    "cost": 70000,
-   "capacityPerHour": 150,
-   "staff": 4
+   "capacityPerHour": 300,
+   "staff": 4,
+   "servers": 1,
+   "serviceSeconds": 12
   },
   "belt": {
    "cost": 55000,
@@ -46,8 +51,10 @@
   },
   "toilet": {
    "cost": 20000,
-   "capacityPerHour": 0,
-   "staff": 0.5
+   "capacityPerHour": 240,
+   "staff": 0.5,
+   "servers": 6,
+   "serviceSeconds": 90
   },
   "atc": {
    "cost": 90000,
