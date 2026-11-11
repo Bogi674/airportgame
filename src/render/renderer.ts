@@ -55,13 +55,9 @@ export class Renderer {
   private selected: GhostShape[] | null = null;
   private readonly sprites = new SpriteCache();
   private readonly people = new People();
-  private lastFrame = 0;
   private debug = false;
   private readonly governor = new QualityGovernor();
   private lastRender = 0;
-  private speed = 1;
-  /** Walking clock in game seconds, drives the gait frames of the people sample. */
-  private walkClockS = 0;
   private readonly bounds = new Float64Array(4);
   private readonly resizeObserver: ResizeObserver;
   private dpr = 1;
@@ -134,11 +130,6 @@ export class Renderer {
   setTerminals(terminals: TerminalGrid[]): void {
     this.baker.setTerminals(terminals);
     this.chunks.markAllDirty();
-  }
-
-  /** Game speed, which scales the walking clock of the people sample. */
-  setSpeed(speed: number): void {
-    this.speed = speed;
   }
 
   /** Shows rings around aircraft that wait on a reservation or were part of a deadlock. */
@@ -808,15 +799,11 @@ export class Renderer {
   }
 
   private drawPeople(curr: SnapshotViews | null, a: number, b: number, cc: number, d: number, e: number, f: number): void {
-    const now = performance.now();
-    const dt = this.lastFrame === 0 ? 0 : Math.min(0.1, (now - this.lastFrame) / 1000);
-    this.lastFrame = now;
-    this.walkClockS += dt * this.speed;
     if (!curr) return;
     this.camera.visibleBounds(this.bounds);
     this.ctx.setTransform(a, b, cc, d, e, f);
     const bo = this.bounds;
-    this.people.draw(this.ctx, curr, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3], this.walkClockS);
+    this.people.draw(this.ctx, curr, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3]);
   }
 
   /** Ground vehicles, drawn under the aircraft. Skipped when zoomed out where they are a pixel. */

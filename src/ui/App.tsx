@@ -206,10 +206,6 @@ export function App() {
   }, [renderer, store.debugOverlay]);
 
   useEffect(() => {
-    renderer?.setSpeed(store.speed);
-  }, [renderer, store.speed]);
-
-  useEffect(() => {
     renderer?.setTerminals(store.terminalGrids);
   }, [renderer, store.terminalGrids]);
 

@@ -6,8 +6,11 @@ import { RECIPE_COUNT, memberHash, pickRecipe } from '../src/render/sprites/peop
 import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/peopleShapes';
 import { peopleTierForZoom } from '../src/render/sprites/peopleAtlas';
 import { PeopleSelection } from '../src/render/peopleSelect';
+import { PACK_MARGIN_M, packGroup, recipeFootprint } from '../src/render/peoplePack';
 
 const SEED_COUNT = 6000;
+/** Float32 storage of the packed origins and footprints rounds a little, so touching boxes may overlap by this much. */
+const OVERLAP_EPS_M = 1e-6;
 const PROFILE_TOTAL = PEOPLE.profiles.length;
 
 describe('people data', () => {
@@ -109,6 +112,74 @@ describe('personOps', () => {
     const recipe = PEOPLE.recipes[0];
     if (!recipe) throw new Error('no recipes in people.json');
     expect(opsFor(recipe, 1, 2)).toEqual(opsFor(recipe, 1, 2));
+  });
+});
+
+describe('packGroup', () => {
+  const PACK_SEEDS = 300;
+  /** Plus or minus 1 m, the half of the 2 m queue cell that a group may use. */
+  const EXTENT_M = 1;
+  const MAX_SIZE = 6;
+  const outX = new Float32Array(256);
+  const outY = new Float32Array(256);
+  const outRecipe = new Uint8Array(256);
+  const fp = new Float32Array(4);
+
+  /** True when a box lies within plus or minus the cell half. */
+  function inside(l: number, b: number, r: number, t: number): boolean {
+    return l >= -EXTENT_M && b >= -EXTENT_M && r <= EXTENT_M && t <= EXTENT_M;
+  }
+
+  /** Grown box of a placed member in block meters: left, bottom, right, top. */
+  function boxOf(i: number): [number, number, number, number] {
+    recipeFootprint(outRecipe[i]!, fp);
+    return [outX[i]! + fp[0]! - PACK_MARGIN_M, outY[i]! + fp[1]! - PACK_MARGIN_M, outX[i]! + fp[2]! + PACK_MARGIN_M, outY[i]! + fp[3]! + PACK_MARGIN_M];
+  }
+
+  it('places at least one member and keeps the grown boxes disjoint and inside the cell', () => {
+    for (let profile = 0; profile < PROFILE_TOTAL; profile++) {
+      for (let seed = 0; seed < PACK_SEEDS; seed++) {
+        for (let size = 1; size <= MAX_SIZE; size++) {
+          const placed = packGroup(profile, seed, size, outX, outY, outRecipe);
+          const label = `profile ${profile} seed ${seed} size ${size}`;
+          expect(placed, label).toBeGreaterThanOrEqual(1);
+          const boxes = Array.from({ length: placed }, (_, i) => boxOf(i));
+          for (const [l, b, r, t] of boxes) {
+            expect(inside(l, b, r, t), label).toBe(true);
+            // A quarter turn of the block swaps the axes of every box, so the turned box must fit the same limit.
+            expect(inside(b, l, t, r), label).toBe(true);
+          }
+          for (let i = 0; i < placed; i++) {
+            for (let j = i + 1; j < placed; j++) {
+              const [li, bi, ri, ti] = boxes[i]!;
+              const [lj, bj, rj, tj] = boxes[j]!;
+              const overlapX = Math.min(ri, rj) - Math.max(li, lj);
+              const overlapY = Math.min(ti, tj) - Math.max(bi, bj);
+              expect(overlapX <= OVERLAP_EPS_M || overlapY <= OVERLAP_EPS_M, label).toBe(true);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('returns the same layout on a second call', () => {
+    const bx = new Float32Array(256);
+    const by = new Float32Array(256);
+    const br = new Uint8Array(256);
+    for (let profile = 0; profile < PROFILE_TOTAL; profile++) {
+      for (let seed = 0; seed < PACK_SEEDS; seed++) {
+        const first = packGroup(profile, seed, MAX_SIZE, outX, outY, outRecipe);
+        const xs = Array.from(outX.subarray(0, first));
+        const ys = Array.from(outY.subarray(0, first));
+        const rs = Array.from(outRecipe.subarray(0, first));
+        const second = packGroup(profile, seed, MAX_SIZE, bx, by, br);
+        expect(second).toBe(first);
+        expect(Array.from(bx.subarray(0, second))).toEqual(xs);
+        expect(Array.from(by.subarray(0, second))).toEqual(ys);
+        expect(Array.from(br.subarray(0, second))).toEqual(rs);
+      }
+    }
   });
 });
 

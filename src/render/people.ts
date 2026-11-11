@@ -1,37 +1,33 @@
 import { PEOPLE } from '@data/index';
-import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, type SnapshotViews } from '@shared/snapshot';
+import { HEADING_STEPS, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, type SnapshotViews } from '@shared/snapshot';
 import { PeopleAtlasCache, peopleTierForZoom } from './sprites/peopleAtlas';
-import { memberHash, pickRecipe } from './sprites/peopleRecipes';
 import { PeopleSelection } from './peopleSelect';
+import { FIGURE_FRAME, packGroup } from './peoplePack';
 
-/** Member offsets in meters for a cohort of more than one figure. Members past six stack on the first slots. */
-const SLOTS: readonly (readonly [number, number])[] = [
-  [-0.6, -0.35],
-  [0, -0.35],
-  [0.6, -0.35],
-  [-0.6, 0.35],
-  [0, 0.35],
-  [0.6, 0.35],
-];
-const HEADINGS = 256;
 /** Figures outside the visible bounds by more than this margin in meters are skipped. */
 const BOUNDS_MARGIN_M = 1;
 const SHADOW_ROW = PEOPLE.recipes.length;
+/** One group slot per value of the uint8 cohort size. */
+const GROUP_SLOTS = 256;
 
 /**
- * Passengers as a render sample (hard rule 6). Each snapshot cohort draws as up to size figures
- * from the baked atlas. The figure count is capped by setCap, and the nearest cohorts win when over it.
+ * Passengers as a render sample (hard rule 6). Each snapshot cohort draws as a group of up to size figures
+ * from the baked atlas, packed inside its queue cell and turned by the cohort heading. The figure count is capped
+ * by setCap, and the nearest cohorts win when over it.
  */
 export class People {
   private cap = SNAPSHOT_PEOPLE_CAPACITY;
   private readonly selection = new PeopleSelection();
   private readonly atlases = new PeopleAtlasCache();
-  private readonly headingCos = new Float32Array(HEADINGS);
-  private readonly headingSin = new Float32Array(HEADINGS);
+  private readonly headingCos = new Float32Array(HEADING_STEPS);
+  private readonly headingSin = new Float32Array(HEADING_STEPS);
+  private readonly groupX = new Float32Array(GROUP_SLOTS);
+  private readonly groupY = new Float32Array(GROUP_SLOTS);
+  private readonly groupRecipe = new Uint8Array(GROUP_SLOTS);
 
   constructor() {
-    for (let i = 0; i < HEADINGS; i++) {
-      const a = (i / HEADINGS) * 2 * Math.PI;
+    for (let i = 0; i < HEADING_STEPS; i++) {
+      const a = (i / HEADING_STEPS) * 2 * Math.PI;
       this.headingCos[i] = Math.cos(a);
       this.headingSin[i] = Math.sin(a);
     }
@@ -44,7 +40,7 @@ export class People {
 
   /**
    * Draws the snapshot cohorts. a to f is the world to screen matrix, minX to maxY the visible world
-   * bounds in meters, and walkClockS the walking clock that drives the gait frame.
+   * bounds in meters.
    */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -62,7 +58,6 @@ export class People {
     minY: number,
     maxX: number,
     maxY: number,
-    walkClockS: number,
   ): void {
     const tier = peopleTierForZoom(zoom);
     if (tier < 0) return;
@@ -72,7 +67,6 @@ export class People {
     const detail = PEOPLE.tiers[tier].detail;
     const cell = PEOPLE.cellM;
     const cellPx = atlas.cellPx;
-    const walkStep = Math.floor(walkClockS * 2);
     const x0 = minX - BOUNDS_MARGIN_M;
     const y0 = minY - BOUNDS_MARGIN_M;
     const x1 = maxX + BOUNDS_MARGIN_M;
@@ -82,28 +76,20 @@ export class People {
       const px = views.peopleX[i];
       const py = views.peopleY[i];
       if (px < x0 || px > x1 || py < y0 || py > y1) continue;
-      const seed = views.peopleSeed[i];
-      const profile = views.peopleProfile[i];
-      const size = views.peopleSize[i];
-      const walking = views.peopleState[i] === 1;
-      const heading = memberHash(seed, 7) & (HEADINGS - 1);
+      const placed = packGroup(views.peopleProfile[i], views.peopleSeed[i], views.peopleSize[i], this.groupX, this.groupY, this.groupRecipe);
+      const heading = views.peopleHeading[i];
       const cos = this.headingCos[heading];
       const sin = this.headingSin[heading];
-      for (let m = 0; m < size; m++) {
-        const slot = size === 1 ? undefined : SLOTS[m % SLOTS.length];
-        const ox = slot ? slot[0] : 0;
-        const oy = slot ? slot[1] : 0;
-        const fx = px + ox;
-        const fy = py + oy;
+      for (let m = 0; m < placed; m++) {
+        const ox = this.groupX[m];
+        const oy = this.groupY[m];
         ctx.setTransform(a, b, c, d, e, f);
-        ctx.translate(fx, fy);
+        ctx.translate(px + cos * ox - sin * oy, py + sin * ox + cos * oy);
         if (detail === 2) {
           ctx.drawImage(atlas.canvas, 0, SHADOW_ROW * cellPx, cellPx, cellPx, -cell / 2, -cell / 2, cell, cell);
         }
         ctx.transform(cos, sin, -sin, cos, 0, 0);
-        const recipe = pickRecipe(profile, seed, m);
-        const frame = walking ? (walkStep + (seed & 3)) & 3 : 1;
-        ctx.drawImage(atlas.canvas, frame * cellPx, recipe * cellPx, cellPx, cellPx, -cell / 2, -cell / 2, cell, cell);
+        ctx.drawImage(atlas.canvas, FIGURE_FRAME * cellPx, this.groupRecipe[m] * cellPx, cellPx, cellPx, -cell / 2, -cell / 2, cell, cell);
       }
     }
   }

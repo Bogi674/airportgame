@@ -7,6 +7,8 @@ export const SNAPSHOT_VERSION = 5;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
 export const SNAPSHOT_PEOPLE_CAPACITY = 3000;
+/** Heading steps in a full turn, for people groups and anything else that snaps to a heading byte. */
+export const HEADING_STEPS = 256;
 
 /** Header slots, Int32. */
 export const enum SnapHeader {
@@ -40,8 +42,8 @@ export interface SnapshotViews {
   peopleSize: Uint8Array;
   /** Cohort recipe seed, picks the person's look so the same cohort always draws the same way. */
   peopleSeed: Uint32Array;
-  /** 1 while the cohort walks to a node, 0 while it waits in a queue or is served. */
-  peopleState: Uint8Array;
+  /** Rotation of the group in HEADING_STEPS per turn. 0 faces world minus y, increasing turns clockwise on screen. */
+  peopleHeading: Uint8Array;
 }
 
 const align4 = (n: number): number => (n + 3) & ~3;
@@ -72,9 +74,9 @@ const OFF_PPROFILE = OFF_PY + PCAP * 4;
 const OFF_PSIZE = OFF_PPROFILE + align4(PCAP);
 
 const OFF_PSEED = OFF_PSIZE + align4(PCAP);
-const OFF_PSTATE = OFF_PSEED + PCAP * 4;
+const OFF_PHEAD = OFF_PSEED + PCAP * 4;
 
-export const SNAPSHOT_BYTES = OFF_PSTATE + align4(PCAP);
+export const SNAPSHOT_BYTES = OFF_PHEAD + align4(PCAP);
 
 export function createSnapshotBuffer(): ArrayBuffer {
   return new ArrayBuffer(SNAPSHOT_BYTES);
@@ -102,6 +104,6 @@ export function createSnapshotViews(buffer: ArrayBuffer): SnapshotViews {
     peopleProfile: new Uint8Array(buffer, OFF_PPROFILE, PCAP),
     peopleSize: new Uint8Array(buffer, OFF_PSIZE, PCAP),
     peopleSeed: new Uint32Array(buffer, OFF_PSEED, PCAP),
-    peopleState: new Uint8Array(buffer, OFF_PSTATE, PCAP),
+    peopleHeading: new Uint8Array(buffer, OFF_PHEAD, PCAP),
   };
 }

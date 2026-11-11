@@ -45,6 +45,13 @@ export interface ServiceNodes {
   meanS: Float32Array;
   /** Most people the walkable area around the node holds in a queue. */
   queueCap: Int32Array;
+  /** Queue cells of each node: first index in qCellX and qCellY, and how many. Logical cells, nearest the node first. */
+  qCellOffset: Int32Array;
+  qCellLen: Int32Array;
+  qCellX: Int32Array;
+  qCellY: Int32Array;
+  /** Local index of the cell each queue cell was reached from, -1 for the node cell. Rank order is BFS order. */
+  qCellParent: Int32Array;
   /** Walk graph node of the anchor cell. */
   walkNode: Int32Array;
   /** People waiting in the queue. */
@@ -78,9 +85,11 @@ function timing(key: ServiceKey): { servers: number; meanS: number } {
 /**
  * Counts the cells a queue for the anchor at `start` can use. Breadth first over canStep, at most `reach`
  * steps out. Only cells without a fixture count and only they are passed through. Secure cells are skipped
- * when `secure` is set. The anchor is the start and is not counted.
+ * when `secure` is set. The anchor is the start and is not counted. The counted cells are left in
+ * queue[1..count], in the order found, so nearest the anchor first. parent[p] is the queue position the cell at
+ * queue[p] was reached from.
  */
-function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array): number {
+function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): number {
   const W = g.w;
   seen[start] = 1;
   dist[start] = 0;
@@ -89,7 +98,8 @@ function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: numb
   let tail = 1;
   let counted = 0;
   while (head < tail) {
-    const i = queue[head++];
+    const pos = head;
+    const i = queue[head++]!;
     if (dist[i] >= reach) continue;
     const x = i % W;
     const y = (i - x) / W;
@@ -100,6 +110,7 @@ function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: numb
       if (secure && g.zone[j] === ZONE.Secure) continue;
       seen[j] = 1;
       dist[j] = dist[i] + 1;
+      parent[tail] = pos;
       queue[tail++] = j;
       counted++;
     }
@@ -122,6 +133,10 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
   const seen = new Uint8Array(n);
   const dist = new Int32Array(n);
   const queue = new Int32Array(n);
+  const parent = new Int32Array(n);
+  const cellX: number[] = [];
+  const cellY: number[] = [];
+  const cellParent: number[] = [];
 
   const nodes: ServiceNodes = {
     count,
@@ -132,6 +147,11 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     servers: new Uint8Array(count),
     meanS: new Float32Array(count),
     queueCap: new Int32Array(count),
+    qCellOffset: new Int32Array(count),
+    qCellLen: new Int32Array(count),
+    qCellX: new Int32Array(0),
+    qCellY: new Int32Array(0),
+    qCellParent: new Int32Array(0),
     walkNode: new Int32Array(count),
     queueLen: new Int32Array(count),
     busyUntil: new Int32Array(count),
@@ -162,10 +182,23 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     nodes.ly[k] = g.y0 + (c - x) / g.w;
     nodes.servers[k] = t.servers;
     nodes.meanS[k] = t.meanS;
-    const cells = queueCells(g, c, id === SECURITY, reach, seen, dist, queue);
+    const cells = queueCells(g, c, id === SECURITY, reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
+    nodes.qCellOffset[k] = cellX.length;
+    nodes.qCellLen[k] = cells;
+    for (let i = 1; i <= cells; i++) {
+      const j = queue[i]!;
+      const jx = j % g.w;
+      cellX.push(g.x0 + jx);
+      cellY.push(g.y0 + (j - jx) / g.w);
+      // Queue position p is the cell reached from position p - 1 of the queue, so its stored index is p - 1 and the start is -1.
+      cellParent.push(parent[i]! - 1);
+    }
     nodes.walkNode[k] = wg.cellNode[c]!;
   }
+  nodes.qCellX = Int32Array.from(cellX);
+  nodes.qCellY = Int32Array.from(cellY);
+  nodes.qCellParent = Int32Array.from(cellParent);
   return nodes;
 }
 

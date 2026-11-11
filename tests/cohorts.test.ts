@@ -3,6 +3,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS, PROFILES } from '@data/index';
 import { Sim } from '@sim/sim';
 import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
+import type { ServiceNodes } from '@sim/terminal/serviceNodes';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
 import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
@@ -439,6 +440,56 @@ describe('boarding and departure revenue', () => {
 });
 
 /** Steps until a cohort queues and another walks, at most maxTicks steps. */
+/** Two waves of long arrivals, so the terminal queues at more than one desk at once. */
+function scheduleCrowd(sim: Sim): void {
+  for (const offset of [0, 0, 400, 400]) {
+    const f = sim.traffic.scheduleArrival(WIDE, sim.traffic.nowTick + 100 + offset, 0, LONG_TURN_TICKS, -1);
+    expect(f).toBeGreaterThanOrEqual(0);
+  }
+}
+
+/** True when the queue cells of node a and node b share a cell. */
+function queuesShareCell(tb: ServiceNodes, a: number, b: number): boolean {
+  const oa = tb.qCellOffset[a]!;
+  const ob = tb.qCellOffset[b]!;
+  for (let i = 0; i < tb.qCellLen[a]!; i++) {
+    for (let j = 0; j < tb.qCellLen[b]!; j++) {
+      if (tb.qCellX[oa + i] === tb.qCellX[ob + j] && tb.qCellY[oa + i] === tb.qCellY[ob + j]) return true;
+    }
+  }
+  return false;
+}
+
+/** Steps until a node has three queued cohorts and another queued node shares a queue cell with it. */
+function stepToSharedQueues(sim: Sim, maxTicks: number): boolean {
+  const pairs: [ServiceNodes, number, number][] = [];
+  for (const g of sim.business.grids) {
+    const tb = sim.business.serviceTable(g.id);
+    if (!tb) continue;
+    for (let k = 0; k < tb.count; k++) {
+      for (let j = 0; j < tb.count; j++) {
+        if (j !== k && queuesShareCell(tb, k, j)) pairs.push([tb, k, j]);
+      }
+    }
+  }
+  if (pairs.length === 0) return false;
+  for (let t = 0; t < maxTicks; t++) {
+    sim.step();
+    for (const [tb, k, j] of pairs) {
+      if (tb.qCount[k]! >= 3 && tb.qCount[j]! >= 1) return true;
+    }
+  }
+  return false;
+}
+
+/** Index of the first sampled entry at the world spot (x, y) that no earlier cell has claimed, -1 when there is none. */
+function entryAt(views: SnapshotViews, n: number, written: Uint8Array, x: number, y: number): number {
+  for (let i = 0; i < n; i++) {
+    if (written[i] === 0 && Math.abs(views.peopleX[i]! - x) < 1e-3 && Math.abs(views.peopleY[i]! - y) < 1e-3) return i;
+  }
+  return -1;
+}
+
 function stepToMidJourney(sim: Sim, maxTicks: number): boolean {
   for (let t = 0; t < maxTicks; t++) {
     sim.step();
@@ -451,7 +502,7 @@ function stepToMidJourney(sim: Sim, maxTicks: number): boolean {
 }
 
 describe('snapshot sample of cohort positions', () => {
-  it('samples walking and queued cohorts inside the terminal bounds', () => {
+  it('samples queued cohorts inside the terminal bounds', () => {
     const sim = terminalSim();
     scheduleLong(sim);
     expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
@@ -479,13 +530,107 @@ describe('snapshot sample of cohort positions', () => {
     }
     let anySeed = false;
     for (let i = 0; i < n; i++) {
-      expect(views.peopleState[i] === 0 || views.peopleState[i] === 1).toBe(true);
       if (views.peopleSeed[i] !== 0) anySeed = true;
     }
     expect(anySeed).toBe(true);
   });
 
-  it('the people seed and state samples repeat for the same seed and ticks', () => {
+  it('queued figures stand 1.9 m apart and face the cell they were reached from, next to a shared queue', () => {
+    const sim = terminalSim();
+    scheduleCrowd(sim);
+    expect(stepToSharedQueues(sim, RUN_TICKS * 4)).toBe(true);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    const n = views.header[SnapHeader.PeopleCount]!;
+    expect(n).toBeGreaterThanOrEqual(3);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = views.peopleX[i]! - views.peopleX[j]!;
+        const dy = views.peopleY[i]! - views.peopleY[j]!;
+        expect(Math.hypot(dx, dy)).toBeGreaterThanOrEqual(1.9);
+      }
+    }
+    // Walks the cells in the order writeSample does, so the first cell found at a spot is the one that was written.
+    const written = new Uint8Array(n);
+    let matched = 0;
+    for (const g of sim.business.grids) {
+      const t = sim.business.serviceTable(g.id);
+      if (!t) continue;
+      for (let k = 0; k < t.count; k++) {
+        const ranks = Math.min(t.qCount[k]!, t.qCellLen[k]!);
+        const off = t.qCellOffset[k]!;
+        for (let i = 0; i < ranks; i++) {
+          const cell = off + i;
+          const at = cornerWorld(g, t.qCellX[cell]! + 0.5, t.qCellY[cell]! + 0.5);
+          const e = entryAt(views, n, written, at.x, at.y);
+          if (e < 0) continue;
+          written[e] = 1;
+          matched++;
+          const parent = t.qCellParent[cell]!;
+          const frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
+          const frontY = parent < 0 ? t.ly[k]! : t.qCellY[off + parent]!;
+          const to = cornerWorld(g, frontX + 0.5, frontY + 0.5);
+          const h = (views.peopleHeading[e]! * 2 * Math.PI) / 256;
+          const len = Math.hypot(to.x - at.x, to.y - at.y);
+          expect((Math.sin(h) * (to.x - at.x)) / len + (-Math.cos(h) * (to.y - at.y)) / len).toBeGreaterThan(0.9);
+        }
+      }
+    }
+    expect(matched).toBe(n);
+  });
+
+  it('a save without cohort state still samples shared queues 1.9 m apart', () => {
+    const built = terminalSim();
+    const data = JSON.parse(JSON.stringify(built.serialize())) as Record<string, unknown>;
+    delete data.cohorts;
+    const sim = new Sim(built.seed, OPTIONS);
+    sim.restore(data);
+    scheduleCrowd(sim);
+    expect(stepToSharedQueues(sim, RUN_TICKS * 4)).toBe(true);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    const n = views.header[SnapHeader.PeopleCount]!;
+    expect(n).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = views.peopleX[i]! - views.peopleX[j]!;
+        const dy = views.peopleY[i]! - views.peopleY[j]!;
+        expect(Math.hypot(dx, dy)).toBeGreaterThanOrEqual(1.9);
+      }
+    }
+  });
+
+  it('the rank 0 figure of a node faces the node', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    const n = views.header[SnapHeader.PeopleCount]!;
+    let checked = 0;
+    for (const g of sim.business.grids) {
+      const t = sim.business.serviceTable(g.id);
+      if (!t) continue;
+      for (let k = 0; k < t.count; k++) {
+        if (t.qCount[k] === 0 || t.qCellLen[k] === 0) continue;
+        const off = t.qCellOffset[k]!;
+        const front = cornerWorld(g, t.qCellX[off]! + 0.5, t.qCellY[off]! + 0.5);
+        const node = cornerWorld(g, t.lx[k]! + 0.5, t.ly[k]! + 0.5);
+        for (let i = 0; i < n; i++) {
+          if (Math.abs(views.peopleX[i]! - front.x) > 1e-3 || Math.abs(views.peopleY[i]! - front.y) > 1e-3) continue;
+          const h = (views.peopleHeading[i]! * 2 * Math.PI) / 256;
+          const fx = Math.sin(h);
+          const fy = -Math.cos(h);
+          const len = Math.hypot(node.x - front.x, node.y - front.y);
+          expect((fx * (node.x - front.x)) / len + (fy * (node.y - front.y)) / len).toBeGreaterThan(0.9);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('the people seed and heading samples repeat for the same seed and ticks', () => {
     const sampleOf = (): SnapshotViews => {
       const sim = terminalSim('people-sample');
       scheduleLong(sim);
@@ -501,7 +646,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(n).toBeGreaterThan(0);
     for (let i = 0; i < n; i++) {
       expect(b.peopleSeed[i]).toBe(a.peopleSeed[i]);
-      expect(b.peopleState[i]).toBe(a.peopleState[i]);
+      expect(b.peopleHeading[i]).toBe(a.peopleHeading[i]);
     }
   });
 
