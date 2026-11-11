@@ -40,7 +40,7 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 
 ## What does not exist yet
 
-Next task: T15 people rendering from the atlas (depends on T14, done).
+Next task: T16 density, queue and walking distance overlays (depends on T14, done). T15 people rendering from the atlas is done.
 
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 

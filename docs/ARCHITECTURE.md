@@ -332,3 +332,14 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-11: Demolishing a terminal resolves its cohorts as missed and shifts later grid indices. Reason: a demolished grid cannot serve them, and cohorts store the grid index in `building`.
 * 2026-11-11: The aggregated departure capacity and its panel row are removed. Revenue and passenger counts come from boarded cohorts. Reason: one source of truth for departing passengers.
 * 2026-11-11: The medium stress scenario includes a cohort terminal. Reason: the budget must hold with cohorts running, not only in the empty case.
+* 2026-11-11, people atlas (T15). Decisions:
+  * Recipe weights are integers 0 to 1000 per profile in `src/data/people.json`.
+  * The atlas bakes lazily per tier and stays cached.
+  * Tiers bake at 8, 24 and 64 px/m in 1.6 m cells, 30 recipes by 4 frames plus a shadow row.
+  * Snapshot version 5 adds `peopleSeed` and `peopleHeading` with no save change.
+  * Queued cohorts stand in queue cells by rank, one group per 2 m cell with occupancy marks, facing the BFS parent cell.
+  * Members are packed by footprint with a 0.05 m margin, and members that do not fit are not drawn.
+  * Walking and airside cohorts are not sampled until the route following task.
+  * The cap counts figures nearest the camera center, 3 000 or 1 500 under the governor.
+  * The crowd check runs at 4 px/m because people are hidden below 4 px/m.
+  * Density scaling waits for T16.
