@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Sim } from '../src/sim/sim';
 import { buildTestAirport } from '../tests/helpers';
+import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../src/sim/terminal/walkGraph';
 import { originFor, type TerminalEdit } from '../src/shared/terminalOps';
 
 const TICKS = 20_000;
@@ -56,6 +57,32 @@ function buildBigTerminal(sim: Sim): void {
   sim.step();
 }
 
+/** Median of five timed runs of fn, in ms. */
+function medianMs(fn: () => void): number {
+  const times: number[] = [];
+  for (let k = 0; k < 5; k++) {
+    const t0 = performance.now();
+    fn();
+    times.push(performance.now() - t0);
+  }
+  times.sort((p, q) => p - q);
+  return times[2]!;
+}
+
+/** Times a full walk graph build and a 2 by 2 cell edit on the big terminal, printed once. */
+function walkGraphReport(sim: Sim): string {
+  const g = sim.business.grids[0];
+  if (!g) throw new Error('big terminal was not built');
+  let wg: WalkGraph = sim.business.walkGraphs[0]!;
+  const lx = g.x0 + Math.floor(g.w / 2);
+  const ly = g.y0 + Math.floor(g.h / 2);
+  const build = medianMs(() => void buildWalkGraph(g));
+  const edit = medianMs(() => {
+    wg = updateWalkGraph(wg, g, lx, ly, lx + 1, ly + 1);
+  });
+  return `walk graph ${wg.nodeCount} nodes ${wg.edgeTo.length} edges, build ${build.toFixed(3)} ms, 2x2 edit ${edit.toFixed(3)} ms`;
+}
+
 interface Stat {
   mean: number;
   p99: number;
@@ -75,7 +102,10 @@ function runScenario(s: Scenario): Record<string, Stat> {
   // Plenty of cash: the benchmark builds a big airport and is not about money.
   sim.cash = 500_000_000;
   buildTestAirport(sim, { standsPerRow: s.stands, standCode: s.standCode });
-  if (s.bigTerminal) buildBigTerminal(sim);
+  if (s.bigTerminal) {
+    buildBigTerminal(sim);
+    console.log(walkGraphReport(sim));
+  }
   // A level 5 tower keeps the benchmark measuring traffic, not ATC starvation (handoff/tasks/T40-atc-tower.md R4).
   sim.enqueue({ type: 'buildTower', x: 2700, y: 4800, level: 5 });
   sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.08 });
