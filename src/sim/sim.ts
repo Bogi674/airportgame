@@ -19,7 +19,7 @@ import { packTyped, unpackInto } from './save/pack';
 import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 
 /** Subsystems in execution order. The stress tool times each one separately. */
-const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'flights', 'aircraft', 'vehicles'] as const;
+const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'flights', 'aircraft', 'vehicles'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
 
 /**
@@ -84,10 +84,16 @@ export class Sim {
     this.gse = new Gse(this.traffic);
     this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
+    const businessPushback = this.traffic.hooks?.pushback;
     this.traffic.hooks = {
       ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }),
       contactOk: (x, y) => this.business.hasTerminalNear(x, y),
       scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
+      // The business settles the flight first, then the passengers still in the terminal miss it.
+      pushback: (f) => {
+        businessPushback?.(f);
+        this.cohorts.onPushback(f);
+      },
     };
   }
 
@@ -143,12 +149,15 @@ export class Sim {
         this.business.update(this.tick);
         break;
       case 4:
-        if (this.tick % 10 === 0) this.traffic.updateFlights(this.tick);
+        this.cohorts.update(this.tick);
         break;
       case 5:
-        this.traffic.update(this.tick);
+        if (this.tick % 10 === 0) this.traffic.updateFlights(this.tick);
         break;
       case 6:
+        this.traffic.update(this.tick);
+        break;
+      case 7:
         this.gse.update();
         break;
     }

@@ -1,11 +1,12 @@
 import { PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, TICKS_PER_MINUTE } from '@shared/business';
 import type { Business } from '../business/business';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
-import type { Traffic } from '../ops/traffic';
+import { FlState, type Traffic } from '../ops/traffic';
+import type { ServiceNodes } from '../terminal/serviceNodes';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
 export const Stage = {
@@ -25,12 +26,24 @@ export const Stage = {
 /** Timer wheel buckets and the tick step between bucket visits. */
 const WHEEL = 4096;
 const STEP = 5;
-/** Ticks a due cohort waits again until its journey step is written. */
+/** Ticks a cohort waits before it tries a step again when no service node or path is free. */
 const RETRY_TICKS = 100;
+/** Ticks a cohort waits before it tries to join a full service queue again. */
+const JOIN_RETRY_TICKS = 50;
+/** Service tables finish cohorts every this many ticks, so the done buffers are read on the same beat. */
+const DONE_EVERY = 10;
+const TICKS_PER_SECOND = 10;
 const RECIPE_RANGE = 4294967296;
 const PERCENT = 100;
 
+const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
+const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
+const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
+const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
+
 const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
+/** Walk speed in metres per second, by profile id. */
+const WALK_SPEED = Float32Array.from(PROFILE_ROWS, (r) => r.walkSpeed);
 /** Cumulative profile mix, so one uniform float picks a profile in a fixed order. */
 const MIX_CUM = (() => {
   const out = new Float64Array(PROFILE_ROWS.length);
@@ -103,6 +116,8 @@ export class Cohorts {
   private readonly business: Business;
   private readonly traffic: Traffic;
   private tick = 0;
+  /** The business service version the queued cohorts were last checked against. */
+  private seenVersion: number;
 
   constructor(rng: Rng, business: Business, traffic: Traffic) {
     this.rng = rng.fork('cohorts');
@@ -112,6 +127,7 @@ export class Cohorts {
     this.flBoarded = new Int32Array(traffic.fState.length);
     this.flGate = new Int32Array(traffic.fState.length);
     this.flActive = new Int32Array(traffic.fState.length);
+    this.seenVersion = business.serviceVersion;
   }
 
   /** A free slot, or -1 when the store is full. */
@@ -203,6 +219,9 @@ export class Cohorts {
   update(tick: number): void {
     this.tick = tick;
     if (tick % STEP !== 0) return;
+    // Evictions still pending in a table mean a rebuild is owed, even after a load that reset the version check.
+    if (this.business.serviceVersion !== this.seenVersion || this.evictionsPending()) this.rebuildQueues();
+    if (tick % DONE_EVERY === 0) this.drainDone();
     const b = (tick / STEP) & (WHEEL - 1);
     let c = this.wheelHead[b];
     this.wheelHead[b] = -1;
@@ -214,9 +233,198 @@ export class Cohorts {
     }
   }
 
-  /** Journey steps are written in a later slice. Until then a due cohort waits again, so none is lost. */
+  /** The service tables were rebuilt: node ids are stale, and evicted cohorts go back to the step they queued from. */
+  private rebuildQueues(): void {
+    for (let c = 0; c < this.hi; c++) {
+      const st = this.stage[c];
+      if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate) this.node[c] = -1;
+    }
+    for (let g = 0; g < this.business.grids.length; g++) {
+      const t = this.table(g);
+      if (!t) continue;
+      for (let k = 0; k < t.evictedCount; k++) {
+        const c = t.evicted[k];
+        if (this.building[c] === g) this.evict(c);
+      }
+      t.evictedCount = 0;
+    }
+    this.seenVersion = this.business.serviceVersion;
+  }
+
+  private evictionsPending(): boolean {
+    for (let g = 0; g < this.business.grids.length; g++) {
+      const t = this.table(g);
+      if (t && t.evictedCount > 0) return true;
+    }
+    return false;
+  }
+
+  /** A cohort whose queue node was removed: a missed one leaves, the others walk again from the curb. */
+  private evict(c: number): void {
+    const st = this.stage[c];
+    if (st === Stage.Missed) {
+      this.free(c);
+      return;
+    }
+    if (st === Stage.CheckIn) this.stage[c] = Stage.ToCheckIn;
+    else if (st === Stage.Security) this.stage[c] = Stage.ToSecurity;
+    else if (st === Stage.Gate) this.stage[c] = Stage.ToGate;
+    else return;
+    this.node[c] = -1;
+    this.schedule(c, this.tick + STEP);
+  }
+
+  /** Cohorts that finished at a service node: check in hands on to security, the gate desk boards, missed ones leave. */
+  private drainDone(): void {
+    for (let g = 0; g < this.business.grids.length; g++) {
+      const t = this.table(g);
+      if (!t) continue;
+      for (let k = 0; k < t.doneCount; k++) {
+        const c = t.doneCohort[k];
+        if (this.building[c] !== g) continue;
+        const st = this.stage[c];
+        if (st !== Stage.CheckIn && st !== Stage.Security && st !== Stage.Gate && st !== Stage.Missed) continue;
+        // Node indices can renumber after an edit, so the done node is the one to trust.
+        this.node[c] = t.doneNode[k];
+        this.finish(g, c, st, t);
+      }
+    }
+  }
+
+  private finish(g: number, c: number, st: number, t: ServiceNodes): void {
+    if (st === Stage.Missed) {
+      this.free(c);
+      return;
+    }
+    if (st === Stage.Gate) {
+      this.board(c);
+      return;
+    }
+    if (st === Stage.Security) {
+      this.stage[c] = Stage.Airside;
+      this.schedule(c, this.tick + STEP);
+      return;
+    }
+    const from = t.walkNode[this.node[c]];
+    const n = this.pickNode(g, SECURITY, SECURITY, from, c);
+    if (n < 0) {
+      this.node[c] = -1;
+      this.stage[c] = Stage.ToSecurity;
+      this.schedule(c, this.tick + RETRY_TICKS);
+      return;
+    }
+    this.walk(g, c, n, from, Stage.ToSecurity);
+  }
+
+  /** Passengers at a gate desk board. The flight counts them as boarded and no longer waiting. */
+  private board(c: number): void {
+    const f = this.flight[c];
+    const n = this.size[c];
+    this.boarded += n;
+    this.flBoarded[f] += n;
+    this.active -= n;
+    this.flActive[f] -= n;
+    this.flGate[f] -= n;
+    this.free(c);
+  }
+
+  /** Runs one journey step of a cohort that is due. Only wheel stages reach here. */
   private step(c: number): void {
-    this.schedule(c, this.tick + RETRY_TICKS);
+    const g = this.building[c];
+    switch (this.stage[c]) {
+      case Stage.Curb: {
+        const from = this.business.curbNode(g);
+        const n = this.pickNode(g, CHECK_IN, KIOSK, from, c);
+        if (n < 0) this.schedule(c, this.tick + RETRY_TICKS);
+        else this.walk(g, c, n, from, Stage.ToCheckIn);
+        break;
+      }
+      case Stage.ToCheckIn:
+        this.join(g, c, CHECK_IN, KIOSK, Stage.CheckIn);
+        break;
+      case Stage.ToSecurity:
+        this.join(g, c, SECURITY, SECURITY, Stage.Security);
+        break;
+      case Stage.ToGate:
+        this.join(g, c, GATE_DESK, GATE_DESK, Stage.Gate);
+        break;
+      case Stage.Airside:
+        this.toGate(g, c);
+        break;
+    }
+  }
+
+  /** A due cohort joins the queue of its node, or walks to a node first when it has none. */
+  private join(g: number, c: number, kindA: number, kindB: number, queued: number): void {
+    if (this.node[c] < 0) {
+      const from = this.business.curbNode(g);
+      const n = this.pickNode(g, kindA, kindB, from, c);
+      if (n < 0) this.schedule(c, this.tick + RETRY_TICKS);
+      else this.walk(g, c, n, from, this.stage[c]);
+      return;
+    }
+    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c])) this.stage[c] = queued;
+    else this.schedule(c, this.tick + JOIN_RETRY_TICKS);
+  }
+
+  /** Airside passengers walk to a gate desk once the flight is on the ground. The flight's gate count rises only on the first walk. */
+  private toGate(g: number, c: number): void {
+    const f = this.flight[c];
+    const from = this.originWalk(g, c);
+    const n = this.traffic.fState[f] === FlState.OnGround ? this.pickNode(g, GATE_DESK, GATE_DESK, from, c) : -1;
+    if (n < 0) {
+      this.schedule(c, this.tick + RETRY_TICKS);
+      return;
+    }
+    this.flGate[f] += this.size[c];
+    this.walk(g, c, n, from, Stage.ToGate);
+  }
+
+  /** Walk node a cohort leaves from: its service node when it has one, otherwise the curb. */
+  private originWalk(g: number, c: number): number {
+    const t = this.node[c] >= 0 ? this.table(g) : null;
+    if (t) return t.walkNode[this.node[c]];
+    return this.business.curbNode(g);
+  }
+
+  /** Cheapest node of a grid with one of two fixture kinds and queue room, by walk time plus wait. -1 when none. */
+  private pickNode(g: number, kindA: number, kindB: number, fromWalk: number, c: number): number {
+    const t = this.table(g);
+    if (!t) return -1;
+    const id = this.gridId(g);
+    const speed = WALK_SPEED[this.profile[c]];
+    let best = -1;
+    let bestCost = Infinity;
+    // Ascending scan with a strict comparison, so ties go to the lowest index and an infinite cost never wins.
+    for (let n = 0; n < t.count; n++) {
+      const k = t.kind[n];
+      if ((k !== kindA && k !== kindB) || t.queueCap[n] <= 0) continue;
+      const cost = this.business.walkDistance(id, fromWalk, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = n;
+      }
+    }
+    return best;
+  }
+
+  /** Sends a cohort to a node of its grid. It is due when the walk ends. */
+  private walk(g: number, c: number, node: number, from: number, stage: number): void {
+    const t = this.table(g);
+    this.node[c] = node;
+    this.stage[c] = stage;
+    const to = t ? t.walkNode[node] : -1;
+    const dist = this.business.walkDistance(this.gridId(g), from, to);
+    this.schedule(c, this.tick + Math.max(STEP, Math.ceil((dist / WALK_SPEED[this.profile[c]]) * TICKS_PER_SECOND)));
+  }
+
+  private gridId(g: number): number {
+    return this.business.grids[g]?.id ?? -1;
+  }
+
+  /** Service table of a grid index, null when there is none. */
+  private table(g: number): ServiceNodes | null {
+    return this.business.serviceTable(this.gridId(g));
   }
 
   private pickProfile(r: number): number {
@@ -290,6 +498,7 @@ export class Cohorts {
       this.flBoarded.fill(0);
       this.flGate.fill(0);
       this.flActive.fill(0);
+      this.seenVersion = this.business.serviceVersion;
       return;
     }
     this.generated = s.generated;
@@ -308,6 +517,7 @@ export class Cohorts {
     unpackInto(s.arrays.flBoarded, this.flBoarded, Int32Array);
     unpackInto(s.arrays.flGate, this.flGate, Int32Array);
     unpackInto(s.arrays.flActive, this.flActive, Int32Array);
+    this.seenVersion = this.business.serviceVersion;
   }
 
   /** Folds the state that matters into a running hash. */

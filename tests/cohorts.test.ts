@@ -4,7 +4,8 @@ import { PROFILES } from '@data/index';
 import { Sim } from '@sim/sim';
 import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
 import { FlState } from '@sim/ops/traffic';
-import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim } from './helpers';
+import { FIXTURE_KEYS } from '@shared/business';
+import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
 
@@ -132,5 +133,122 @@ describe('cohort store', () => {
     scheduleWide(b);
     expect(a.cohorts.generated).toBeGreaterThan(0);
     expect(b.stateHash()).toBe(a.stateHash());
+  });
+});
+
+/** Turnaround long enough that the passengers reach the gate desks before push back. */
+const LONG_TURN_TICKS = 36000;
+const RUN_TICKS = 6000;
+
+function scheduleLong(sim: Sim): number {
+  const f = sim.traffic.scheduleArrival(WIDE, sim.traffic.nowTick + 100, 0, LONG_TURN_TICKS, -1);
+  expect(f).toBeGreaterThanOrEqual(0);
+  return f;
+}
+
+/** Live cohorts per stage, indexed by Stage value. Free slots are not counted. */
+function stageCounts(co: Cohorts): number[] {
+  const out = Array.from({ length: Stage.Missed + 1 }, () => 0);
+  for (let c = 0; c < co.hi; c++) {
+    const st = co.stage[c];
+    if (st !== Stage.Free) out[st] = (out[st] ?? 0) + 1;
+  }
+  return out;
+}
+
+function expectConserved(co: Cohorts): void {
+  expect(co.generated).toBe(co.boarded + co.missed + co.active);
+}
+
+/** Runs the sim and checks the passenger books every 100 ticks. Returns the highest stage seen. */
+function runChecked(sim: Sim, ticks: number): number {
+  let top = 0;
+  for (let t = 0; t < ticks; t++) {
+    sim.step();
+    for (let c = 0; c < sim.cohorts.hi; c++) top = Math.max(top, sim.cohorts.stage[c]!);
+    if (sim.tick % 100 === 0) expectConserved(sim.cohorts);
+  }
+  return top;
+}
+
+describe('cohort journey from curb to boarded', () => {
+  it('passengers board and reach the airside stages', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    const top = runChecked(sim, RUN_TICKS);
+    expect(sim.cohorts.boarded).toBeGreaterThan(0);
+    expect(top).toBeGreaterThanOrEqual(Stage.Airside);
+  });
+
+  it('generated equals boarded plus missed plus active through the run', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    runChecked(sim, RUN_TICKS);
+    expect(sim.cohorts.generated).toBeGreaterThan(0);
+    expectConserved(sim.cohorts);
+  });
+
+  it('two runs from one seed agree at 2000 ticks, with cohorts leaving the curb', () => {
+    const a = terminalSim();
+    scheduleLong(a);
+    const b = terminalSim();
+    scheduleLong(b);
+    for (let t = 0; t < 2000; t++) {
+      a.step();
+      b.step();
+    }
+    const counts = stageCounts(a.cohorts);
+    const live = counts.reduce((x, y) => x + y, 0);
+    expect(live).toBeGreaterThan(counts[Stage.Curb]!);
+    expect(a.stateHash()).toBe(b.stateHash());
+  });
+
+  it('a save taken mid journey restores and runs to the same hash', () => {
+    const a = terminalSim();
+    scheduleLong(a);
+    let mid = false;
+    for (let t = 0; t < RUN_TICKS && !mid; t++) {
+      a.step();
+      const counts = stageCounts(a.cohorts);
+      const queued = (counts[Stage.CheckIn] ?? 0) + (counts[Stage.Security] ?? 0) + (counts[Stage.Gate] ?? 0);
+      const walking = (counts[Stage.ToCheckIn] ?? 0) + (counts[Stage.ToSecurity] ?? 0) + (counts[Stage.ToGate] ?? 0);
+      mid = queued > 0 && walking > 0;
+    }
+    expect(mid).toBe(true);
+    const data: unknown = JSON.parse(JSON.stringify(a.serialize()));
+    const b = new Sim(a.seed, OPTIONS);
+    b.restore(data);
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 750; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 750; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
+
+  it('erasing a check in desk with cohorts queued there keeps the books and boarding', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    const g = sim.business.grids[0]!;
+    const checkIn = FIXTURE_KEYS.indexOf('checkIn') + 1;
+    let at = -1;
+    for (let t = 0; t < RUN_TICKS && at < 0; t++) {
+      sim.step();
+      const sn = sim.business.serviceTable(g.id)!;
+      for (let k = 0; k < sn.count; k++) if (sn.kind[k] === checkIn && sn.queueLen[k]! > 0) at = k;
+    }
+    expect(at).toBeGreaterThanOrEqual(0);
+    const sn = sim.business.serviceTable(g.id)!;
+    const lx = sn.lx[at]!;
+    const ly = sn.ly[at]!;
+    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'erase', x0: lx, y0: ly, x1: lx + 1, y1: ly + 1, variant: 0 } })).toEqual([]);
+    runChecked(sim, RUN_TICKS);
+    expect(sim.business.serviceTable(g.id)!.evictedCount).toBe(0);
+    expect(sim.cohorts.boarded).toBeGreaterThan(0);
   });
 });
