@@ -52,8 +52,18 @@ Build mode, LRU size, lattice accuracy, overlay delivery: answered by the user o
 
 ## Verify
 
-Filled by the orchestrator.
+```
+PASS  rules
+PASS  types
+PASS  lint
+PASS  tests (41 files, 457 tests)
+PASS  stress
+verify: all checks passed.
+e2e: 13 passed
+```
+
+Stress terminal640: walk graph 2327 nodes, 36746 directed edges, build 12 ms, 2 by 2 edit 3 ms.
 
 ## Report
 
-Filled by the orchestrator.
+All five requirements met. Reviewer passed every slice, with test gaps closed in slices 3, 4, 5 and 6. No save change, no new dependency. T13 can start.
