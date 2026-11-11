@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BUSINESS } from '@data/index';
-import { FIXTURE_KEYS, WALL, type TerminalGrid } from '../src/shared/business';
-import { labelRooms } from '../src/shared/terminalRooms';
-import { originFor } from '../src/shared/terminalOps';
-import { WALK_NODE, buildWalkGraph, type WalkGraph } from '../src/sim/terminal/walkGraph';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, WALL, type TerminalGrid } from '../src/shared/business';
+import { canStep, labelRooms } from '../src/shared/terminalRooms';
+import { cellIndex, ensureCells, hEdgeIndex, newGrid, originFor } from '../src/shared/terminalOps';
+import { WALK_NODE, buildWalkGraph, lineOfSight, type WalkGraph } from '../src/sim/terminal/walkGraph';
 import { buildTestTerminal, ownedSim, run } from './helpers';
 import type { Sim } from '../src/sim/sim';
 
@@ -20,6 +20,10 @@ function splitTerminal(sim: Sim) {
   expect(edit({ op: 'wall', x0: 56, y0: 45, x1: 56, y1: 46, variant: 3 })).toEqual([]);
   return sim.business.grids[0]!;
 }
+
+/** Neighbour steps in the canStep direction order: left, right, up, down. */
+const STEP_DX = [-1, 1, 0, 0];
+const STEP_DY = [0, 0, -1, 1];
 
 /** True when array cells a and b sit in the same logical block of the grid. */
 function sameBlock(g: TerminalGrid, a: number, b: number): boolean {
@@ -50,14 +54,86 @@ function walkFields(wg: WalkGraph): unknown[] {
   ];
 }
 
-describe('walk graph nodes', () => {
-  const build = (): { grid: TerminalGrid; wg: WalkGraph } => {
-    const sim = ownedSim();
-    expect(buildTestTerminal(sim)).toEqual([]);
-    const grid = splitTerminal(sim);
-    return { grid, wg: buildWalkGraph(grid) };
-  };
+/** Builds the split test terminal and its walk graph. */
+function build(): { grid: TerminalGrid; wg: WalkGraph } {
+  const sim = ownedSim();
+  expect(buildTestTerminal(sim)).toEqual([]);
+  const grid = splitTerminal(sim);
+  return { grid, wg: buildWalkGraph(grid) };
+}
 
+/** Array index of logical cell (lx, ly) in the grid. */
+const cellAt = (g: TerminalGrid, lx: number, ly: number): number => (ly - g.y0) * g.w + (lx - g.x0);
+
+/** A grid with logical cells from (x0, y0) to (x0 + w, y0 + h), rounded to whole chunks by ensureCells. */
+function handGrid(x0: number, y0: number, w: number, h: number): TerminalGrid {
+  const g = newGrid(1, 0, 0, 0);
+  ensureCells(g, x0, y0, x0 + w, y0 + h);
+  return g;
+}
+
+/** Sets floor on logical cells from (x0, y0) up to, not including, (x1, y1). */
+function setFloor(g: TerminalGrid, x0: number, y0: number, x1: number, y1: number): void {
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g.floor[cellIndex(g, x, y)] = 1;
+}
+
+/** Puts a wall on the vertical edge left of logical cell (x, y). */
+function wallLeftOf(g: TerminalGrid, x: number, y: number): void {
+  g.vWall[(y - g.y0) * (g.w + 1) + (x - g.x0)] = WALL.Wall;
+}
+
+/** Puts a wall on the horizontal edge above logical cell (x, y). */
+function wallAbove(g: TerminalGrid, x: number, y: number): void {
+  g.hWall[hEdgeIndex(g, x, y)] = WALL.Wall;
+}
+
+/** Cells reached from start over canStep, as a flag per array cell. */
+function floodCells(g: TerminalGrid, start: number): Uint8Array {
+  const W = g.w;
+  const seen = new Uint8Array(W * g.h);
+  seen[start] = 1;
+  const cells = [start];
+  while (cells.length > 0) {
+    const c = cells.pop()!;
+    const x = c % W;
+    const y = (c - x) / W;
+    for (let d = 0; d < 4; d++) {
+      if (!canStep(g, x, y, d)) continue;
+      const nc = (y + STEP_DY[d]!) * W + x + STEP_DX[d]!;
+      if (seen[nc] === 1) continue;
+      seen[nc] = 1;
+      cells.push(nc);
+    }
+  }
+  return seen;
+}
+
+/** Nodes reached from first over the walk graph edges, as a flag per node id. */
+function floodNodes(wg: WalkGraph, first: number): Uint8Array {
+  const seen = new Uint8Array(wg.nodeCount);
+  seen[first] = 1;
+  const nodes = [first];
+  while (nodes.length > 0) {
+    const a = nodes.pop()!;
+    for (let e = wg.edgeStart[a]!; e < wg.edgeStart[a + 1]!; e++) {
+      const b = wg.edgeTo[e]!;
+      if (seen[b] === 1) continue;
+      seen[b] = 1;
+      nodes.push(b);
+    }
+  }
+  return seen;
+}
+
+/** Length of the edge from node a to node b, or undefined when there is none. */
+function edgeLen(wg: WalkGraph, a: number, b: number): number | undefined {
+  for (let e = wg.edgeStart[a]!; e < wg.edgeStart[a + 1]!; e++) {
+    if (wg.edgeTo[e] === b) return wg.edgeLen[e];
+  }
+  return undefined;
+}
+
+describe('walk graph nodes', () => {
   it('keeps node cells in ascending order', () => {
     const { wg } = build();
     expect(wg.nodeCount).toBeGreaterThan(0);
@@ -123,6 +199,107 @@ describe('walk graph nodes', () => {
   it('builds equal graphs from one grid', () => {
     const { grid } = build();
     expect(walkFields(buildWalkGraph(grid))).toEqual(walkFields(buildWalkGraph(grid)));
+  });
+});
+
+describe('walk graph edges', () => {
+  it('sees along an open row, stops at the wall and sees through the door', () => {
+    const { grid } = build();
+    expect(lineOfSight(grid, cellAt(grid, 44, 48), cellAt(grid, 50, 48))).toBe(true);
+    expect(lineOfSight(grid, cellAt(grid, 50, 48), cellAt(grid, 60, 48))).toBe(false);
+    expect(lineOfSight(grid, cellAt(grid, 50, 45), cellAt(grid, 60, 45))).toBe(true);
+  });
+
+  it('makes every edge symmetric with equal length', () => {
+    const { wg } = build();
+    for (let a = 0; a < wg.nodeCount; a++) {
+      for (let e = wg.edgeStart[a]!; e < wg.edgeStart[a + 1]!; e++) {
+        const b = wg.edgeTo[e]!;
+        let back = -1;
+        for (let f = wg.edgeStart[b]!; f < wg.edgeStart[b + 1]!; f++) if (wg.edgeTo[f] === a) back = f;
+        expect(back).toBeGreaterThanOrEqual(0);
+        expect(wg.edgeLen[back]).toBe(wg.edgeLen[e]);
+      }
+    }
+  });
+
+  it('keeps edgeTo ascending inside each node range', () => {
+    const { wg } = build();
+    for (let a = 0; a < wg.nodeCount; a++) {
+      for (let e = wg.edgeStart[a]! + 1; e < wg.edgeStart[a + 1]!; e++) {
+        expect(wg.edgeTo[e]!).toBeGreaterThan(wg.edgeTo[e - 1]!);
+      }
+    }
+  });
+
+  it('gives an interior lattice node at least 16 edges', () => {
+    const { grid, wg } = build();
+    const node = wg.cellNode[cellAt(grid, 46, 46)]!;
+    expect(node).toBeGreaterThanOrEqual(0);
+    expect(wg.edgeStart[node + 1]! - wg.edgeStart[node]!).toBeGreaterThanOrEqual(16);
+  });
+
+  it('reaches from every start the same floor cells over edges as over canStep', () => {
+    const g = handGrid(0, 0, 32, 32);
+    setFloor(g, 2, 2, 10, 10);
+    setFloor(g, 20, 2, 28, 10);
+    const wg = buildWalkGraph(g);
+    const floorCells: number[] = [];
+    for (let c = 0; c < g.w * g.h; c++) if (g.floor[c]! > 0) floorCells.push(c);
+    const reachable = floodCells(g, floorCells[0]!);
+    expect(floorCells.filter((c) => reachable[c] === 1).length).toBeLessThan(floorCells.length);
+    for (const s of floorCells) {
+      const cellsSeen = floodCells(g, s);
+      const nodesSeen = floodNodes(wg, wg.cellNode[wg.cellMain[s]!]!);
+      for (const c of floorCells) {
+        expect(nodesSeen[wg.cellNode[wg.cellMain[c]!]!] === 1).toBe(cellsSeen[c] === 1);
+      }
+      for (let id = 0; id < wg.nodeCount; id++) {
+        if (nodesSeen[id] === 1) expect(cellsSeen[wg.nodeCell[id]!]).toBe(1);
+      }
+    }
+  });
+
+  it('links an interior fixture and a split lattice group through the fallbacks', () => {
+    const g = handGrid(0, 0, 32, 32);
+    setFloor(g, 0, 0, 6, 3);
+    // Block 0 splits into a group with the centre (cols 0 and 1) and a group of column 2.
+    for (let y = 0; y < 3; y++) wallLeftOf(g, 2, y);
+    // A wall on the vertical edge left of (1, 0) hides the fixture at (0, 0) from the centre.
+    wallLeftOf(g, 1, 0);
+    // A wall under (3, 0) hides the line from (2, 0) to the centre (4, 1), so only the group fallback joins them.
+    wallAbove(g, 3, 1);
+    g.fixture[cellIndex(g, 0, 0)] = 1;
+    const wg = buildWalkGraph(g);
+    const node = (x: number, y: number): number => wg.cellNode[cellIndex(g, x, y)]!;
+    expect(wg.cellMain[cellIndex(g, 0, 0)]).toBe(cellIndex(g, 1, 1));
+    expect(wg.cellMain[cellIndex(g, 2, 0)]).toBe(cellIndex(g, 2, 0));
+    expect(wg.cellMain[cellIndex(g, 3, 0)]).toBe(cellIndex(g, 4, 1));
+    expect(edgeLen(wg, node(0, 0), node(1, 1))).toBeCloseTo(2 * TERMINAL_CELL_M, 4);
+    expect(edgeLen(wg, node(2, 0), node(4, 1))).toBeCloseTo(3 * TERMINAL_CELL_M, 4);
+  });
+});
+
+describe('walk graph hand grids', () => {
+  it('keeps block centres, borders and diagonal sight lengths right for negative origins', () => {
+    const g = handGrid(-40, -40, 35, 35);
+    expect(g.x0).toBeLessThan(0);
+    expect(g.y0).toBeLessThan(0);
+    expect(g.w % BUSINESS.terminal.walk.latticeCells).not.toBe(0);
+    setFloor(g, -12, -12, -3, -3);
+    const wg = buildWalkGraph(g);
+    for (let c = 0; c < g.w * g.h; c++) {
+      if (g.floor[c]! > 0) {
+        expect(wg.cellMain[c]).toBeGreaterThanOrEqual(0);
+        expect(sameBlock(g, wg.cellMain[c]!, c)).toBe(true);
+        if (isBlockCentre(g, c)) expect(wg.cellMain[c]).toBe(c);
+      } else {
+        expect(wg.cellMain[c]).toBe(-1);
+      }
+    }
+    const a = wg.cellNode[cellIndex(g, -11, -11)]!;
+    const b = wg.cellNode[cellIndex(g, -8, -8)]!;
+    expect(edgeLen(wg, a, b)).toBeCloseTo(TERMINAL_CELL_M * Math.sqrt(18), 4);
   });
 });
 
