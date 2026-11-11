@@ -10,7 +10,7 @@ import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_
 import { TICKS_PER_MINUTE } from '@shared/business';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
-import { AIRFIELD, BUSINESS } from '@data/index';
+import { AIRFIELD, BUSINESS, PROFILES } from '@data/index';
 import { movementsPerHour } from '@shared/towerBudget';
 import { padSize } from '@shared/turnPad';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
@@ -30,6 +30,8 @@ const TAXI_ACCEL = 1.0;
 const PUSHBACK_SPEED = 1.5;
 const MAX_DELAY_TICKS = 12000;
 const RETRY_TICKS = 300;
+/** Longest a turnaround waits past its timer for passengers already at a gate desk. */
+const BOARD_HOLD_TICKS = PROFILES.boardingHoldS * 10;
 /** A movement waits for ATC budget for 30 game minutes, then the arrival diverts (T40 R4). */
 const ATC_MAX_WAIT_TICKS = 18000;
 // The rolling span of a movement budget, one game hour.
@@ -128,6 +130,8 @@ export class Traffic {
   readonly depWait = new Int32Array(MAX_AIRCRAFT);
   /** Tick a budget blocked departure tries again. Zero means no wait. */
   readonly depRetryAt = new Int32Array(MAX_AIRCRAFT);
+  /** Ticks a turnaround has held past its timer for boarding. */
+  readonly boardHold = new Int32Array(MAX_AIRCRAFT);
   readonly goalX = new Float64Array(MAX_AIRCRAFT);
   readonly goalY = new Float64Array(MAX_AIRCRAFT);
   count = 0;
@@ -1268,6 +1272,7 @@ export class Traffic {
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
       this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 6000;
+      this.boardHold[i] = 0;
       if (f >= 0) {
         this.fState[f] = FlState.OnGround;
         this.hooks?.docked(f);
@@ -1613,6 +1618,10 @@ export class Traffic {
   private updateTurnaround(i: number): void {
     if (this.timer[i] > 0) {
       this.timer[i]--;
+      return;
+    }
+    if (this.boardHold[i] < BOARD_HOLD_TICKS && this.hooks?.boardingReady && !this.hooks.boardingReady(this.flight[i])) {
+      this.boardHold[i]++;
       return;
     }
     // A departure that lost the movement budget waits a retry step before it asks again (T40 R4).
@@ -1966,6 +1975,7 @@ export class Traffic {
       nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
       movStart: this.movStart, movHead: this.movHead, movCount: this.movCount, depWait: this.depWait, depRetryAt: this.depRetryAt,
+      boardHold: this.boardHold,
     };
   }
 
@@ -2040,6 +2050,7 @@ export class Traffic {
     for (let f = 0; f < MAX_FLIGHTS; f++) acc = foldU32(acc, this.fRot[f]);
     acc = foldInts(acc, this.depWait, MAX_AIRCRAFT);
     acc = foldInts(acc, this.depRetryAt, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.boardHold, MAX_AIRCRAFT);
     acc = foldInts(acc, this.movHead, this.movHead.length);
     acc = foldInts(acc, this.movCount, this.movCount.length);
     acc = foldInts(acc, this.movStart, this.movStart.length);

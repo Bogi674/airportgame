@@ -67,6 +67,8 @@ export interface TerminalOptions {
   shop?: boolean;
   /** Build the ATC tower too. Set false to test the no ATC case. */
   atc?: boolean;
+  /** World metres of the terminal origin. Defaults to the spot south of the test apron. */
+  at?: { x: number; y: number };
 }
 
 /** A free spot north west of the test airport, clear of every pavement and stand. */
@@ -77,13 +79,13 @@ const TEST_TOWER = { x: 2700, y: 4800 } as const;
  * foundation, a tile floor, walls with a door, and fixtures. Returns problems, empty on success.
  */
 export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
-  const { ox, oy } = originFor(3960, 5440, 90);
+  const { ox, oy } = originFor(o.at?.x ?? 3960, o.at?.y ?? 5440, 90);
   const problems: string[] = [];
   const edit = (building: number, e: { op: 'foundation' | 'floor' | 'erase' | 'wall' | 'removeWall' | 'fixture' | 'zone'; x0: number; y0: number; x1: number; y1: number; variant: number }): void => {
     problems.push(...run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e }));
   };
   edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });
-  const id = sim.business.grids[0]?.id ?? 1;
+  const id = sim.business.grids[sim.business.grids.length - 1]?.id ?? 1;
   edit(id, { op: 'floor', x0: 40, y0: 40, x1: 100, y1: 52, variant: 2 });
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
   edit(id, { op: 'wall', x0: 40, y0: 52, x1: 100, y1: 52, variant: 1 });

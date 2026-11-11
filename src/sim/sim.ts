@@ -84,11 +84,14 @@ export class Sim {
     this.gse = new Gse(this.traffic);
     this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
+    this.business.boarded = (f) => this.cohorts.boardedFor(f);
+    this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
     const businessPushback = this.traffic.hooks?.pushback;
     this.traffic.hooks = {
       ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }),
       contactOk: (x, y) => this.business.hasTerminalNear(x, y),
       scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
+      boardingReady: (f) => this.cohorts.boardingReady(f),
       // The business settles the flight first, then the passengers still in the terminal miss it.
       pushback: (f) => {
         businessPushback?.(f);

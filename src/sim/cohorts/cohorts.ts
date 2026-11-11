@@ -205,9 +205,40 @@ export class Cohorts {
     this.flGate[f] = 0;
   }
 
-  /** True when no passenger of the flight is at a gate desk or on the way to one. */
+  /** True when no passenger of the flight is at a gate desk or on the way to one. Aircraft without a flight never hold. */
   boardingReady(f: number): boolean {
-    return this.flGate[f] === 0;
+    return f < 0 || this.flGate[f] === 0;
+  }
+
+  /**
+   * A terminal building was demolished. Its passengers miss their flight, since no service table is left for them,
+   * and the grids after it shift down one index.
+   */
+  onGridRemoved(g: number): void {
+    for (let c = 0; c < this.hi; c++) {
+      const st = this.stage[c];
+      if (st === Stage.Free) continue;
+      const b = this.building[c];
+      if (b > g) {
+        this.building[c] = b - 1;
+        continue;
+      }
+      if (b !== g) continue;
+      if (st === Stage.Missed) {
+        this.free(c);
+        continue;
+      }
+      if (st < Stage.Curb || st > Stage.Gate) continue;
+      const f = this.flight[c];
+      const n = this.size[c];
+      this.missed += n;
+      this.active -= n;
+      this.flActive[f] -= n;
+      if (st === Stage.ToGate || st === Stage.Gate) this.flGate[f] -= n;
+      // Queued passengers are not on the wheel, the rest are.
+      if (st !== Stage.CheckIn && st !== Stage.Security && st !== Stage.Gate) this.unlink(c);
+      this.free(c);
+    }
   }
 
   /** Passengers of the flight that have boarded so far. */

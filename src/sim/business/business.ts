@@ -126,8 +126,10 @@ export class Business {
   paxToday = 0;
   flightsToday = 0;
   lostToday = 0;
-  /** Departing passengers of the last hour, as a decaying sum, to find terminal load. */
-  private depWindow = 0;
+  /** Passengers of a flight that reached a gate desk in time, set by the sim. Without it no departure passenger flies. */
+  boarded: ((f: number) => number) | null = null;
+  /** Called with the index of a terminal grid after it is demolished, set by the sim. */
+  gridRemoved: ((index: number) => void) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -340,6 +342,7 @@ export class Business {
     if (cellCount(grid) === 0) {
       const i = this.grids.indexOf(grid);
       this.grids.splice(i, 1);
+      this.gridRemoved?.(i);
       this.walkGraphs.splice(i, 1);
       this.serviceNodes.splice(i, 1);
     }
@@ -354,6 +357,7 @@ export class Business {
     if (i < 0) return 'nothingThere';
     this.host.book('construction', Math.round(this.grids[i].cost * 0.25));
     this.grids.splice(i, 1);
+    this.gridRemoved?.(i);
     this.walkGraphs.splice(i, 1);
     this.serviceNodes.splice(i, 1);
     this.walkVersion++;
@@ -419,18 +423,6 @@ export class Business {
       };
     }
     return null;
-  }
-
-  /** Departing passengers the terminals can process per hour. */
-  depCapacity(): number {
-    const checkInTerm =
-      this.totals.checkIn * BUSINESS.modules.checkIn.capacityPerHour +
-      this.totals.kiosk * BUSINESS.modules.kiosk.capacityPerHour +
-      this.totals.bagDrop * BUSINESS.modules.bagDrop.capacityPerHour;
-    const base = Math.min(checkInTerm, this.totals.security * BUSINESS.modules.security.capacityPerHour);
-    // Without seats in the secure zone passengers wait standing and the lounge backs up.
-    if (this.roomIssues.length > 0) return 0;
-    return this.secureSeating > 0 ? base : Math.floor(base / 2);
   }
 
   arrCapacity(): number {
@@ -562,15 +554,10 @@ export class Business {
     const m = this.mult(f);
     let pax = this.paxFor(f);
     if (this.needsTerminal(f)) {
-      const cap = this.depCapacity();
-      let sf = 0;
-      if (cap > 0) {
-        this.depWindow += pax;
-        sf = Math.min(1, cap / Math.max(1, this.depWindow));
-      }
-      const served = Math.round(pax * sf);
+      // Only passengers who boarded through the terminal fly. The rest miss the flight.
+      const served = Math.min(pax, this.boarded ? this.boarded(f) : 0);
       this.lostToday += pax - served;
-      this.satisfaction += (sf - this.satisfaction) * 0.1;
+      this.satisfaction += (served / Math.max(1, pax) - this.satisfaction) * 0.1;
       pax = served;
     }
     this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
@@ -595,8 +582,6 @@ export class Business {
   update(tick: number): void {
     if (tick % 100 === 0) this.updateServiceLevel();
     if (tick % 10 === 0) for (let i = 0; i < this.serviceNodes.length; i++) serviceUpdate(this.serviceNodes[i]!, tick, this.serviceRng);
-    // The terminal load window decays every 10 game minutes.
-    if (tick % (10 * TICKS_PER_MINUTE) === 0) this.depWindow *= 1 - 10 / 60;
     if (tick % TICKS_PER_DAY === dayStartOffset()) this.dailyClose(tick);
     if (this.weather !== 'clear' && tick >= this.weatherEnd) this.setWeather('clear', tick);
     else if (this.weather === 'clear' && this.weatherStart > 0 && tick >= this.weatherStart && this.pendingKind !== 'clear') this.setWeather(this.pendingKind, tick);
@@ -882,7 +867,6 @@ export class Business {
   }
 
   payload(tick: number): BusinessPayload {
-    const dep = this.depCapacity();
     const stands = this.airfield.data.stands;
     return {
       board: this.board(tick),
@@ -903,7 +887,6 @@ export class Business {
       loan: this.loan,
       staff: this.staffCount(),
       weather: this.weather,
-      depCapacity: dep,
       readiness: this.readiness(),
       autoStands: this.traffic.autoStands,
       fleet: this.fleet,
@@ -926,7 +909,7 @@ export class Business {
       onTime: this.onTime, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
       weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
-      flightsToday: this.flightsToday, lostToday: this.lostToday, depWindow: this.depWindow,
+      flightsToday: this.flightsToday, lostToday: this.lostToday,
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
       rng: this.rng.getState(), marketRng: this.marketRng.getState(),
       service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(),
@@ -937,7 +920,7 @@ export class Business {
     const o = raw as {
       version: number; grids: SavedGrid[]; airlines: Airline[]; rating: number; satisfaction: number; onTime: number; loan: number;
       loanOriginal: number; weather: WeatherKind; weatherStart: number; weatherEnd: number; pendingKind: WeatherKind; nextTerminalId: number;
-      day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number; depWindow: number;
+      day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number;
       flightPax: string; flightDockedAt: string; rng: number; marketRng: number;
       service?: ServiceSave[]; serviceRng?: number;
     };
@@ -974,7 +957,6 @@ export class Business {
     this.paxToday = o.paxToday;
     this.flightsToday = o.flightsToday;
     this.lostToday = o.lostToday;
-    this.depWindow = o.depWindow;
     unpackInto(o.flightPax, this.flightPax, Int32Array);
     unpackInto(o.flightDockedAt, this.flightDockedAt, Int32Array);
     this.rng.setState(o.rng);

@@ -236,7 +236,6 @@ export interface BusinessPayload {
   fleet: number[];
   /** 1 when ground handling keeps up, up to 1.6 when it is short of vehicles. */
   serviceSlowdown: number;
-  depCapacity: number;
   arrCapacity: number;
   /** Passengers the passport booths can clear per hour. */
   intlCapacity: number;

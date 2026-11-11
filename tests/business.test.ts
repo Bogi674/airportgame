@@ -47,7 +47,6 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     const cells = 60 * 12;
     expect(sim.business.terminals[0].cells).toBe(cells);
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
-    expect(sim.business.depCapacity()).toBe(Math.min(8 * 30, 3 * BUSINESS.modules.security.capacityPerHour));
     expect(sim.business.arrCapacity()).toBe(2 * 260);
     // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
     const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
@@ -70,13 +69,13 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.cash).toBeLessThan(cash);
   });
 
-  it('is custom: a different layout gives different capacity and cost', () => {
+  it('is custom: a different layout gives different arrival capacity and cost', () => {
     const a = ownedSim();
     a.cash = 100_000_000;
     buildTestAirport(a, { standsPerRow: 4 });
     buildTestTerminal(a, { checkIn: 2, security: 1, belt: 1 });
     const b = airportWithTerminal().sim;
-    expect(a.business.depCapacity()).toBeLessThan(b.business.depCapacity());
+    expect(a.business.arrCapacity()).toBeLessThan(b.business.arrCapacity());
     expect(a.business.grids[0].cost).toBeLessThan(b.business.grids[0].cost);
   });
 
@@ -235,14 +234,12 @@ describe('zones, control room and slots', () => {
     expect(at({ op: 'zone', x0: 42, y0: 42, x1: 43, y1: 43, variant: 4 })[0]).toBe('zoneHasFixture');
   });
 
-  it('flights need an ATC tower, and zones decide capacity', () => {
+  it('flights need an ATC tower', () => {
     const a = ownedSim();
     a.cash = 100_000_000;
     buildTestAirport(a, { standsPerRow: 4 });
     buildTestTerminal(a, { atc: false });
     expect(a.business.readiness()).toContain('noAtc');
-    const full = a.business.depCapacity();
-    expect(full).toBeGreaterThan(0);
     const b = ownedSim();
     b.cash = 100_000_000;
     buildTestAirport(b, { standsPerRow: 4 });
@@ -298,13 +295,11 @@ describe('room validation', () => {
   it('a lane in the wall opening works, a gap in the wall is a security bypass, no lane is a missing link', () => {
     const { sim, id } = airportWithTerminal();
     expect(sim.business.roomIssues).toEqual([]);
-    expect(sim.business.depCapacity()).toBeGreaterThan(0);
     const g = sim.business.grids[0];
     const at = (e: object) => run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: e as never });
     // Open another gap in the wall beside the lanes: passengers can bypass security.
     at({ op: 'removeWall', x0: 72, y0: 48, x1: 72, y1: 49, variant: 0 });
     expect(sim.business.roomIssues).toContain('securityBypass');
-    expect(sim.business.depCapacity()).toBe(0);
     at({ op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: 1 });
     expect(sim.business.roomIssues).toEqual([]);
     // Close the opening in the wall and the lanes can no longer be reached.
@@ -689,7 +684,7 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     const term = 2 * BUSINESS.modules.kiosk.capacityPerHour + BUSINESS.modules.bagDrop.capacityPerHour;
     expect(term).toBe(186);
     expect(sim.business.roomIssues).toEqual([]);
-    expect(sim.business.depCapacity()).toBe(Math.min(term, 3 * BUSINESS.modules.security.capacityPerHour));
+    expect(sim.business.payload(sim.traffic.nowTick)).not.toHaveProperty('depCapacity');
   });
 
   it('a kiosk alone counts as check in, a bag drop alone does not', () => {
@@ -731,7 +726,6 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     expect(sim.business.roomIssues).toEqual([]);
     expect(wallEdit(sim, 'wall', 80, 40, 80, 52, 1)).toEqual([]);
     expect(sim.business.roomIssues).toContain('noGateDeskLink');
-    expect(sim.business.depCapacity()).toBe(0);
     expect(wallEdit(sim, 'removeWall', 80, 46, 80, 47, 0)).toEqual([]);
     expect(wallEdit(sim, 'wall', 80, 46, 80, 47, 3)).toEqual([]);
     expect(sim.business.roomIssues).toEqual([]);
@@ -796,5 +790,20 @@ describe('business schema rejects bad service data', () => {
     const d = valid() as { modules: { checkIn: { servers: number } } };
     d.modules.checkIn.servers = 1.5;
     expect(businessSchema.safeParse(d).success).toBe(false);
+  });
+});
+
+describe('departure revenue', () => {
+  it('a terminal flight pays only for the passengers the boarded hook reports, the rest miss the flight', () => {
+    const { sim } = airportWithTerminal();
+    const f = sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 600, -1);
+    const pax = sim.business.paxFor(f);
+    expect(pax).toBeGreaterThan(3);
+    sim.business.boarded = () => pax - 3;
+    const flights = sim.business.payload(sim.traffic.nowTick).flightsToday;
+    (sim.business as unknown as { onPushback(f: number): void }).onPushback(f);
+    expect(sim.business.paxToday).toBe(pax - 3);
+    expect(sim.business.lostToday).toBe(3);
+    expect(sim.business.payload(sim.traffic.nowTick).flightsToday).toBe(flights + 1);
   });
 });

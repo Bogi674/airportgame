@@ -226,7 +226,6 @@ export function ObjectPanel({ send }: Props) {
       <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
         <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
-        <div>{tFormat('terminal.capacity', { dep: biz.depCapacity, arr: biz.arrCapacity })}</div>
         <div>{tFormat('terminal.leased', { n: term.leased })}</div>
         {rows
           .filter((r) => term.counts[r.key] > 0)
