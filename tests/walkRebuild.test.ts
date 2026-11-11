@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, WALL, type TerminalGrid } from '../src/shared/business';
 import { cellIndex, ensureCells, newGrid } from '../src/shared/terminalOps';
 import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../src/sim/terminal/walkGraph';
@@ -10,6 +11,7 @@ type Bounds = [number, number, number, number];
 
 const WALL_VALUES = [WALL.None, WALL.Wall, WALL.Door];
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
+const BAG_DROP = FIXTURE_KEYS.indexOf('bagDrop') + 1;
 
 /** A grid with logical cells from (x0, y0) to (x0 + w, y0 + h), rounded to whole chunks by ensureCells. */
 function handGrid(x0: number, y0: number, w: number, h: number): TerminalGrid {
@@ -82,12 +84,73 @@ function fixtureToggle(g: TerminalGrid, rng: Rng): Bounds {
   return [g.x0 + ax, g.y0 + ay, g.x0 + ax, g.y0 + ay];
 }
 
+/**
+ * Places or clears a two cell fixture. The anchor carries fixtureRot 1 + rot and the tail 5 + rot. Only the anchor
+ * is reported as touched, because the tail is never a walk node.
+ */
+function twoCellToggle(g: TerminalGrid, rng: Rng): Bounds {
+  const n = g.w * g.h;
+  const c = rng.int(0, n - 1);
+  const ax = c % g.w;
+  const ay = (c - ax) / g.w;
+  const bounds: Bounds = [g.x0 + ax, g.y0 + ay, g.x0 + ax, g.y0 + ay];
+  if (g.fixtureRot[c]! >= 1 && g.fixtureRot[c]! <= 4) {
+    const rot = g.fixtureRot[c]! - 1;
+    const tail = c + tailOffset(g, rot);
+    g.fixture[c] = 0;
+    g.fixtureRot[c] = 0;
+    g.fixture[tail] = 0;
+    g.fixtureRot[tail] = 0;
+    return bounds;
+  }
+  if (g.floor[c]! === 0 || g.fixture[c] !== 0) return bounds;
+  const start = rng.int(0, 3);
+  for (let k = 0; k < 4; k++) {
+    const rot = (start + k) % 4;
+    const tail = c + tailOffset(g, rot);
+    if (tail < 0 || tail >= n) continue;
+    const tx = tail % g.w;
+    if (Math.abs(tx - ax) + Math.abs(Math.floor(tail / g.w) - ay) !== 1) continue;
+    if (g.floor[tail]! === 0 || g.fixture[tail] !== 0) continue;
+    g.fixture[c] = BAG_DROP;
+    g.fixtureRot[c] = 1 + rot;
+    g.fixture[tail] = BAG_DROP;
+    g.fixtureRot[tail] = 5 + rot;
+    return bounds;
+  }
+  return bounds;
+}
+
+/** Array index offset from an anchor to its tail for a fixtureRot direction: +column, +row, -column, -row. */
+function tailOffset(g: TerminalGrid, rot: number): number {
+  if (rot === 0) return 1;
+  if (rot === 1) return g.w;
+  if (rot === 2) return -1;
+  return -g.w;
+}
+
 /** One random edit of the grid, returning the bounds of the cells it touched. */
 function randomEdit(g: TerminalGrid, rng: Rng): Bounds {
-  const kind = rng.int(0, 2);
+  const kind = rng.int(0, 3);
   if (kind === 0) return wallRun(g, rng);
   if (kind === 1) return floorToggle(g, rng);
+  if (kind === 2) return twoCellToggle(g, rng);
   return fixtureToggle(g, rng);
+}
+
+/** Blocks in the update rect and in the whole grid for these bounds, counted the way updateWalkGraph counts them. */
+function blockTotals(g: TerminalGrid, b: Bounds): [number, number] {
+  const L = BUSINESS.terminal.walk.latticeCells;
+  const M = BUSINESS.terminal.walk.dirtyMarginCells;
+  const wx0 = Math.floor(g.x0 / L);
+  const wy0 = Math.floor(g.y0 / L);
+  const wx1 = Math.floor((g.x0 + g.w - 1) / L);
+  const wy1 = Math.floor((g.y0 + g.h - 1) / L);
+  const rx0 = Math.max(wx0, Math.floor((b[0] - M) / L));
+  const ry0 = Math.max(wy0, Math.floor((b[1] - M) / L));
+  const rx1 = Math.min(wx1, Math.floor((b[2] + M) / L));
+  const ry1 = Math.min(wy1, Math.floor((b[3] + M) / L));
+  return [Math.max(0, rx1 - rx0 + 1) * Math.max(0, ry1 - ry0 + 1), (wx1 - wx0 + 1) * (wy1 - wy0 + 1)];
 }
 
 /**
@@ -130,6 +193,86 @@ describe('walk graph regional rebuild', () => {
       const a = rng.int(0, fresh.nodeCount - 1);
       const b = rng.int(0, fresh.nodeCount - 1);
       expect(walkDistance(wg, a, b)).toBe(walkDistance(fresh, a, b));
+    }
+  });
+
+  it('keeps the graph equal to a fresh build for edits on the grid border', () => {
+    const g = handGrid(-30, 12, 90, 60);
+    setFloor(g, g.x0, g.y0, g.x0 + g.w, g.y0 + g.h);
+    let wg = buildWalkGraph(g);
+    const x0 = g.x0;
+    const y0 = g.y0;
+    const x1 = g.x0 + g.w - 1;
+    const y1 = g.y0 + g.h - 1;
+    const edits: [() => void, Bounds][] = [
+      [() => { g.vWall[0] = WALL.Wall; }, [x0 - 1, y0, x0, y0]],
+      [() => { g.vWall[(g.h - 1) * (g.w + 1) + g.w] = WALL.Door; }, [x1, y1, x1 + 1, y1]],
+      [() => { g.hWall[g.w - 1] = WALL.Wall; }, [x1, y0 - 1, x1, y0]],
+      [() => { g.hWall[g.h * g.w] = WALL.Door; }, [x0, y1, x0, y1 + 1]],
+      [() => { g.floor[0] = 0; }, [x0, y0, x0, y0]],
+      [() => { g.floor[g.w * g.h - 1] = 0; }, [x1, y1, x1, y1]],
+      [() => { g.fixture[g.w - 1] = CHECK_IN; g.fixtureRot[g.w - 1] = 0; }, [x1, y0, x1, y0]],
+      [() => { g.vWall[g.h * (g.w + 1)] = WALL.Wall; }, [x0 - 1, y0 + 1, x0, y0 + 1]],
+    ];
+    for (let i = 0; i < edits.length; i++) {
+      const [apply, b] = edits[i]!;
+      apply();
+      const next = updateWalkGraph(wg, g, b[0], b[1], b[2], b[3]);
+      expect(next, `border edit ${i}`).toBe(wg);
+      wg = next;
+      expect(graphFields(wg), `border edit ${i}`).toEqual(graphFields(buildWalkGraph(g)));
+    }
+  });
+
+  it('switches from an in place update to a full build exactly where the block count passes a quarter', () => {
+    const g = handGrid(0, 0, 32, 32);
+    setFloor(g, g.x0, g.y0, g.x0 + g.w, g.y0 + g.h);
+    let wg = buildWalkGraph(g);
+    const row = g.y0 + 16;
+    const full = (x: number): boolean => {
+      const [rect, whole] = blockTotals(g, [x - 1, row, x, row]);
+      return rect * 4 > whole;
+    };
+    let xFull = -1;
+    for (let x = g.x0; x <= g.x0 + g.w && xFull < 0; x++) if (full(x)) xFull = x;
+    expect(xFull).toBeGreaterThan(g.x0);
+    const xIn = xFull - 1;
+    expect(full(xIn)).toBe(false);
+    for (const x of [xIn, xFull]) {
+      const i = (row - g.y0) * (g.w + 1) + (x - g.x0);
+      g.vWall[i] = g.vWall[i] === WALL.Wall ? WALL.None : WALL.Wall;
+      const prev = wg;
+      wg = updateWalkGraph(wg, g, x - 1, row, x, row);
+      expect(wg === prev).toBe(x === xIn);
+      expect(graphFields(wg)).toEqual(graphFields(buildWalkGraph(g)));
+    }
+  });
+
+  it('empties the cache and resizes it when an in place edit changes the node count', () => {
+    const g = handGrid(0, 0, 96, 64);
+    setFloor(g, g.x0, g.y0, g.x0 + g.w, g.y0 + g.h);
+    for (let y = 0; y < g.h; y++) g.vWall[y * (g.w + 1) + 48] = WALL.Wall;
+    g.vWall[2 * (g.w + 1) + 48] = WALL.Door;
+    let wg = buildWalkGraph(g);
+    const from = nearestNode(wg, cellIndex(g, 10, 20));
+    const to = nearestNode(wg, cellIndex(g, 80, 20));
+    for (const value of [WALL.Door, WALL.Wall]) {
+      walkDistance(wg, from, to);
+      const count = wg.nodeCount;
+      expect(wg.cache.rowSource.some((r) => r >= 0)).toBe(true);
+      g.vWall[40 * (g.w + 1) + 48] = value;
+      const next = updateWalkGraph(wg, g, 47, 40, 48, 40);
+      expect(next).toBe(wg);
+      expect(next.nodeCount).not.toBe(count);
+      expect(next.cache.rowSource.every((r) => r === -1)).toBe(true);
+      expect(next.cache.sourceRow.every((r) => r === -1)).toBe(true);
+      expect(next.cache.sourceRow.length).toBe(next.nodeCount);
+      const fresh = buildWalkGraph(g);
+      expect(graphFields(next)).toEqual(graphFields(fresh));
+      const a = nearestNode(next, cellIndex(g, 10, 20));
+      const b = nearestNode(next, cellIndex(g, 80, 20));
+      expect(walkDistance(next, a, b)).toBe(walkDistance(fresh, a, b));
+      wg = next;
     }
   });
 
@@ -197,9 +340,11 @@ describe('walk graph regional rebuild', () => {
     const updateTimes: number[] = [];
     for (let i = 0; i < 5; i++) {
       setBox(i % 2 === 0 ? WALL.Wall : WALL.None);
+      const before = wg;
       const t0 = performance.now();
       wg = updateWalkGraph(wg, g, lx0, ly0, lx0 + 1, ly0 + 1);
       updateTimes.push(performance.now() - t0);
+      expect(wg).toBe(before);
     }
     expect(graphFields(wg)).toEqual(graphFields(buildWalkGraph(g)));
 
