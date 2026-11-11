@@ -63,6 +63,7 @@ describe('saves', () => {
     }
     const c = new Sim('GOLDEN-0001', OPTIONS);
     expect(() => c.restore(data)).not.toThrow();
+    expect(sim.business.grids.length).toBeGreaterThan(0);
     expect(c.business.grids).toHaveLength(sim.business.grids.length);
     c.business.grids.forEach((g, i) => {
       expect(g.level).toBe(0);
@@ -84,6 +85,7 @@ describe('saves', () => {
       delete g.level;
     }
     const migrated = migrate(data).business as { grids: { id: number; building: number; level: number }[] };
+    expect(sim.business.grids.length).toBeGreaterThan(0);
     expect(migrated.grids).toHaveLength(sim.business.grids.length);
     migrated.grids.forEach((g) => {
       expect(g.building).toBe(g.id);

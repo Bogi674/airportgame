@@ -28,6 +28,22 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(g.cost).toBe(expected);
   });
 
+  it('only floor 0 can be built', () => {
+    const { sim } = airportWithTerminal();
+    const free = originFor(4000, 5600, 90);
+    const build = (level: number) => run(sim, { type: 'terminalBuild', building: -1, ox: free.ox, oy: free.oy, headingDeg: 90, level, edit: { op: 'foundation', x0: 150, y0: 40, x1: 170, y1: 50, variant: 0 } });
+    const cash = sim.cash;
+    const grids = sim.business.grids.length;
+    expect(build(1)[0]).toBe('floorNotBuildable');
+    expect(sim.cash).toBe(cash);
+    expect(sim.business.grids.length).toBe(grids);
+    expect(build(-1)[0]).toBe('floorNotBuildable');
+    expect(sim.cash).toBe(cash);
+    expect(sim.business.grids.length).toBe(grids);
+    expect(build(0)).toEqual([]);
+    expect(sim.cash).toBeLessThan(cash);
+  });
+
   it('is custom: a different layout gives different capacity and cost', () => {
     const a = ownedSim();
     a.cash = 100_000_000;

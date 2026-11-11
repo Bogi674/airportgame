@@ -280,9 +280,10 @@ export class Business {
 
   /**
    * Applies one edit to a terminal building. With `building` below 0 and a foundation edit a new
-   * building is started at the given origin. Returns a problem code or null.
+   * building is started at the given origin. Only floor 0 can be built. Returns a problem code or null.
    */
-  terminalBuild(building: number, ox: number, oy: number, headingDeg: number, edit: TerminalEdit, ctx: BuildContext): string | null {
+  terminalBuild(building: number, ox: number, oy: number, headingDeg: number, edit: TerminalEdit, ctx: BuildContext, level = 0): string | null {
+    if (level !== 0) return 'floorNotBuildable';
     let grid = building >= 0 ? this.grids.find((g) => g.id === building) : undefined;
     const fresh = grid === undefined;
     if (building >= 0 && !grid) return 'nothingThere';
