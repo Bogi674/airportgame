@@ -3,6 +3,7 @@ import peopleJson from '../src/data/people.json';
 import { PEOPLE } from '../src/data/index';
 import { peopleSchema } from '../src/data/schemas/people';
 import { RECIPE_COUNT, memberHash, pickRecipe } from '../src/render/sprites/peopleRecipes';
+import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/peopleShapes';
 
 const SEED_COUNT = 6000;
 const PROFILE_TOTAL = PEOPLE.profiles.length;
@@ -65,5 +66,46 @@ describe('memberHash', () => {
     expect(Number.isInteger(h)).toBe(true);
     expect(h).toBeGreaterThanOrEqual(0);
     expect(h).toBeLessThanOrEqual(0xffffffff);
+  });
+});
+
+function opsFor(recipe: (typeof PEOPLE.recipes)[number], frame: number, detail: number): ShapeOp[] {
+  const out: ShapeOp[] = [];
+  personOps(recipe, frame, detail, false, out);
+  return out;
+}
+
+describe('personOps', () => {
+  it('keeps every recipe inside the sprite cell at all frames and details', () => {
+    const half = PEOPLE.cellM / 2;
+    for (const recipe of PEOPLE.recipes) {
+      for (let frame = 0; frame <= 3; frame++) {
+        for (let detail = 0; detail <= 2; detail++) {
+          const ops = opsFor(recipe, frame, detail);
+          expect(ops.length, `recipe ${recipe.id} frame ${frame} detail ${detail}`).toBeGreaterThan(0);
+          const b = opsBounds(ops);
+          const ok = b.minX >= -half && b.maxX <= half && b.minY >= -half && b.maxY <= half;
+          expect(ok, `recipe ${recipe.id} frame ${frame} detail ${detail} bounds ${JSON.stringify(b)}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('gives fewer ops at detail 0 than at detail 2', () => {
+    for (const recipe of PEOPLE.recipes) {
+      expect(opsFor(recipe, 0, 0).length).toBeLessThan(opsFor(recipe, 0, 2).length);
+    }
+  });
+
+  it('changes the figure between gait frames 0 and 1', () => {
+    const recipe = PEOPLE.recipes[0];
+    if (!recipe) throw new Error('no recipes in people.json');
+    expect(JSON.stringify(opsFor(recipe, 0, 2))).not.toBe(JSON.stringify(opsFor(recipe, 1, 2)));
+  });
+
+  it('returns equal ops on repeat calls', () => {
+    const recipe = PEOPLE.recipes[0];
+    if (!recipe) throw new Error('no recipes in people.json');
+    expect(opsFor(recipe, 1, 2)).toEqual(opsFor(recipe, 1, 2));
   });
 });
