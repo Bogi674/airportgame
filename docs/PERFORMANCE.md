@@ -36,7 +36,7 @@ Other budgets:
 ## 3. Simulation
 
 * Event driven over polling: recompute only when something changed (an edit, a weather change, a schedule change).
-* Cadences per subsystem as in `docs/ARCHITECTURE.md` section 3. Spread heavy work across ticks, for example one tenth of service nodes per tick.
+* Cadences per subsystem as in `docs/ARCHITECTURE.md` section 3. Spread heavy work across ticks, for example service node tables update every 10 ticks, and a table with no cohorts returns at once.
 * Flights outside the airport are timers, not moving objects. Only aircraft on approach, on the ground and departing are simulated geometrically.
 * Routing is cached and done once per leg. Congestion costs update every 50 ticks.
 * Collision checks run at docking, at reservation and when a stand changes, never as all pairs per tick.

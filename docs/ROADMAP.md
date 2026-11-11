@@ -97,7 +97,7 @@ Delivery order, approved by the user on 2026-11-10 and tracked in `handoff/TASKS
 * [x] Walls, doors, floors, rooms with types, room validation (foundations, flooring, walls, glass, doors, painted zones and room validation: passengers must be able to walk from check in through a security lane into secure floor with seats, a gap in the wall is a security bypass and stops departures)
 * [x] Core fixtures: check in desk, kiosk, bag drop, security lane, passport booth, gate desk, bench, toilet block (check in desk, security lane, baggage belt, seating, toilets and six shop types are placed cell by cell, kiosks, bag drop, passport booth and gate desks added in T11 with two cell footprints and save format 12)
 * [x] Walking graph with cached distances and regional rebuild (T12, debug overlay toggle in the top bar)
-* [ ] Service nodes and queues (a terminal load model replaces queues)
+* [x] Service nodes and queues (T13, a terminal load model replaces queues)
 * [ ] Cohorts and the departure journey from curb to aircraft (passengers are aggregated per flight and limited by terminal capacity, no cohorts)
 * [ ] People rendering from the atlas: 30 recipes, walk cycle, tiers, sample cap (a render sample of up to 3 000 dots, 1 500 under the governor, walks between the fixtures laid, no atlas, recipes or walk cycle)
 * [ ] Density, queue and walking distance overlays (not built)
