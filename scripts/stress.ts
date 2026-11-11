@@ -30,11 +30,13 @@ interface Scenario {
   minPeak?: number;
   /** Adds a 640 by 120 m terminal with fixtures (docs/DESIGN_REVISION_2.md section 5). */
   bigTerminal?: boolean;
+  /** Adds a small terminal with a curb, check in, six security lanes, eight gate desks and seating, so departing cohorts run through it. */
+  cohortTerminal?: boolean;
 }
 
 const SCENARIOS: Scenario[] = [
   { name: 'small', seed: 'STRESS-SMALL', stands: 8, perHour: 40, budgetMsPerTick: 1 },
-  { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4 },
+  { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4, cohortTerminal: true },
   { name: 'large', seed: 'STRESS-LARGE', stands: 30, perHour: 240, budgetMsPerTick: 8 },
   { name: 'busy50', seed: 'STRESS-BUSY', stands: 60, standCode: 'B', perHour: 720, budgetMsPerTick: 4, turnScale: 4, ticks: 60_000, minPeak: 50 },
   { name: 'terminal640', seed: 'STRESS-TERMINAL', stands: 20, perHour: 120, budgetMsPerTick: 4, bigTerminal: true },
@@ -55,6 +57,37 @@ function buildBigTerminal(sim: Sim): void {
   edit(id, { op: 'fixture', x0: 200, y0: 60, x1: 340, y1: 64, variant: 4 });
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 360, y1: 40, variant: 1 });
   sim.step();
+}
+
+/**
+ * A 60 by 12 cell terminal south of the stands, at the big terminal origin, with a curb door, check in, six security
+ * lanes, eight gate desks and seating. Departing cohorts walk from the curb through every service point.
+ */
+function buildCohortTerminal(sim: Sim): void {
+  const { ox, oy } = originFor(3200, 5600, 90);
+  const edit = (building: number, e: TerminalEdit): void => {
+    sim.enqueue({ type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e });
+    sim.step();
+  };
+  edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });
+  const id = sim.business.grids[sim.business.grids.length - 1]?.id ?? -1;
+  if (id < 0) throw new Error('cohort terminal was not built');
+  edit(id, { op: 'floor', x0: 40, y0: 40, x1: 100, y1: 52, variant: 2 });
+  edit(id, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
+  edit(id, { op: 'wall', x0: 40, y0: 52, x1: 100, y1: 52, variant: 1 });
+  edit(id, { op: 'wall', x0: 70, y0: 52, x1: 72, y1: 52, variant: 3 });
+  // A door needs floor on both sides to be a walk node, so the strip outside the door is floor too.
+  edit(id, { op: 'foundation', x0: 68, y0: 52, x1: 74, y1: 53, variant: 0 });
+  edit(id, { op: 'floor', x0: 68, y0: 52, x1: 74, y1: 53, variant: 2 });
+  // The secure hall on the east side, closed by a wall with a six cell opening for the security lanes.
+  edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
+  edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
+  edit(id, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 52, variant: 1 });
+  edit(id, { op: 'fixture', x0: 42, y0: 42, x1: 54, y1: 43, variant: 1 });
+  edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 48, variant: 2 });
+  edit(id, { op: 'fixture', x0: 76, y0: 44, x1: 84, y1: 45, variant: 16 });
+  edit(id, { op: 'fixture', x0: 76, y0: 46, x1: 82, y1: 47, variant: 4 });
+  if (sim.business.cohortGrid(0) < 0) throw new Error('cohort terminal has no eligible grid');
 }
 
 /** Median of five timed runs of fn, in ms. */
@@ -95,6 +128,8 @@ function percentile(sorted: Float64Array, p: number): number {
 
 const peaks: Record<string, string> = {};
 const peakCounts: Record<string, number> = {};
+/** Scenarios whose cohort terminal generated no cohorts. */
+const cohortFailures: string[] = [];
 
 function runScenario(s: Scenario): Record<string, Stat> {
   const sim = new Sim(s.seed, { preset: 'flatCoastal' });
@@ -106,6 +141,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     buildBigTerminal(sim);
     console.log(walkGraphReport(sim));
   }
+  if (s.cohortTerminal) buildCohortTerminal(sim);
   // A level 5 tower keeps the benchmark measuring traffic, not ATC starvation (handoff/tasks/T40-atc-tower.md R4).
   sim.enqueue({ type: 'buildTower', x: 2700, y: 4800, level: 5 });
   sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.08 });
@@ -120,8 +156,10 @@ function runScenario(s: Scenario): Record<string, Stat> {
   for (let i = 0; i < 2000; i++) warm.step();
 
   let peak = 0;
+  let peakHi = 0;
   for (let t = 0; t < ticks; t++) {
     if (sim.traffic.count > peak) peak = sim.traffic.count;
+    if (sim.cohorts.hi > peakHi) peakHi = sim.cohorts.hi;
     let tickNs = 0n;
     for (let i = 0; i < n; i++) {
       const t0 = process.hrtime.bigint();
@@ -134,6 +172,11 @@ function runScenario(s: Scenario): Record<string, Stat> {
     total[t] = Number(tickNs) / 1e6;
   }
 
+  if (s.cohortTerminal) {
+    const co = sim.cohorts;
+    console.log(`  cohorts ${co.generated} generated, ${co.boarded} boarded, ${co.missed} missed, ${co.active} active, peak hi ${peakHi}`);
+    if (co.generated === 0) cohortFailures.push(s.name);
+  }
   peakCounts[s.name] = peak;
   peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.deadlocks} deadlocks${s.bigTerminal ? `, terminal ${(sim.business.terminals[0]?.cells ?? 0) * 4} m2` : ''}`;
   const out: Record<string, Stat> = {};
@@ -171,6 +214,10 @@ function main(): void {
     }
     if (s.minPeak !== undefined && peakCounts[s.name] < s.minPeak) {
       console.error(`  PEAK TOO LOW: ${peakCounts[s.name]} aircraft, the scenario must reach ${s.minPeak}`);
+      failed = true;
+    }
+    if (cohortFailures.includes(s.name)) {
+      console.error(`  NO COHORTS: ${s.name} generated no cohorts through its terminal`);
       failed = true;
     }
     if (r.total.mean > s.budgetMsPerTick) {
