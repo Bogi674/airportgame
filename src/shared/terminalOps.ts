@@ -48,7 +48,15 @@ export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: numb
 
 /** An empty building. Its grid is allocated as edits reach into it. */
 export function newGrid(id: number, ox: number, oy: number, headingDeg: number): TerminalGrid {
-  return { id, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
+  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
+}
+
+/** The grid of one floor of one building, or undefined. */
+export function gridOnLevel(grids: readonly TerminalGrid[], building: number, level: number): TerminalGrid | undefined {
+  for (const g of grids) {
+    if (g.building === building && g.level === level) return g;
+  }
+  return undefined;
 }
 
 /** Array index of a logical cell, or -1 outside the grid. */

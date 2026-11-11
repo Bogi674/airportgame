@@ -279,3 +279,7 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-10: The state hash covers `fStand`, `fRot` and `standPrefs`.
 * 2026-11-10: The payload carries `standBlocks` uncapped, in absolute minutes, so the drop preview uses the sim's own numbers.
 * 2026-11-10: The offers sheet load bar counts landings and takeoffs per hour against the tower's rolling hour budget. An overloaded hour queues and never refuses an offer.
+* 2026-11-11: A terminal grid is one floor of one building. Grids of the same building share `building`, and `level` is the signed floor index: 0 is the apron level, negative floors are basements, positive floors are upper floors, range -2 to 3. Chosen over a floor dimension inside the cell arrays so cell, edge, fixture and room code keeps working on one grid and each floor can have its own bounds.
+* 2026-11-11: Save format 11 stores `building` and `level` per terminal grid. The migration makes every older grid its own building on level 0.
+* 2026-11-11: The `terminalBuild` command carries an optional `level` that defaults to 0, so older command logs replay unchanged. Any other level is refused with `floorNotBuildable` until the multi floor designer (T51).
+* 2026-11-11: The state hash covers `building` and `level` of every terminal grid.

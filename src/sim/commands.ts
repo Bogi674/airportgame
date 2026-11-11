@@ -45,7 +45,8 @@ export type Command =
   | { type: 'turnPad'; runwayId: number; end: 'a' | 'b'; side: PadSide | null }
   | { type: 'editTaxiway'; id: number; op: 'extend' | 'trim' | 'cut'; end?: 'start' | 'end'; points?: Pt[]; at?: Pt; at2?: Pt }
   | { type: 'resurface'; kind: 'runway' | 'taxiway' | 'apron'; id: number; surface: Surface; tier: number }
-  | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; edit: TerminalEdit }
+  /** level is the floor index and defaults to 0, the only floor that can be built for now. */
+  | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; level?: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
   | { type: 'signAirline'; airlineId: number; rotations: number }
   | { type: 'setAirlineFee'; airlineId: number; level: FeeLevel }

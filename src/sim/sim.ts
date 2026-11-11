@@ -201,7 +201,7 @@ export class Sim {
         this.buyParcels(cmd.ids);
         break;
       case 'terminalBuild':
-        this.report(this.business.terminalBuild(cmd.building, cmd.ox, cmd.oy, cmd.headingDeg, cmd.edit, this.buildContext()));
+        this.report(this.business.terminalBuild(cmd.building, cmd.ox, cmd.oy, cmd.headingDeg, cmd.edit, this.buildContext(), cmd.level ?? 0));
         break;
       case 'demolishTerminal':
         this.report(this.business.demolishTerminal(cmd.id));

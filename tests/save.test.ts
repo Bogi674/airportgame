@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '@sim/sim';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
+import { terminalIssues } from '@shared/terminalRooms';
+import { gridOnLevel, newGrid } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 
 function prepared(): Sim {
@@ -46,6 +48,59 @@ describe('saves', () => {
     const c = new Sim('GOLDEN-0001', OPTIONS);
     expect(() => c.restore(data)).not.toThrow();
     for (const a of c.business.airlines) expect(a.standPrefs).toEqual(new Array<number>(a.rotations).fill(-1));
+  });
+
+  it('a version 10 save loads with every terminal on floor 0', () => {
+    const sim = prepared();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      business: { grids: { id: number; building?: number; level?: number }[] };
+    };
+    data.version = 10;
+    for (const g of data.business.grids) {
+      delete g.building;
+      delete g.level;
+    }
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    expect(() => c.restore(data)).not.toThrow();
+    expect(sim.business.grids.length).toBeGreaterThan(0);
+    expect(c.business.grids).toHaveLength(sim.business.grids.length);
+    c.business.grids.forEach((g, i) => {
+      expect(g.level).toBe(0);
+      expect(g.building).toBe(g.id);
+      expect(terminalIssues(g)).toEqual(terminalIssues(sim.business.grids[i]));
+    });
+    expect(c.stateHash()).toBe(sim.stateHash());
+  });
+
+  it('a version 10 save migrates each grid to its own building on floor 0', () => {
+    const sim = prepared();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      business: { grids: { id: number; building?: number; level?: number }[] };
+    };
+    data.version = 10;
+    for (const g of data.business.grids) {
+      delete g.building;
+      delete g.level;
+    }
+    const migrated = migrate(data).business as { grids: { id: number; building: number; level: number }[] };
+    expect(sim.business.grids.length).toBeGreaterThan(0);
+    expect(migrated.grids).toHaveLength(sim.business.grids.length);
+    migrated.grids.forEach((g) => {
+      expect(g.building).toBe(g.id);
+      expect(g.level).toBe(0);
+    });
+  });
+
+  it('gridOnLevel finds the floor of a building or returns undefined', () => {
+    const ground = newGrid(4, 0, 0, 0);
+    const upper = { ...newGrid(5, 0, 0, 0), building: 4, level: 1 };
+    const grids = [ground, upper];
+    expect(gridOnLevel(grids, 4, 0)).toBe(ground);
+    expect(gridOnLevel(grids, 4, 1)).toBe(upper);
+    expect(gridOnLevel(grids, 4, -1)).toBeUndefined();
+    expect(gridOnLevel(grids, 9, 0)).toBeUndefined();
   });
 
   it('refuses saves of another seed, newer versions and non saves', () => {

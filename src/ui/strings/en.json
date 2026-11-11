@@ -519,6 +519,7 @@
   "notice.terminalOnPavement": "A terminal cannot sit on a runway, taxiway or apron, or too close to one.",
   "notice.terminalNearRunway": "A terminal cannot be built that close to a runway.",
   "notice.terminalOverlap": "That overlaps another terminal building.",
+  "notice.floorNotBuildable": "Only the ground floor can be built for now.",
   "notice.ratingTooLow": "Your rating is too low for this airline. It needs {need}.",
   "notice.loanLimit": "You can borrow at most {max} more.",
   "notice.noSuchAirline": "Unknown airline.",
