@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Read this file fully at the start of every session. Then read the docs that match your current task.
+Read this file fully at the start of every session. Then read `ROADMAP.md` and the docs that match your current task. This file is the only rule set and `ROADMAP.md` is the only plan.
 
 ## Project
 
-Working title: **Airfield Tycoon**. A browser based airport management game in the spirit of Airport CEO, with real world scale, real aircraft data and much more layout freedom. The player builds runways, taxiways, stands, terminals, shops, baggage, ground handling and landside access on a procedurally generated site, signs airlines and runs the business. The same seed plus the same commands always gives the same result.
+Working title: **Airfield Tycoon**. A browser based airport management game that benchmarks the mechanics of Airport CEO and adds real world scale, real aircraft data, much more layout freedom and procedural airlines, destinations, tenants and events. Only mechanics are mirrored: no art, text or screenshot of that game enters this repository. The player builds runways, taxiways, stands, terminals, shops, baggage, ground handling and landside access on a procedurally generated site, signs airlines and runs the business. The same seed plus the same commands always gives the same result.
 
 Scope: **2D top down only**, desktop browsers. The simulation never depends on the renderer.
 
@@ -12,9 +12,10 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 
 | Doc | Read when |
 | --- | --- |
+| `ROADMAP.md` (repo root) | Always. What is built, the MVP 1 phases, task status and exit criteria. Work on one task at a time |
+| `docs/DESIGN_REVISION_4.md` | First, for any stand, flight planning, airline, ground handling, supporting building, passenger, staff, tenant or event work. It overrides the revisions and docs below where they disagree |
 | `docs/DESIGN_REVISION_3.md` | First, for any aircraft sprite, calibration, stand marking or jet bridge work. It overrides revision 2 and the older docs where they disagree |
 | `docs/DESIGN_REVISION_2.md` | First, for any taxiway, stand, apron or terminal work. It overrides the older docs where they disagree. Its reference images are `docs/art/rev2_*.png` and its normative geometry is `docs/reference/geometry/` |
-| `docs/ROADMAP.md` | Always. Releases, milestones, acceptance criteria. Work on one milestone at a time |
 | `docs/GAME_DESIGN.md` | Any gameplay system, rule or formula |
 | `docs/ARCHITECTURE.md` | Threads, data layout, determinism, taxi network, vehicles, rendering pipeline, saves |
 | `docs/PERFORMANCE.md` | Any sim loop, render code or frequently updating UI |
@@ -27,19 +28,31 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 | `docs/reference/sprite-prototypes/` | Python reference code for sprites, markings and collision. Port it, do not ship it |
 | `docs/reference/geometry/` | Python reference code for fillets, junctions, stand forks, funnels and apron shapes. Port the math exactly, do not ship it |
 
-Other agents (opencode and similar) read `AGENTS.md` and `handoff/`, which repeat these rules with a step by step workflow. When a rule here changes, change it there too.
+Working files live in `handoff/`:
+
+| Path | Read when |
+| --- | --- |
+| `handoff/tasks/<id>.md` | The spec of the task you work on. Written when the task starts, deleted when it closes. `handoff/tasks/mvp2/` holds parked specs |
+| `handoff/work/<id>.md` | Your plan and notes for the running task. Deleted when it closes |
+| `handoff/PITFALLS.md` | Before writing code |
+| `handoff/RECIPES.md` | When adding a command, data, a save field, a tool, a string, a test or a screenshot scenario |
+| `handoff/CODEBASE.md` | For the code map, tick order and data flow |
+| `handoff/QUESTIONS.md` | The log of design questions and the user's answers |
+| `handoff/reference/` | Benchmark notes on the mirrored mechanics |
+
+`AGENTS.md` only points here. `docs/ROADMAP.md`, `handoff/TASKS.md` and `handoff/STATE.md` are the old plan, frozen until task T57 lands and then deleted (`ROADMAP.md` section 7). Do not plan from them.
 
 Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`) and `src/data/gse.json` (ground vehicle catalog).
 
 ## Crew and terse mode
 
-When the user asks to run the crew, load the `crew` skill (`.claude/skills/crew/SKILL.md`): the session model orchestrates, the `coder` agent on Haiku implements, the `reviewer` agent on Sonnet checks. Never start it unasked.
+When the user asks to run the crew, load the `crew` skill (`.claude/skills/crew/SKILL.md`): the session model orchestrates, the `coder` agent on Haiku implements, the `reviewer` agent on Sonnet checks. Never start it unasked. With or without the crew, the session model plans and decides, and smaller models do inventories, bulk coding and tests.
 
 Terse mode is always on for code work: no narration between tool calls, no recap of files read, no restating the request, and reports in a few lines. It covers talk only. Code, comments, commit messages, docs and UI strings keep full quality.
 
 ## Precedence
 
-When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
+When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
 
 ## Hard rules
 
@@ -59,7 +72,7 @@ Never relaxed without the user's explicit approval.
 12. **True scale assets generated from data.** Sprites are baked from vector geometry in meters. Never scale an asset for readability. Every aircraft sprite passes calibration, and every apron scene passes the collision check in `docs/ART_AND_ASSETS.md` section 12.
 13. **Performance budgets** in `docs/PERFORMANCE.md` must hold. CI enforces them.
 14. **No noise complaint system** and no rival airports.
-15. **Writing style.** Never use em dashes in code comments, UI text, docs or commit messages. Do not use a spaced hyphen as a sentence connector.
+15. **Writing style.** Never use em dashes or en dashes in code comments, UI text, docs or commit messages. Do not use a spaced hyphen as a sentence connector.
 
 ## Stack
 
@@ -67,7 +80,7 @@ Never relaxed without the user's explicit approval.
 * Canvas 2D for rendering. Static layers baked into chunks, optionally in a bake worker with `OffscreenCanvas`.
 * Preact for UI components, Zustand for UI state only, zod for data validation.
 * Vitest for logic, Playwright for browser smoke and visual tests.
-* Allowed runtime dependencies: `preact`, `zustand`, `zod`. Ask before adding any other.
+* Allowed runtime dependencies: `preact`, `zustand`, `zod`, `polygon-clipping` (imported only through `src/shared/clip.ts`). Ask before adding any other, dev dependencies included.
 
 ## Repo layout
 
@@ -81,9 +94,10 @@ src/
     terminal/       grid, rooms, walking graph, service nodes
     cohorts/        passenger cohorts and journeys
     ops/            turnarounds, baggage, ATC, staff, emergency
-    market/         airlines, demand, slots, tenants
-    finance/        ledger, loans, fuel
-    events/         event deck
+    business/       airlines, contracts, ledger, loan (today)
+    market/         airlines, demand, flight series, tenants (planned)
+    finance/        ledger, loans, fuel (planned)
+    events/         event deck (planned)
     save/           serialization and migrations
     commands.ts
   shared/           protocol types, snapshot layout, math, trig tables
@@ -97,39 +111,58 @@ src/
 tests/              vitest suites
 e2e/                playwright tests
 docs/               docs, art reference sheets, sprite prototypes
+handoff/            task specs, work notes, pitfalls, recipes, code map, scenarios
+scripts/            verify, rules check, stress, screenshots, offline build
 ```
 
 ## Commands
 
 ```
-npm run dev        dev server
-npm run build      type check and production build
-npm run test       vitest once
-npm run e2e        playwright smoke and visual tests
+npm run dev        dev server at http://localhost:5173
+npm run verify     rules check, type check, lint, all tests, stress
+npm run verify -- quick   the same without stress
+npm run rules      only the hard rule checker
+npm run test       vitest once. One file: npx vitest run tests/<name>.test.ts
 npm run lint       eslint
 npm run stress     headless benchmark, see docs/PERFORMANCE.md
+npm run shot -- <scenario.json> [outDir]   screenshots from a scenario, needs npm run dev
+npm run build      type check and production build
+npm run e2e        playwright smoke and visual tests
 ```
 
 ## Workflow for each task
 
-0. For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user before editing any file.
-1. Read the current milestone in `docs/ROADMAP.md` and the open criteria.
-2. Read the docs listed above for the area you touch.
-3. Make a short plan in the chat before changing more than three files.
-4. Write tests first for sim logic, including a determinism test (2 000 ticks twice from one seed, identical hashes).
-5. Implement the smallest slice that meets one criterion. Run test and lint.
-6. Run `npm run stress` after changes to sim loops or rendering. Report the numbers.
-7. For visual work, compare against the matching sheet in `docs/art/` and run the collision check for apron scenes.
-8. Check off roadmap criteria and record decisions in `docs/ARCHITECTURE.md` under Decisions.
-9. Small commits named by feature, for example `taxi network: block reservations`.
+One task per session, then a fresh session.
+
+0. For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user in one batch before editing any file, and log the answers in `handoff/QUESTIONS.md`. Never guess a gameplay rule.
+1. Take the task from `ROADMAP.md`: the first `todo` row of the current phase whose dependencies are `done`, unless the user names one. Set it to `doing`.
+2. Read the design docs for the area, `handoff/PITFALLS.md`, and the spec in `handoff/tasks/<id>.md`. If the spec does not exist, write it from the design revision and the grill-me answers: goal, read first, decisions, numbered requirements, acceptance criteria.
+3. Write a short plan in `handoff/work/<id>.md` before changing more than three files. Cut the work into slices of at most about 150 changed lines: sim first, then render, then UI. Never leave a half wired feature visible to the player.
+4. Write tests first for sim and shared logic, including a determinism test (2 000 ticks twice from one seed, identical hashes).
+5. Implement one slice. `npm run verify -- quick` must pass before every commit. Never commit red, never delete or skip a test to get green.
+6. Before the last commit of the task, run the full `npm run verify` and report the stress numbers. Never run `npm run stress -- --update-baseline` without the user's approval.
+7. For visual work, take screenshots with `npm run shot`, compare against the matching sheet in `docs/art/` and run the collision check for apron scenes.
+8. Close the task: record decisions in `docs/ARCHITECTURE.md` section 12 (one dated line each, with the reason), set the row in `ROADMAP.md` to `done` with the commit hashes, update section 3 of `ROADMAP.md` if the player can do something new, and delete the spec and the work notes.
+9. Small commits named by feature, for example `taxi network: block reservations`. The body explains why, in full sentences. Work on the branch the user names, never force push.
+
+If the same check fails three times after three different fixes, stop and ask the user. If a task turns out bigger than its spec, finish the smallest slice that meets one criterion, commit it, and add a new row to `ROADMAP.md` for the rest.
+
+## Never
+
+* Never reformat a whole JSON or source file. Edit only the lines you change. Strings in `src/ui/strings/en.json` are added near related keys, never re sorted.
+* Never change a value in `src/data/*.json` that the task does not mention.
+* Never insert an entry in the middle of `FIXTURE_KEYS` or any list whose index is saved. Append at the end.
+* Never remove a hard rule check, eslint rule, test or CI step.
+* Never copy code from `docs/reference/` into `src` as a literal translation. Port it to typed TypeScript and keep the math exact.
 
 ## Definition of done
 
-* Roadmap criteria met and checked off.
-* Tests, lint, determinism and e2e smoke pass.
-* Performance budgets hold.
+* The task's acceptance criteria are met and its `ROADMAP.md` row is `done`.
+* Full `npm run verify` and the e2e smoke pass. Performance budgets hold.
+* Sim changes have a determinism test.
 * Visual assets match the reference sheets, pass calibration and collision checks.
-* No `any`, no TODO without a roadmap entry, no dead code.
+* No `any`, no TODO without a roadmap entry, no dead code, no commented out code, no `console.log` left in `src`.
+* Every number from the spec is in a data file, not hard coded.
 * The user can see the feature working in the dev build.
 
 ## Out of scope for now

@@ -142,7 +142,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     console.log(walkGraphReport(sim));
   }
   if (s.cohortTerminal) buildCohortTerminal(sim);
-  // A level 5 tower keeps the benchmark measuring traffic, not ATC starvation (handoff/tasks/T40-atc-tower.md R4).
+  // A level 5 tower keeps the benchmark measuring traffic, not ATC starvation (task T40 R4).
   sim.enqueue({ type: 'buildTower', x: 2700, y: 4800, level: 5 });
   sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.08 });
   const n = sim.subsystemCount;

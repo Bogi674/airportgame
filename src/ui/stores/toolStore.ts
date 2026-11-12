@@ -11,7 +11,7 @@ export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' |
 export type SnapMode = 'grid' | 'free';
 
 /**
- * The tools that place on the construction grid (handoff/tasks/T42-grid-snapping.md, R3). The runway
+ * The tools that place on the construction grid (task T42, R3). The runway
  * and taxiway tools use it as their lowest priority snap, after their own node, end and segment snaps.
  */
 export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'stands', 'gaBlock', 'terminal', 'tower'];

@@ -51,7 +51,7 @@ export const airfieldCodesSchema = z
     runwayWorks: z.strictObject({ note: z.string(), areaFactor: z.number().positive(), approachDays: perApproach }),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
     taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
-    /** Construction grid along a runway or taxiway (handoff/tasks/T42-grid-snapping.md). */
+    /** Construction grid along a runway or taxiway (task T42). */
     constructionGrid: z.strictObject({ note: z.string(), spacingMinorM: z.number().positive(), spacingMajorM: z.number().positive() }),
     /** Approach and transitional surfaces (docs/GAME_DESIGN.md section 6, clearances). */
     obstacleSurfaces: z.strictObject({

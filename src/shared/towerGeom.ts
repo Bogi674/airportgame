@@ -4,7 +4,7 @@ import { bounds, distToSegment, type Pt } from './geom';
 import type { AirfieldPayload, Stand } from './airfield';
 
 /**
- * Where a free standing tower may stand (handoff/tasks/T40-atc-tower.md R2). The footprint is a
+ * Where a free standing tower may stand (task T40 R2). The footprint is a
  * square of `tower.footprintM` in metres and it must stay clear of every paved surface and of
  * every stand, because an aircraft taxis or parks there.
  */

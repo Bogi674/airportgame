@@ -3,7 +3,7 @@ import type { CodeLetter, Stand, StandSize, StandType, Surface } from './airfiel
 import { standRefusal } from './standSizes';
 
 /**
- * Stand block rule for flights (handoff/tasks/T41-flight-schedule.md R8). A stand is blocked from
+ * Stand block rule for flights (task T41 R8). A stand is blocked from
  * the arrival until the turn is over, and two blocks on one stand may not overlap.
  */
 

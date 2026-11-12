@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mechanical checks for the hard rules in AGENTS.md and CLAUDE.md that eslint does not cover.
+// Mechanical checks for the hard rules in CLAUDE.md that eslint does not cover.
 // Usage: node scripts/rules-check.mjs [--all] [files...]
 // With no files it checks every file changed against origin/main plus untracked files.
 // Exit code 1 when a rule is broken, with one line per finding: file:line rule text.
@@ -73,7 +73,7 @@ for (const file of files) {
 
 if (findings.length > 0) {
   console.log(findings.join('\n'));
-  console.log(`\nrules-check: ${findings.length} finding(s). Fix them; see AGENTS.md hard rules.`);
+  console.log(`\nrules-check: ${findings.length} finding(s). Fix them; see the hard rules in CLAUDE.md.`);
   process.exit(1);
 }
 console.log(`rules-check: ${files.length} file(s) checked, no findings.`);
