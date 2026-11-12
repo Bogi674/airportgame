@@ -273,7 +273,7 @@ export class Renderer {
     this.guide = a && b ? { a, b } : null;
   }
 
-  /** The construction grid to draw under the ghost preview, or none (handoff/tasks/T42-grid-snapping.md, R6). */
+  /** The construction grid to draw under the ghost preview, or none (task T42, R6). */
   setGrid(grid: ConstructionGrid | null): void {
     this.grid = grid;
   }
@@ -592,7 +592,7 @@ export class Renderer {
   }
 
   /**
-   * Construction grid lines in the snapping cyan (handoff/tasks/T42-grid-snapping.md, R6). The lattice has
+   * Construction grid lines in the snapping cyan (task T42, R6). The lattice has
    * no extent: the four viewport corners are mapped into the grid frame and only the lines that cross that
    * range are drawn. Endpoints are projected to device pixels by hand so the strokes keep a fixed screen
    * width at every zoom (PITFALLS 15). Minor lines closer than GRID_MINOR_MIN_GAP_PX on screen are dropped,

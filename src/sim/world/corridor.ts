@@ -29,13 +29,6 @@ interface Eval {
   slope: number;
 }
 
-/** Axis unit vector in world space for a compass heading (north is -y). */
-export function axisVector(headingDeg: number, out: { x: number; y: number }): void {
-  const a = headingDeg * DEG_TO_RAD;
-  out.x = sinLut(a);
-  out.y = -cosLut(a);
-}
-
 function evaluate(heights: Float32Array, cx: number, cy: number, heading: number, ideal: number): Eval | null {
   const ax = sinLut(heading * DEG_TO_RAD);
   const ay = -cosLut(heading * DEG_TO_RAD);

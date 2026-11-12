@@ -491,7 +491,7 @@ export class Sim {
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts);
-    // A save from before the tower that relied on a control room has no coverage now (handoff/tasks/T40-atc-tower.md R3).
+    // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
     this.airfieldSent = -1;
