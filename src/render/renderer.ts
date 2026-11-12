@@ -98,6 +98,8 @@ export class Renderer {
   /** Last pointer position over the canvas in CSS pixels. `known` is false until the first move. */
   private readonly pointer = { x: 0, y: 0, known: false };
   private readonly readoutAt = { x: 0, y: 0 };
+  /** Snap tip box in device pixels, rewritten each frame while a tip shows. */
+  private readonly tipRect = { x: 0, y: 0, w: 0, h: 0 };
   private guide: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
   private grid: ConstructionGrid | null = null;
   private readonly gridPoint = { x: 0, y: 0 };
@@ -659,15 +661,13 @@ export class Renderer {
       const sy = b * g.label.x + d * g.label.y + f;
       const k = this.dpr;
       // The snap tip box is drawn at +34/+44 px with a height of 28 px, so its top sits at +30 px.
-      let tipBox: { x: number; y: number; w: number; h: number } | null = null;
+      const hasTip = g.tip !== undefined;
       if (g.tip) {
         ctx.font = `bold ${13 * k}px system-ui, sans-serif`;
-        tipBox = {
-          x: a * g.tip.x + cc * g.tip.y + e + 34 * k,
-          y: b * g.tip.x + d * g.tip.y + f + 30 * k,
-          w: ctx.measureText(g.tip.text).width + 24 * k,
-          h: 28 * k,
-        };
+        this.tipRect.x = a * g.tip.x + cc * g.tip.y + e + 34 * k;
+        this.tipRect.y = b * g.tip.x + d * g.tip.y + f + 30 * k;
+        this.tipRect.w = ctx.measureText(g.tip.text).width + 24 * k;
+        this.tipRect.h = 28 * k;
       }
       ctx.font = `${12 * k}px system-ui, sans-serif`;
       const w = ctx.measureText(g.label.text).width + 12 * k;
@@ -675,9 +675,10 @@ export class Renderer {
       // The box follows the cursor, flipped to stay inside the viewport. Before the first pointer move it stays at the ghost point.
       let boxX = sx + 14 * k;
       let boxY = sy - 10 * k;
-      if (tipBox) {
+      if (hasTip) {
         // With a snap tip the readout sits under the tip box, never over it.
-        readoutBelowTip(tipBox.x, tipBox.y, tipBox.w, tipBox.h, 6 * k, w, h, this.canvas.width, this.canvas.height, this.readoutAt);
+        const t = this.tipRect;
+        readoutBelowTip(t.x, t.y, t.w, t.h, 6 * k, w, h, this.canvas.width, this.canvas.height, this.readoutAt);
         boxX = this.readoutAt.x;
         boxY = this.readoutAt.y;
       } else if (this.pointer.known) {
