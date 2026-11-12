@@ -23,7 +23,7 @@ Argument: a task id from `ROADMAP.md`. No argument: the first `todo` or `doing` 
 3. **Code.** Call the Agent tool with `subagent_type: coder`, `run_in_background: false`. One coder at a time.
 4. **Check.** Read the five line reply. On `ok`: run `git diff --stat HEAD`, then `npm run verify -- quick 2>&1 | tail -12`. On `blocked`: answer from the docs, or ask the user, then resend only the answer with SendMessage to the same coder.
 5. **Review.** Call `subagent_type: reviewer` with the brief's DO and DONT lines. Skip the reviewer when the slice touches no file under `src/sim`, `src/shared` or `src/data` and changes under 40 lines.
-6. **Fix.** On `fix`: SendMessage the findings to the same coder, word for word, nothing added. At most two fix rounds. After that, fix it yourself or stop and tell the user.
+6. **Fix.** On `fix`: SendMessage the findings to the same coder, word for word, nothing added. At most two fix rounds. After that, resend the slice to `coder` with the Agent tool's model set to Sonnet, fix it yourself, or stop and tell the user. Send a slice straight to Sonnet when it touches determinism, saves, the taxi network or reservations.
 7. **Commit.** On `pass` and green verify: tick the criteria in the work file and commit the slice, message per `CLAUDE.md`.
 8. **Close.** After the last slice: full `npm run verify`, close the task per step 8 of the `CLAUDE.md` workflow, report to the user in under 10 lines.
 

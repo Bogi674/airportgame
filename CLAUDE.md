@@ -37,16 +37,17 @@ Working files live in `handoff/`:
 | `handoff/PITFALLS.md` | Before writing code |
 | `handoff/RECIPES.md` | When adding a command, data, a save field, a tool, a string, a test or a screenshot scenario |
 | `handoff/CODEBASE.md` | For the code map, tick order and data flow |
+| `handoff/BACKLOG.md` | Bugs passed with notice or skipped as minor. Check it when you touch the area of an entry |
 | `handoff/QUESTIONS.md` | The log of design questions and the user's answers |
 | `handoff/reference/` | Benchmark notes on the mirrored mechanics |
 
-`AGENTS.md` only points here. `docs/ROADMAP.md`, `handoff/TASKS.md` and `handoff/STATE.md` are the old plan, frozen until task T57 lands and then deleted (`ROADMAP.md` section 7). Do not plan from them.
+`AGENTS.md` only points here.
 
 Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`) and `src/data/gse.json` (ground vehicle catalog).
 
 ## Crew and terse mode
 
-When the user asks to run the crew, load the `crew` skill (`.claude/skills/crew/SKILL.md`): the session model orchestrates, the `coder` agent on Haiku implements, the `reviewer` agent on Sonnet checks. Never start it unasked. With or without the crew, the session model plans and decides, and smaller models do inventories, bulk coding and tests.
+When the user asks to run the crew, load the `crew` skill (`.claude/skills/crew/SKILL.md`): the session model orchestrates, the `coder` agent on Haiku implements, the `reviewer` agent on Sonnet checks. Never start it unasked. A slice that Haiku failed twice, or that touches determinism, saves, the taxi network or reservations, goes to the `coder` agent with the model set to Sonnet. With or without the crew, the session model plans and decides, and smaller models do inventories, bulk coding and tests.
 
 Terse mode is always on for code work: no narration between tool calls, no recap of files read, no restating the request, and reports in a few lines. It covers talk only. Code, comments, commit messages, docs and UI strings keep full quality.
 

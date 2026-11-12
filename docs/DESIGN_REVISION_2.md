@@ -232,7 +232,7 @@ Yellow `#f2c230`, red `#e0414a`, white `#f4f4f4`, asphalt `#4b4c52`, shoulder as
 7. Contact stand marking generator (3.3), Small stand marking (3.4), remote stands (3.5). Visual test against `rev2_04` and `rev2_05`.
 8. Apron tool modes (section 4).
 9. Terminal limit removal and chunked grid (section 5).
-10. Update `docs/GAME_DESIGN.md`, `docs/ART_AND_ASSETS.md`, `docs/UI_DESIGN.md`, `docs/ARCHITECTURE.md` and `docs/ROADMAP.md` so they match this document, and record decisions under Decisions in `ARCHITECTURE.md`.
+10. Update `docs/GAME_DESIGN.md`, `docs/ART_AND_ASSETS.md`, `docs/UI_DESIGN.md`, `docs/ARCHITECTURE.md` and `ROADMAP.md` so they match this document, and record decisions under Decisions in `ARCHITECTURE.md`.
 
 After each step show the user an in game screenshot next to the reference image and wait for the user's confirmation before the next step when the screenshot differs in any visible way.
 

@@ -1,6 +1,6 @@
 # DESIGN REVISION 4: stands, flight series, ground handling and people
 
-Status: written on 2026-11-12 from the user's revamp brief. The values in section 9 are pending in the decision batch of `handoff/QUESTIONS.md` (2026-11-12 T58) until the user answers it.
+Status: written on 2026-11-12 from the user's revamp brief. The values in section 9 are accepted as recommended (owner, 2026-11-12) and listed in the decision batch of `handoff/QUESTIONS.md` (2026-11-12 T58).
 
 Authority: this document overrides `docs/GAME_DESIGN.md` sections 6 (stands), 8 (passenger journey and satisfaction), 9 (shops and tenants), 10 (ground handling and staff), 12 (contracts and offers) and 14 (events), `docs/AIRLINES.md` section 9 (contracts), `docs/DESIGN_REVISION_2.md` section 3.4 (stand placement) and the rotation model of task T41 wherever they disagree. Revision 3 markings and access types stay in force.
 
@@ -171,7 +171,7 @@ A first deck on its own RNG stream: weather plus operational events (fuel delay,
 
 | Task | Content |
 | --- | --- |
-| T57 | Visual repair |
+| T57 | Visual repair (done) |
 | T58 | This document and the decision batch |
 | T59 | Stand classes, placement, taxiway snapping, connection states, save migration |
 | T60 | Service roads, apron lanes, reservations, trailer kinematics |
@@ -188,4 +188,4 @@ A first deck on its own RNG stream: weather plus operational events (fuel delay,
 
 All values are in the 2026-11-12 T58 decision batch of `handoff/QUESTIONS.md`, with the recommended value, the reason and the mirrored behavior. The answer is recorded there, and each value lives in `src/data` with a zod schema. Do not invent a value that is not in the batch.
 
-Everything not mentioned here stays as it was.
+Task order, dependencies and status are in `ROADMAP.md`. Everything not mentioned here stays as it was.

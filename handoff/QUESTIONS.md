@@ -189,4 +189,4 @@ Context: `docs/DESIGN_REVISION_4.md` needs these values, plus the open questions
 
 Recommendation: accept all.
 
-Answer: pending.
+Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 were set by the user directly. Each value moves into `src/data` with a zod schema in the task that first uses it.

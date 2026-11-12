@@ -361,3 +361,15 @@ Record every architectural choice with a date and one line of reason.
   * GSE docks: station, side and orientation per vehicle kind in `gse.json`; dock lateral clears the hard footprint; vehicles on one side arrive in `DOCK_ORDER` sequence and leave in reverse; paths are prebuilt per type and kind in the `Gse` constructor. The order lives in code because the kind order of `gse.json` is the saved fleet index.
   * Interim turnaround crews until T63: aircraft under 20 m get no belt loader set, GA turnarounds get a refueller only. Pending the user's confirmation.
   * Vehicles interpolate like aircraft, only when slot id and kind match, and cast a body frame ground shadow from their footprint by their height. People draw above aircraft.
+
+## 13. Known limits
+
+Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.
+
+* `priorityHolder` and `conflictHolder` in `src/sim/ops/traffic.ts` loop over active aircraft for each waiting aircraft, so they are quadratic in the queue. Watch the busy50 stress scenario when traffic grows.
+* Since the conflict sets landed, the medium, large and busy50 stress scenarios each record one deadlock resolution, and medium and large complete two flights fewer in their short runs.
+* A junction margin above `CONFLICT_MARGIN_M` (30 m) cut arrivals in the tower test from over 20 to 14. A waiting span of 16 m broke the spacing test in `tests/traffic.test.ts`. Both were tried and dropped.
+* Turn pads: the look is frozen by the user, arrivals do not backtrack, pads on taxiways and blast pads do not exist, and the pad preview and inspector lines have no automated test.
+* The strings module has no plural support, so a one day closure reads "for 1 days".
+* Sprite tiers follow `docs/ART_AND_ASSETS.md` section 2 (0 arrow, 1 silhouette, 2 reference, 3 close up). Sprite baking needs a canvas and is checked in Chromium only. The pop in check on a busy apron at 1 px/m was never run.
+* The aircraft sprite sheet still awaits the user's review.

@@ -119,7 +119,7 @@ The user supplied a screenshot showing the five types side by side as the target
 | New task | Stand markings per section 3 |
 | New task | Stand access types, the jet bridge upgrade and the three boarding modes per section 4, after the open values in 4.4 are answered |
 
-The new tasks get ids and spec files when `handoff/TASKS.md` is next reconciled.
+The new tasks get ids and spec files in `ROADMAP.md` (tasks T47 and T66).
 
 ## 6. Tests
 
