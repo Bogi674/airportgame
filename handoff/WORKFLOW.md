@@ -149,3 +149,10 @@ The previous agent's commits are the standard. Before you commit, read your diff
 * Is the same logic written twice anywhere? Move it to `src/shared`.
 * Does anything allocate per tick or per frame?
 * Did you handle the empty case (no runways, no stands, no terminal)?
+
+## Bug triage (user, 2026-11-12)
+
+* **Blocker**: breaks play, a hard rule, saves or determinism. Always fixed before commit.
+* **Major**: a wrong number shown to the player or a visible defect. At most two fix rounds. If it stays and the task meets about 98% of its intent with no blocker, the orchestrator tells the user the details and the implication, and the user decides between pass with notice and more fixing.
+* **Minor**: no effect on play. Skipped and logged in `handoff/BACKLOG.md`.
+* A pass with notice is logged in `handoff/BACKLOG.md` with the task id, the bug and its implication.
