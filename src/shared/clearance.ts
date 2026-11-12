@@ -1,7 +1,9 @@
 import { AIRFIELD, STAND_SIZES } from '@data/index';
 import { AIRCRAFT, codeFromSpan, type AircraftSpec } from '@data/aircraft';
-import { codeIndex, type AirfieldPayload, type CodeLetter } from './airfield';
-import { closestOnSegment, pointInPolygon, type Pt } from './geom';
+import { codeIndex, type AirfieldPayload, type CodeLetter, type Stand, type Taxiway } from './airfield';
+import { closestOnSegment, distToSegment, pointInPolygon, segmentIntersection, type Pt } from './geom';
+import { endpoint } from './validate';
+import type { StandSlot } from './standGeom';
 
 /**
  * Wingtip envelope of the taxiway tool (docs/GAME_DESIGN.md section 6, clearances): the largest type
@@ -63,6 +65,58 @@ function clashAt(x: number, y: number, dx: number, dy: number, nearEnd: boolean,
     }
   }
   return 0;
+}
+
+/** Clearance numbers a taxiway code gives a stand box (`src/data/airfield_codes.json`). */
+export interface CodeClearance {
+  spanM: number;
+  taxiObjectM: number;
+}
+
+/**
+ * Parked box of a stand as four world points: the stand slot (`standSlot`) laid on the stand heading,
+ * so it runs from the nose limit back toward the taxilane, exactly where the painter draws the stand.
+ */
+export function standBox(s: Pick<Stand, 'x' | 'y' | 'headingDeg'>, slot: StandSlot): Pt[] {
+  const h = s.headingDeg;
+  const half = slot.widthM / 2;
+  const at = (along: number, across: number): Pt => {
+    const p = endpoint(s.x, s.y, h, along);
+    return endpoint(p.x, p.y, (h + 90) % 360, across);
+  };
+  return [at(slot.near, -half), at(slot.near, half), at(slot.far, half), at(slot.far, -half)];
+}
+
+/** Distance from a polyline to a polygon boundary or interior, 0 when they touch or overlap. */
+function polylinePolygonDistance(pts: readonly Pt[], poly: readonly Pt[]): number {
+  let best = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[Math.min(i + 1, pts.length - 1)];
+    if (pointInPolygon(a.x, a.y, poly)) return 0;
+    for (let k = 0; k < poly.length; k++) {
+      const c = poly[k];
+      const d = poly[(k + 1) % poly.length];
+      if (segmentIntersection(a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y) >= 0) return 0;
+      best = Math.min(best, distToSegment(c.x, c.y, a.x, a.y, b.x, b.y), distToSegment(d.x, d.y, a.x, a.y, b.x, b.y), distToSegment(a.x, a.y, c.x, c.y, d.x, d.y), distToSegment(b.x, b.y, c.x, c.y, d.x, d.y));
+    }
+  }
+  return best;
+}
+
+/**
+ * The first taxiway, by id, whose centerline the parked box breaks (docs/GAME_DESIGN.md section 6). The
+ * taxiway a stand leads into must clear the box by half the code span plus the stand's wingtip clearance,
+ * every other taxiway by the code's taxiway to object distance. Null when the box is clear of all.
+ */
+export function standTaxiwayClash(box: readonly Pt[], leadTaxiwayId: number, taxiways: readonly Taxiway[], codes: Record<CodeLetter, CodeClearance>, wingtipClearanceM: number): { taxiwayId: number } | null {
+  const ordered = [...taxiways].sort((p, q) => p.id - q.id);
+  for (const t of ordered) {
+    const row = codes[t.code];
+    const required = t.id === leadTaxiwayId ? row.spanM / 2 + wingtipClearanceM : row.taxiObjectM;
+    if (polylinePolygonDistance(t.points, box) < required) return { taxiwayId: t.id };
+  }
+  return null;
 }
 
 export interface Clashes {

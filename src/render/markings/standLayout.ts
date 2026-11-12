@@ -1,8 +1,8 @@
-import { AIRCRAFT, SPRITE_BASES, standGeometry, type AircraftSpec } from '@data/aircraft';
+import { SPRITE_BASES, standGeometry, type AircraftSpec } from '@data/aircraft';
 import { STAND_MARKINGS, STAND_SIZES } from '@data/index';
 import type { Stand, StandSize } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
-import { sizeForSpan } from '@shared/standSizes';
+import { standSlot, standTypes } from '@shared/standGeom';
 import type { StandFork } from '@shared/standFork';
 import { buildGeometry, type Pt2 } from '../sprites/geometry';
 
@@ -50,21 +50,6 @@ export const toWorld = (l: Pick<StandLayout, 'origin' | 'axis' | 'right'>, x: nu
   x: l.origin.x + l.right.x * x + l.axis.x * y,
   y: l.origin.y + l.right.y * x + l.axis.y * y,
 });
-
-/** Types drawn on a stand: those whose own size it is, else the largest that fit, longest first. */
-export function standTypes(size: StandSize): AircraftSpec[] {
-  const own = AIRCRAFT.filter((a) => sizeForSpan(a.dimensions.wingspanM) === size);
-  const pool = own.length > 0 ? own : AIRCRAFT.filter((a) => a.dimensions.wingspanM <= STAND_SIZES[size].maxSpanM);
-  const seen = new Set<string>();
-  const out: AircraftSpec[] = [];
-  for (const a of pool.slice().sort((p, q) => q.dimensions.lengthM - p.dimensions.lengthM || q.dimensions.wingspanM - p.dimensions.wingspanM)) {
-    if (seen.has(a.icaoType)) continue;
-    seen.add(a.icaoType);
-    out.push(a);
-    if (out.length >= MK.maxStopBars) break;
-  }
-  return out;
-}
 
 /** Planform outline polygons of a type in stand local meters, nose at y = noseY pointing to +y. */
 export function typeOutlines(a: AircraftSpec, noseY: number): Pt[][] {
@@ -157,10 +142,11 @@ export function standLayout(s: Stand, fork: StandFork | null): StandLayout | nul
   const axis = fork.axis;
   const right = { x: -axis.y, y: axis.x };
   const bar0 = (s.x - fork.hit.x) * axis.x + (s.y - fork.hit.y) * axis.y;
+  const slot = standSlot(s.size);
+  if (!slot) return null;
   const types = standTypes(s.size);
-  if (types.length === 0) return null;
   const ng0 = standGeometry(types[0]).noseGearM;
-  const top = bar0 + (spec.noseClearanceM ?? spec.wingtipClearanceM) + ng0;
+  const top = bar0 + slot.far;
   const halfW = types[0].dimensions.fuselageWidthM / 2 + 1;
   const bars = types.map((a, k) => ({ y: bar0 - k * spec.stopBarGapM, label: s.size === 'small' ? 'GA' : a.icaoType, halfW }));
   const layout: StandLayout = { size: s.size, origin: fork.hit, axis, right, D: fork.radius, W: spec.widthM, top, types, bars, nose0: bar0 + ng0, funnel: null };

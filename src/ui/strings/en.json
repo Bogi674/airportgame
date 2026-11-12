@@ -181,6 +181,7 @@
   "notice.standNoTerminal": "That contact stand has no terminal next to it.",
   "notice.standNoLink": "That stand has no taxi route.",
   "notice.standBusy": "Another flight is on that stand at that time.",
+  "notice.stand.taxiwayClearance": "Parked aircraft would break the clearance of a taxiway. Move the stand further away.",
   "notice.nothingThere": "There is nothing there.",
   "notice.nothingToUndo": "Nothing to undo.",
   "notice.nothingToRedo": "Nothing to redo.",

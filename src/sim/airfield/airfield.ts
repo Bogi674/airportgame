@@ -1,5 +1,8 @@
 import { AIRFIELD, BUSINESS, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { sizeCode } from '@shared/standSizes';
+import { standBox, standTaxiwayClash } from '@shared/clearance';
+import { standFork } from '@shared/standFork';
+import { standSlot } from '@shared/standGeom';
 import {
   codeIndex,
   compassVector,
@@ -531,6 +534,7 @@ export class Airfield {
     const items: Item[] = [];
     if (spacing < spec.widthM) return { code: 'standSpacing', args: { min: Math.ceil(spec.widthM) } };
     const halfW = spec.widthM / 2;
+    const lines = this.data.taxiways.map((t) => ({ pts: t.points }));
     let number = this.standNumber;
     for (let i = 0; i < n; i++) {
       const sx = round05(x + perp.x * spacing * i);
@@ -549,23 +553,28 @@ export class Airfield {
         if (Math.hypot(s.x - sx, s.y - sy) < spec.widthM - 0.5) return { code: 'standOverlap' };
       }
       number++;
-      items.push({
-        type: 'stand',
-        obj: {
-          id: this.nextId++,
-          number: String(number),
-          cost: spec.cost[type],
-          x: sx,
-          y: sy,
-          headingDeg: ((Math.round(headingDeg) % 360) + 360) % 360,
-          // Small stands have no jet bridges, so they are always remote.
-          type: size === 'small' ? 'remote' : type,
-          size,
-          code: sizeCode(size),
-          surface,
-          pushback: 'auto',
-        },
-      });
+      const stand: Stand = {
+        id: this.nextId++,
+        number: String(number),
+        cost: spec.cost[type],
+        x: sx,
+        y: sy,
+        headingDeg: ((Math.round(headingDeg) % 360) + 360) % 360,
+        // Small stands have no jet bridges, so they are always remote.
+        type: size === 'small' ? 'remote' : type,
+        size,
+        code: sizeCode(size),
+        surface,
+        pushback: 'auto',
+      };
+      // A stand box must clear every taxiway it does not lead into, and the one it leads into by its wingtip envelope.
+      const fork = standFork(stand, lines);
+      const lead = fork ? this.data.taxiways[fork.lane].id : -1;
+      // A size with no rated aircraft has no slot to check, so its stands are refused rather than passed unchecked.
+      const slot = standSlot(size);
+      if (!slot) return { code: 'stand.taxiwayClearance' };
+      if (standTaxiwayClash(standBox(stand, slot), lead, this.data.taxiways, AIRFIELD.codes, spec.wingtipClearanceM)) return { code: 'stand.taxiwayClearance' };
+      items.push({ type: 'stand', obj: stand });
     }
     this.standNumber = number;
     return items;

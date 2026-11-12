@@ -152,3 +152,24 @@ describe('general aviation arrivals', () => {
     expect(b.stateHash()).toBe(a.stateHash());
   });
 });
+
+describe('GA block taxiway clearance (T57 slice 1)', () => {
+  /** A code C taxiway from x 3500 to 4500 at y 5000. */
+  const taxiC: Parameters<typeof run>[1] = { type: 'buildTaxiway', points: [{ x: 3500, y: 5000 }, { x: 4500, y: 5000 }], code: 'C', kind: 'taxiway', surface: 'asphalt', tier: 2 };
+
+  it('refuses a GA block whose row is 16 m from the code C taxiway', () => {
+    // The row sits 8 m ahead of the block origin, so an origin at y 4992 puts the stop points at y 4984, 16 m north of the taxiway.
+    const sim = ownedSim();
+    run(sim, taxiC);
+    expect(run(sim, { type: 'buildGaBlock', x: 4000, y: 4992, headingDeg: 0, count: 1 })).toEqual(['stand.taxiwayClearance']);
+    expect(sim.airfield.data.stands).toHaveLength(0);
+    expect(sim.airfield.data.aprons).toHaveLength(0);
+  });
+
+  it('builds a GA block whose row is 50 m from the code C taxiway', () => {
+    const sim = ownedSim();
+    run(sim, taxiC);
+    expect(run(sim, { type: 'buildGaBlock', x: 4000, y: 4958, headingDeg: 0, count: 1 })).toEqual([]);
+    expect(sim.airfield.data.stands).toHaveLength(1);
+  });
+});
