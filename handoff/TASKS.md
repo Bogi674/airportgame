@@ -2,7 +2,7 @@
 
 The work left, in the delivery order the user approved on 2026-11-10. Take the first `todo` row whose dependencies are `done`, reading the phases top to bottom. Keep this table up to date: status, and the commit hashes when done.
 
-Status values: `todo`, `doing`, `done`, `blocked` (say why in `handoff/QUESTIONS.md`), `deferred` (the user parked it, do not start it unasked).
+Status values: `todo`, `doing`, `done`, `superseded` (replaced, the Commits column points at the successor), `blocked` (say why in `handoff/QUESTIONS.md`), `deferred` (the user parked it, do not start it unasked).
 
 Size: S is one or two slices, M three or four, L five or more. Split an L task into commits that each keep verify green.
 
@@ -19,7 +19,7 @@ The Milestone column names the `docs/ROADMAP.md` milestone whose criteria the ta
 | T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L |  | done | 042c89a |
 | T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | done | 0dff9ca |
 | T08 | M3 | [Network conflict sets and property tests](tasks/T08-conflict-sets.md) | M |  | done | 08b181c |
-| T55 | none | GA traffic: self arriving GA flights, landing and parking fees only | M |  | done | uncommitted |
+| T55 | none | GA traffic: self arriving GA flights, landing and parking fees only | M |  | done | 090ba8a 7d74438 |
 
 ## Phase 1. Repair
 
@@ -40,10 +40,10 @@ M4 no longer waits for the sprite and calibration tasks T05 to T07 (user decisio
 | T49 | M4 | [Floor index in the terminal data model](tasks/T49-floor-index.md) | M | T41 | done | 72af04a 35842a9 |
 | T11 | M4 | [Kiosk, bag drop, passport booth, gate desk](tasks/T11-fixtures.md) | M | T41 | done | 155ce2d 9b6a90e c9dd591 00f3ed4 |
 | T12 | M4 | [Walking graph](tasks/T12-walking-graph.md) | L | T11 T49 | done | d9ed24b 6dd5ab2 cc3f86d 8bb7197 |
-| T13 | M4 | [Service nodes and queues](tasks/T13-service-nodes.md) | M | T12 | done |  |
+| T13 | M4 | [Service nodes and queues](tasks/T13-service-nodes.md) | M | T12 | done | c311371 88137dd 9d2b094 7232fd3 a180452 994903e 8127421 6d360d5 |
 | T14 | M4 | [Cohorts and the departure journey](tasks/T14-cohorts-departure.md) | L | T13 | done | f6725ed 2733abe a847a52 633bfcd 353bb1e 9d25380 d820b9e 6cc1808 59a233e 7214967 |
-| T15 | M4 | [People rendering from the atlas](tasks/T15-people-atlas.md) | L | T14 | done |  |
-| T16 | M4 | [Density, queue and walking distance overlays](tasks/T16-terminal-overlays.md) | M | T14 | done |  |
+| T15 | M4 | [People rendering from the atlas](tasks/T15-people-atlas.md) | L | T14 | done | 8e2f344 b9a5054 6da3b59 ae98908 4d776cb e2bfa28 |
+| T16 | M4 | [Density, queue and walking distance overlays](tasks/T16-terminal-overlays.md) | M | T14 | done | 6381b0b 806fae6 0c8d681 901b460 006a27e |
 | T54 | M4 | People walk and dwell along routes with spacing | M | T15 | todo |  |
 | T17 | M4 | [Satisfaction and airport rating](tasks/T17-satisfaction.md) | M | T14 | todo |  |
 | T18 | M4 | [Stress: 20 000 cohorts](tasks/T18-cohort-stress.md) | S | T14 | todo |  |
@@ -56,7 +56,7 @@ Includes boarding by jet bridge, stairs or bus.
 | Id | Milestone | Task | Size | Depends | Status | Commits |
 | --- | --- | --- | --- | --- | --- | --- |
 | T20 | M5 | [Arrival journey](tasks/T20-arrival-journey.md) | M | T19 | todo |  |
-| T21 | M5 | [Baggage network and carousels](tasks/T21-baggage.md) | M | T20 | todo |  |
+| T21 | M5 | [Baggage network and carousels](tasks/T21-baggage.md) | M | T20 | superseded | replaced by T43 |
 | T22 | M5 | [Turnaround task lists](tasks/T22-turnaround-tasks.md) | M | T19 | todo |  |
 | T23 | M5 | [Hydrant dispenser and apron bus](tasks/T23-gse-dispenser-bus.md) | S | T22 | todo |  |
 | T24 | M5 | [Service points, docking poses, service roads](tasks/T24-service-roads.md) | L | T22 | todo |  |
