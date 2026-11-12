@@ -153,6 +153,7 @@
   "ghost.obstacles": "{n} obstacles above the surfaces",
   "inspector.standInfo": "{type}, {size}, {surface}",
   "inspector.standSurfaceRefused": "Not for {types} on this surface.",
+  "inspector.stand.clearanceBreach": "Parked aircraft break the clearance of a nearby taxiway. Bookings continue, but move this stand when you can.",
   "inspector.contactWarn": "Contact stands need a terminal with a facade.",
   "notice.outsideSite": "That is outside the site.",
   "notice.onWater": "You cannot build on water.",

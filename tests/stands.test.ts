@@ -4,11 +4,12 @@ import { STAND_MARKINGS, STAND_SIZES } from '@data/index';
 import { STAND_SIZES_ORDER, type Stand, type StandSize } from '@shared/airfield';
 import { standFork, standForks } from '@shared/standFork';
 import { standSlot } from '@shared/standGeom';
-import { standRefusal } from '@shared/standSizes';
+import { sizeCode, standRefusal } from '@shared/standSizes';
 import type { Command } from '@sim/commands';
+import { Sim } from '@sim/sim';
 import { EdgeKind, TaxiNetwork } from '@sim/airfield/network';
 import { cornerPolygons, polygonDistance, standLayout, typeOutlines } from '@render/markings/standLayout';
-import { ownedSim, run } from './helpers';
+import { OPTIONS, ownedSim, run } from './helpers';
 
 /** A straight east west taxilane at y = 0 and a stand north of it, nose pointing north (away from it). */
 const lane = [{ pts: [{ x: -500, y: 0 }, { x: 500, y: 0 }] }];
@@ -188,5 +189,27 @@ describe('stand box taxiway clearance (T57 slice 1)', () => {
     const sim = ownedSim();
     run(sim, taxiC(5000), apronAt(sy));
     expect(run(sim, mediumAt(sy))).toEqual(['stand.taxiwayClearance']);
+  });
+});
+
+describe('restored stands that break a taxiway clearance (T57 slice 2)', () => {
+  const slot = standSlot('medium');
+  const taxi = (y: number): Command => ({ type: 'buildTaxiway', points: [{ x: 3500, y }, { x: 4500, y }], code: 'C', kind: 'taxiway', surface: 'asphalt', tier: 2 });
+
+  it('a save with an illegal stand loads flagged, stays bookable and hashes the same', () => {
+    if (!slot) throw new Error('no slot for a medium stand');
+    // Lead taxiway at y 5000, and a second taxiway 10 m beyond the slot's far edge, which the stand must not break.
+    const sy = 4880;
+    const sim = ownedSim();
+    run(sim, taxi(5000), taxi(sy - slot.far - 10));
+    // Injected past makeStands, as an old save would hold it.
+    const illegal: Stand = { id: 900, cost: 0, number: '900', x: 4000, y: sy, headingDeg: 0, type: 'remote', size: 'medium', code: sizeCode('medium'), surface: 'concrete', pushback: 'auto' };
+    sim.airfield.data.stands.push(illegal);
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as unknown;
+    const loaded = new Sim('GOLDEN-0001', OPTIONS);
+    loaded.restore(data);
+    expect(loaded.airfield.data.clearanceBreaches).toEqual([900]);
+    expect(loaded.stateHash()).toBe(sim.stateHash());
+    expect(run(loaded, { type: 'setStandProps', id: 900, pushback: 'left' })).toEqual([]);
   });
 });

@@ -72,6 +72,20 @@ const MAX_HOLD_EXTRA_M = 250;
 const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000, precision: 1_200_000 };
 const round05 = (v: number): number => Math.round(v * 2) / 2;
 
+/** Stands whose parked box breaks a taxiway clearance, ascending by id. Old saves can hold such stands, so they are flagged, not removed. */
+function findClearanceBreaches(af: AirfieldPayload): number[] {
+  const lines = af.taxiways.map((t) => ({ pts: t.points }));
+  const out: number[] = [];
+  for (const s of af.stands.slice().sort((p, q) => p.id - q.id)) {
+    const slot = standSlot(s.size);
+    if (!slot) continue;
+    const fork = standFork(s, lines);
+    const lead = fork ? af.taxiways[fork.lane].id : -1;
+    if (standTaxiwayClash(standBox(s, slot), lead, af.taxiways, AIRFIELD.codes, STAND_SIZES[s.size].wingtipClearanceM)) out.push(s.id);
+  }
+  return out;
+}
+
 function segSegDist(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
   if (segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) >= 0) return 0;
   const c = { x: 0, y: 0, t: 0 };
@@ -149,6 +163,7 @@ export class Airfield {
     assignRunwayNames(this.data.runways);
     assignTaxiNames(this.data.taxiways);
     deriveNetwork(this.data);
+    this.data.clearanceBreaches = findClearanceBreaches(this.data);
     this.data.version++;
   }
 
