@@ -1,9 +1,10 @@
+import { AIRCRAFT } from '@data/aircraft';
 import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
 import { checkRunwayObstacles } from '@shared/obstacles';
 import type { GameOptions } from '@shared/protocol';
 import type { OverlayData } from '@shared/overlay';
-import { Gse, MAX_VEHICLES } from './vehicles/gse';
+import { Gse, MAX_VEHICLES, WORK_STATE } from './vehicles/gse';
 import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
@@ -217,6 +218,9 @@ export class Sim {
       case 'testArrival':
         this.traffic.scheduleArrival(cmd.typeIdx, this.tick + Math.max(0, cmd.inTicks), 0, cmd.turnTicks);
         break;
+      case 'testDockAt':
+        this.testDockAt(cmd.standId, cmd.typeIdx, cmd.turnTicks);
+        break;
       case 'buyParcel':
         this.buyParcel(cmd.parcelId);
         break;
@@ -275,7 +279,7 @@ export class Sim {
         break;
       default: {
         const towersBefore = this.airfield.towersVersion;
-        const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes() });
+        const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids });
         if (r === null) break;
         if (isProblem(r)) {
           let e = r.code;
@@ -293,6 +297,24 @@ export class Sim {
         }
       }
     }
+  }
+
+  /**
+   * Test scaffolding for the stand scenes: schedules an arrival due now and gives it the stand. A refused
+   * stand cancels the flight and reports why, as a normal stand assignment does.
+   */
+  private testDockAt(standId: number, typeIdx: number, turnTicks: number): void {
+    if (typeIdx < 0 || typeIdx >= AIRCRAFT.length) return;
+    const f = this.traffic.scheduleArrival(typeIdx, this.tick, 0, turnTicks);
+    if (f < 0) return;
+    const refusal = this.traffic.refuseAssign(f, standId);
+    if (refusal) {
+      this.traffic.fState[f] = FlState.Done;
+      this.report(refusal);
+      return;
+    }
+    this.traffic.fStand[f] = standId;
+    this.business.version++;
   }
 
   /** Remembers a stand choice for the rotation of a flight, so the next day's flight of that rotation takes it. */
@@ -512,6 +534,7 @@ export class Sim {
       views.vehicleY[n] = g.y[v];
       views.vehicleHeading[n] = g.heading[v];
       views.vehicleKind[n] = g.kind[v];
+      views.vehicleDocked[n] = g.state[v] === WORK_STATE ? 1 : 0;
       n++;
     }
     views.header[SnapHeader.VehicleCount] = n;

@@ -39,6 +39,13 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
 * **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, terminal overlays (key O lists passenger density, queues and wait, and walking distance to gates, one at a time, with a legend chip), saves to IndexedDB with autosave, export and import, crash panel.
 
+## T57 visual repair (2026-11-12)
+
+* Stands are refused where the parked aircraft would break a taxiway clearance; stands kept from older saves show a warning.
+* Every stand paves its own slot; aprons can be extended and partly removed with their own tools, and pricing previews match the sim.
+* Aircraft stop with the nose gear on their own stop line. Ground vehicles dock at real door positions from data, approach on paths that never cross an aircraft, arrive in sequence per side, interpolate smoothly and cast ground shadows.
+* Before and after shots: `handoff/work/T57-before-*`, `handoff/work/T57-after-*`. Known leftovers: `handoff/BACKLOG.md`.
+
 ## What does not exist yet
 
 Next task: T54 people walk and dwell along routes (depends on T15, done), the next todo row in `handoff/TASKS.md`. T16 overlays are done.

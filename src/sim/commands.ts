@@ -10,6 +10,8 @@ import type { Pt } from '@shared/geom';
 export type Command =
   | { type: 'setTestTraffic'; perHour: number; turnScale: number }
   | { type: 'testArrival'; typeIdx: number; inTicks: number; turnTicks: number }
+  /** Test arrival that lands now and takes the given stand, under the same refusal rules as a normal stand assignment. */
+  | { type: 'testDockAt'; standId: number; typeIdx: number; turnTicks: number }
   | { type: 'buyParcel'; parcelId: number }
   | { type: 'buyParcels'; ids: number[] }
   | { type: 'buildRunway'; x: number; y: number; headingDeg: number; lengthM: number; code: CodeLetter; approach: Approach; surface: Surface; tier: number }
@@ -19,8 +21,14 @@ export type Command =
   | { type: 'buildApron'; polygon: Pt[]; surface: Surface; tier: number }
   /** Takes a piece out of an apron: the one given, or every apron the piece overlaps. */
   | { type: 'cutApron'; polygon: Pt[]; id?: number }
-  | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; size: StandSize }
-  | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number }
+  /** Takes a piece out of every apron it overlaps, leaving the stand boxes and taxiway pavement inside it paved. */
+  | { type: 'removeApronArea'; polygon: Pt[] }
+  /** Adds a piece to the apron it touches, on that apron's surface. */
+  | { type: 'extendApron'; apronId: number; polygon: Pt[] }
+  /** surface is optional: without it a stand takes the apron under it, else concrete. */
+  | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; size: StandSize; surface?: Surface }
+  /** surface is optional: without it a GA block takes the apron under its stands, else asphalt. */
+  | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number; surface?: Surface }
   | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
   /** Builds an ATC tower centred on the point, at the given level from 1 to 5, paying the build cost plus each upgrade. */
   | { type: 'buildTower'; x: number; y: number; level: number }

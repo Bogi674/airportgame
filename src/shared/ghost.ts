@@ -35,6 +35,6 @@ export interface Ghost {
   tags?: { x: number; y: number; text: string }[];
   /** Snap tooltip next to the cursor, such as "Snap to J1". */
   tip?: { x: number; y: number; text: string };
-  /** Snap tone: the new arm in snapping cyan instead of the default preview blue. */
-  tone?: 'snap';
+  /** Snap tone: the new arm in snapping cyan instead of the default preview blue. Remove: amber, a legal cut. */
+  tone?: 'snap' | 'remove';
 }

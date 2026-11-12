@@ -17,7 +17,8 @@
 //     { "click": [x, y] }, { "move": [x, y] }, { "down": [x, y] }, { "up": [x, y] },
 //     { "key": "Enter" }, { "wait": 500 },
 //     { "camera": { "x": 1, "y": 2, "zoom": 3 } },
-//     { "shot": "name", "clip": { "w": 700, "h": 500 } }   clip is centered on the viewport
+//     { "shot": "name", "clip": { "w": 700, "h": 500 } },  clip is centered on the viewport
+//     { "expect": { "path": "airfield.stands.0.size", "equals": "small" } }   fails the run when the store value differs
 //   ],
 //   "report": ["airfield.runways.length", "cash"]   values from the game store printed at the end
 // }
@@ -105,6 +106,8 @@ const toScreen = async ([x, y]) => {
   return { x: box.x + s.x, y: box.y + s.y };
 };
 
+const readStore = (key) => page.evaluate((k) => k.split('.').reduce((o, p) => (o == null ? o : o[p]), window.__store.getState()), key);
+
 let shots = 0;
 const shoot = async (file, clip) => {
   const path = join(outDir, `${file}.png`);
@@ -139,6 +142,15 @@ for (const a of sc.actions ?? []) {
     await settle();
   }
   else if (a.shot) await shoot(`${name}-${a.shot}`, a.clip);
+  else if (a.expect) {
+    const actual = await readStore(a.expect.path);
+    if (JSON.stringify(actual) !== JSON.stringify(a.expect.equals)) {
+      console.error(`expect failed: ${a.expect.path} is ${JSON.stringify(actual)}, expected ${JSON.stringify(a.expect.equals)}`);
+      await browser.close();
+      process.exit(1);
+    }
+    console.log(`expect ok: ${a.expect.path} = ${JSON.stringify(actual)}`);
+  }
   await page.waitForTimeout(120);
 }
 if (shots === 0) {
@@ -148,7 +160,7 @@ if (shots === 0) {
 
 const report = {};
 for (const key of sc.report ?? []) {
-  report[key] = await page.evaluate((k) => k.split('.').reduce((o, p) => (o == null ? o : o[p]), window.__store.getState()), key);
+  report[key] = await readStore(key);
 }
 if (Object.keys(report).length > 0) console.log('report', JSON.stringify(report));
 console.log(errors.length > 0 ? `page errors: ${JSON.stringify(errors)}` : 'page errors: none');

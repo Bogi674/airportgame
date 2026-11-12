@@ -143,11 +143,9 @@ describe('Taxiway and network', () => {
 describe('Aprons and stands', () => {
   const apron: Command = { type: 'buildApron', polygon: [{ x: 4000, y: 4000 }, { x: 4300, y: 4000 }, { x: 4300, y: 4100 }, { x: 4000, y: 4100 }], surface: 'concrete', tier: 1 };
 
-  it('needs an apron for jet stands and puts them on its surface', () => {
+  it('a jet stand on bare land paves its own concrete apron', () => {
     const sim = ownedSim();
     const stand: Command = { type: 'buildStands', x: 4040, y: 4050, headingDeg: 0, count: 4, spacingM: 45, standType: 'remote', size: 'medium' };
-    expect(run(sim, stand)).toEqual(['standNeedsApron']);
-    expect(run(sim, apron)).toEqual([]);
     expect(run(sim, stand)).toEqual([]);
     expect(sim.airfield.data.stands.map((s) => s.number)).toEqual(['1', '2', '3', '4']);
     expect(sim.airfield.data.stands[0].surface).toBe('concrete');

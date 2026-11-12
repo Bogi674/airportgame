@@ -1,30 +1,35 @@
 {
   "buy": [[2880, 4880, 6400, 6000]],
   "commands": [
-    { "type": "setAutoStands", "on": true },
-    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "E", "approach": "precision", "surface": "asphalt", "tier": 1 },
-    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 190, "code": "E", "connectors": 4, "surface": "asphalt", "tier": 1 },
-    { "type": "buildApron", "polygon": [{ "x": 3400, "y": 5205 }, { "x": 4700, "y": 5205 }, { "x": 4700, "y": 5600 }, { "x": 3400, "y": 5600 }], "surface": "concrete", "tier": 1 },
-    { "type": "buildStands", "x": 3500, "y": 5330, "headingDeg": 180, "count": 1, "spacingM": 45, "standType": "remote", "size": "small" },
-    { "type": "buildStands", "x": 3700, "y": 5330, "headingDeg": 180, "count": 1, "spacingM": 45, "standType": "remote", "size": "medium" },
-    { "type": "buildStands", "x": 4050, "y": 5330, "headingDeg": 180, "count": 1, "spacingM": 45, "standType": "remote", "size": "large" },
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 3300, "code": "E", "approach": "precision", "surface": "asphalt", "tier": 2 },
+    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 200, "code": "E", "connectors": 4, "surface": "asphalt", "tier": 2 },
+    { "type": "buildApron", "polygon": [{ "x": 3400, "y": 5205 }, { "x": 4900, "y": 5205 }, { "x": 4900, "y": 5460 }, { "x": 3400, "y": 5460 }], "surface": "concrete", "tier": 2 },
+    { "type": "buildStands", "x": 3600, "y": 5340, "headingDeg": 180, "count": 1, "spacingM": 30, "standType": "remote", "size": "small" },
+    { "type": "buildStands", "x": 3900, "y": 5340, "headingDeg": 180, "count": 1, "spacingM": 45, "standType": "remote", "size": "medium" },
+    { "type": "buildStands", "x": 4350, "y": 5340, "headingDeg": 180, "count": 1, "spacingM": 80, "standType": "remote", "size": "large" },
     { "type": "buildTower", "x": 3300, "y": 4700, "level": 2 },
-    { "type": "testArrival", "typeIdx": 7, "inTicks": 200, "turnTicks": 8000 },
-    { "type": "testArrival", "typeIdx": 0, "inTicks": 400, "turnTicks": 8000 },
-    { "type": "testArrival", "typeIdx": 2, "inTicks": 600, "turnTicks": 8000 }
+    { "type": "testDockAt", "standId": 8, "typeIdx": 9, "turnTicks": 10000000 },
+    { "type": "testDockAt", "standId": 9, "typeIdx": 1, "turnTicks": 10000000 },
+    { "type": "testDockAt", "standId": 10, "typeIdx": 3, "turnTicks": 10000000 }
   ],
-  "camera": { "x": 3850, "y": 5330, "zoom": 1.5 },
+  "camera": { "x": 4000, "y": 5330, "zoom": 1.5 },
   "hideUi": true,
   "actions": [
+    { "expect": { "path": "airfield.stands.0.id", "equals": 8 } },
+    { "expect": { "path": "airfield.stands.0.size", "equals": "small" } },
+    { "expect": { "path": "airfield.stands.1.id", "equals": 9 } },
+    { "expect": { "path": "airfield.stands.1.size", "equals": "medium" } },
+    { "expect": { "path": "airfield.stands.2.id", "equals": 10 } },
+    { "expect": { "path": "airfield.stands.2.size", "equals": "large" } },
     { "tool": "speed-8" },
-    { "wait": 90000 },
+    { "wait": 30000 },
     { "shot": "overview", "clip": { "w": 900, "h": 600 } },
-    { "camera": { "x": 3500, "y": 5330, "zoom": 4 } },
+    { "camera": { "x": 3600, "y": 5340, "zoom": 5 } },
     { "shot": "small", "clip": { "w": 900, "h": 600 } },
-    { "camera": { "x": 3700, "y": 5330, "zoom": 4 } },
+    { "camera": { "x": 3900, "y": 5340, "zoom": 5 } },
     { "shot": "medium", "clip": { "w": 900, "h": 600 } },
-    { "camera": { "x": 4050, "y": 5330, "zoom": 4 } },
+    { "camera": { "x": 4350, "y": 5340, "zoom": 5 } },
     { "shot": "large", "clip": { "w": 900, "h": 600 } }
   ],
-  "report": ["airfield.stands.length", "airfield.runways.length", "cash"]
+  "report": ["airfield.stands.0.id", "airfield.stands.0.size", "airfield.stands.1.id", "airfield.stands.1.size", "airfield.stands.2.id", "airfield.stands.2.size", "tick", "airfield.stands.length", "airfield.runways.length", "cash"]
 }

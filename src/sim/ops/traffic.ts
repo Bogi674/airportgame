@@ -1,5 +1,5 @@
 import { AIRCRAFT, RUNWAY_OCCUPANCY, wakeSeparationSec, WAKE_ORDER, type AircraftSpec } from '@data/aircraft';
-import { codeIndex, compassVector, type AirfieldPayload, type CodeLetter, type Runway } from '@shared/airfield';
+import { codeIndex, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type Runway } from '@shared/airfield';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
@@ -9,6 +9,7 @@ import type { Rng } from '../rng';
 import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type BlockWindow, type StandFacts, type StandRefusal } from '@shared/flightBlock';
 import { minuteOfDay, TICKS_PER_MINUTE } from '@shared/business';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
+import { parkedOffsetM } from '@shared/standGeom';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { AIRFIELD, BUSINESS, PROFILES } from '@data/index';
 import { movementsPerHour } from '@shared/towerBudget';
@@ -18,6 +19,21 @@ import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './p
 
 export const MAX_AIRCRAFT = 256;
 const MAX_ROUTE = 40;
+/**
+ * Parked offset in meters along the stand heading, by stand size and aircraft type index (docs/DESIGN_REVISION_3.md
+ * stop bars). Built once so the tick reads a number and allocates nothing.
+ */
+const PARKED_OFFSET = (() => {
+  const table = new Float64Array(STAND_SIZES_ORDER.length * AIRCRAFT.length);
+  STAND_SIZES_ORDER.forEach((size, k) => {
+    AIRCRAFT.forEach((spec, t) => {
+      table[k * AIRCRAFT.length + t] = parkedOffsetM(size, spec);
+    });
+  });
+  return table;
+})();
+/** Index in STAND_SIZES_ORDER by size name, read in the tick without a search. */
+const SIZE_INDEX: Readonly<Record<string, number>> = Object.fromEntries(STAND_SIZES_ORDER.map((size, k) => [size, k]));
 /** Extra reach of a junction zone, about one aircraft length, so an aircraft already past the node still holds its conflicts. */
 const CONFLICT_MARGIN_M = 30;
 const MAX_FLIGHTS = 1024;
@@ -1252,6 +1268,7 @@ export class Traffic {
     let goal: number;
     if (last) {
       goal = st === AcState.TaxiOut ? len - this.holdDistFor(i) : len;
+      if (st === AcState.TaxiIn) goal = this.dockGoal(i, e, len);
       if (st === AcState.LineUp) goal = len;
       if (st === AcState.Holding) goal = this.dist[i];
     } else {
@@ -1267,7 +1284,7 @@ export class Traffic {
     }
     if (st === AcState.Pushback) {
       // Pushback needs the junction and its surroundings clear.
-      if (this.dist[i] < 0.5 && !this.pushbackClear(i)) {
+      if (this.dist[i] < this.pushStartLimit(i, e, len) && !this.pushbackClear(i)) {
         this.speed[i] = 0;
         return;
       }
@@ -1326,6 +1343,20 @@ export class Traffic {
     this.applyEdgePose(i);
   }
 
+  /** Distance along the last edge where a taxiing in aircraft parks: its nose gear on the stop bar of its type, which puts the centre behind the stand point. */
+  private dockGoal(i: number, e: number, len: number): number {
+    if (this.net.edgeKind[e] !== EdgeKind.StandLeadIn) return len;
+    const st = this.af.stands[this.net.edgeStand[e]];
+    if (!st) return len;
+    return Math.max(0, Math.min(len, len + PARKED_OFFSET[SIZE_INDEX[st.size] * AIRCRAFT.length + this.type[i]]));
+  }
+
+  /** Distance along the edge below which a push back is still at its start: half a meter past where the aircraft is parked. */
+  private pushStartLimit(i: number, e: number, len: number): number {
+    if (this.routeIdx[i] !== 0) return 0.5;
+    return 0.5 + (len - this.dockGoal(i, e, len));
+  }
+
   private holdDistFor(i: number): number {
     const idx = this.entryIdx[i];
     for (const h of this.net.holds) if (h.entryIdx === idx) return h.holdDist;
@@ -1334,8 +1365,9 @@ export class Traffic {
 
   private checkArrivedAtEnd(i: number, len: number, goal: number): void {
     const st = this.state[i];
-    if (st === AcState.TaxiIn && this.dist[i] >= len - 0.3 && this.speed[i] < 0.6) {
-      this.dist[i] = len;
+    if (st === AcState.TaxiIn && this.dist[i] >= goal - 0.3 && this.speed[i] < 0.6) {
+      // An aircraft restored past the new stop point parks where it is.
+      if (this.dist[i] <= goal) this.dist[i] = goal;
       this.speed[i] = 0;
       this.releaseAll(i);
       this.state[i] = AcState.Turnaround;
@@ -1521,6 +1553,14 @@ export class Traffic {
     return false;
   }
 
+  /** Takes a node for push back and lets go of the one held before, so no reservation is left behind. */
+  private holdNode(i: number, node: number): void {
+    const prev = this.heldNode[i];
+    if (prev >= 0 && prev !== node && this.nodeOwner[prev] === i) this.nodeOwner[prev] = -1;
+    this.nodeOwner[node] = i;
+    this.heldNode[i] = node;
+  }
+
   private pushbackClear(i: number): boolean {
     const k = i * MAX_ROUTE + this.routeIdx[i];
     const e = this.routeEdge[k];
@@ -1562,10 +1602,7 @@ export class Traffic {
         if (Math.hypot(this.x[j] - this.net.nodeX[node], this.y[j] - this.net.nodeY[node]) < 28) return false;
       }
     }
-    if (this.nodeOwner[node] !== i) {
-      this.nodeOwner[node] = i;
-      this.heldNode[i] = node;
-    }
+    if (this.nodeOwner[node] !== i) this.holdNode(i, node);
     return true;
   }
 
@@ -1651,10 +1688,7 @@ export class Traffic {
       this.waitingFor[i] = j;
       return false;
     }
-    if (this.nodeOwner[node] !== i) {
-      this.nodeOwner[node] = i;
-      this.heldNode[i] = node;
-    }
+    if (this.nodeOwner[node] !== i) this.holdNode(i, node);
     return true;
   }
 
@@ -1793,7 +1827,10 @@ export class Traffic {
     }
     this.routeLen[i] = bestN;
     this.routeIdx[i] = 0;
-    this.dist[i] = 0;
+    // Push back starts where the aircraft stands: an aircraft parked on its stop bar sits behind the stand point.
+    this.dist[i] = bestN > 0 && this.net.edgeKind[this.tmpEdge[0]] === EdgeKind.StandLeadIn && this.tmpDir[0] === -1
+      ? Math.min(this.net.edgeLen[this.tmpEdge[0]], Math.hypot(this.x[i] - this.af.stands[s].x, this.y[i] - this.af.stands[s].y))
+      : 0;
     this.speed[i] = 0;
     this.depWait[i] = 0;
     this.depRetryAt[i] = 0;

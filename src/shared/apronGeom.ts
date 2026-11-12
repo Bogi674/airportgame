@@ -32,6 +32,8 @@ export function apronContains(a: Pick<Apron, 'polygon' | 'holes'>, x: number, y:
   return true;
 }
 
+const openRing = (r: [number, number][]): Pt[] => r.slice(0, -1).map(([x, y]) => ({ x, y }));
+
 const toClip = (a: Pick<Apron, 'polygon' | 'holes'>): ClipPolygon => [a.polygon, ...(a.holes ?? [])].map((r) => r.map((p) => [snap(p.x), snap(p.y)] as [number, number]));
 
 /** One apron shape: the outer ring and its holes, without the closing point the clipper repeats. */
@@ -57,7 +59,73 @@ export function mergeShapes(piece: readonly Pt[], others: readonly Pick<Apron, '
   return fromClip(union(toClip({ polygon: piece.slice() }), ...others.map(toClip)));
 }
 
-/** An apron with a piece taken out: none, one or several shapes. */
-export function cutShape(a: Pick<Apron, 'polygon' | 'holes'>, piece: readonly Pt[]): ApronShape[] {
-  return fromClip(difference(toClip(a), toClip({ polygon: piece.slice() })));
+/** An apron with a region taken out: none, one or several shapes. */
+export function cutRegion(a: Pick<Apron, 'polygon' | 'holes'>, region: MultiPolygon): ApronShape[] {
+  return fromClip(difference(toClip(a), region));
+}
+
+/** The part of a piece that no apron covers, of any surface. */
+export function freeRegion(piece: readonly Pt[], aprons: readonly Pick<Apron, 'polygon' | 'holes'>[]): MultiPolygon {
+  return difference([toClip({ polygon: piece.slice() })], ...aprons.map(toClip));
+}
+
+/** Area of a clipped region, outer rings less their holes. */
+export function regionArea(mp: MultiPolygon): number {
+  let sum = 0;
+  for (const poly of mp) {
+    sum += ringArea(openRing(poly[0]));
+    for (const hole of poly.slice(1)) sum -= ringArea(openRing(hole));
+  }
+  return sum;
+}
+
+/** Area of a piece that no apron covers. */
+export function uncoveredArea(piece: readonly Pt[], aprons: readonly Pick<Apron, 'polygon' | 'holes'>[]): number {
+  return regionArea(freeRegion(piece, aprons));
+}
+
+/** Overlap below this many square metres is a shared edge, not a clash. */
+const OVERLAP_EPS_M2 = 0.01;
+
+/** True when two polygons overlap by more than a hundredth of a square metre. */
+export function overlaps(a: readonly Pt[], b: readonly Pt[]): boolean {
+  return ringArea(a) - uncoveredArea(a, [{ polygon: [...b] }]) > OVERLAP_EPS_M2;
+}
+
+/** The union of a clipped region with existing shapes. */
+export function mergeRegion(region: MultiPolygon, others: readonly Pick<Apron, 'polygon' | 'holes'>[]): ApronShape[] {
+  return fromClip(union(region, ...others.map(toClip)));
+}
+
+/** The piece with every keeper polygon taken out of it: the area a removal may clear. */
+export function clearOf(piece: readonly Pt[], keepers: readonly Pt[][]): MultiPolygon {
+  return difference([toClip({ polygon: piece.slice() })], ...keepers.map((k) => toClip({ polygon: k })));
+}
+
+/**
+ * One square capped box per segment of a polyline, so their union covers the pavement of a taxiway
+ * at every bend. Used to keep an apron removal off built pavement.
+ */
+export function polylineBoxes(points: readonly Pt[], widthM: number): Pt[][] {
+  const half = widthM / 2;
+  const out: Pt[][] = [];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0) continue;
+    const ux = ((b.x - a.x) / len) * half;
+    const uy = ((b.y - a.y) / len) * half;
+    const nx = -uy;
+    const ny = ux;
+    const p = { x: a.x - ux, y: a.y - uy };
+    const q = { x: b.x + ux, y: b.y + uy };
+    out.push([
+      { x: p.x + nx, y: p.y + ny },
+      { x: q.x + nx, y: q.y + ny },
+      { x: q.x - nx, y: q.y - ny },
+      { x: p.x - nx, y: p.y - ny },
+    ]);
+  }
+  return out;
 }

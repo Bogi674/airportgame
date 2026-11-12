@@ -21,7 +21,14 @@
    "heightM": 1.9,
    "docks": false,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": 0.75,
+    "side": "R",
+    "orient": "perp",
+    "underWing": false,
+    "minAircraftLengthM": 20
+   }
   },
   {
    "id": "cart",
@@ -31,7 +38,14 @@
    "heightM": 2.0,
    "docks": false,
    "articulated": true,
-   "towedBy": "tractor"
+   "towedBy": "tractor",
+   "dock": {
+    "station": 0.8,
+    "side": "R",
+    "orient": "perp",
+    "underWing": false,
+    "minAircraftLengthM": 20
+   }
   },
   {
    "id": "beltloader",
@@ -41,7 +55,14 @@
    "heightM": 1.8,
    "docks": true,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": 0.68,
+    "side": "R",
+    "orient": "along",
+    "underWing": false,
+    "minAircraftLengthM": 20
+   }
   },
   {
    "id": "catering",
@@ -51,7 +72,13 @@
    "heightM": 4.6,
    "docks": true,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": 0.12,
+    "side": "R",
+    "orient": "perp",
+    "underWing": false
+   }
   },
   {
    "id": "dispenser",
@@ -71,7 +98,13 @@
    "heightM": 3.2,
    "docks": false,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": null,
+    "side": "R",
+    "orient": "perp",
+    "underWing": true
+   }
   },
   {
    "id": "gpu",
@@ -81,7 +114,13 @@
    "heightM": 1.6,
    "docks": false,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": 0.05,
+    "side": "L",
+    "orient": "perp",
+    "underWing": false
+   }
   },
   {
    "id": "bus",
@@ -101,7 +140,13 @@
    "heightM": 3.2,
    "docks": true,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": 0.15,
+    "side": "L",
+    "orient": "perp",
+    "underWing": false
+   }
   }
  ]
 }
