@@ -146,3 +146,47 @@ Answers (2026-11-10, user):
 * D6: moot, T40 is done and the tower budget is used.
 * D7: no preview of tomorrow.
 Also (2026-11-10, user): when a task is fully green the orchestrator merges the work branch into main and pushes before reporting ready.
+
+## 2026-11-12 T58: Design Revision 4 decision batch
+
+Context: `docs/DESIGN_REVISION_4.md` needs these values, plus the open questions of T32, T48 and T50. Each value goes into `src/data` with a zod schema once answered. Money is in the game currency, at the scale of `src/data/business.json` (tower 100 000, shops 40 000 to 150 000, vehicles 12 000 to 260 000).
+
+| Id | Item | Recommended value | Reason | Mirrors |
+| --- | --- | --- | --- | --- |
+| D1 | Stand classes | GA code A, small code B, medium code C, large code E, extra large code F; GA reuses the small markings without number box | Five classes cover the roster; code D types use large | Stand sizes small to large |
+| D2 | Stand without service road | Bookable only for GA; others refused with the reason | Vehicles cannot reach it, so the turnaround would never finish | Stand not reachable warning |
+| D3 | Lead in snap reach | 60 m from the stand box edge to a centerline | About one stand depth, avoids long hidden lead ins | Stand must touch a taxiway |
+| D4 | Rotation steps | 15 degrees, Shift for free | Matches the grid tools | Rotate while placing |
+| D5 | Stand upgrades kept for MVP 1 | Jet bridge (access types 1 to 5), stairs and bus bay, hydrant pit, fixed ground power; cut preconditioned air and docking guidance to MVP 2 | Each kept upgrade changes a turnaround task | Bridges and stand equipment |
+| D6 | Upgrade costs and works days | Bridge type 1 or 2: 250 000, 4 days; type 3: 420 000, 6 days; type 4: 300 000, 5 days; type 5 bus bay: 20 000, 1 day; hydrant pit: 45 000, 2 days; fixed ground power: 30 000, 1 day | Scaled to tower and vehicle prices | Bridge purchase |
+| D7 | Fixed link reach and stairs walk limit (T48) | Reach 40 m from terminal face or pier to the rotunda; stairs boarding within 150 m walk of a gate door | A real fixed link spans one service road plus apron edge | Bridge must touch the terminal |
+| D8 | Types 3 and 4 by size (T48) | Type 3 on medium, large, extra large; type 4 on large and extra large | Small types have no usable aft door | Bridge per stand size |
+| D9 | Series frequency | 1 to 7 per week, at most one per day per series | Keeps the week readable | Flights on chosen weekdays |
+| D10 | Series contract length | 26 game weeks, renewal offered 2 weeks before expiry | Long enough to plan, short enough to churn | Contract duration |
+| D11 | Series on signing | 3 to 6 by airline scope (regional 3, national 5, international 6) | User example of five | Initial flight offers |
+| D12 | Preferred window | 4 h; outside allowed with a satisfaction penalty of 1 point per placed flight | Freedom with a cost | Requested times |
+| D13 | On time | Departure within 15 min of the slot | Industry D15 measure | Delay tracking |
+| D14 | Airline satisfaction | 0 to 100, start 60; unplaced flight minus 2, delayed flight minus 1, on time flight plus 0.5, weekly drift to 60 by 2; below 30 for 4 weeks cancels the worst series; below 15 for 8 weeks ends the contract | Simple, readable levers | Airline happiness |
+| D15 | Growth with rating | Each airport star adds 2 offered series per airline; 3 stars unlocks code D and E types; a new airline approaches every 30 days with chance 0.2 times stars | Visible reward per star | Offers grow with rating |
+| D16 | Destination network | 80 airports per seed, 150 to 4 000 km (MVP 1 scope), sizes 1 to 5, six regions, names from syllable tables | Enough variety, fits regional and national scope | Destination list |
+| D17 | Service road and lanes | Road 7 m two lane (T24), apron lane 4 m one way; speeds road 25 km/h, apron 15 km/h, last 15 m 5 km/h | Real apron practice | Vehicle roads |
+| D18 | Depot | 60 by 40 m, cost 180 000, holds 24 vehicles; extra depots stack capacity | One depot serves a small airport | Ground handling depot |
+| D19 | Fuel farm | 50 by 50 m, cost 400 000, 4 tanks of 500 m3 each; road tanker 36 m3; buy price 0.8 per liter, sell 1.0; stock out grounds flights after 60 min delay | Real tanker and tank sizes | Fuel depot |
+| D20 | Catering unit | 40 by 30 m, cost 220 000, 6 trucks | One unit per terminal area | Catering |
+| D21 | Fire station | 40 by 30 m, cost 300 000, category from the section 10 table by vehicles bought (fire vehicle 350 000); response target 180 s to each runway end at 60 km/h | ICAO three minute response | Fire department |
+| D22 | Staff center, cleaning depot, maintenance workshop | Staff center 30 by 20 m 90 000; cleaning depot 25 by 20 m 60 000; workshop 40 by 30 m 150 000 | Small buildings, low cost | Staff and service buildings |
+| D23 | Further buildings | Keep for MVP 1: none. Move to MVP 2: de-icing pad, car rental, bus station, cargo and hangars | Keeps MVP 1 lean | Other service buildings |
+| D24 | Group sizes | Business 1 (90 %) or 2; leisure 1 (20 %), 2 (45 %), 3 (15 %), 4 (20 %); family 3 to 5; budget 1 or 2; premium 1 or 2 | User: most leisure are families or pairs, business alone | Passenger groups |
+| D25 | Need growth | Hunger threshold after 3 h, thirst 2 h, toilet 2.5 h, rest after 40 min standing or walking; each member gets a seeded factor 0.7 to 1.3 | Typical airport dwell is 1.5 to 3 h, so most people feel one need | Passenger needs |
+| D26 | Budget and wants | Spend per profile from `profiles.json` times a seeded factor 0.5 to 1.5; shopping desire 0 to 1; two favourite categories | Real spread of spend | Shopping |
+| D27 | Satisfaction rollup | Member satisfaction per GAME_DESIGN section 8, cohort mean, airport rating over 30 days, stars at 20, 40, 60, 80 | Existing formula, star cuts are even | Airport rating |
+| D28 | Staff shifts | 3 shifts of 8 h, one 30 min break per shift at the staff center, skill 0 to 1 speeds service by up to 20 % | Real shift pattern | Staff shifts |
+| D29 | Tenant categories and unit sizes (T32) | Convenience 12 to 60 m2, food 40 to 300 m2, cafe 20 to 120 m2, bar 40 to 200 m2, books and gifts 20 to 80 m2, pharmacy 20 to 80 m2; duty free to MVP 2 | Existing six kinds minus duty free, plus bar | Franchise categories |
+| D30 | Applications and advertising (T32) | One application per category per 10 days, plus one per 20 000 spent on advertising per month; brand pool grows by one per 100 000 yearly passengers | Variety grows with the airport | Franchise offers |
+| D31 | Rent and sales (T32) | Base rent per m2 per day 1.2 plus 12 % of sales; existing shop fixtures become zoned units with a generated tenant on load | Both levers matter | Shop income |
+| D32 | First event deck (T50) | Rain, fog, strong wind, fuel delivery delay, vehicle breakdown, VIP flight, diversion, staff shortage; one draw per day, weight 1 each, weather weighted by climate; each with two choices; fallback is the cheaper choice after 2 game hours | Small deck, every event playable | Incidents with choices |
+| D33 | Event choice costs (T50) | Fuel delay: pay 15 000 for priority or accept 90 min delays; breakdown: repair 8 000 now or lose the vehicle 2 days; VIP: 10 000 for a dedicated stand for plus 3 airline satisfaction or decline; diversion: accept (plus 5 000 fees, uses a stand 3 h) or refuse; staff shortage: pay 1.5 wages for the day or run 25 % short | Each choice is money against service | Event choices |
+
+Recommendation: accept all.
+
+Answer: pending.
