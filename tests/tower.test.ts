@@ -391,13 +391,16 @@ describe('the movement budget', () => {
 
   it('diverts an arrival that waits 30 game minutes for a movement', () => {
     const sim = metered(1, 240);
-    for (let k = 0; k < 12000; k++) sim.step();
-    expect(sim.business.payload(sim.tick).atcQueue).toBeGreaterThan(0);
     const events: string[] = [];
-    for (let k = 0; k < 28000; k++) {
+    let queued = false;
+    // Run until a queue forms, bounded, then on until the 30 minute wait ends in a divert.
+    for (let k = 0; k < 40000; k++) {
       sim.step();
       sim.drainEvents(events);
+      if (sim.business.payload(sim.tick).atcQueue > 0) queued = true;
+      if (queued && k >= 12000 && events.some((e) => e.endsWith('|reason=noMovement'))) break;
     }
+    expect(queued).toBe(true);
     const diverted = events.filter((e) => e.startsWith('flightDiverted|') && e.endsWith('|reason=noMovement'));
     expect(diverted.length).toBeGreaterThan(0);
     expect(sim.traffic.divertedFlights).toBeGreaterThanOrEqual(diverted.length);

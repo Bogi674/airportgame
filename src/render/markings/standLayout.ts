@@ -2,7 +2,7 @@ import { SPRITE_BASES, standGeometry, type AircraftSpec } from '@data/aircraft';
 import { STAND_MARKINGS, STAND_SIZES } from '@data/index';
 import type { Stand, StandSize } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
-import { standSlot, standTypes } from '@shared/standGeom';
+import { standSlot, standTypes, stopBarOffset } from '@shared/standGeom';
 import type { StandFork } from '@shared/standFork';
 import { buildGeometry, type Pt2 } from '../sprites/geometry';
 
@@ -148,7 +148,7 @@ export function standLayout(s: Stand, fork: StandFork | null): StandLayout | nul
   const ng0 = standGeometry(types[0]).noseGearM;
   const top = bar0 + slot.far;
   const halfW = types[0].dimensions.fuselageWidthM / 2 + 1;
-  const bars = types.map((a, k) => ({ y: bar0 - k * spec.stopBarGapM, label: s.size === 'small' ? 'GA' : a.icaoType, halfW }));
+  const bars = types.map((a, k) => ({ y: bar0 + stopBarOffset(s.size, k), label: s.size === 'small' ? 'GA' : a.icaoType, halfW }));
   const layout: StandLayout = { size: s.size, origin: fork.hit, axis, right, D: fork.radius, W: spec.widthM, top, types, bars, nose0: bar0 + ng0, funnel: null };
   if (s.size !== 'small') {
     const outlines = types.flatMap((a, k) => typeOutlines(a, bars[k].y + standGeometry(a).noseGearM));
