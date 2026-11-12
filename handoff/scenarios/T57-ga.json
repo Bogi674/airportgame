@@ -1,0 +1,22 @@
+{
+  "buy": [[2880, 4880, 5720, 5640]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 1 },
+    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 190, "code": "C", "connectors": 4, "surface": "asphalt", "tier": 1 },
+    { "type": "buildGaBlock", "x": 3900, "y": 5224, "headingDeg": 180, "count": 6 },
+    { "type": "buildTower", "x": 3300, "y": 4700, "level": 2 }
+  ],
+  "camera": { "x": 3700, "y": 5230, "zoom": 2.2 },
+  "hideUi": true,
+  "actions": [
+    { "tool": "speed-8" },
+    { "wait": 90000 },
+    { "shot": "parked-overview", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 3700, "y": 5222, "zoom": 10 } },
+    { "shot": "lead-in-join", "clip": { "w": 700, "h": 500 } },
+    { "wait": 60000 },
+    { "camera": { "x": 3700, "y": 5230, "zoom": 2.2 } },
+    { "shot": "later-overview", "clip": { "w": 900, "h": 600 } }
+  ],
+  "report": ["airfield.runways.length", "airfield.stands.length", "cash"]
+}
