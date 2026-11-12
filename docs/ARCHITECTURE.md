@@ -353,3 +353,11 @@ Record every architectural choice with a date and one line of reason.
   * Overlay data is a pure read. The sim publishes it at most once per game minute to a UI subscriber while an overlay is picked. It is not a command, not saved and not hashed.
   * Walking cohorts count at their target node cell for the density overlay, so a cohort on the way to a node counts where it is going.
   * The legend scale is the current maximum over all terminals (`overlayMax`), never below 1, so the scale moves with the data.
+* 2026-11-12 T57 visual repair:
+  * Stand clearance: the stand slot must clear every other taxiway centerline by `taxiObjectM` of that taxiway's code and the lead taxiway centerline by half the code span plus the stand wingtip clearance. Stands from older saves that break it stay, keep their bookings and show a warning from a derived, unsaved list on the airfield payload.
+  * Stand slot placement math lives in `src/shared/standGeom.ts`, shared by the sim check and the painter.
+  * Every new stand paves its own slot where no apron exists, in the surface the command names, else the apron under it, else concrete (asphalt for GA blocks). Existing pavement under a slot is left as is. Apron removal clips around stand slots and taxiway pavement; the largest remainder keeps the apron id. All apron charges and refunds come from `src/shared/apronPricing.ts`, so the ghost matches the sim.
+  * The aircraft hard footprint and overhead zones are a port of `gse.py` `boundary` and `check` in `src/shared/aircraftFootprint.ts`. Buffers use a circumscribed octagon so they never shrink below the reference.
+  * GSE docks: station, side and orientation per vehicle kind in `gse.json`; dock lateral clears the hard footprint; vehicles on one side arrive in `DOCK_ORDER` sequence and leave in reverse; paths are prebuilt per type and kind in the `Gse` constructor. The order lives in code because the kind order of `gse.json` is the saved fleet index.
+  * Interim turnaround crews until T63: aircraft under 20 m get no belt loader set, GA turnarounds get a refueller only. Pending the user's confirmation.
+  * Vehicles interpolate like aircraft, only when slot id and kind match, and cast a body frame ground shadow from their footprint by their height. People draw above aircraft.
