@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AirfieldPayload } from '@shared/airfield';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
+import type { OverlayData, OverlayKind } from '@shared/overlay';
 import type { PerfReport } from '@shared/protocol';
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
@@ -29,12 +30,21 @@ interface GameState extends PerfReport {
   canRedo: boolean;
   business: BusinessPayload | null;
   terminalGrids: TerminalGrid[];
+  /** Terminal overlay data from the last publish, null until the UI subscribes and the first minute arrives. */
+  overlayData: OverlayData[] | null;
   sheet: Sheet;
   alerts: Alert[];
   pauseOpen: boolean;
   guideHidden: boolean;
   debugOverlay: boolean;
   walkOverlay: boolean;
+  /** The terminal overlay picked, one at a time. */
+  overlay: OverlayKind;
+  setOverlay(kind: OverlayKind): void;
+  /** The overlay list opened by key O or the top bar button. */
+  overlayMenuOpen: boolean;
+  toggleOverlayMenu(): void;
+  closeOverlayMenu(): void;
   quality: 'auto' | 'low' | 'medium' | 'high';
   setQuality(q: 'auto' | 'low' | 'medium' | 'high'): void;
   crash: { message: string; tick: number; seed: string; commands: unknown[] } | null;
@@ -56,6 +66,7 @@ interface GameState extends PerfReport {
   setAirfield(airfield: AirfieldPayload, canUndo: boolean, canRedo: boolean): void;
   setBusiness(b: BusinessPayload): void;
   setTerminalGrids(g: TerminalGrid[]): void;
+  setOverlayData(o: OverlayData[] | null): void;
   setSheet(sheet: Sheet): void;
   pushAlert(text: string, tone?: 'info' | 'warn'): void;
   dismissAlert(id: number): void;
@@ -88,12 +99,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   canRedo: false,
   business: null,
   terminalGrids: [],
+  overlayData: null,
   sheet: null,
   alerts: [],
   pauseOpen: false,
   guideHidden: false,
   debugOverlay: false,
   walkOverlay: false,
+  overlay: 'none',
+  overlayMenuOpen: false,
   quality: ((): 'auto' | 'low' | 'medium' | 'high' => {
     try {
       const v = localStorage.getItem('airfield.quality');
@@ -114,6 +128,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setCrash: (crash) => set({ crash }),
   toggleDebugOverlay: () => set((s) => ({ debugOverlay: !s.debugOverlay })),
   toggleWalkOverlay: () => set((s) => ({ walkOverlay: !s.walkOverlay })),
+  setOverlay: (overlay) => set({ overlay }),
+  toggleOverlayMenu: () => set((s) => ({ overlayMenuOpen: !s.overlayMenuOpen })),
+  closeOverlayMenu: () => set({ overlayMenuOpen: false }),
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
   simMsPerTick: 0,
   tickBacklog: 0,
@@ -167,6 +184,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setAirfield: (airfield, canUndo, canRedo) => set({ airfield, canUndo, canRedo }),
   setBusiness: (business) => set({ business }),
   setTerminalGrids: (terminalGrids) => set({ terminalGrids }),
+  setOverlayData: (overlayData) => set({ overlayData }),
   setSheet: (sheet) => set({ sheet }),
   pushAlert: (text, tone = 'info') => set((s) => ({ alerts: [...s.alerts.slice(-19), { id: alertId++, text, tone }] })),
   dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),

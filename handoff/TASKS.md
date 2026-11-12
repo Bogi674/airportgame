@@ -19,6 +19,7 @@ The Milestone column names the `docs/ROADMAP.md` milestone whose criteria the ta
 | T05 | M3 | [Sprite port: features and layer order](tasks/T05-sprite-features.md) | L |  | done | 042c89a |
 | T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | done | 0dff9ca |
 | T08 | M3 | [Network conflict sets and property tests](tasks/T08-conflict-sets.md) | M |  | done | 08b181c |
+| T55 | none | GA traffic: self arriving GA flights, landing and parking fees only | M |  | done | uncommitted |
 
 ## Phase 1. Repair
 
@@ -42,7 +43,7 @@ M4 no longer waits for the sprite and calibration tasks T05 to T07 (user decisio
 | T13 | M4 | [Service nodes and queues](tasks/T13-service-nodes.md) | M | T12 | done |  |
 | T14 | M4 | [Cohorts and the departure journey](tasks/T14-cohorts-departure.md) | L | T13 | done | f6725ed 2733abe a847a52 633bfcd 353bb1e 9d25380 d820b9e 6cc1808 59a233e 7214967 |
 | T15 | M4 | [People rendering from the atlas](tasks/T15-people-atlas.md) | L | T14 | done |  |
-| T16 | M4 | [Density, queue and walking distance overlays](tasks/T16-terminal-overlays.md) | M | T14 | todo |  |
+| T16 | M4 | [Density, queue and walking distance overlays](tasks/T16-terminal-overlays.md) | M | T14 | done |  |
 | T54 | M4 | People walk and dwell along routes with spacing | M | T15 | todo |  |
 | T17 | M4 | [Satisfaction and airport rating](tasks/T17-satisfaction.md) | M | T14 | todo |  |
 | T18 | M4 | [Stress: 20 000 cohorts](tasks/T18-cohort-stress.md) | S | T14 | todo |  |

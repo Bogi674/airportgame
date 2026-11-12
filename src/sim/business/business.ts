@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
-import { AcState, FlState } from '../ops/traffic';
+import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { maxStageKm, takeoffWeight } from '../ops/performance';
 import { BUSINESS, SURFACE_SPEC } from '@data/index';
 import {
@@ -34,6 +34,7 @@ import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { buildWalkGraph, updateWalkGraph, WALK_NODE, type WalkGraph } from '../terminal/walkGraph';
 import { nearestNode, walkDistance } from '../terminal/walkDistance';
+import { buildOverlayData, emptyOverlay, type OverlayData, type OverlayPeople } from '../terminal/overlays';
 import { buildServiceNodes, rebuildServiceNodes, serviceJoin, serviceLoad, serviceSave, serviceUpdate, serviceWait, type ServiceNodes, type ServiceSave } from '../terminal/serviceNodes';
 import type { Rng } from '../rng';
 import type { SiteSpec } from '../world/site';
@@ -392,6 +393,17 @@ export class Business {
     return i < 0 ? null : this.serviceNodes[i]!;
   }
 
+  /**
+   * Read only overlay of one terminal building: people per cell, queue and wait per service node, walking distance
+   * per gate. The cohorts are passed in because they depend on the business. Changes no sim state, RNG or hash.
+   */
+  overlayData(grid: number, tick: number, out: OverlayData, people: OverlayPeople): OverlayData {
+    const g = this.grids[grid];
+    const sn = this.serviceNodes[grid];
+    if (!g || !sn) return emptyOverlay(out, grid);
+    return buildOverlayData(out, grid, g.id, g, sn, people, this, tick);
+  }
+
   /** Walking distance in metres between two walk nodes of a grid, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
   walkDistance(grid: number, fromNode: number, toNode: number): number {
     for (let i = 0; i < this.grids.length; i++) {
@@ -521,13 +533,21 @@ export class Business {
     return checkIn && security && gate;
   }
 
+  /** Row label for a flight: the airline name, GA for general aviation, Test for the test flights. */
+  private airlineLabel(al: number): string {
+    if (al >= 0) return this.airlines[al].name;
+    return al === GA_AIRLINE ? 'GA' : 'Test';
+  }
+
   private onDocked(f: number): void {
     const t = this.traffic.fType[f];
     const spec = AIRCRAFT[t];
     const m = this.mult(f);
+    // General aviation pays landing and parking only, so it carries no passengers.
+    const ga = this.traffic.fAirline[f] === GA_AIRLINE;
     this.host.book('landing', Math.round((spec.weights.mtowKg / 1000) * BUSINESS.fees.landingPerTonne * m));
-    let pax = this.paxFor(f);
-    if (this.needsTerminal(f)) {
+    let pax = ga ? 0 : this.paxFor(f);
+    if (!ga && this.needsTerminal(f)) {
       const cap = this.arrCapacity();
       if (cap <= 0) {
         this.lostToday += pax;
@@ -539,7 +559,7 @@ export class Business {
         pax = served;
       }
     }
-    this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerArriving * m));
+    if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerArriving * m));
     this.paxToday += pax;
     this.flightPax[f] = pax;
     this.flightDockedAt[f] = this.traffic.nowTick;
@@ -552,15 +572,16 @@ export class Business {
 
   private onPushback(f: number): void {
     const m = this.mult(f);
-    let pax = this.paxFor(f);
-    if (this.needsTerminal(f)) {
+    const ga = this.traffic.fAirline[f] === GA_AIRLINE;
+    let pax = ga ? 0 : this.paxFor(f);
+    if (!ga && this.needsTerminal(f)) {
       // Only passengers who boarded through the terminal fly. The rest miss the flight.
       const served = Math.min(pax, this.boarded ? this.boarded(f) : 0);
       this.lostToday += pax - served;
       this.satisfaction += (served / Math.max(1, pax) - this.satisfaction) * 0.1;
       pax = served;
     }
-    this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
+    if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
     this.paxToday += pax;
     this.flightsToday++;
     const hours = Math.max(0.25, (this.traffic.nowTick - this.flightDockedAt[f]) / (TICKS_PER_MINUTE * 60));
@@ -785,7 +806,7 @@ export class Business {
       const eta = f >= 0 ? minuteOfDay(t.fEta[f]) : 0;
       const turnMin = f >= 0 ? Math.round(t.fTurn[f] / TICKS_PER_MINUTE) : 0;
       rows.push({
-        airline: al >= 0 ? this.airlines[al].name : 'Test',
+        airline: this.airlineLabel(al),
         type: AIRCRAFT[t.type[i]].icaoType,
         status: names[t.state[i]],
         stand: stand ? stand.number : '',
@@ -806,7 +827,7 @@ export class Business {
       const eta = minuteOfDay(t.fEta[f]);
       const turnMin = Math.round(t.fTurn[f] / TICKS_PER_MINUTE);
       rows.push({
-        airline: al >= 0 ? this.airlines[al].name : 'Test',
+        airline: this.airlineLabel(al),
         type: AIRCRAFT[t.fType[f]].icaoType,
         status: 'scheduled',
         stand: '',

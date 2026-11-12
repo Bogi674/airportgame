@@ -16,6 +16,7 @@ import { MapView } from './MapView';
 import { Menu } from './Menu';
 import { Minimap } from './Minimap';
 import { ObjectPanel } from './ObjectPanel';
+import { OverlayLegend } from './OverlayLegend';
 import { ParcelPanel } from './ParcelPanel';
 import { PauseMenu } from './PauseMenu';
 import { exportToFile, importFromFile, loadSave, putSave } from './saves';
@@ -76,6 +77,7 @@ export function App() {
           if ((prev === null || prev.atcQueue === 0) && b.atcQueue > 0) s.pushAlert(tFormat('alert.atcOverload', { n: String(b.atcQueue) }), 'warn');
         },
         onTerminals: (g) => useGameStore.getState().setTerminalGrids(g),
+        onOverlay: (b) => useGameStore.getState().setOverlayData(b),
         onQueryResult: (id, data) => {
           const req = walkQuery.current;
           if (req && req.id === id && data !== null) rendererRef.current?.setWalkGraph(data as WalkGraphView, req.grid);
@@ -223,6 +225,28 @@ export function App() {
     client.query(id, 'walkGraph', { grid: grid.id });
   }, [renderer, client, store.walkOverlay, selection, store.terminalGrids]);
 
+  // The terminal overlay feed runs only while an overlay is picked.
+  useEffect(() => {
+    client.setOverlaySub(store.overlay !== 'none');
+  }, [client, store.overlay]);
+
+  // Theme tokens feed the overlay colour ramp. They are read again when the theme attribute changes.
+  useEffect(() => {
+    if (!renderer) return;
+    const readTheme = (): void => {
+      const cs = getComputedStyle(document.documentElement);
+      renderer.setOverlayTheme(cs.getPropertyValue('--ok').trim(), cs.getPropertyValue('--warn').trim(), cs.getPropertyValue('--bad').trim(), cs.getPropertyValue('--muted').trim());
+    };
+    readTheme();
+    const observer = new MutationObserver(readTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, [renderer]);
+
+  useEffect(() => {
+    renderer?.setOverlay(store.overlay, store.overlayData, store.terminalGrids);
+  }, [renderer, store.overlay, store.overlayData, store.terminalGrids]);
+
   useEffect(() => {
     renderer?.setSelectedParcel(store.selectedParcel);
   }, [renderer, store.site, store.selectedParcel]);
@@ -276,9 +300,11 @@ export function App() {
         e.preventDefault();
         client.send({ type: 'redo' });
       } else if (e.key === 'p' || e.key === 'P') s.toggleParcelOverlay();
+      else if ((e.key === 'o' || e.key === 'O') && !e.ctrlKey && !e.metaKey && !e.altKey) s.toggleOverlayMenu();
       else if (e.key === 'Escape') {
         const tool = useToolStore.getState();
-        if (s.sheet) s.setSheet(null);
+        if (s.overlayMenuOpen) s.closeOverlayMenu();
+        else if (s.sheet) s.setSheet(null);
         else if (s.pauseOpen) resume();
         else if (tool.tool === 'select' && tool.selection === null) pause();
       } else if (e.key === '0') setSpeed(0);
@@ -340,6 +366,7 @@ export function App() {
           <ConfirmPopup />
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
+          <OverlayLegend />
           <CrashPanel onMenu={() => {
             useGameStore.getState().setCrash(null);
             useGameStore.getState().setError(null);

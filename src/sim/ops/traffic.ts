@@ -7,7 +7,7 @@ import { foldF64, foldInts, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type BlockWindow, type StandFacts, type StandRefusal } from '@shared/flightBlock';
-import { TICKS_PER_MINUTE } from '@shared/business';
+import { minuteOfDay, TICKS_PER_MINUTE } from '@shared/business';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { AIRFIELD, BUSINESS, PROFILES } from '@data/index';
@@ -45,6 +45,17 @@ const STAND_BLOCK_BUFFER_TICKS = STAND_BLOCK_BUFFER_MIN * TICKS_PER_MINUTE;
 
 export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround: 4, Pushback: 5, TaxiOut: 6, Holding: 7, LineUp: 8, Takeoff: 9, Backtrack: 10 } as const;
 export const FlState = { Free: 0, Scheduled: 1, Inbound: 2, OnGround: 3, Departing: 4, Done: 5 } as const;
+/** Airline id of a general aviation flight. It has no airline, so every `>= 0` airline check skips it. */
+export const GA_AIRLINE = -2;
+/** GA arrivals come in the daytime span only, from 06:00 to 20:00 game time. */
+const GA_DAY_START_MIN = 6 * 60;
+const GA_DAY_END_MIN = 20 * 60;
+/** Gap between GA arrivals when one stand is free, in ticks (two game hours). The gap shrinks with more free stands. */
+const GA_DAY_SPAN_TICKS = 72000;
+const GA_MIN_GAP_TICKS = 3000;
+/** Wait before the next GA check when no type or stand fits, in ticks. */
+const GA_RETRY_TICKS = 6000;
+const GA_LEAD_TICKS = 1500;
 
 const ROLE_TURNAROUND_MIN: Record<string, number> = { ga: 15, commuter: 20, regionalTurboprop: 30, regionalJet: 35, narrowbody: 45, widebody: 75 };
 
@@ -228,6 +239,11 @@ export class Traffic {
   private tick = 0;
   private readonly rng: Rng;
   private readonly weatherRng: Rng;
+  private readonly gaRng: Rng;
+  /** Tick the next general aviation arrival check runs at. */
+  private gaNextTick = 0;
+  /** Types that land on a runway and fit a GA stand. Reused, never reallocated. */
+  private readonly gaTypes: number[] = [];
 
   constructor(
     private readonly site: TrafficSite,
@@ -236,6 +252,7 @@ export class Traffic {
   ) {
     this.rng = rng.fork('traffic');
     this.weatherRng = rng.fork('weather');
+    this.gaRng = rng.fork('ga');
     this.bits = [new Uint32Array(this.x.buffer), new Uint32Array(this.y.buffer), new Uint32Array(this.speed.buffer)];
     this.updateWind();
   }
@@ -515,6 +532,45 @@ export class Traffic {
     this.scheduleArrival(t, this.tick + 1500, this.rng.int(0, 7), this.turnaroundTicks(t));
   }
 
+  /** Fills out with the GA types that land on a runway and fit a GA eligible stand. */
+  private gaTypesInto(out: number[]): void {
+    out.length = 0;
+    for (let t = 0; t < AIRCRAFT.length; t++) {
+      if (AIRCRAFT[t].role !== 'ga') continue;
+      let lands = false;
+      for (let r = 0; r < this.af.runways.length && !lands; r++) lands = checkLanding(AIRCRAFT[t], this.af.runways[r], 0.95).ok;
+      if (!lands) continue;
+      let fits = false;
+      for (let s = 0; s < this.af.stands.length && !fits; s++) fits = this.gaEligible(s) && this.standFits(t, s);
+      if (fits) out.push(t);
+    }
+  }
+
+  /** Called every 10 ticks. Schedules general aviation arrivals in daytime, paced by the free GA stands. */
+  updateGa(tick: number): void {
+    if (tick < this.gaNextTick) return;
+    const min = minuteOfDay(tick);
+    if (min < GA_DAY_START_MIN || min >= GA_DAY_END_MIN) {
+      this.gaNextTick = tick + GA_RETRY_TICKS;
+      return;
+    }
+    let free = 0;
+    for (let s = 0; s < this.af.stands.length; s++) if (this.standOwner[s] === -1 && this.gaEligible(s)) free++;
+    let pending = 0;
+    for (let f = 0; f < MAX_FLIGHTS; f++) {
+      if (this.fAirline[f] === GA_AIRLINE && (this.fState[f] === FlState.Scheduled || this.fState[f] === FlState.Inbound)) pending++;
+    }
+    const n = Math.max(0, free - pending);
+    this.gaTypesInto(this.gaTypes);
+    if (this.gaTypes.length === 0 || n === 0) {
+      this.gaNextTick = tick + GA_RETRY_TICKS;
+      return;
+    }
+    const t = this.gaTypes[this.gaRng.int(0, this.gaTypes.length - 1)];
+    this.scheduleArrival(t, tick + GA_LEAD_TICKS, this.gaRng.int(0, 7), this.turnaroundTicks(t), GA_AIRLINE);
+    this.gaNextTick = tick + Math.max(GA_MIN_GAP_TICKS, Math.floor((GA_DAY_SPAN_TICKS / n) * (0.5 + this.gaRng.next())));
+  }
+
   /** Called every 10 ticks. */
   updateFlights(tick: number): void {
     this.tick = tick;
@@ -641,12 +697,25 @@ export class Traffic {
     return st.closed !== true && refuseUsage(st.usage ?? 'any', AIRCRAFT[t]) === null;
   }
 
+  /** True when a stand may take general aviation: a GA usage stand, or an untagged small remote stand with a taxi node. */
+  private gaEligible(s: number): boolean {
+    const st = this.af.stands[s];
+    if (this.net.standNode[s] < 0) return false;
+    const usage = st.usage ?? 'any';
+    return usage === 'ga' || (usage === 'any' && st.size === 'small' && st.type === 'remote');
+  }
+
+  /** True when a GA flight may not use stand s. Other flights are never barred by this rule. */
+  private gaBarred(f: number, s: number): boolean {
+    return f >= 0 && this.fAirline[f] === GA_AIRLINE && !this.gaEligible(s);
+  }
+
   private pickStand(t: number, fromNode: number, f = -1): number {
     // A stand the player or the scheduler assigned goes first. Without auto scheduling it is the only choice.
     if (f >= 0 && this.fStand[f] >= 0) {
       // A flight with a stand set waits for that stand and never takes another one (T41 R22).
       const s = this.standIndexOf(this.fStand[f]);
-      if (s >= 0 && this.standOwner[s] === -1 && this.net.standNode[s] >= 0 && this.standFits(t, s) && this.standAllows(t, s)) {
+      if (s >= 0 && this.standOwner[s] === -1 && this.net.standNode[s] >= 0 && !this.gaBarred(f, s) && this.standFits(t, s) && this.standAllows(t, s)) {
         const n = this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
         if (n >= 0) return s;
       }
@@ -657,7 +726,7 @@ export class Traffic {
     let bestScore = Infinity;
     for (let s = 0; s < this.af.stands.length; s++) {
       if (this.standOwner[s] !== -1 || this.net.standNode[s] < 0) continue;
-      if (!this.standFits(t, s) || !this.standAllows(t, s)) continue;
+      if (this.gaBarred(f, s) || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
       const waste = codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t]);
       const light = CODES_OF[t] === 'A' || CODES_OF[t] === 'B';
       const gaBonus = light && this.af.stands[s].size === 'small' ? -1 : 0;
@@ -733,7 +802,7 @@ export class Traffic {
       let best = -1;
       let bestScore = Infinity;
       for (let s = 0; s < this.af.stands.length; s++) {
-        if (this.net.standNode[s] < 0 || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
+        if (this.net.standNode[s] < 0 || this.gaBarred(f, s) || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
         if (this.clashes(s, from, to)) continue;
         const score = (codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t])) * 100 + s * 0.01;
         if (score < bestScore) {
@@ -1989,12 +2058,13 @@ export class Traffic {
       autoStands: this.autoStands,
       windFromDeg: this.windFromDeg, windKt: this.windKt, testPerHour: this.testPerHour, testTurnScale: this.testTurnScale,
       tick: this.tick, weather: this.weather, rng: this.rng.getState(), weatherRng: this.weatherRng.getState(),
+      gaNextTick: this.gaNextTick, gaRng: this.gaRng.getState(),
     };
   }
 
   /** Restores state on a traffic object whose airfield has already been loaded. */
   loadState(raw: unknown): void {
-    const o = raw as { arrays: Record<string, string>; completed: number; diverted: number; deadlocks: number; windFromDeg: number; windKt: number; testPerHour: number; testTurnScale: number; tick: number; weather: 'clear' | 'rain' | 'fog' | 'wind'; rng: number; weatherRng: number };
+    const o = raw as { arrays: Record<string, string>; completed: number; diverted: number; deadlocks: number; windFromDeg: number; windKt: number; testPerHour: number; testTurnScale: number; tick: number; weather: 'clear' | 'rain' | 'fog' | 'wind'; rng: number; weatherRng: number; gaNextTick?: number; gaRng?: number };
     const dst = this.arrays();
     const ctors: Record<string, new (b: ArrayBuffer) => never> = {};
     for (const k of Object.keys(dst)) {
@@ -2015,6 +2085,9 @@ export class Traffic {
     this.weather = o.weather;
     this.rng.setState(o.rng);
     this.weatherRng.setState(o.weatherRng);
+    // Saves from before GA traffic have no GA state, so the check starts now and the stream keeps its fresh seed.
+    this.gaNextTick = o.gaNextTick ?? 0;
+    if (o.gaRng !== undefined) this.gaRng.setState(o.gaRng);
     this.rebuildActive();
   }
 
@@ -2054,6 +2127,8 @@ export class Traffic {
     acc = foldInts(acc, this.movHead, this.movHead.length);
     acc = foldInts(acc, this.movCount, this.movCount.length);
     acc = foldInts(acc, this.movStart, this.movStart.length);
+    acc = foldU32(acc, this.gaNextTick);
+    acc = foldU32(acc, this.gaRng.getState());
     return acc;
   }
 

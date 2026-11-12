@@ -129,3 +129,67 @@ test('the walk overlay toggle shows the walking graph of the selected terminal',
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   expect(errors).toEqual([]);
 });
+
+test('key O opens the overlay list, one overlay at a time with a legend chip', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  const button = page.getByTestId('overlay-menu');
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
+
+  await page.keyboard.press('o');
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.getByTestId('overlay-density').click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByTestId('overlay-legend')).toContainText('Passenger density');
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+
+  await button.click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.getByTestId('overlay-queue').click();
+  await expect(page.getByTestId('overlay-legend')).toContainText('Queues and wait');
+  await expect(page.getByTestId('overlay-legend')).not.toContainText('Passenger density');
+
+  await page.getByTestId('overlay-legend-close').click();
+  await expect(page.getByTestId('overlay-legend')).toHaveCount(0);
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
+  expect(errors).toEqual([]);
+});
+
+test('Escape closes the overlay list without pausing the game', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  await page.keyboard.press('o');
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByTestId('pause-menu')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('the overlay legend stays clear of the build menu and the minimap', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  await page.keyboard.press('o');
+  await page.getByTestId('overlay-density').click();
+  await page.getByTestId('tool-terminal').click();
+  const menu = page.getByTestId('build-menu');
+  await expect(menu).toBeVisible();
+
+  const legend = page.getByTestId('overlay-legend');
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('no viewport');
+  const inside = async (): Promise<boolean> => {
+    const b = await legend.boundingBox();
+    return b !== null && b.x >= 0 && b.y >= 0 && b.x + b.width <= viewport.width && b.y + b.height <= viewport.height;
+  };
+  const meets = async (testId: string): Promise<boolean> => {
+    const a = await legend.boundingBox();
+    const b = await page.getByTestId(testId).boundingBox();
+    if (!a || !b) return true;
+    return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  };
+  await expect.poll(inside).toBe(true);
+  await expect.poll(() => meets('build-menu')).toBe(false);
+  await expect.poll(() => meets('minimap')).toBe(false);
+  expect(errors).toEqual([]);
+});

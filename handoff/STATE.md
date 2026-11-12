@@ -1,10 +1,10 @@
 # STATE.md
 
-Where the project stands (2026-11-11). Update this file when a task changes what is true here.
+Where the project stands (2026-11-12). Update this file when a task changes what is true here.
 
 ## Health
 
-* 377 tests in 35 files pass. Lint, type check and the rules checker are clean.
+* 580 tests in 49 files pass. Lint, type check and the rules checker are clean.
 * CI (`.github/workflows/ci.yml`) runs lint, tests, the offline build, stress and Playwright in Chromium, Firefox and WebKit. It is green.
 * Stress, mean and p99 ms per tick (budgets: small 1 ms, medium 4, large 8, busy50 4, terminal640 4):
 
@@ -16,7 +16,7 @@ Where the project stands (2026-11-11). Update this file when a task changes what
 | busy50 | 0.028 | 0.93 |
 | terminal640 | 0.005 | 0.048 |
 
-* Save format version 13 (`src/sim/save/migrations.ts`).
+* Save format version 14 (`src/sim/save/migrations.ts`).
 
 ## What works (player view)
 
@@ -33,14 +33,15 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * **Construction grid**: a 2 m grid along the nearest runway or taxiway is offered by proximity. Aprons, stands, GA blocks, terminal foundations and towers snap to it, and the runway and taxiway tools use it as their lowest priority snap after their own node, end and segment snaps. Each tool has a grid or free toggle, with Alt as the override.
 * **Terminals** of any size on a 2 m grid that grows in 64 m chunks: foundations, floors, walls, glass, doors, zones, check in, security, baggage belt, seating, toilets and six shop types. The ATC room fixture is retired: it keeps its saved index, grants no coverage and cannot be built. Room validation stops departures when security can be bypassed.
 * **Flight offers and stand management**: each signed airline offers its rotations for the day in a read only sheet, with a fixed aircraft type and turnaround per rotation and a movements per hour bar against the tower budget. A flight goes onto a stand by dragging its block onto a stand row, which shows green or red and refuses a drop the stand cannot take, or by picking a stand in the sheet. A stand chosen for a rotation is remembered and applied each morning, and an automation toggle assigns the flights the player has not placed.
+* **General aviation**: GA flights arrive on their own in daytime when a runway, a connected taxiway and a connected eligible stand exist. They pay landing and parking only, and the board shows them as GA.
 * **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, deadlock detection with an overlay.
 * **Passengers**: departing cohorts by profile, journey curb to gate, boarding hold, missed flights, snapshot sample.
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
-* **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, saves to IndexedDB with autosave, export and import, crash panel.
+* **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, terminal overlays (key O lists passenger density, queues and wait, and walking distance to gates, one at a time, with a legend chip), saves to IndexedDB with autosave, export and import, crash panel.
 
 ## What does not exist yet
 
-Next task: T16 density, queue and walking distance overlays (depends on T14, done). T15 people rendering from the atlas is done.
+Next task: T54 people walk and dwell along routes (depends on T15, done), the next todo row in `handoff/TASKS.md`. T16 overlays are done.
 
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 

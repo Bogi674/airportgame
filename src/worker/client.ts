@@ -2,6 +2,7 @@ import SimWorker from './sim.ts?worker&inline';
 import type { Command } from '@sim/commands';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
 import type { AirfieldMessage, FromSimMessage, GameOptions, OwnershipPayload, PerfReport, ToSimMessage } from '@shared/protocol';
+import type { OverlayData } from '@shared/overlay';
 import type { SitePayload } from '@shared/site';
 import { createSnapshotViews, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SNAPSHOT_INTERVAL_MS, type Speed } from '@shared/time';
@@ -30,6 +31,8 @@ export interface ClientEvents {
   onAirfield?(msg: AirfieldMessage): void;
   onBusiness?(b: BusinessPayload): void;
   onTerminals?(grids: TerminalGrid[]): void;
+  /** Terminal overlay data of every building, published at most once per game minute while subscribed. */
+  onOverlay?(buildings: OverlayData[]): void;
   onSaved?(id: number, data: string, tick: number): void;
   onQueryResult?: (id: number, data: unknown) => void;
 }
@@ -74,6 +77,11 @@ export class SimClient {
     this.post({ type: 'setSpeed', multiplier });
   }
 
+  /** Subscribes or unsubscribes the terminal overlay feed. Not a command, so it never enters the command log. */
+  setOverlaySub(on: boolean): void {
+    this.post({ type: 'overlaySub', on });
+  }
+
   /** Queues a command. Commands are sent in one batch per animation frame. */
   send(cmd: Command): void {
     this.outbox.push(cmd);
@@ -113,6 +121,9 @@ export class SimClient {
         break;
       case 'queryResult':
         this.events.onQueryResult?.(msg.id, msg.data);
+        break;
+      case 'overlayData':
+        this.events.onOverlay?.(msg.buildings);
         break;
       case 'perf':
         this.events.onPerf?.(msg.report);

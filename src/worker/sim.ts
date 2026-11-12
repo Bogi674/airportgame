@@ -1,4 +1,5 @@
 import { SnapshotPool } from '@shared/bufferPool';
+import type { OverlayData } from '@shared/overlay';
 import type { FromSimMessage, ToSimMessage } from '@shared/protocol';
 import { createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import {
@@ -10,6 +11,7 @@ import {
 import { Sim } from '@sim/sim';
 import { toPayload } from '@sim/world/site';
 import type { WorkerScope } from './scope';
+import { OverlayPublisher } from './overlayPublisher';
 
 const scope = self as unknown as WorkerScope<ToSimMessage, FromSimMessage>;
 
@@ -31,6 +33,9 @@ let msAccumulator = 0;
 let ticksMeasured = 0;
 const eventScratch: string[] = [];
 let loopHandle: ReturnType<typeof setTimeout> | null = null;
+const overlayPublisher = new OverlayPublisher();
+/** One reusable overlay per terminal building, filled in place each publish. */
+const overlayScratch: OverlayData[] = [];
 
 function viewsFor(buffer: ArrayBuffer): SnapshotViews {
   let v = viewCache.get(buffer);
@@ -67,6 +72,39 @@ function postBusinessIfDirty(): void {
   if (grids) scope.postMessage({ type: 'staticData', kind: 'terminals', payload: grids });
   const payload = sim.takeBusiness();
   if (payload) scope.postMessage({ type: 'staticData', kind: 'business', payload });
+}
+
+function blankOverlay(): OverlayData {
+  return { building: 0, w: 0, h: 0, density: new Uint16Array(0), nodeCell: new Int32Array(0), nodeQueue: new Uint16Array(0), nodeWaitS: new Uint16Array(0), gateCell: new Int32Array(0), gateDistM: new Uint16Array(0) };
+}
+
+/** A copy of an overlay that owns its arrays, so the scratch buffers stay in the worker. */
+function copyOverlay(o: OverlayData): OverlayData {
+  return {
+    building: o.building,
+    w: o.w,
+    h: o.h,
+    density: o.density.slice(),
+    nodeCell: o.nodeCell.slice(),
+    nodeQueue: o.nodeQueue.slice(),
+    nodeWaitS: o.nodeWaitS.slice(),
+    gateCell: o.gateCell.slice(),
+    gateDistM: o.gateDistM.slice(),
+  };
+}
+
+/** Publishes the terminal overlays of every building when the feed is due. Nothing is built while it is off. */
+function postOverlayIfDue(): void {
+  if (!sim || !overlayPublisher.due(sim.tick)) return;
+  const count = sim.terminalCount();
+  const buildings: OverlayData[] = [];
+  for (let i = 0; i < count; i++) {
+    const out = sim.overlayData(i, overlayScratch[i] ?? blankOverlay());
+    overlayScratch[i] = out;
+    buildings.push(copyOverlay(out));
+  }
+  scope.postMessage({ type: 'overlayData', tick: sim.tick, buildings });
+  overlayPublisher.mark(sim.tick);
 }
 
 function postEvents(): void {
@@ -108,6 +146,7 @@ function loop(): void {
     while (tickAccumulator >= 1 && performance.now() - start < MAX_SLICE_MS) {
       const t0 = performance.now();
       sim.step();
+      postOverlayIfDue();
       msAccumulator += performance.now() - t0;
       ticksMeasured++;
       tickAccumulator -= 1;
@@ -183,6 +222,11 @@ scope.onmessage = (event) => {
         break;
       case 'setSpeed':
         speed = msg.multiplier;
+        break;
+      case 'overlaySub':
+        // Publishes at once, even while paused, so an overlay opened in pause shows data.
+        overlayPublisher.setOn(msg.on);
+        postOverlayIfDue();
         break;
       case 'save':
         if (sim) scope.postMessage({ type: 'saved', id: msg.id, data: JSON.stringify(sim.serialize()), tick: sim.tick });

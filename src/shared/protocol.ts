@@ -1,6 +1,7 @@
 import type { Command } from '@sim/commands';
 import type { AirfieldPayload } from './airfield';
 import type { BusinessPayload, TerminalGrid } from './business';
+import type { OverlayData } from './overlay';
 import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
@@ -47,7 +48,9 @@ export type ToSimMessage =
   | { type: 'commands'; list: Command[] }
   | { type: 'setSpeed'; multiplier: Speed }
   | { type: 'query'; id: number; kind: string; args: unknown }
-  | { type: 'returnBuffer'; buffer: ArrayBuffer };
+  | { type: 'returnBuffer'; buffer: ArrayBuffer }
+  /** Subscribes the terminal overlay feed. Not a sim command, so it never enters the command log. */
+  | { type: 'overlaySub'; on: boolean };
 
 export interface PerfReport {
   simMsPerTick: number;
@@ -68,6 +71,7 @@ export type FromSimMessage =
   | { type: 'staticData'; kind: 'business'; payload: BusinessPayload }
   | { type: 'staticData'; kind: 'terminals'; payload: TerminalGrid[] }
   | { type: 'queryResult'; id: number; data: unknown }
+  | { type: 'overlayData'; tick: number; buildings: OverlayData[] }
   | { type: 'events'; list: string[] }
   | { type: 'perf'; report: PerfReport }
   | { type: 'error'; tick: number; seed: string; message: string; commands: Command[] };

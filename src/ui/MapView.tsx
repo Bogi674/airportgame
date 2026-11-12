@@ -81,6 +81,7 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     const onMove = (e: PointerEvent): void => {
       pointerX = e.offsetX;
       pointerY = e.offsetY;
+      renderer.setPointer(e.offsetX, e.offsetY);
       lastMods = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey };
       if (panning) cam.panByScreen(e.offsetX - lastX, e.offsetY - lastY);
       else if (rotating) cam.rotateAt(canvas.clientWidth / 2, canvas.clientHeight / 2, (e.offsetX - lastX) * ROTATE_RATE);

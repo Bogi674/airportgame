@@ -93,6 +93,22 @@ describe('saves', () => {
     });
   });
 
+  it('a version 13 save migrates to the current version and restores with the GA clock at zero', () => {
+    const sim = prepared();
+    for (let t = 0; t < 300; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      traffic: { gaNextTick?: unknown; gaRng?: unknown };
+    };
+    data.version = 13;
+    delete data.traffic.gaNextTick;
+    delete data.traffic.gaRng;
+    expect(migrate(data).version).toBe(SAVE_VERSION);
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    expect(() => c.restore(data)).not.toThrow();
+    expect(c.tick).toBe(sim.tick);
+  });
+
   it('a version 12 save migrates to the current version and restores with empty queues', () => {
     const sim = prepared();
     for (let t = 0; t < 300; t++) sim.step();

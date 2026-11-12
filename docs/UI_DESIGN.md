@@ -21,7 +21,7 @@ Menus, HUD, panels and interaction. Goal: modern, calm and uncluttered, but ever
 
 ## 3. Design tokens
 
-Defined once in `src/ui/tokens.css`. Dark theme is the default. A light theme uses the same names.
+Defined once in `src/ui/theme.css`. Dark theme is the default. A light theme uses the same names.
 
 | Token | Dark | Light | Use |
 | --- | --- | --- | --- |
@@ -99,7 +99,7 @@ Esc in game opens a centered small panel: Resume, Save, Load, Settings, Exit to 
 |l |                                                                 |  is       |
 |  |                                                                 |  selected)|
 |  |                                                                 |           |
-|  |  [overlay legend chip]                            [minimap]     |           |
+|  |                   [overlay legend chip]           [minimap]     |           |
 +--+-----------[ context bar, only while a tool is active ]---------+-----------+
 ```
 
@@ -156,7 +156,7 @@ Bottom right, 200 by 200 px, collapsible. Shows owned land, pavement, buildings 
 
 ### Overlays
 
-Key O opens a compact list. One overlay at a time plus optional labels. Active overlay shows a legend chip at the bottom left with a scale and a close button. Overlays: passenger density, queues, walking distance to gates, wind coverage, runway strip and obstacle surfaces, wingtip envelopes, taxi routes and flows, congestion, vehicle activity, pavement condition, land parcels and prices, rent per m2, tenant sales, staffing coverage, baggage load, fire response time.
+Key O, or the overlay button in the top bar, opens a compact list anchored under that button. Rows: Off, passenger density, queues and wait, walking distance to gates. Picking a row sets the one overlay shown and closes the list. Escape closes the list. The active overlay shows a legend chip at the bottom centre of the map, 16 px above the bottom edge, or 8 px above the build menu or context bar when either is open, with the overlay name, a 16 step ramp bar in the ok, warn and bad tokens, the scale from 0 to the current maximum with its unit (people per cell, s, m) and a close button. The scale is the current maximum over all terminals, so it changes with the data. Overlay data refreshes once per game minute while an overlay is picked. Overlays not yet built: wind coverage, runway strip and obstacle surfaces, wingtip envelopes, taxi routes and flows, congestion, vehicle activity, pavement condition, land parcels and prices, rent per m2, tenant sales, staffing coverage, baggage load, fire response time.
 
 ### Alerts and toasts
 
@@ -198,7 +198,7 @@ Key O opens a compact list. One overlay at a time plus optional labels. Active o
 | Ctrl (hold) | Apron tool: cut a piece out |
 | Space | Pause and resume |
 | 1 to 4 | Game speed |
-| O | Overlays |
+| O | Overlay list (one overlay at a time), Escape closes it |
 | B | Last build category |
 | F | Find object or flight |
 | N | Align view to runway, press again for north up |
