@@ -2,6 +2,7 @@ import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
 import { checkRunwayObstacles } from '@shared/obstacles';
 import type { GameOptions } from '@shared/protocol';
+import type { OverlayData } from '@shared/overlay';
 import { Gse, MAX_VEHICLES } from './vehicles/gse';
 import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
@@ -354,6 +355,16 @@ export class Sim {
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),
     }));
+  }
+
+  /** Number of terminal buildings. Overlay grid indexes run from 0 to this count minus one. */
+  terminalCount(): number {
+    return this.business.grids.length;
+  }
+
+  /** Read only overlay of one terminal building at the current tick. Changes no sim state. */
+  overlayData(gridIndex: number, out: OverlayData): OverlayData {
+    return this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
   }
 
   /** True once per airfield change. */

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AirfieldPayload } from '@shared/airfield';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
+import type { OverlayData } from '@shared/overlay';
 import type { PerfReport } from '@shared/protocol';
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
@@ -29,6 +30,8 @@ interface GameState extends PerfReport {
   canRedo: boolean;
   business: BusinessPayload | null;
   terminalGrids: TerminalGrid[];
+  /** Terminal overlay data from the last publish, null until the UI subscribes and the first minute arrives. */
+  overlayData: OverlayData[] | null;
   sheet: Sheet;
   alerts: Alert[];
   pauseOpen: boolean;
@@ -56,6 +59,7 @@ interface GameState extends PerfReport {
   setAirfield(airfield: AirfieldPayload, canUndo: boolean, canRedo: boolean): void;
   setBusiness(b: BusinessPayload): void;
   setTerminalGrids(g: TerminalGrid[]): void;
+  setOverlayData(o: OverlayData[] | null): void;
   setSheet(sheet: Sheet): void;
   pushAlert(text: string, tone?: 'info' | 'warn'): void;
   dismissAlert(id: number): void;
@@ -88,6 +92,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   canRedo: false,
   business: null,
   terminalGrids: [],
+  overlayData: null,
   sheet: null,
   alerts: [],
   pauseOpen: false,
@@ -167,6 +172,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setAirfield: (airfield, canUndo, canRedo) => set({ airfield, canUndo, canRedo }),
   setBusiness: (business) => set({ business }),
   setTerminalGrids: (terminalGrids) => set({ terminalGrids }),
+  setOverlayData: (overlayData) => set({ overlayData }),
   setSheet: (sheet) => set({ sheet }),
   pushAlert: (text, tone = 'info') => set((s) => ({ alerts: [...s.alerts.slice(-19), { id: alertId++, text, tone }] })),
   dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),

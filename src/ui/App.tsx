@@ -76,6 +76,7 @@ export function App() {
           if ((prev === null || prev.atcQueue === 0) && b.atcQueue > 0) s.pushAlert(tFormat('alert.atcOverload', { n: String(b.atcQueue) }), 'warn');
         },
         onTerminals: (g) => useGameStore.getState().setTerminalGrids(g),
+        onOverlay: (b) => useGameStore.getState().setOverlayData(b),
         onQueryResult: (id, data) => {
           const req = walkQuery.current;
           if (req && req.id === id && data !== null) rendererRef.current?.setWalkGraph(data as WalkGraphView, req.grid);
