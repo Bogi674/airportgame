@@ -21,6 +21,53 @@ import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, C
 
 const MAX_BACKING = 4096;
 
+/** Gap in CSS pixels between the cursor and a build readout box. */
+const READOUT_GAP_PX = 16;
+
+/**
+ * Top left corner of a build readout box that follows the cursor. The box sits right and below the
+ * cursor, flips to its left past the right viewport edge and above the cursor past the bottom edge.
+ * All values share one unit. The result is written into `out`, so no object is allocated per frame.
+ */
+export function readoutPosition(
+  cursorX: number,
+  cursorY: number,
+  boxW: number,
+  boxH: number,
+  viewportW: number,
+  viewportH: number,
+  out: { x: number; y: number },
+): { x: number; y: number } {
+  out.x = cursorX + READOUT_GAP_PX + boxW > viewportW ? cursorX - READOUT_GAP_PX - boxW : cursorX + READOUT_GAP_PX;
+  out.y = cursorY + READOUT_GAP_PX + boxH > viewportH ? cursorY - READOUT_GAP_PX - boxH : cursorY + READOUT_GAP_PX;
+  return out;
+}
+
+/**
+ * Top left corner of a build readout placed under a snap tip box, with the same left edge and `gap` between
+ * them. Past the bottom edge the readout goes above the tip instead. Past the right edge its right edge aligns
+ * with the tip's right edge, kept inside the viewport. The readout always lies fully above or fully below the
+ * tip's vertical span, so the two never intersect. All values share one unit, written into `out`.
+ */
+export function readoutBelowTip(
+  tipX: number,
+  tipY: number,
+  tipW: number,
+  tipH: number,
+  gap: number,
+  boxW: number,
+  boxH: number,
+  viewportW: number,
+  viewportH: number,
+  out: { x: number; y: number },
+): { x: number; y: number } {
+  const below = tipY + tipH + gap;
+  out.y = below + boxH > viewportH ? tipY - gap - boxH : below;
+  const x = tipX + boxW > viewportW ? tipX + tipW - boxW : tipX;
+  out.x = Math.max(0, Math.min(x, viewportW - boxW));
+  return out;
+}
+
 /** Construction grid line strokes: screen pixel widths and opacities, and the smallest drawn gap in CSS pixels. */
 const GRID_MINOR_PX = 1;
 const GRID_MAJOR_PX = 1.5;
@@ -48,6 +95,9 @@ export class Renderer {
   private pendingSelected = -1;
   private showParcels = false;
   private ghost: Ghost | null = null;
+  /** Last pointer position over the canvas in CSS pixels. `known` is false until the first move. */
+  private readonly pointer = { x: 0, y: 0, known: false };
+  private readonly readoutAt = { x: 0, y: 0 };
   private guide: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
   private grid: ConstructionGrid | null = null;
   private readonly gridPoint = { x: 0, y: 0 };
@@ -221,6 +271,13 @@ export class Renderer {
 
   setGhost(ghost: Ghost | null): void {
     this.ghost = ghost;
+  }
+
+  /** Cursor position in CSS pixels over the canvas. The build readout follows it. */
+  setPointer(x: number, y: number): void {
+    this.pointer.x = x;
+    this.pointer.y = y;
+    this.pointer.known = true;
   }
 
   setParcelOverlayVisible(visible: boolean): void {
@@ -600,16 +657,39 @@ export class Renderer {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const sx = a * g.label.x + cc * g.label.y + e;
       const sy = b * g.label.x + d * g.label.y + f;
-      ctx.font = `${12 * this.dpr}px system-ui, sans-serif`;
-      const w = ctx.measureText(g.label.text).width + 12 * this.dpr;
-      // With a snap tooltip the readout moves up and right, clear of the snap ring.
-      const ox = (g.tip ? 34 : 14) * this.dpr;
-      const oy = g.tip ? -34 * this.dpr : 0;
+      const k = this.dpr;
+      // The snap tip box is drawn at +34/+44 px with a height of 28 px, so its top sits at +30 px.
+      let tipBox: { x: number; y: number; w: number; h: number } | null = null;
+      if (g.tip) {
+        ctx.font = `bold ${13 * k}px system-ui, sans-serif`;
+        tipBox = {
+          x: a * g.tip.x + cc * g.tip.y + e + 34 * k,
+          y: b * g.tip.x + d * g.tip.y + f + 30 * k,
+          w: ctx.measureText(g.tip.text).width + 24 * k,
+          h: 28 * k,
+        };
+      }
+      ctx.font = `${12 * k}px system-ui, sans-serif`;
+      const w = ctx.measureText(g.label.text).width + 12 * k;
+      const h = 20 * k;
+      // The box follows the cursor, flipped to stay inside the viewport. Before the first pointer move it stays at the ghost point.
+      let boxX = sx + 14 * k;
+      let boxY = sy - 10 * k;
+      if (tipBox) {
+        // With a snap tip the readout sits under the tip box, never over it.
+        readoutBelowTip(tipBox.x, tipBox.y, tipBox.w, tipBox.h, 6 * k, w, h, this.canvas.width, this.canvas.height, this.readoutAt);
+        boxX = this.readoutAt.x;
+        boxY = this.readoutAt.y;
+      } else if (this.pointer.known) {
+        const at = readoutPosition(this.pointer.x, this.pointer.y, w / k, h / k, this.camera.width, this.camera.height, this.readoutAt);
+        boxX = at.x * k;
+        boxY = at.y * k;
+      }
       ctx.fillStyle = 'rgba(16,22,28,0.88)';
-      ctx.fillRect(sx + ox, sy + oy - 10 * this.dpr, w, 20 * this.dpr);
+      ctx.fillRect(boxX, boxY, w, h);
       ctx.fillStyle = g.valid ? '#e6f7ff' : '#ffb4ad';
       ctx.textBaseline = 'middle';
-      ctx.fillText(g.label.text, sx + ox + 6 * this.dpr, sy + oy);
+      ctx.fillText(g.label.text, boxX + 6 * k, boxY + h / 2);
     }
   }
 
