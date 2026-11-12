@@ -32,3 +32,19 @@ The current game is visually clean on its own: no stand whose parked aircraft br
 * R6. Draw order per `docs/ART_AND_ASSETS.md` section 3. Every vehicle has a ground shadow that touches its footprint. Vehicles use the same interpolation as aircraft so they never lag or float.
 * R7. Guards: a property test that no vehicle footprint intersects the hull, wing or engine footprint at any tick of a turnaround for every MVP 1 type (D3 exceptions only); a test that every lead in joins with continuous markings; Playwright screenshot tests of the fixed scenes per stand size.
 * R8. Before shots `handoff/work/T57-before-*.png` and after shots `handoff/work/T57-after-*.png`, inspected for overlap.
+
+## Apron tool repair (user, 2026-11-12, added to T57)
+
+Decisions:
+
+* D4. A new stand paves its own apron: exactly the stand box, in the surface picked in the stand context bar, charged at the normal apron price per m2. The player connects it to a taxiway or taxilane with the apron tool.
+* D5. Partial removal clips around anything built on the apron (stands, taxilanes, service roads), so built objects never lose pavement. The removed m2 is refunded at the demolish share.
+* D6. Extend: click an apron to select it, then draw a polygon or rectangle. The new area must touch that apron, takes its surface and merges into it. Refused with a reason when it does not touch.
+* D7. Apron pavement always paints below markings, stands, lanes and roads, whatever the build order. Any aprons that touch, stand aprons included, merge into one surface with no seam line.
+
+Requirements:
+
+* R9. Apron remove tool with polygon and rectangle selection (D5).
+* R10. Apron extend tool (D6).
+* R11. Apron always under every object and merged without seams (D7).
+* R12. Every new stand, GA blocks included, paves its stand box as apron (D4), merged per D7.
