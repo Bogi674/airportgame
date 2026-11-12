@@ -448,6 +448,10 @@ export class Renderer {
    * distance and labels the metres. Labels only show once a cell is at least OVERLAY_LABEL_MIN_PX on screen, so they
    * never overlap.
    */
+  /** Label font, rebuilt only when the device pixel ratio changes. */
+  private overlayFont = '';
+  private overlayFontDpr = 0;
+
   private drawOverlay(a: number, b: number, cc: number, d: number, e: number, f: number): void {
     const data = this.overlayData;
     if (!data || this.overlayRamp.length === 0) return;
@@ -496,7 +500,11 @@ export class Renderer {
     const ctx = this.ctx;
     const g = this.overlayGrids[d.building]!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.font = `${OVERLAY_LABEL_PX * this.dpr}px system-ui, sans-serif`;
+    if (this.overlayFontDpr !== this.dpr) {
+      this.overlayFontDpr = this.dpr;
+      this.overlayFont = `${OVERLAY_LABEL_PX * this.dpr}px system-ui, sans-serif`;
+    }
+    ctx.font = this.overlayFont;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = OVERLAY_LABEL_COLOR;
