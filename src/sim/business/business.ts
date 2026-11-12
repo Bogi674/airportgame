@@ -34,6 +34,7 @@ import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { buildWalkGraph, updateWalkGraph, WALK_NODE, type WalkGraph } from '../terminal/walkGraph';
 import { nearestNode, walkDistance } from '../terminal/walkDistance';
+import { buildOverlayData, emptyOverlay, type OverlayData, type OverlayPeople } from '../terminal/overlays';
 import { buildServiceNodes, rebuildServiceNodes, serviceJoin, serviceLoad, serviceSave, serviceUpdate, serviceWait, type ServiceNodes, type ServiceSave } from '../terminal/serviceNodes';
 import type { Rng } from '../rng';
 import type { SiteSpec } from '../world/site';
@@ -390,6 +391,17 @@ export class Business {
   serviceTable(grid: number): ServiceNodes | null {
     const i = this.gridIndex(grid);
     return i < 0 ? null : this.serviceNodes[i]!;
+  }
+
+  /**
+   * Read only overlay of one terminal building: people per cell, queue and wait per service node, walking distance
+   * per gate. The cohorts are passed in because they depend on the business. Changes no sim state, RNG or hash.
+   */
+  overlayData(grid: number, tick: number, out: OverlayData, people: OverlayPeople): OverlayData {
+    const g = this.grids[grid];
+    const sn = this.serviceNodes[grid];
+    if (!g || !sn) return emptyOverlay(out, grid);
+    return buildOverlayData(out, grid, g.id, g, sn, people, this, tick);
   }
 
   /** Walking distance in metres between two walk nodes of a grid, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
