@@ -415,6 +415,11 @@ export function ObjectPanel({ send }: Props) {
             {tFormat('inspector.standSurfaceRefused', { types: AIRCRAFT.filter((a) => standRefusal(x, a) === 'surface').map((a) => a.icaoType).join(', ') })}
           </div>
         )}
+        {af.clearanceBreaches?.includes(x.id) && (
+          <div style="color:var(--warn)" data-testid="stand-clearance-breach">
+            {t('inspector.stand.clearanceBreach')}
+          </div>
+        )}
         <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
           {t('inspector.pushback')}
           <select data-testid="stand-pushback" value={x.pushback} onChange={(e) => send({ type: 'setStandProps', id: x.id, pushback: (e.target as HTMLSelectElement).value as PushbackDir })}>

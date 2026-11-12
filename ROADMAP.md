@@ -65,7 +65,7 @@ Goal: the current game is visually clean before new mechanics land on it.
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
 | T58 | Design revision 4 and its decision batch |  |  | done |
-| T57 | Visual repair: stand clearance against taxiways, continuous lead in paint, vehicles outside the aircraft footprint with shadows, apron remove and extend tools, stands that pave their own box |  |  | doing, on branch `claude/pensive-goodall-l2cdl5` |
+| T57 | Visual repair: stand clearance against taxiways, continuous lead in paint, vehicles outside the aircraft footprint with shadows, apron remove and extend tools, stands that pave their own box |  |  | done fc6109e d7a327b eff1eda 09798a2 16e5468 c064f8c 7ec0edc cf7887c ccb2eb8 b55fc1a. Leftovers in `handoff/BACKLOG.md` |
 | T69 | Housekeeping after T57 lands: fold its result into this file, delete the legacy files of section 7, finish the cleanup of the files that were frozen for it |  | T57 | todo |
 
 Exit: no parked aircraft breaks a taxiway, no vehicle is drawn through an aircraft, aprons can be cut and extended, and this file is the only plan in the repository.

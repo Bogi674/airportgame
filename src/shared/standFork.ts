@@ -20,6 +20,8 @@ export const PUSHBACK_EXTENSION_M = 28;
 const ARC_STEP_M = 1;
 
 export interface StandFork {
+  /** Index in the lines the fork was found on: the lead in taxiway. */
+  lane: number;
   /** Where the stand axis meets the taxilane centerline. */
   hit: Pt;
   /** Unit vector from the taxilane toward the stand. */
@@ -43,7 +45,9 @@ export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lin
   let bestT = Infinity;
   let tx = 0;
   let ty = 0;
-  for (const l of lines) {
+  let lane = -1;
+  for (let li = 0; li < lines.length; li++) {
+    const l = lines[li];
     for (let i = 1; i < l.pts.length; i++) {
       const a = l.pts[i - 1];
       const b = l.pts[i];
@@ -54,6 +58,7 @@ export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lin
       bestT = t;
       tx = (b.x - a.x) / len;
       ty = (b.y - a.y) / len;
+      lane = li;
     }
   }
   if (bestT === Infinity) return null;
@@ -80,6 +85,7 @@ export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lin
   // A shorter arc runs straight on along the axis to the common fork point.
   const withStem = (arc: { pts: Pt[]; td: number }): Pt[] => (arc.td < forkDist - 1e-6 ? [fork, ...arc.pts] : arc.pts);
   return {
+    lane,
     hit,
     axis,
     fork,

@@ -10,6 +10,7 @@ import surfacesJson from './surfaces.json';
 import {
   airfieldCodesSchema,
   businessSchema,
+  gseSchema,
   paintSchema,
   peopleSchema,
   profilesSchema,
@@ -18,6 +19,7 @@ import {
   surfacesSchema,
   type AirfieldCodes,
   type BusinessData,
+  type GseData,
   type PaintData,
   type PeopleData,
   type ProfilesData,
@@ -45,17 +47,8 @@ export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
 /** Stand marking dimensions. */
 export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
 
-export interface GseSpec {
-  id: string;
-  name: string;
-  lengthM: number;
-  widthM: number;
-  heightM: number;
-  docks: boolean;
-  articulated: boolean;
-  towedBy: string | null;
-}
+export type GseSpec = GseData['vehicles'][number];
 
 /** Ground vehicle catalog at real size. The index in this list is the vehicle kind in snapshots. */
-export const GSE: readonly GseSpec[] = (gseJson as { vehicles: GseSpec[] }).vehicles;
+export const GSE: readonly GseSpec[] = gseSchema.parse(gseJson).vehicles;
 export const GSE_INDEX: Record<string, number> = Object.fromEntries(GSE.map((v, i) => [v.id, i]));

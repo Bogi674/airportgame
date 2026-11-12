@@ -20,6 +20,7 @@ The Milestone column names the `docs/ROADMAP.md` milestone whose criteria the ta
 | T06 | M3 | [Sprite liveries and tiers 0 to 3](tasks/T06-sprite-tiers.md) | M | T05 | done | 0dff9ca |
 | T08 | M3 | [Network conflict sets and property tests](tasks/T08-conflict-sets.md) | M |  | done | 08b181c |
 | T55 | none | GA traffic: self arriving GA flights, landing and parking fees only | M |  | done | 090ba8a 7d74438 |
+| T57 | M5 | [Visual repair: stand clearance, GSE paths, ground contact, apron tools](tasks/T57-visual-repair.md) | L |  | done | fc6109e d7a327b eff1eda 09798a2 16e5468 c064f8c 7ec0edc cf7887c ccb2eb8 b55fc1a |
 
 ## Phase 1. Repair
 

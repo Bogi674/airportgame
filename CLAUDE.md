@@ -145,7 +145,9 @@ One task per session, then a fresh session.
 8. Close the task: record decisions in `docs/ARCHITECTURE.md` section 12 (one dated line each, with the reason), set the row in `ROADMAP.md` to `done` with the commit hashes, update section 3 of `ROADMAP.md` if the player can do something new, and delete the spec and the work notes.
 9. Small commits named by feature, for example `taxi network: block reservations`. The body explains why, in full sentences. Work on the branch the user names, never force push.
 
-If the same check fails three times after three different fixes, stop and ask the user. If a task turns out bigger than its spec, finish the smallest slice that meets one criterion, commit it, and add a new row to `ROADMAP.md` for the rest.
+If the same check fails three times after three different fixes, stop and ask the user.
+
+Bug triage (user, 2026-11-12): a **blocker** (breaks play, a hard rule, saves or determinism) is always fixed before commit. A **major** bug (a wrong number shown to the player or a visible defect) gets at most two fix rounds; if it stays and the task meets about 98% of its intent with no blocker, tell the user the details and the implication, and the user decides between pass with notice and more fixing. A **minor** bug (no effect on play) is skipped. Passed and skipped bugs are logged in `handoff/BACKLOG.md` with the task id and the implication. If a task turns out bigger than its spec, finish the smallest slice that meets one criterion, commit it, and add a new row to `ROADMAP.md` for the rest.
 
 ## Never
 

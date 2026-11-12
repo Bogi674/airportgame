@@ -3,10 +3,13 @@ import { AIRCRAFT } from '@data/aircraft';
 import { STAND_MARKINGS, STAND_SIZES } from '@data/index';
 import { STAND_SIZES_ORDER, type Stand, type StandSize } from '@shared/airfield';
 import { standFork, standForks } from '@shared/standFork';
-import { standRefusal } from '@shared/standSizes';
+import { standSlot } from '@shared/standGeom';
+import { sizeCode, standRefusal } from '@shared/standSizes';
+import type { Command } from '@sim/commands';
+import { Sim } from '@sim/sim';
 import { EdgeKind, TaxiNetwork } from '@sim/airfield/network';
 import { cornerPolygons, polygonDistance, standLayout, typeOutlines } from '@render/markings/standLayout';
-import { ownedSim, run } from './helpers';
+import { OPTIONS, ownedSim, run } from './helpers';
 
 /** A straight east west taxilane at y = 0 and a stand north of it, nose pointing north (away from it). */
 const lane = [{ pts: [{ x: -500, y: 0 }, { x: 500, y: 0 }] }];
@@ -127,5 +130,86 @@ describe('stand forks in the taxi network', () => {
     const m = net.route(tl, net.standNode[0], 'C', 0, 0xff, edges, dirs, 40);
     expect(m).toBe(2);
     expect(net.edgeKind[edges[0]]).toBe(EdgeKind.StandFork);
+  });
+});
+
+describe('stand box taxiway clearance (T57 slice 1)', () => {
+  const slot = standSlot('medium');
+  if (!slot) throw new Error('no slot for medium stands');
+  /** A code C taxiway from x 3500 to 4500 at the given y. */
+  const taxiC = (y: number): Command => ({ type: 'buildTaxiway', points: [{ x: 3500, y }, { x: 4500, y }], code: 'C', kind: 'taxiway', surface: 'asphalt', tier: 2 });
+  /** Concrete apron around a medium stand at x 4000 that runs from 25 m north of its stop point to 5 m south. */
+  const apronAt = (y: number): Command => ({ type: 'buildApron', polygon: [{ x: 3850, y: y - 25 }, { x: 4150, y: y - 25 }, { x: 4150, y: y + 5 }, { x: 3850, y: y + 5 }], surface: 'concrete', tier: 2 });
+  /** One medium stand, nose north (heading 0), its stop point at (4000, y). */
+  const mediumAt = (y: number): Command => ({ type: 'buildStands', x: 4000, y, headingDeg: 0, count: 1, spacingM: 45, standType: 'remote', size: 'medium' });
+  // The slot runs from the nose limit (far, north of the stop point) back toward the lead taxiway (near, south
+  // of the stop point when negative). With heading 0 the stop point at y `sy` gives the slot y from sy - far to sy - near.
+  /** Stop point y that puts the slot's near edge `d` metres from the lead taxiway at y 5000. */
+  const stopForLeadGap = (d: number): number => 5000 + slot.near - d;
+
+  it('refuses a medium stand whose box is 10 m from a code C taxiway it does not lead into', () => {
+    // Lead taxiway at y 5000. The other taxiway sits 10 m north of the slot's far edge.
+    const sy = 4880;
+    const sim = ownedSim();
+    run(sim, taxiC(5000), taxiC(sy - slot.far - 10), apronAt(sy));
+    expect(run(sim, mediumAt(sy))).toEqual(['stand.taxiwayClearance']);
+    expect(sim.airfield.data.stands).toHaveLength(0);
+  });
+
+  it('builds the same medium stand when that taxiway is 30 m from its box', () => {
+    const sy = 4880;
+    const sim = ownedSim();
+    run(sim, taxiC(5000), taxiC(sy - slot.far - 30), apronAt(sy));
+    expect(run(sim, mediumAt(sy))).toEqual([]);
+    expect(sim.airfield.data.stands).toHaveLength(1);
+  });
+
+  it('refuses a medium stand leading into a code C taxiway with its box 15 m from the centerline', () => {
+    // Required distance for the lead taxiway: code C span 36 / 2 plus medium wingtip clearance 4.5 = 22.5 m.
+    const sy = stopForLeadGap(15);
+    const sim = ownedSim();
+    run(sim, taxiC(5000), apronAt(sy));
+    expect(run(sim, mediumAt(sy))).toEqual(['stand.taxiwayClearance']);
+    expect(sim.airfield.data.stands).toHaveLength(0);
+  });
+
+  it('builds a medium stand leading into a code C taxiway with its box 25 m from the centerline', () => {
+    const sy = stopForLeadGap(25);
+    const sim = ownedSim();
+    run(sim, taxiC(5000), apronAt(sy));
+    expect(run(sim, mediumAt(sy))).toEqual([]);
+    expect(sim.airfield.data.stands).toHaveLength(1);
+  });
+
+  it('refuses a stop point 30 m from the lead taxiway when the slot reaches back across it', () => {
+    // A box placed forward of the stop point would clear at 30 m. The real slot reaches back past the stop
+    // point, so its near edge lies on the taxiway side of the required 22.5 m.
+    expect(30 + slot.near).toBeLessThan(22.5);
+    const sy = 4970;
+    const sim = ownedSim();
+    run(sim, taxiC(5000), apronAt(sy));
+    expect(run(sim, mediumAt(sy))).toEqual(['stand.taxiwayClearance']);
+  });
+});
+
+describe('restored stands that break a taxiway clearance (T57 slice 2)', () => {
+  const slot = standSlot('medium');
+  const taxi = (y: number): Command => ({ type: 'buildTaxiway', points: [{ x: 3500, y }, { x: 4500, y }], code: 'C', kind: 'taxiway', surface: 'asphalt', tier: 2 });
+
+  it('a save with an illegal stand loads flagged, stays bookable and hashes the same', () => {
+    if (!slot) throw new Error('no slot for a medium stand');
+    // Lead taxiway at y 5000, and a second taxiway 10 m beyond the slot's far edge, which the stand must not break.
+    const sy = 4880;
+    const sim = ownedSim();
+    run(sim, taxi(5000), taxi(sy - slot.far - 10));
+    // Injected past makeStands, as an old save would hold it.
+    const illegal: Stand = { id: 900, cost: 0, number: '900', x: 4000, y: sy, headingDeg: 0, type: 'remote', size: 'medium', code: sizeCode('medium'), surface: 'concrete', pushback: 'auto' };
+    sim.airfield.data.stands.push(illegal);
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as unknown;
+    const loaded = new Sim('GOLDEN-0001', OPTIONS);
+    loaded.restore(data);
+    expect(loaded.airfield.data.clearanceBreaches).toEqual([900]);
+    expect(loaded.stateHash()).toBe(sim.stateHash());
+    expect(run(loaded, { type: 'setStandProps', id: 900, pushback: 'left' })).toEqual([]);
   });
 });

@@ -192,6 +192,8 @@ export interface AirfieldPayload {
   towers?: Tower[];
   /** Obstacle surface results per runway, derived from the terrain, land and buildings. */
   obstacles?: RunwayObstacles[];
+  /** Stands whose parked box breaks a taxiway clearance, ascending by id. Derived from the layout, never saved. Missing means none. */
+  clearanceBreaches?: number[];
 }
 
 export const EMPTY_AIRFIELD: AirfieldPayload = { version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [] };

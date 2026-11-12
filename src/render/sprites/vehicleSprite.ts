@@ -40,8 +40,6 @@ export function vehicleSprite(kind: number): VehicleSprite {
     ctx.translate(w / PPM / 2, h / PPM / 2);
     const L = spec.lengthM;
     const W = spec.widthM;
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.fillRect(-L / 2 + 0.25, -W / 2 + 0.25, L, W);
     ctx.fillStyle = COLORS[spec.id] ?? '#aaa';
     ctx.fillRect(-L / 2, -W / 2, L, W);
     // Cab at the front and a dark roof line so the heading reads at low zoom.

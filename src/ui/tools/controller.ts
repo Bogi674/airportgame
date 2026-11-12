@@ -1,7 +1,8 @@
-import { apronContains } from '@shared/apronGeom';
+import { apronContains, touches } from '@shared/apronGeom';
+import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standRowPricing, type RemovePlan } from '@shared/apronPricing';
 import { AIRFIELD, BUSINESS, PAINT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { sizeCode } from '@shared/standSizes';
-import { codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type Taxiway } from '@shared/airfield';
+import { codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -34,7 +35,7 @@ import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { formatMoney, formatNumber } from '../format';
 import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
-import { GRID_TOOLS, snapModeOf, useToolStore } from '../stores/toolStore';
+import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
 import { fixtureEdit, footprintRect, isTwoCell, nextFixtureRot } from './fixtureRot';
 
 export interface Mods {
@@ -51,6 +52,15 @@ interface Deps {
   setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void;
   setCursor(cursor: string): void;
   setGuide(from: Pt | null, to: Pt | null): void;
+}
+
+/** The tools that draw an apron piece: build, remove (cut out) and extend the selected apron. */
+const isApronTool = (t: Tool): boolean => t === 'apron' || t === 'apronRemove' || t === 'apronExtend';
+
+/** The surface a stand of this size is paved in: the picked one when the size allows it, else the size's first. */
+export function pickedStandSurface(picked: Surface, size: StandSize): Surface {
+  const list = STAND_SIZES[size].surfaces;
+  return list.includes(picked) ? picked : list[0];
 }
 
 const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(dx, -dy) * 180) / Math.PI) % 360) + 360) % 360;
@@ -489,7 +499,7 @@ export class ToolController {
     } else if (tool === 'runway') {
       this.start = this.snap(p, null, mods, false);
       this.dragging = true;
-    } else if (tool === 'apron' && useToolStore.getState().apronMode === 'rect') {
+    } else if (isApronTool(tool) && useToolStore.getState().apronMode === 'rect' && (tool !== 'apronExtend' || this.extendTarget())) {
       this.rectFrame = null;
       this.start = this.rectCorner(p, this.apronFrame(p, mods), mods);
       this.dragging = true;
@@ -522,9 +532,12 @@ export class ToolController {
         this.previewParallel(p);
         break;
       case 'apron':
-        if (st.apronMode === 'rect') {
+      case 'apronRemove':
+      case 'apronExtend':
+        if (st.tool === 'apronExtend' && !this.extendTarget()) this.show({ valid: true, shapes: [] }, null, 'hint.apronExtendPick');
+        else if (st.apronMode === 'rect') {
           if (this.dragging && this.start) this.previewApronRect(p, mods);
-          else this.show({ valid: true, shapes: [] }, null, 'hint.apronRect');
+          else this.show({ valid: true, shapes: [] }, null, this.apronHint(true));
         } else this.previewApron(p, mods);
         break;
       case 'stands':
@@ -574,14 +587,20 @@ export class ToolController {
         this.previewTaxiway(p, mods, st.tool === 'taxilane');
         break;
       }
-      case 'apron': {
+      case 'apron':
+      case 'apronRemove':
+      case 'apronExtend': {
+        if (st.tool === 'apronExtend' && !this.extendTarget()) {
+          this.pickExtend(p);
+          break;
+        }
         if (st.apronMode === 'rect') {
           this.commitApronRect(p, mods);
           break;
         }
         const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
         this.pts.push(this.apronCorner(p, prev, mods));
-        this.cutting = mods.ctrl === true;
+        this.cutting = this.apronCuts(mods);
         this.previewApron(p, mods);
         break;
       }
@@ -628,7 +647,7 @@ export class ToolController {
       this.up(this.cursor, { shift: false, alt: false });
       return;
     }
-    if (tool === 'taxiway' || tool === 'taxilane' || tool === 'apron') this.finish();
+    if (tool === 'taxiway' || tool === 'taxilane' || isApronTool(tool)) this.finish();
   }
 
   /** Drops the gesture in progress and keeps the tool. */
@@ -641,7 +660,7 @@ export class ToolController {
   finish(): void {
     const tool = useToolStore.getState().tool;
     if (tool === 'taxiway' || tool === 'taxilane') this.commitTaxiway(tool === 'taxilane');
-    else if (tool === 'apron') this.commitApron();
+    else if (isApronTool(tool)) this.commitApron();
   }
 
   key(e: KeyboardEvent): boolean {
@@ -662,7 +681,7 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
-    if ((e.key === 'a' || e.key === 'A') && st.tool === 'apron' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if ((e.key === 'a' || e.key === 'A') && isApronTool(st.tool) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       this.cancel();
       st.set({ apronMode: st.apronMode === 'rect' ? 'polygon' : 'rect' });
       return true;
@@ -1302,21 +1321,94 @@ export class ToolController {
 
   // Apron ----------------------------------------------------------------
 
+  /** The apron the extend tool adds to: the selected one, or null until the player picks it. */
+  private extendTarget(): Apron | null {
+    const sel = useToolStore.getState().selection;
+    if (sel?.kind !== 'apron') return null;
+    return this.af.aprons.find((a) => a.id === sel.id) ?? null;
+  }
+
+  /** The extend tool's first click: the apron under the pointer becomes the one to extend. */
+  private pickExtend(p: Pt): void {
+    const a = this.af.aprons.find((x) => apronContains(x, p.x, p.y));
+    if (!a) {
+      this.show({ valid: true, shapes: [] }, { code: 'apron.pickNone' }, 'hint.apronExtendPick');
+      return;
+    }
+    useToolStore.getState().set({ selection: { kind: 'apron', id: a.id }, problem: null });
+    this.refreshSelection();
+    this.show({ valid: true, shapes: [] }, null, 'hint.apronExtend');
+  }
+
+  /** Whether a drawn apron piece cuts: the remove tool always does, the apron tool while Ctrl is held. */
+  private apronCuts(mods: Mods): boolean {
+    return useToolStore.getState().tool === 'apronRemove' || mods.ctrl === true;
+  }
+
+  private apronHint(rect: boolean): string {
+    const tool = useToolStore.getState().tool;
+    if (tool === 'apronRemove') return rect ? 'hint.apronRemoveRect' : 'hint.apronRemove';
+    if (tool === 'apronExtend') return rect ? 'hint.apronExtendRect' : 'hint.apronExtend';
+    return rect ? 'hint.apronRect' : 'hint.apron';
+  }
+
   /** Free polygon apron (docs/DESIGN_REVISION_2.md section 4): live edge lengths and area, Ctrl cuts. */
   private previewApron(p: Pt, mods: Mods): void {
     const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
     const q = this.apronCorner(p, prev, mods);
     const pts = [...this.pts, q];
-    const cut = mods.ctrl === true || this.cutting;
-    const shapes: GhostShape[] = pts.length >= 3 ? [{ k: 'poly', pts }] : [{ k: 'strip', pts, w: 1 }];
-    let problem: Problem | null = null;
-    let area = 0;
-    if (pts.length >= 3) {
-      area = polygonArea(pts);
-      if (!cut) problem = area < 400 ? { code: 'apronTooSmall', args: { min: 400 } } : this.landProblem({ polygon: pts });
-    }
     const tags = pts.slice(1).map((b, i) => ({ x: (pts[i].x + b.x) / 2, y: (pts[i].y + b.y) / 2, text: `${Math.round(Math.hypot(b.x - pts[i].x, b.y - pts[i].y))} m` }));
-    this.show({ valid: problem === null, shapes, tone: 'snap', tags, label: { x: q.x, y: q.y, text: this.apronReadout(area, cut) } }, problem, 'hint.apron');
+    this.showApron(pts, q, this.apronCuts(mods) || this.cutting, tags, this.apronHint(false));
+  }
+
+  /** The live preview of an apron piece: its outline, readout, and the reason it cannot be drawn. */
+  private showApron(pts: Pt[], anchor: Pt, cut: boolean, tags: { x: number; y: number; text: string }[], hint: string): void {
+    const st = useToolStore.getState();
+    const target = this.extendTarget();
+    const area = pts.length >= 3 ? polygonArea(pts) : 0;
+    const problem = pts.length >= 3 ? this.apronProblem(pts, area, cut, target) : null;
+    const shapes: GhostShape[] = pts.length >= 3 ? [{ k: 'poly', pts }] : [{ k: 'strip', pts, w: 1 }];
+    this.show(
+      {
+        valid: problem === null,
+        shapes,
+        // A legal cut reads amber, distinct from the red of an invalid placement.
+        tone: st.tool === 'apronRemove' ? 'remove' : 'snap',
+        tags,
+        label: pts.length >= 3 ? { x: anchor.x, y: anchor.y, text: this.apronLabel(pts, area, cut, target) } : undefined,
+      },
+      problem,
+      hint,
+    );
+  }
+
+  private apronProblem(pts: Pt[], area: number, cut: boolean, target: Apron | null): Problem | null {
+    if (useToolStore.getState().tool === 'apronExtend') {
+      if (!target || !touches(target, { polygon: roundApronPoly(pts) })) return { code: 'apron.extendNotTouching' };
+      return this.landProblem({ polygon: pts });
+    }
+    if (cut) return this.cutPlan(pts).pieces.length > 0 ? null : { code: 'nothingThere' };
+    if (area < 400) return { code: 'apronTooSmall', args: { min: 400 } };
+    return this.landProblem({ polygon: pts });
+  }
+
+  private apronLabel(pts: Pt[], area: number, cut: boolean, target: Apron | null): string {
+    const st = useToolStore.getState();
+    if (st.tool === 'apronRemove') {
+      const plan = this.cutPlan(pts);
+      return tFormat('ghost.apronRemove', { area: formatNumber(Math.round(plan.area)), refund: formatMoney(Math.round(plan.refund)) });
+    }
+    if (st.tool === 'apronExtend' && target) {
+      // Only the new area is paid for, as the sim charges it.
+      const merge = mergePiece(this.af.aprons, roundApronPoly(pts), target.surface, extendUnitPrice(target));
+      return tFormat('ghost.apron', { area: formatNumber(Math.round(merge.added)), cost: formatMoney(merge.cost) });
+    }
+    return this.apronReadout(area, cut);
+  }
+
+  /** The removal a cut of this piece would make, priced by the sim's own plan. */
+  private cutPlan(pts: Pt[]): RemovePlan<Apron> {
+    return removePlan(this.af.aprons, roundApronPoly(pts), keptPavement(this.af.stands, this.af.taxiways));
   }
 
   private apronReadout(area: number, cut: boolean): string {
@@ -1328,13 +1420,21 @@ export class ToolController {
   }
 
   private commitApron(): void {
-    const st = useToolStore.getState();
     if (this.pts.length < 3) return;
-    if (this.cutting) this.deps.send({ type: 'cutApron', polygon: this.pts.slice() });
-    else this.deps.send({ type: 'buildApron', polygon: this.pts.slice(), surface: st.surface, tier: st.tier });
+    this.sendApron(this.pts.slice(), this.cutting);
     this.pts = [];
     this.cutting = false;
     this.deps.setGhost(null);
+  }
+
+  /** Sends a drawn apron piece as its tool's command: extend the selected apron, cut it out, or build it. */
+  private sendApron(polygon: Pt[], cut: boolean): void {
+    const st = useToolStore.getState();
+    if (st.tool === 'apronExtend') {
+      const target = this.extendTarget();
+      if (target) this.deps.send({ type: 'extendApron', apronId: target.id, polygon });
+    } else if (cut) this.deps.send({ type: 'removeApronArea', polygon });
+    else this.deps.send({ type: 'buildApron', polygon, surface: st.surface, tier: st.tier });
   }
 
   /**
@@ -1446,27 +1546,21 @@ export class ToolController {
   private previewApronRect(p: Pt, mods: Mods): void {
     const r = this.apronRect(p, mods);
     if (!r) return;
-    const cut = mods.ctrl === true;
-    const area = r.w * r.h;
-    let problem: Problem | null = null;
-    if (!cut) problem = area < 400 ? { code: 'apronTooSmall', args: { min: 400 } } : this.landProblem({ polygon: r.pts });
     const [a, b, c] = r.pts;
     const tags = [
       { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, text: `${Math.round(r.w)} m` },
       { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2, text: `${Math.round(r.h)} m` },
     ];
-    this.show({ valid: problem === null, shapes: [{ k: 'poly', pts: r.pts }], tone: 'snap', tags, label: { x: c.x, y: c.y, text: this.apronReadout(area, cut) } }, problem, 'hint.apronRect');
+    this.showApron(r.pts, c, this.apronCuts(mods), tags, this.apronHint(true));
   }
 
   private commitApronRect(p: Pt, mods: Mods): void {
-    const st = useToolStore.getState();
     const r = this.apronRect(p, mods);
     this.dragging = false;
     this.start = null;
     this.deps.setGhost(null);
     if (!r || r.w < 1 || r.h < 1) return;
-    if (mods.ctrl) this.deps.send({ type: 'cutApron', polygon: r.pts });
-    else this.deps.send({ type: 'buildApron', polygon: r.pts, surface: st.surface, tier: st.tier });
+    this.sendApron(r.pts, this.apronCuts(mods));
   }
 
   // Stands ---------------------------------------------------------------
@@ -1486,60 +1580,70 @@ export class ToolController {
     return heading;
   }
 
-  private standPlan(p: Pt, mods: Mods): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean } {
+  private standPlan(p: Pt, mods: Mods): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean; surface: Surface; type: StandType } {
     const st = useToolStore.getState();
     const ga = st.tool === 'gaBlock';
     const size: StandSize = ga ? 'small' : st.standSize;
     const q = this.placeAt(p, mods);
-    // Stands sit side by side at the size's width (docs/DESIGN_REVISION_2.md table 3.2).
-    return { x: q.x, y: q.y, count: ga ? st.gaCount : st.standCount, spacing: STAND_SIZES[size].widthM, heading: this.rowHeadingAt(p, mods), size, ga };
+    // Stands sit side by side at the size's width (docs/DESIGN_REVISION_2.md table 3.2). The sim prices a GA block as remote.
+    return {
+      x: q.x,
+      y: q.y,
+      count: ga ? st.gaCount : st.standCount,
+      spacing: STAND_SIZES[size].widthM,
+      heading: this.rowHeadingAt(p, mods),
+      size,
+      ga,
+      surface: pickedStandSurface(st.surface, size),
+      type: ga ? 'remote' : st.standType,
+    };
   }
 
   private previewStands(p: Pt, mods: Mods): void {
     const plan = this.standPlan(p, mods);
-    const d = compassVector(plan.heading);
-    const perp = { x: -d.y, y: d.x };
-    const shapes: GhostShape[] = [];
+    // The sim's own row or block pricing, so the ghost shows the cash the command takes.
+    const pricing = plan.ga
+      ? gaBlockPricing(this.af.aprons, plan.x, plan.y, plan.heading, plan.count, plan.surface)
+      : standRowPricing(this.af.aprons, { x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, size: plan.size, type: plan.type, surface: plan.surface });
     // The stands as they will be built: lead-in lines and curves to the taxiway, stop bars, boxes and numbers.
-    const st = useToolStore.getState();
-    const cands: Stand[] = [];
-    for (let i = 0; i < plan.count; i++) {
-      cands.push({
-        id: -1 - i,
-        cost: 0,
-        number: String(this.af.stands.length + i + 1),
-        x: plan.x + perp.x * plan.spacing * i,
-        y: plan.y + perp.y * plan.spacing * i,
-        headingDeg: plan.heading,
-        type: plan.ga || plan.size === 'small' ? 'remote' : st.standType,
-        size: plan.size,
-        code: sizeCode(plan.size),
-        surface: plan.ga ? 'gravel' : 'concrete',
-        pushback: 'auto',
-      });
-    }
+    const cands: Stand[] = pricing.slots.map((c, i) => ({
+      id: -1 - i,
+      cost: STAND_SIZES[plan.size].cost[plan.type],
+      number: String(this.af.stands.length + i + 1),
+      x: c.x,
+      y: c.y,
+      headingDeg: plan.heading,
+      type: plan.size === 'small' ? 'remote' : plan.type,
+      size: plan.size,
+      code: sizeCode(plan.size),
+      surface: plan.surface,
+      pushback: 'auto',
+    }));
+    const shapes: GhostShape[] = [];
     let problem: Problem | null = null;
     if (this.ctx()) {
-      const last = { x: plan.x + perp.x * plan.spacing * (plan.count - 1), y: plan.y + perp.y * plan.spacing * (plan.count - 1) };
-      problem = this.landProblem({ pts: [{ x: plan.x, y: plan.y }, last], widthM: STAND_SIZES[plan.size].maxSpanM });
-      if (!problem && !plan.ga) {
-        let onApron = true;
-        for (let i = 0; i < plan.count && onApron; i++) {
-          const sx = plan.x + perp.x * plan.spacing * i;
-          const sy = plan.y + perp.y * plan.spacing * i;
-          onApron = this.af.aprons.some((a) => apronContains(a, sx, sy));
-        }
-        if (!onApron) problem = { code: 'standNeedsApron' };
-      }
+      const first = pricing.slots[0];
+      const last = pricing.slots[pricing.slots.length - 1];
+      problem = this.landProblem({ pts: [first, last], widthM: STAND_SIZES[plan.size].maxSpanM });
+      if (!problem && pricing.tooLarge) problem = { code: 'apronTooLarge' };
     }
-    this.show({ valid: problem === null, shapes, preview: { stands: cands }, label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0') }) } }, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
+    this.show(
+      {
+        valid: problem === null,
+        shapes,
+        preview: { stands: cands },
+        label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0'), cost: formatMoney(Math.round(pricing.total)) }) },
+      },
+      problem,
+      plan.ga ? 'hint.gaBlock' : 'hint.stands',
+    );
   }
 
   private commitStands(p: Pt, mods: Mods): void {
     const st = useToolStore.getState();
     const plan = this.standPlan(p, mods);
-    if (plan.ga) this.deps.send({ type: 'buildGaBlock', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count });
-    else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, size: plan.size });
+    if (plan.ga) this.deps.send({ type: 'buildGaBlock', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, surface: plan.surface });
+    else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, size: plan.size, surface: plan.surface });
   }
 
   // ATC tower --------------------------------------------------------------

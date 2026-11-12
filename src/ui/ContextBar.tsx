@@ -1,4 +1,4 @@
-import { BUSINESS, SURFACE_SPEC } from '@data/index';
+import { BUSINESS, STAND_SIZES, SURFACE_SPEC } from '@data/index';
 import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type AirfieldPayload, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
 import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
@@ -7,6 +7,7 @@ import { FIXTURE_KEYS } from '@shared/business';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useGameStore } from './stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
+import { pickedStandSurface } from './tools/controller';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
@@ -104,7 +105,8 @@ export function ContextBar({ send }: Props) {
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = SURFACE_SPEC[s.surface].pcrTiers;
-  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower';
+  const apronTool = s.tool === 'apron' || s.tool === 'apronRemove' || s.tool === 'apronExtend';
+  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower' && s.tool !== 'apronRemove' && s.tool !== 'apronExtend';
   const showCode = showPavement && s.tool !== 'apron';
   const taxiTool = s.tool === 'taxiway' || s.tool === 'taxilane';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
@@ -173,7 +175,7 @@ export function ContextBar({ send }: Props) {
         {s.tool === 'rapidExit' && (
           <Select label={t('opt.angle')} value={s.exitAngle} options={[30, 45, 90].map((a) => ({ v: a, text: `${a}°` }))} onChange={(v) => s.set({ exitAngle: v as 30 | 45 | 90 })} />
         )}
-        {s.tool === 'apron' && (
+        {apronTool && (
           <div style="display:flex;gap:4px;align-self:center" data-testid="apron-mode">
             {(['polygon', 'rect'] as const).map((m) => (
               <button key={m} data-testid={`apron-mode-${m}`} aria-pressed={s.apronMode === m} onClick={() => s.set({ apronMode: m, hint: null, problem: null })}>
@@ -181,6 +183,15 @@ export function ContextBar({ send }: Props) {
               </button>
             ))}
           </div>
+        )}
+        {(s.tool === 'stands' || s.tool === 'gaBlock') && (
+          <Select
+            label={t('opt.surface')}
+            value={pickedStandSurface(s.surface, s.tool === 'gaBlock' ? 'small' : s.standSize)}
+            testId="opt-stand-surface"
+            options={STAND_SIZES[s.tool === 'gaBlock' ? 'small' : s.standSize].surfaces.map((x) => ({ v: x, text: tDynamic(`surface.${x}`) }))}
+            onChange={(v: Surface) => s.set({ surface: v })}
+          />
         )}
         {s.tool === 'parallel' && <Num label={t('opt.connectors')} value={s.connectors} min={1} max={12} onChange={(v) => s.set({ connectors: v })} />}
         {s.tool === 'stands' && (
