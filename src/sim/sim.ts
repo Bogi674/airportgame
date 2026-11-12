@@ -155,7 +155,10 @@ export class Sim {
         this.cohorts.update(this.tick);
         break;
       case 5:
-        if (this.tick % 10 === 0) this.traffic.updateFlights(this.tick);
+        if (this.tick % 10 === 0) {
+          this.traffic.updateFlights(this.tick);
+          this.traffic.updateGa(this.tick);
+        }
         break;
       case 6:
         this.traffic.update(this.tick);

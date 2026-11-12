@@ -4,7 +4,7 @@ import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 export interface SaveData {
   version: number;
@@ -79,5 +79,7 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 12 to 13: service nodes save their queues and the service rng. Older saves load with empty queues.
   if (save.version < 13) save.version = 13;
+  // Version 13 to 14: traffic saves the GA arrival clock and its rng. Older saves load with the clock at zero.
+  if (save.version < 14) save.version = 14;
   return save as SaveData;
 }
