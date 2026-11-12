@@ -10,6 +10,8 @@ import type { Pt } from '@shared/geom';
 export type Command =
   | { type: 'setTestTraffic'; perHour: number; turnScale: number }
   | { type: 'testArrival'; typeIdx: number; inTicks: number; turnTicks: number }
+  /** Test arrival that lands now and takes the given stand, under the same refusal rules as a normal stand assignment. */
+  | { type: 'testDockAt'; standId: number; typeIdx: number; turnTicks: number }
   | { type: 'buyParcel'; parcelId: number }
   | { type: 'buyParcels'; ids: number[] }
   | { type: 'buildRunway'; x: number; y: number; headingDeg: number; lengthM: number; code: CodeLetter; approach: Approach; surface: Surface; tier: number }

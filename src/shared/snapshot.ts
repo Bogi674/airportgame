@@ -3,7 +3,7 @@
  * (docs/ARCHITECTURE.md section 1). Bump SNAPSHOT_VERSION on every layout change.
  */
 
-export const SNAPSHOT_VERSION = 5;
+export const SNAPSHOT_VERSION = 6;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
 export const SNAPSHOT_PEOPLE_CAPACITY = 3000;
@@ -36,6 +36,8 @@ export interface SnapshotViews {
   vehicleY: Float32Array;
   vehicleHeading: Float32Array;
   vehicleKind: Uint8Array;
+  /** 1 when the vehicle stands at its dock pose doing its work, else 0. */
+  vehicleDocked: Uint8Array;
   peopleX: Float32Array;
   peopleY: Float32Array;
   peopleProfile: Uint8Array;
@@ -66,9 +68,10 @@ const OFF_VX = OFF_VID + VCAP * 4;
 const OFF_VY = OFF_VX + VCAP * 4;
 const OFF_VH = OFF_VY + VCAP * 4;
 const OFF_VKIND = OFF_VH + VCAP * 4;
+const OFF_VDOCKED = OFF_VKIND + align4(VCAP);
 
 const PCAP = SNAPSHOT_PEOPLE_CAPACITY;
-const OFF_PX = OFF_VKIND + align4(VCAP);
+const OFF_PX = OFF_VDOCKED + align4(VCAP);
 const OFF_PY = OFF_PX + PCAP * 4;
 const OFF_PPROFILE = OFF_PY + PCAP * 4;
 const OFF_PSIZE = OFF_PPROFILE + align4(PCAP);
@@ -99,6 +102,7 @@ export function createSnapshotViews(buffer: ArrayBuffer): SnapshotViews {
     vehicleY: new Float32Array(buffer, OFF_VY, VCAP),
     vehicleHeading: new Float32Array(buffer, OFF_VH, VCAP),
     vehicleKind: new Uint8Array(buffer, OFF_VKIND, VCAP),
+    vehicleDocked: new Uint8Array(buffer, OFF_VDOCKED, VCAP),
     peopleX: new Float32Array(buffer, OFF_PX, PCAP),
     peopleY: new Float32Array(buffer, OFF_PY, PCAP),
     peopleProfile: new Uint8Array(buffer, OFF_PPROFILE, PCAP),
