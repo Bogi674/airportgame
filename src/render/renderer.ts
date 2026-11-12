@@ -1,9 +1,9 @@
 import { CHUNK_SIZE_M } from '@shared/math';
 import { CELL_M, GRID_N } from '@shared/site';
-import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
+import { SNAPSHOT_VEHICLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
-import { AIRFIELD, PAINT } from '@data/index';
+import { AIRFIELD, GSE, PAINT } from '@data/index';
 import { paintGhostObjects } from './markings/airfieldPaint';
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { TERMINAL_CELL_M, type TerminalGrid } from '@shared/business';
@@ -22,6 +22,10 @@ import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, C
 import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
 
 const MAX_BACKING = 4096;
+
+/** Vehicle ground shadow length per metre of vehicle height, same direction as the aircraft shadow. */
+const VEHICLE_SHADOW_M_PER_M = 0.12;
+const VEHICLE_SHADOW_FILL = 'rgba(0, 0, 0, 0.22)';
 
 /** Gap in CSS pixels between the cursor and a build readout box. */
 const READOUT_GAP_PX = 16;
@@ -119,6 +123,11 @@ export class Renderer {
   private readonly governor = new QualityGovernor();
   private lastRender = 0;
   private readonly bounds = new Float64Array(4);
+  /** Interpolated vehicle poses for the current frame, reused every frame. */
+  private readonly vehicleIdx = new Int32Array(SNAPSHOT_VEHICLE_CAPACITY);
+  private readonly vehicleXs = new Float64Array(SNAPSHOT_VEHICLE_CAPACITY);
+  private readonly vehicleYs = new Float64Array(SNAPSHOT_VEHICLE_CAPACITY);
+  private readonly vehicleHs = new Float64Array(SNAPSHOT_VEHICLE_CAPACITY);
   private readonly resizeObserver: ResizeObserver;
   private dpr = 1;
   private qualityDprCap = 2;
@@ -414,9 +423,9 @@ export class Renderer {
     if (this.grid) this.drawGrid(this.grid, z * c, z * s, -z * s, z * c, e, f);
     if (this.guide) this.drawGuide(z * c, z * s, -z * s, z * c, e, f);
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
-    this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
-    if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
+    if (curr) this.drawVehicles(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
+    this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
   }
 
   /**
@@ -1062,25 +1071,88 @@ export class Renderer {
     this.people.draw(this.ctx, curr, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3]);
   }
 
-  /** Ground vehicles, drawn under the aircraft. Skipped when zoomed out where they are a pixel. */
-  private drawVehicles(curr: SnapshotViews, a: number, b: number, cc: number, d: number, e: number, f: number): void {
-    if (this.camera.zoom < 0.6) return;
+  /**
+   * Ground vehicles, drawn under the aircraft. Poses interpolate like aircraft: vehicles are written in ascending slot
+   * id, so a moving pointer finds the previous entry. Each shadow is the footprint pushed along the aircraft shadow
+   * direction by heightM times VEHICLE_SHADOW_M_PER_M, and all shadows go under all bodies.
+   */
+  private drawVehicles(
+    prev: SnapshotViews | null,
+    curr: SnapshotViews,
+    alpha: number,
+    a: number,
+    b: number,
+    cc: number,
+    d: number,
+    e: number,
+    f: number,
+  ): void {
     const ctx = this.ctx;
     const n = curr.header[SnapHeader.VehicleCount];
+    const pn = prev ? prev.header[SnapHeader.VehicleCount] : 0;
     this.camera.visibleBounds(this.bounds);
+    const bo = this.bounds;
+    const idx = this.vehicleIdx;
+    const xs = this.vehicleXs;
+    const ys = this.vehicleYs;
+    const hs = this.vehicleHs;
+    let pi = 0;
+    let m = 0;
     for (let i = 0; i < n; i++) {
-      const x = curr.vehicleX[i];
-      const y = curr.vehicleY[i];
-      if (x < this.bounds[0] - 20 || x > this.bounds[2] + 20 || y < this.bounds[1] - 20 || y > this.bounds[3] + 20) continue;
-      const sprite = vehicleSprite(curr.vehicleKind[i]);
-      const h = curr.vehicleHeading[i];
+      let x = curr.vehicleX[i];
+      let y = curr.vehicleY[i];
+      let h = curr.vehicleHeading[i];
+      if (prev) {
+        const id = curr.vehicleId[i];
+        while (pi < pn && prev.vehicleId[pi] < id) pi++;
+        if (pi < pn && prev.vehicleId[pi] === id && prev.vehicleKind[pi] === curr.vehicleKind[i]) {
+          const px = prev.vehicleX[pi];
+          const py = prev.vehicleY[pi];
+          if (Math.abs(x - px) < 400 && Math.abs(y - py) < 400) {
+            x = px + (x - px) * alpha;
+            y = py + (y - py) * alpha;
+            let dh = h - prev.vehicleHeading[pi];
+            while (dh > Math.PI) dh -= 2 * Math.PI;
+            while (dh < -Math.PI) dh += 2 * Math.PI;
+            h = prev.vehicleHeading[pi] + dh * alpha;
+          }
+        }
+      }
+      if (x < bo[0] - 20 || x > bo[2] + 20 || y < bo[1] - 20 || y > bo[3] + 20) continue;
+      idx[m] = i;
+      xs[m] = x;
+      ys[m] = y;
+      hs[m] = h;
+      m++;
+    }
+
+    ctx.fillStyle = VEHICLE_SHADOW_FILL;
+    for (let k = 0; k < m; k++) {
+      const spec = GSE[curr.vehicleKind[idx[k]]];
+      const x = xs[k];
+      const y = ys[k];
+      const h = hs[k];
       const ch = Math.cos(h);
       const sh = Math.sin(h);
-      const k = 1 / sprite.ppm;
-      const ma = (a * ch + cc * sh) * k;
-      const mb = (b * ch + d * sh) * k;
-      const mc = (-a * sh + cc * ch) * k;
-      const md = (-b * sh + d * ch) * k;
+      // Body frame offset, same as the aircraft sprite shadow: equal along nose and wing axes.
+      const lx = spec.heightM * VEHICLE_SHADOW_M_PER_M * Math.SQRT1_2;
+      const ly = lx;
+      ctx.setTransform(a * ch + cc * sh, b * ch + d * sh, -a * sh + cc * ch, -b * sh + d * ch, a * x + cc * y + e, b * x + d * y + f);
+      ctx.fillRect(-spec.lengthM / 2 + lx, -spec.widthM / 2 + ly, spec.lengthM, spec.widthM);
+    }
+
+    for (let k = 0; k < m; k++) {
+      const sprite = vehicleSprite(curr.vehicleKind[idx[k]]);
+      const x = xs[k];
+      const y = ys[k];
+      const h = hs[k];
+      const ch = Math.cos(h);
+      const sh = Math.sin(h);
+      const k2 = 1 / sprite.ppm;
+      const ma = (a * ch + cc * sh) * k2;
+      const mb = (b * ch + d * sh) * k2;
+      const mc = (-a * sh + cc * ch) * k2;
+      const md = (-b * sh + d * ch) * k2;
       const wx = a * x + cc * y + e;
       const wy = b * x + d * y + f;
       ctx.setTransform(ma, mb, mc, md, wx - (ma + mc) * (sprite.width / 2), wy - (mb + md) * (sprite.height / 2));
