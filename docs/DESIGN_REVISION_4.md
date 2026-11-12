@@ -86,12 +86,17 @@ The rotation system is dropped.
 
 ### 3.1 Flight series
 
-A signed airline offers flight series. A series has a destination airport, an aircraft type, a weekly frequency, a preferred time window, a contract length and fees. Example: an airline first offers five series to five destinations, one of them three times a week; the player places that series exactly three times in the week, in any free slot.
+A signed airline offers flight series. A series has a destination airport, an aircraft type, fixed operating days of the week, a preferred time window, a contract length and fees. Offers are procedural and vary per seed, but follow real timetable patterns: daily, weekdays only, three times a week on alternate days, twice a week, weekend leisure, morning and evening business peaks, and banked departures for larger airlines. Example: an airline first offers five series to five destinations, one of them three times a week; the player places that series exactly three times in the week, in any free slot.
 
 ### 3.2 Weekly planner
 
+Rules from the user, 2026-11-12:
+
+* The contract fixes each series' operating days. A series that flies three times a week on Monday, Wednesday and Friday must be placed on a stand that is free at the chosen time on all three of those days. A daily series needs the slot free on every day. The player chooses only the time and the stand. Everything else follows the flight details in the contract.
+* One drop places the series on all its days at the same time.
+* No curfew and no minimum lead time. If the player places a slot whose time today has already passed, the first flight simply comes in on the next operating day.
 * A seven day timeline per stand, reusing the T41 stand timeline and its drag and drop.
-* A placed slot occupies the stand for the turnaround time plus the block buffer and repeats every week until the series is cancelled or expires.
+* A placed slot occupies the stand for the turnaround time plus the existing stand block buffer and repeats every week until the series is cancelled or expires.
 * Placement checks stand class, required access type, runway performance for the stage length, and the tower movement budget, and refuses with the reason.
 * Unplaced frequency is not flown, and the airline notices it in its satisfaction.
 * The automation toggle stays as an auto planner that places unplaced frequency in the first valid slot inside the preferred window.
