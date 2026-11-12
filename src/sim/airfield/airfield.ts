@@ -26,7 +26,21 @@ import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
-import { apronArea, apronContains, clearOf, cutRegion, type ApronShape, freeRegion, mergeRegion, mergeShapes, overlaps, polylineBoxes, touches } from '@shared/apronGeom';
+import { apronArea, apronContains, type ApronShape, overlaps, touches } from '@shared/apronGeom';
+import {
+  MAX_APRON_M2,
+  roundApronPt as round05,
+  keptPavement,
+  gaBlockPolygon,
+  mergePiece,
+  paveBoxes as paveAll,
+  REFUND_SHARE,
+  removePlan,
+  rowSlots,
+  roundApronPoly,
+  standHeading,
+  type PricedBox,
+} from '@shared/apronPricing';
 import { terminalOverlaps } from '@shared/terminalOps';
 import type { TerminalGrid } from '@shared/business';
 import { foldU32 } from '../hash';
@@ -69,16 +83,10 @@ function runwayRect(r: Runway): Pt[] {
   ];
 }
 
-/** A piece of pavement a stand or GA block lays, and the surface it lays it in. */
-interface PaveBox {
-  polygon: Pt[];
-  surface: Surface;
-}
-
 /** The stands of a row and the boxes they pave. */
 interface StandRow {
   stands: Stand[];
-  boxes: PaveBox[];
+  boxes: PricedBox[];
 }
 
 /** What a command needs to know about the rest of the game: the tick and the aircraft types airlines fly here. */
@@ -96,12 +104,11 @@ const TAXI_NAMES = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const MIN_RUNWAY_M = 300;
 const MAX_RUNWAY_M = 5000;
 const MIN_RUNWAY_SEP_M = 100;
-/** Share of the price refunded when a piece of the airfield is demolished or cut out. */
-export const REFUND_SHARE = 0.25;
+/** Share of the price refunded when a piece of the airfield is demolished or cut out (shared with the preview). */
+export { REFUND_SHARE };
 /** How far beyond the default a holding position may be moved. */
 const MAX_HOLD_EXTRA_M = 250;
 const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000, precision: 1_200_000 };
-const round05 = (v: number): number => Math.round(v * 2) / 2;
 
 /** Stands whose parked box breaks a taxiway clearance, ascending by id. Old saves can hold such stands, so they are flagged, not removed. */
 function findClearanceBreaches(af: AirfieldPayload): number[] {
@@ -509,13 +516,8 @@ export class Airfield {
     if (problem) return problem;
     const { pcr, factor } = tierOf(surface, tier);
     const unit = SURFACE_SPEC[surface].costPerM2 * factor;
-    const piece = { polygon: poly };
-    const absorbed = this.data.aprons.filter((a) => a.surface === surface && touches(a, piece));
-    const shapes = mergeShapes(poly, absorbed);
-    const before = absorbed.reduce((sum, a) => sum + apronArea(a), 0);
-    const after = shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
-    if (after > 600000) return { code: 'apronTooLarge' };
-    const cost = Math.round(Math.max(0, after - before) * unit);
+    const { absorbed, shapes, after, cost } = mergePiece(this.data.aprons, poly, surface, unit);
+    if (after > MAX_APRON_M2) return { code: 'apronTooLarge' };
     if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
     const oldCost = absorbed.reduce((sum, a) => sum + a.cost, 0);
     const items: Item[] = shapes.map((sh, k) => ({
@@ -539,17 +541,6 @@ export class Airfield {
     return { cashDelta: -cost };
   }
 
-  /** Stand boxes and taxiway pavement, which a removal never takes out of an apron. */
-  private keptPavement(): Pt[][] {
-    const out: Pt[][] = [];
-    for (const s of this.data.stands) {
-      const slot = standSlot(s.size);
-      if (slot) out.push(standBox(s, slot));
-    }
-    for (const t of this.data.taxiways) out.push(...polylineBoxes(t.points, t.widthM));
-    return out;
-  }
-
   /**
    * Takes a piece out of the aprons it overlaps, or out of the one given. Built pavement inside the
    * piece stays paved (handoff/tasks/T57-visual-repair.md D5), and the removed area is refunded at the
@@ -558,17 +549,11 @@ export class Airfield {
   private removeApron(polygon: Pt[], id?: number): BuildResult {
     const poly = polygon.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
     if (poly.length < 3 || poly.length > 16) return { code: 'apronPoints' };
-    const region = clearOf(poly, this.keptPavement());
-    const targets = this.data.aprons.filter((a) => (id === undefined ? touches(a, { polygon: poly }) : a.id === id));
+    const plan = removePlan(this.data.aprons, poly, keptPavement(this.data.stands, this.data.taxiways), id);
     const replaced: Item[] = [];
     const items: Item[] = [];
-    let refund = 0;
-    for (const a of targets) {
-      const shapes = cutRegion(a, region);
-      const removed = apronArea(a) - shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
-      if (removed < 1) continue;
+    for (const { apron: a, shapes } of plan.pieces) {
       const perM2 = a.cost / Math.max(1, apronArea(a));
-      refund += removed * SURFACE_SPEC[a.surface].costPerM2 * REFUND_SHARE;
       replaced.push({ type: 'apron', obj: a });
       // The largest remainder keeps the id, the others take fresh ids in a fixed order: area, then west, then south.
       const minX = (sh: ApronShape): number => Math.min(...sh.polygon.map((p) => p.x));
@@ -584,7 +569,7 @@ export class Airfield {
     if (replaced.length === 0) return { code: 'nothingThere' };
     this.removeItems(replaced);
     this.addItems(items);
-    const cashDelta = Math.round(refund);
+    const cashDelta = Math.round(plan.refund);
     this.undoStack.push({ items, added: true, cashDelta, replaced });
     this.redoStack.length = 0;
     return { cashDelta };
@@ -648,16 +633,15 @@ export class Airfield {
     if (n < 1 || n > 30) return { code: 'standCount', args: { max: 30 } };
     const spec = STAND_SIZES[size];
     const d = compassVector(headingDeg);
-    const perp = { x: -d.y, y: d.x };
     const stands: Stand[] = [];
-    const boxes: PaveBox[] = [];
+    const boxes: PricedBox[] = [];
     if (spacing < spec.widthM) return { code: 'standSpacing', args: { min: Math.ceil(spec.widthM) } };
     const halfW = spec.widthM / 2;
     const lines = this.data.taxiways.map((t) => ({ pts: t.points }));
     let number = this.standNumber;
+    const slots = rowSlots(x, y, headingDeg, n, spacing);
     for (let i = 0; i < n; i++) {
-      const sx = round05(x + perp.x * spacing * i);
-      const sy = round05(y + perp.y * spacing * i);
+      const { x: sx, y: sy } = slots[i];
       const p = checkStrip(ctx, [{ x: sx, y: sy }, { x: sx + d.x * 2, y: sy + d.y * 2 }], spec.maxSpanM * 0.5);
       if (p) return p;
       const surface: Surface = pick ?? this.surfaceAt(sx, sy) ?? fallback;
@@ -675,7 +659,7 @@ export class Airfield {
         cost: spec.cost[type],
         x: sx,
         y: sy,
-        headingDeg: ((Math.round(headingDeg) % 360) + 360) % 360,
+        headingDeg: standHeading(headingDeg),
         // Small stands have no jet bridges, so they are always remote.
         type: size === 'small' ? 'remote' : type,
         size,
@@ -708,39 +692,25 @@ export class Airfield {
    * Only the area no apron covers is charged at the surface price. Returns the aprons that replace the
    * current list and that charge, or a problem when a result is too large.
    */
-  private paveBoxes(boxes: readonly PaveBox[]): { aprons: Apron[]; charge: number } | Problem {
-    let list: Apron[] = this.data.aprons.slice();
-    let charge = 0;
-    for (const bx of boxes) {
-      // Only the part no apron covers is paved, so pavement under the box keeps its own surface.
-      const free = freeRegion(bx.polygon, list);
-      if (free.length === 0) continue;
-      const absorbed = list.filter((a) => a.surface === bx.surface && touches(a, { polygon: bx.polygon }));
-      const shapes = mergeRegion(free, absorbed);
-      const before = absorbed.reduce((sum, a) => sum + apronArea(a), 0);
-      const after = shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
-      if (after > 600000) return { code: 'apronTooLarge' };
-      const add = Math.max(0, after - before) * SURFACE_SPEC[bx.surface].costPerM2;
-      charge += add;
-      const oldCost = absorbed.reduce((sum, a) => sum + a.cost, 0);
-      const pcr = Math.max(tierOf(bx.surface, 0).pcr, ...absorbed.map((a) => a.pcr));
-      const created: Apron[] = shapes.map((sh, k) => ({
+  private paveBoxes(boxes: readonly PricedBox[]): { aprons: Apron[]; charge: number } | Problem {
+    const paved = paveAll(this.data.aprons, boxes, (step, sh, k) => {
+      const oldCost = step.absorbed.reduce((sum, a) => sum + a.cost, 0);
+      return {
         id: this.nextId++,
-        cost: Math.round(((oldCost + add) * apronArea(sh)) / Math.max(1, after)),
+        cost: Math.round(((oldCost + step.add) * apronArea(sh)) / Math.max(1, step.after)),
         polygon: sh.polygon,
         holes: sh.holes.length > 0 ? sh.holes : undefined,
-        surface: bx.surface,
-        pcr,
+        surface: step.surface,
+        pcr: Math.max(tierOf(step.surface, 0).pcr, ...step.absorbed.map((a) => a.pcr)),
         condition: 100,
-        name: k === 0 && absorbed[0]?.name ? absorbed[0].name : `Apron ${++this.apronNumber}`,
-      }));
-      list = list.filter((a) => !absorbed.includes(a)).concat(created);
-    }
-    return { aprons: list, charge: Math.round(charge) };
+        name: k === 0 && step.absorbed[0]?.name ? step.absorbed[0].name : `Apron ${++this.apronNumber}`,
+      };
+    });
+    return paved ?? { code: 'apronTooLarge' };
   }
 
   /** Places a row of stands with the pavement under them as one operation, charging both. */
-  private placeStands(stands: Stand[], boxes: PaveBox[], cash: number): BuildResult {
+  private placeStands(stands: Stand[], boxes: PricedBox[], cash: number): BuildResult {
     const paved = this.paveBoxes(boxes);
     if (isProblem(paved)) return paved;
     const total = stands.reduce((sum, st) => sum + st.cost, 0) + paved.charge;
@@ -775,16 +745,7 @@ export class Airfield {
     if (n < 1 || n > 20) return { code: 'standCount', args: { max: 20 } };
     const spacing = STAND_SIZES.small.widthM;
     const d = compassVector(cmd.headingDeg);
-    const perp = { x: -d.y, y: d.x };
-    const w = spacing * n + 10;
-    const depth = 30;
-    const o = { x: cmd.x - perp.x * 5 - d.x * 8, y: cmd.y - perp.y * 5 - d.y * 8 };
-    const poly: Pt[] = [
-      { x: o.x, y: o.y },
-      { x: o.x + perp.x * w, y: o.y + perp.y * w },
-      { x: o.x + perp.x * w + d.x * depth, y: o.y + perp.y * w + d.y * depth },
-      { x: o.x + d.x * depth, y: o.y + d.y * depth },
-    ];
+    const poly: Pt[] = gaBlockPolygon(cmd.x, cmd.y, cmd.headingDeg, n);
     const idBefore = this.nextId;
     const numBefore = this.standNumber;
     const apronBefore = this.apronNumber;
@@ -793,7 +754,7 @@ export class Airfield {
     if (this.onRunway(poly)) return { code: 'onRunway' };
     const building = this.buildingProblem(poly, env);
     if (building) return building;
-    const block = poly.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+    const block = roundApronPoly(poly);
     // The block and its stands take the command's surface, else the apron under the block, else asphalt.
     const surface: Surface = cmd.surface ?? this.surfaceAt((poly[0].x + poly[2].x) / 2, (poly[0].y + poly[2].y) / 2) ?? 'asphalt';
     const row = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'remote', 'small', ctx, surface, 'asphalt', env);

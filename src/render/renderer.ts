@@ -731,8 +731,9 @@ export class Renderer {
       }
     }
     // The taxiway tool shows the new arm in snapping cyan at 30 percent (docs/DESIGN_REVISION_2.md section 2.2).
-    const fill = !g.valid ? 'rgba(255,90,80,0.40)' : g.tone === 'snap' ? 'rgba(60,200,234,0.30)' : 'rgba(120,210,255,0.35)';
-    const stroke = !g.valid ? 'rgba(255,120,110,0.95)' : g.tone === 'snap' ? PAINT.colors.snap : 'rgba(160,230,255,0.95)';
+    // Amber marks a legal removal, so it never reads as the red of an invalid placement.
+    const fill = !g.valid ? 'rgba(255,90,80,0.40)' : g.tone === 'snap' ? 'rgba(60,200,234,0.30)' : g.tone === 'remove' ? 'rgba(255,176,40,0.35)' : 'rgba(120,210,255,0.35)';
+    const stroke = !g.valid ? 'rgba(255,120,110,0.95)' : g.tone === 'snap' ? PAINT.colors.snap : g.tone === 'remove' ? 'rgba(255,200,90,0.95)' : 'rgba(160,230,255,0.95)';
     const zoom = this.camera.zoom;
     ctx.fillStyle = fill;
     ctx.strokeStyle = stroke;

@@ -125,6 +125,22 @@ export const CATEGORIES: Category[] = [
     tabs: [{ id: 'build', items: [{ id: 'apron', thumb: 'apron', icon: 'apron', run: (s) => s.set({ tool: 'apron' }), active: (s) => s.tool === 'apron' }] }],
   },
   {
+    id: 'apronRemove',
+    icon: 'demolish',
+    hue: 190,
+    testId: 'tool-apron-remove',
+    tool: 'apronRemove',
+    tabs: [{ id: 'build', items: [{ id: 'apronRemove', thumb: 'apron', icon: 'demolish', run: (s) => s.set({ tool: 'apronRemove' }), active: (s) => s.tool === 'apronRemove' }] }],
+  },
+  {
+    id: 'apronExtend',
+    icon: 'apron',
+    hue: 190,
+    testId: 'tool-apron-extend',
+    tool: 'apronExtend',
+    tabs: [{ id: 'build', items: [{ id: 'apronExtend', thumb: 'apron', icon: 'apron', run: (s) => s.set({ tool: 'apronExtend' }), active: (s) => s.tool === 'apronExtend' }] }],
+  },
+  {
     id: 'stand',
     icon: 'stands',
     hue: 170,
