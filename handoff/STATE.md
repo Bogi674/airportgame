@@ -1,6 +1,6 @@
 # STATE.md
 
-Where the project stands (2026-11-11). Update this file when a task changes what is true here.
+Where the project stands (2026-11-12). Update this file when a task changes what is true here.
 
 ## Health
 
@@ -37,11 +37,11 @@ A player can start a seeded game with 120 000 000 in cash, buy land, and build a
 * **Traffic**: arrivals pick a runway end by wind and performance, land, exit, taxi with node and block reservations, dock, turn around with GSE (tug, tractor, carts, belt loader, refueller, GPU, catering, stairs), push back, taxi out, hold, line up, take off. Wake separation, runway reservations, deadlock detection with an overlay.
 * **Passengers**: departing cohorts by profile, journey curb to gate, boarding hold, missed flights, snapshot sample.
 * **Business**: seven invented airlines with contracts, fees, a daily ledger, a term loan, a flights board, ratings, weather events (rain, fog, strong wind).
-* **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, saves to IndexedDB with autosave, export and import, crash panel.
+* **UI**: main menu, new game, HUD top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist, terminal overlays (key O lists passenger density, queues and wait, and walking distance to gates, one at a time, with a legend chip), saves to IndexedDB with autosave, export and import, crash panel.
 
 ## What does not exist yet
 
-Next task: T16 density, queue and walking distance overlays (depends on T14, done). T15 people rendering from the atlas is done.
+Next task: T54 people walk and dwell along routes (depends on T15, done), the next todo row in `handoff/TASKS.md`. T16 overlays are done.
 
 `handoff/TASKS.md` holds the work in the delivery order the user approved on 2026-11-10. In short:
 

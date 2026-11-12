@@ -16,6 +16,7 @@ import { MapView } from './MapView';
 import { Menu } from './Menu';
 import { Minimap } from './Minimap';
 import { ObjectPanel } from './ObjectPanel';
+import { OverlayLegend } from './OverlayLegend';
 import { ParcelPanel } from './ParcelPanel';
 import { PauseMenu } from './PauseMenu';
 import { exportToFile, importFromFile, loadSave, putSave } from './saves';
@@ -299,9 +300,11 @@ export function App() {
         e.preventDefault();
         client.send({ type: 'redo' });
       } else if (e.key === 'p' || e.key === 'P') s.toggleParcelOverlay();
+      else if ((e.key === 'o' || e.key === 'O') && !e.ctrlKey && !e.metaKey && !e.altKey) s.toggleOverlayMenu();
       else if (e.key === 'Escape') {
         const tool = useToolStore.getState();
-        if (s.sheet) s.setSheet(null);
+        if (s.overlayMenuOpen) s.closeOverlayMenu();
+        else if (s.sheet) s.setSheet(null);
         else if (s.pauseOpen) resume();
         else if (tool.tool === 'select' && tool.selection === null) pause();
       } else if (e.key === '0') setSpeed(0);
@@ -363,6 +366,7 @@ export function App() {
           <ConfirmPopup />
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
+          <OverlayLegend />
           <CrashPanel onMenu={() => {
             useGameStore.getState().setCrash(null);
             useGameStore.getState().setError(null);

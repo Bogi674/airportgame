@@ -5,6 +5,7 @@ import { formatMoney } from './format';
 import { useGameStore } from './stores/gameStore';
 import { useState } from 'preact/hooks';
 import { Icon } from './icons';
+import { OverlayMenu } from './OverlayMenu';
 import { currentTheme, setTheme } from './theme';
 import { t, tDynamic } from './strings';
 
@@ -55,7 +56,7 @@ function prevailingWind(freq: Float32Array, mean: Float32Array): { deg: number; 
 
 /** Floating HUD: information chips at the top left, game controls at the top right. No bar. */
 export function TopBar({ onSpeed, onMenu }: Props) {
-  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, walkOverlay, toggleWalkOverlay, quality, setQuality } = useGameStore();
+  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, walkOverlay, toggleWalkOverlay, quality, setQuality, overlay, overlayMenuOpen, toggleOverlayMenu } = useGameStore();
   const [settings, setSettings] = useState(false);
   const rating = business ? business.rating : 0;
   const rate = Math.max(0, Math.min(100, rating));
@@ -116,6 +117,12 @@ export function TopBar({ onSpeed, onMenu }: Props) {
           <button class="round" data-testid="walk-toggle" title={t('hud.walkGraph')} aria-label={t('hud.walkGraph')} aria-pressed={walkOverlay} onClick={toggleWalkOverlay}>
             <Icon name="overlay" size={16} />
           </button>
+          <span style="position:relative">
+            <button class="round" data-testid="overlay-menu" title={t('hud.overlay.title')} aria-label={t('hud.overlay.title')} aria-haspopup="menu" aria-expanded={overlayMenuOpen} aria-pressed={overlay !== 'none'} onClick={toggleOverlayMenu}>
+              <Icon name="overlay" size={16} />
+            </button>
+            {overlayMenuOpen && <OverlayMenu />}
+          </span>
           <button class="round" data-testid="parcel-toggle" title={t('hud.parcels')} aria-label={t('hud.parcels')} aria-pressed={parcelOverlay} onClick={toggleParcelOverlay}>
             <Icon name="parcels" size={16} />
             <span class="kbd">P</span>

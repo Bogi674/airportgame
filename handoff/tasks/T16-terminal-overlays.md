@@ -9,7 +9,7 @@ Three terminal overlays, each one at a time with a legend chip, as `docs/UI_DESI
 ## Read first
 
 * `docs/UI_DESIGN.md` sections 5 (overlays) and 10 (UI performance rules).
-* `src/render/overlay.ts`, the existing traffic overlay, and how the UI toggles it.
+* `drawOverlay` in `src/render/renderer.ts` and `src/render/overlayRamp.ts`, the terminal overlay ramp, and how the UI toggles the traffic overlay.
 * T12 (walking graph), T13 (service nodes), T14 (cohorts).
 
 ## Requirements
@@ -21,7 +21,7 @@ Three terminal overlays, each one at a time with a legend chip, as `docs/UI_DESI
 
 ## Tests
 
-The sim side arrays for a scripted terminal: density sums to the number of people inside; queue values match T13's `waitEstimate`.
+The sim side arrays for a scripted terminal: density sums to the number of people inside; queue values match T13's `serviceWait`.
 
 ## Visual check
 

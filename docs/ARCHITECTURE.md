@@ -349,3 +349,7 @@ Record every architectural choice with a date and one line of reason.
   * The GA constants (day window, gaps, retry, lead) live in `src/sim/ops/traffic.ts` as named constants, not in `src/data`. Move them to data when the GA design is tuned.
   * The traffic hash folds `gaNextTick` and the GA rng state.
   * GA visits book landing and parking only. The schedule board labels GA flights `GA`.
+* 2026-11-12, terminal overlays (T16). Decisions:
+  * Overlay data is a pure read. The sim publishes it at most once per game minute to a UI subscriber while an overlay is picked. It is not a command, not saved and not hashed.
+  * Walking cohorts count at their target node cell for the density overlay, so a cohort on the way to a node counts where it is going.
+  * The legend scale is the current maximum over all terminals (`overlayMax`), never below 1, so the scale moves with the data.

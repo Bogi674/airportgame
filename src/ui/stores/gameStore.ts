@@ -41,6 +41,10 @@ interface GameState extends PerfReport {
   /** The terminal overlay picked, one at a time. */
   overlay: OverlayKind;
   setOverlay(kind: OverlayKind): void;
+  /** The overlay list opened by key O or the top bar button. */
+  overlayMenuOpen: boolean;
+  toggleOverlayMenu(): void;
+  closeOverlayMenu(): void;
   quality: 'auto' | 'low' | 'medium' | 'high';
   setQuality(q: 'auto' | 'low' | 'medium' | 'high'): void;
   crash: { message: string; tick: number; seed: string; commands: unknown[] } | null;
@@ -103,6 +107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   debugOverlay: false,
   walkOverlay: false,
   overlay: 'none',
+  overlayMenuOpen: false,
   quality: ((): 'auto' | 'low' | 'medium' | 'high' => {
     try {
       const v = localStorage.getItem('airfield.quality');
@@ -124,6 +129,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   toggleDebugOverlay: () => set((s) => ({ debugOverlay: !s.debugOverlay })),
   toggleWalkOverlay: () => set((s) => ({ walkOverlay: !s.walkOverlay })),
   setOverlay: (overlay) => set({ overlay }),
+  toggleOverlayMenu: () => set((s) => ({ overlayMenuOpen: !s.overlayMenuOpen })),
+  closeOverlayMenu: () => set({ overlayMenuOpen: false }),
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
   simMsPerTick: 0,
   tickBacklog: 0,
