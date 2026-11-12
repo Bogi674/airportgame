@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
-import { AcState, FlState } from '../ops/traffic';
+import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { maxStageKm, takeoffWeight } from '../ops/performance';
 import { BUSINESS, SURFACE_SPEC } from '@data/index';
 import {
@@ -521,13 +521,21 @@ export class Business {
     return checkIn && security && gate;
   }
 
+  /** Row label for a flight: the airline name, GA for general aviation, Test for the test flights. */
+  private airlineLabel(al: number): string {
+    if (al >= 0) return this.airlines[al].name;
+    return al === GA_AIRLINE ? 'GA' : 'Test';
+  }
+
   private onDocked(f: number): void {
     const t = this.traffic.fType[f];
     const spec = AIRCRAFT[t];
     const m = this.mult(f);
+    // General aviation pays landing and parking only, so it carries no passengers.
+    const ga = this.traffic.fAirline[f] === GA_AIRLINE;
     this.host.book('landing', Math.round((spec.weights.mtowKg / 1000) * BUSINESS.fees.landingPerTonne * m));
-    let pax = this.paxFor(f);
-    if (this.needsTerminal(f)) {
+    let pax = ga ? 0 : this.paxFor(f);
+    if (!ga && this.needsTerminal(f)) {
       const cap = this.arrCapacity();
       if (cap <= 0) {
         this.lostToday += pax;
@@ -539,7 +547,7 @@ export class Business {
         pax = served;
       }
     }
-    this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerArriving * m));
+    if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerArriving * m));
     this.paxToday += pax;
     this.flightPax[f] = pax;
     this.flightDockedAt[f] = this.traffic.nowTick;
@@ -552,15 +560,16 @@ export class Business {
 
   private onPushback(f: number): void {
     const m = this.mult(f);
-    let pax = this.paxFor(f);
-    if (this.needsTerminal(f)) {
+    const ga = this.traffic.fAirline[f] === GA_AIRLINE;
+    let pax = ga ? 0 : this.paxFor(f);
+    if (!ga && this.needsTerminal(f)) {
       // Only passengers who boarded through the terminal fly. The rest miss the flight.
       const served = Math.min(pax, this.boarded ? this.boarded(f) : 0);
       this.lostToday += pax - served;
       this.satisfaction += (served / Math.max(1, pax) - this.satisfaction) * 0.1;
       pax = served;
     }
-    this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
+    if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
     this.paxToday += pax;
     this.flightsToday++;
     const hours = Math.max(0.25, (this.traffic.nowTick - this.flightDockedAt[f]) / (TICKS_PER_MINUTE * 60));
@@ -785,7 +794,7 @@ export class Business {
       const eta = f >= 0 ? minuteOfDay(t.fEta[f]) : 0;
       const turnMin = f >= 0 ? Math.round(t.fTurn[f] / TICKS_PER_MINUTE) : 0;
       rows.push({
-        airline: al >= 0 ? this.airlines[al].name : 'Test',
+        airline: this.airlineLabel(al),
         type: AIRCRAFT[t.type[i]].icaoType,
         status: names[t.state[i]],
         stand: stand ? stand.number : '',
@@ -806,7 +815,7 @@ export class Business {
       const eta = minuteOfDay(t.fEta[f]);
       const turnMin = Math.round(t.fTurn[f] / TICKS_PER_MINUTE);
       rows.push({
-        airline: al >= 0 ? this.airlines[al].name : 'Test',
+        airline: this.airlineLabel(al),
         type: AIRCRAFT[t.fType[f]].icaoType,
         status: 'scheduled',
         stand: '',

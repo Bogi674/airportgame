@@ -390,6 +390,14 @@ Vehicle rules:
 * Without radar, approach spacing is larger.
 * Low visibility procedures reduce capacity in fog.
 
+### GA traffic
+
+* General aviation flights need a runway, a connected taxiway and a connected eligible stand. No tower, airline, terminal, fuel or ground vehicles are needed.
+* An eligible stand has GA usage, or it is small, remote and on the default usage. A commercial usage stand refuses GA.
+* GA arrivals come from 06:00 to 20:00 game time, about one per free eligible stand every two game hours.
+* A GA flight lands, parks for the GA turnaround and departs. It pays landing and parking fees only, with no passenger fees.
+* Commercial flights keep all existing requirements.
+
 ### Staff
 
 Roles: check in agent, security officer, police, customs and immigration officer, ground handler, baggage handler, marshaller, cleaner, retail staff, firefighter, paramedic, controller, maintenance technician, administrative staff, terminal manager. Airline pilots and cabin crew also walk through.

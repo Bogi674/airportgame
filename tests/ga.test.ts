@@ -105,6 +105,24 @@ describe('general aviation arrivals', () => {
     for (const id of used) expect(gaIds.has(id)).toBe(true);
   });
 
+  it('a GA visit pays landing and parking and no passenger fees', () => {
+    const sim = gaAirport('GOLDEN-0005');
+    const booked: Record<string, number> = {};
+    const book = sim.book.bind(sim);
+    sim.book = (category, amount) => {
+      booked[category] = (booked[category] ?? 0) + amount;
+      book(category, amount);
+    };
+    let ticks = 0;
+    while (ticks < TWO_HOURS && booked.parking === undefined) {
+      sim.step();
+      ticks++;
+    }
+    expect(booked.landing ?? 0).toBeGreaterThan(0);
+    expect(booked.parking ?? 0).toBeGreaterThan(0);
+    expect(booked.passengers ?? 0).toBe(0);
+  });
+
   it('two sims from one seed agree 2000 ticks after the first GA spawn', () => {
     const a = gaAirport('GOLDEN-0002');
     const b = gaAirport('GOLDEN-0002');

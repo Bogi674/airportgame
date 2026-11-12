@@ -343,3 +343,9 @@ Record every architectural choice with a date and one line of reason.
   * The cap counts figures nearest the camera center, 3 000 or 1 500 under the governor.
   * The crowd check runs at 4 px/m because people are hidden below 4 px/m.
   * Density scaling waits for T16.
+* 2026-11-12, GA traffic (T55). Decisions:
+  * `GA_AIRLINE = -2` in `fAirline` marks a GA flight. Every airline check stays `>= 0`, so GA never indexes the airline list.
+  * GA arrivals draw from the `'ga'` RNG fork. Save version 14 adds `gaNextTick` and `gaRng` to the traffic save. Older saves load with the clock at zero.
+  * The GA constants (day window, gaps, retry, lead) live in `src/sim/ops/traffic.ts` as named constants, not in `src/data`. Move them to data when the GA design is tuned.
+  * The traffic hash folds `gaNextTick` and the GA rng state.
+  * GA visits book landing and parking only. The schedule board labels GA flights `GA`.
