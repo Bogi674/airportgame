@@ -26,7 +26,9 @@ import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
-import { apronArea, apronContains, cutShape, mergeShapes, touches } from '@shared/apronGeom';
+import { apronArea, apronContains, clearOf, cutRegion, type ApronShape, freeRegion, mergeRegion, mergeShapes, overlaps, polylineBoxes, touches } from '@shared/apronGeom';
+import { terminalOverlaps } from '@shared/terminalOps';
+import type { TerminalGrid } from '@shared/business';
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
@@ -53,20 +55,49 @@ interface Op {
 
 export type BuildResult = { cashDelta: number } | Problem;
 
+/** The strip a runway lays: its pavement and shoulders, as four corners. */
+function runwayRect(r: Runway): Pt[] {
+  const len = Math.hypot(r.x2 - r.x1, r.y2 - r.y1);
+  const half = r.widthM / 2 + r.shoulderM;
+  const nx = (-(r.y2 - r.y1) / len) * half;
+  const ny = ((r.x2 - r.x1) / len) * half;
+  return [
+    { x: r.x1 + nx, y: r.y1 + ny },
+    { x: r.x2 + nx, y: r.y2 + ny },
+    { x: r.x2 - nx, y: r.y2 - ny },
+    { x: r.x1 - nx, y: r.y1 - ny },
+  ];
+}
+
+/** A piece of pavement a stand or GA block lays, and the surface it lays it in. */
+interface PaveBox {
+  polygon: Pt[];
+  surface: Surface;
+}
+
+/** The stands of a row and the boxes they pave. */
+interface StandRow {
+  stands: Stand[];
+  boxes: PaveBox[];
+}
+
 /** What a command needs to know about the rest of the game: the tick and the aircraft types airlines fly here. */
 export interface BuildEnv {
   tick: number;
   assignedTypes: readonly number[];
+  /** Terminal buildings, whose floored cells stand and aprons may not cover. Absent means none. */
+  terminals?: readonly TerminalGrid[];
 }
 
 const NO_ENV: BuildEnv = { tick: 0, assignedTypes: [] };
-export const isProblem = (r: BuildResult): r is Problem => 'code' in r;
+export const isProblem = <T extends object>(r: T | Problem): r is Problem => 'code' in r;
 
 const TAXI_NAMES = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const MIN_RUNWAY_M = 300;
 const MAX_RUNWAY_M = 5000;
 const MIN_RUNWAY_SEP_M = 100;
-const REFUND_SHARE = 0.25;
+/** Share of the price refunded when a piece of the airfield is demolished or cut out. */
+export const REFUND_SHARE = 0.25;
 /** How far beyond the default a holding position may be moved. */
 const MAX_HOLD_EXTRA_M = 250;
 const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000, precision: 1_200_000 };
@@ -216,11 +247,15 @@ export class Airfield {
       case 'buildApron':
         return this.buildApron(cmd, ctx, cash);
       case 'cutApron':
-        return this.cutApron(cmd);
+        return this.removeApron(cmd.polygon, cmd.id);
+      case 'removeApronArea':
+        return this.removeApron(cmd.polygon);
+      case 'extendApron':
+        return this.extendApron(cmd, ctx, cash, env);
       case 'buildStands':
-        return this.buildStands(cmd, ctx, cash);
+        return this.buildStands(cmd, ctx, cash, env);
       case 'buildGaBlock':
-        return this.buildGaBlock(cmd, ctx, cash);
+        return this.buildGaBlock(cmd, ctx, cash, env);
       case 'demolish':
         return this.demolish(cmd.kind, cmd.id);
       case 'buildTower':
@@ -465,12 +500,17 @@ export class Airfield {
     if (poly.length < 3 || poly.length > 16) return { code: 'apronPoints' };
     const area = polygonArea(poly);
     if (area < 400) return { code: 'apronTooSmall', args: { min: 400 } };
+    return this.mergeApron(poly, cmd.surface, cmd.tier, ctx, cash);
+  }
+
+  /** Merges a piece into the touching aprons of its surface and charges the new area at the tier's price. */
+  private mergeApron(poly: Pt[], surface: Surface, tier: number, ctx: BuildContext, cash: number): BuildResult {
     const problem = checkPolygon(ctx, poly);
     if (problem) return problem;
-    const { pcr, factor } = tierOf(cmd.surface, cmd.tier);
-    const unit = SURFACE_SPEC[cmd.surface].costPerM2 * factor;
+    const { pcr, factor } = tierOf(surface, tier);
+    const unit = SURFACE_SPEC[surface].costPerM2 * factor;
     const piece = { polygon: poly };
-    const absorbed = this.data.aprons.filter((a) => a.surface === cmd.surface && touches(a, piece));
+    const absorbed = this.data.aprons.filter((a) => a.surface === surface && touches(a, piece));
     const shapes = mergeShapes(poly, absorbed);
     const before = absorbed.reduce((sum, a) => sum + apronArea(a), 0);
     const after = shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
@@ -485,7 +525,7 @@ export class Airfield {
         cost: Math.round((oldCost * apronArea(sh)) / Math.max(1, after) + (cost * apronArea(sh)) / Math.max(1, after)),
         polygon: sh.polygon,
         holes: sh.holes.length > 0 ? sh.holes : undefined,
-        surface: cmd.surface,
+        surface,
         pcr: Math.max(pcr, ...absorbed.map((a) => a.pcr)),
         condition: 100,
         name: k === 0 && absorbed[0]?.name ? absorbed[0].name : `Apron ${++this.apronNumber}`,
@@ -499,25 +539,45 @@ export class Airfield {
     return { cashDelta: -cost };
   }
 
-  /** Cuts a piece out of an apron, or out of every apron it overlaps, refunding a share of the removed area. */
-  private cutApron(cmd: Extract<Command, { type: 'cutApron' }>): BuildResult {
-    const poly = cmd.polygon.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+  /** Stand boxes and taxiway pavement, which a removal never takes out of an apron. */
+  private keptPavement(): Pt[][] {
+    const out: Pt[][] = [];
+    for (const s of this.data.stands) {
+      const slot = standSlot(s.size);
+      if (slot) out.push(standBox(s, slot));
+    }
+    for (const t of this.data.taxiways) out.push(...polylineBoxes(t.points, t.widthM));
+    return out;
+  }
+
+  /**
+   * Takes a piece out of the aprons it overlaps, or out of the one given. Built pavement inside the
+   * piece stays paved (handoff/tasks/T57-visual-repair.md D5), and the removed area is refunded at the
+   * demolish share of its surface price. Ctrl cut and the remove command both come here.
+   */
+  private removeApron(polygon: Pt[], id?: number): BuildResult {
+    const poly = polygon.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
     if (poly.length < 3 || poly.length > 16) return { code: 'apronPoints' };
-    const targets = this.data.aprons.filter((a) => (cmd.id === undefined ? touches(a, { polygon: poly }) : a.id === cmd.id));
+    const region = clearOf(poly, this.keptPavement());
+    const targets = this.data.aprons.filter((a) => (id === undefined ? touches(a, { polygon: poly }) : a.id === id));
     const replaced: Item[] = [];
     const items: Item[] = [];
     let refund = 0;
     for (const a of targets) {
-      const shapes = cutShape(a, poly);
+      const shapes = cutRegion(a, region);
       const removed = apronArea(a) - shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
       if (removed < 1) continue;
       const perM2 = a.cost / Math.max(1, apronArea(a));
-      refund += removed * perM2 * SURFACE_SPEC[a.surface].refundShare;
+      refund += removed * SURFACE_SPEC[a.surface].costPerM2 * REFUND_SHARE;
       replaced.push({ type: 'apron', obj: a });
-      shapes.forEach((sh, k) =>
+      // The largest remainder keeps the id, the others take fresh ids in a fixed order: area, then west, then south.
+      const minX = (sh: ApronShape): number => Math.min(...sh.polygon.map((p) => p.x));
+      const minY = (sh: ApronShape): number => Math.min(...sh.polygon.map((p) => p.y));
+      const ordered = shapes.slice().sort((p, q) => apronArea(q) - apronArea(p) || minX(p) - minX(q) || minY(p) - minY(q));
+      ordered.forEach((sh, k) =>
         items.push({
           type: 'apron',
-          obj: { ...a, id: this.nextId++, cost: Math.round(perM2 * apronArea(sh)), polygon: sh.polygon, holes: sh.holes.length > 0 ? sh.holes : undefined, name: k === 0 ? a.name : `Apron ${++this.apronNumber}` },
+          obj: { ...a, id: k === 0 ? a.id : this.nextId++, cost: Math.round(perM2 * apronArea(sh)), polygon: sh.polygon, holes: sh.holes.length > 0 ? sh.holes : undefined, name: k === 0 ? a.name : `Apron ${++this.apronNumber}` },
         }),
       );
     }
@@ -530,6 +590,37 @@ export class Airfield {
     return { cashDelta };
   }
 
+  /**
+   * Adds a piece to an apron it touches, on that apron's surface (handoff/tasks/T57-visual-repair.md D6).
+   * The piece merges like any apron piece, and only its new area is paid for at the surface price.
+   */
+  private extendApron(cmd: Extract<Command, { type: 'extendApron' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
+    const a = this.data.aprons.find((x) => x.id === cmd.apronId);
+    if (!a) return { code: 'nothingThere' };
+    if (cmd.polygon.length < 3 || cmd.polygon.length > 16) return { code: 'apronPoints' };
+    const poly = cmd.polygon.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+    if (!touches(a, { polygon: poly })) return { code: 'apron.extendNotTouching' };
+    if (this.onRunway(poly)) return { code: 'onRunway' };
+    const building = this.buildingProblem(poly, env);
+    if (building) return building;
+    // The new area is priced at the apron's own strength tier, with no minimum size.
+    const tier = Math.max(0, SURFACE_SPEC[a.surface].pcrTiers.indexOf(a.pcr));
+    return this.mergeApron(poly, a.surface, tier, ctx, cash);
+  }
+
+  /** True when the polygon overlaps a runway strip, its shoulders included. */
+  private onRunway(poly: readonly Pt[]): boolean {
+    return this.data.runways.some((r) => overlaps(poly, runwayRect(r)));
+  }
+
+  /** The reason a stand or apron may not cover this polygon because of a tower or a terminal, or null. */
+  private buildingProblem(poly: readonly Pt[], env: BuildEnv): Problem | null {
+    const side = BUSINESS.tower.footprintM;
+    if (this.towerList.some((t) => overlaps(poly, towerRect(t.x, t.y, side)))) return { code: 'onTower' };
+    if (env.terminals && terminalOverlaps(env.terminals, poly)) return { code: 'onTerminal' };
+    return null;
+  }
+
   private surfaceAt(x: number, y: number): Surface | null {
     for (const a of this.data.aprons) if (apronContains(a, x, y)) return a.surface;
     return null;
@@ -537,16 +628,29 @@ export class Airfield {
 
   /**
    * A row of stands of one size (docs/DESIGN_REVISION_2.md section 3). Spacing is at least the size's
-   * width, the surface comes from the apron under each stand and must be on the size's list. Small
-   * stands may sit on grass without an apron.
+   * width. Each stand takes the command's surface, else the apron under its slot, else the fallback, and
+   * must be on the size's list. Its slot box is returned to be paved (handoff/tasks/T57-visual-repair.md D4).
    */
-  private makeStands(x: number, y: number, headingDeg: number, count: number, spacing: number, type: StandType, size: StandSize, ctx: BuildContext): Item[] | Problem {
+  private makeStands(
+    x: number,
+    y: number,
+    headingDeg: number,
+    count: number,
+    spacing: number,
+    type: StandType,
+    size: StandSize,
+    ctx: BuildContext,
+    pick: Surface | undefined,
+    fallback: Surface,
+    env: BuildEnv,
+  ): StandRow | Problem {
     const n = Math.floor(count);
     if (n < 1 || n > 30) return { code: 'standCount', args: { max: 30 } };
     const spec = STAND_SIZES[size];
     const d = compassVector(headingDeg);
     const perp = { x: -d.y, y: d.x };
-    const items: Item[] = [];
+    const stands: Stand[] = [];
+    const boxes: PaveBox[] = [];
     if (spacing < spec.widthM) return { code: 'standSpacing', args: { min: Math.ceil(spec.widthM) } };
     const halfW = spec.widthM / 2;
     const lines = this.data.taxiways.map((t) => ({ pts: t.points }));
@@ -556,15 +660,12 @@ export class Airfield {
       const sy = round05(y + perp.y * spacing * i);
       const p = checkStrip(ctx, [{ x: sx, y: sy }, { x: sx + d.x * 2, y: sy + d.y * 2 }], spec.maxSpanM * 0.5);
       if (p) return p;
-      const apronSurface = this.surfaceAt(sx, sy);
-      if (size !== 'small' && !apronSurface) return { code: 'standNeedsApron' };
-      const surface: Surface = apronSurface ?? 'grass';
+      const surface: Surface = pick ?? this.surfaceAt(sx, sy) ?? fallback;
       if (!spec.surfaces.includes(surface)) return { code: 'standSurface' };
       for (const s of this.data.stands) {
         if (Math.hypot(s.x - sx, s.y - sy) < STAND_SIZES[s.size].widthM / 2 + halfW - 0.5) return { code: 'standOverlap' };
       }
-      for (const it of items) {
-        const s = it.obj as Stand;
+      for (const s of stands) {
         if (Math.hypot(s.x - sx, s.y - sy) < spec.widthM - 0.5) return { code: 'standOverlap' };
       }
       number++;
@@ -588,31 +689,88 @@ export class Airfield {
       // A size with no rated aircraft has no slot to check, so its stands are refused rather than passed unchecked.
       const slot = standSlot(size);
       if (!slot) return { code: 'stand.taxiwayClearance' };
-      if (standTaxiwayClash(standBox(stand, slot), lead, this.data.taxiways, AIRFIELD.codes, spec.wingtipClearanceM)) return { code: 'stand.taxiwayClearance' };
-      items.push({ type: 'stand', obj: stand });
+      const bay = standBox(stand, slot);
+      const bayProblem = checkPolygon(ctx, bay);
+      if (bayProblem) return bayProblem;
+      if (this.onRunway(bay)) return { code: 'onRunway' };
+      const building = this.buildingProblem(bay, env);
+      if (building) return building;
+      if (standTaxiwayClash(bay, lead, this.data.taxiways, AIRFIELD.codes, spec.wingtipClearanceM)) return { code: 'stand.taxiwayClearance' };
+      stands.push(stand);
+      boxes.push({ polygon: bay, surface });
     }
     this.standNumber = number;
-    return items;
+    return { stands, boxes };
   }
 
-  private buildStands(cmd: Extract<Command, { type: 'buildStands' }>, ctx: BuildContext, cash: number): BuildResult {
+  /**
+   * Unions each box into the aprons of its surface, merging the ones it touches (handoff/tasks/T57-visual-repair.md D7).
+   * Only the area no apron covers is charged at the surface price. Returns the aprons that replace the
+   * current list and that charge, or a problem when a result is too large.
+   */
+  private paveBoxes(boxes: readonly PaveBox[]): { aprons: Apron[]; charge: number } | Problem {
+    let list: Apron[] = this.data.aprons.slice();
+    let charge = 0;
+    for (const bx of boxes) {
+      // Only the part no apron covers is paved, so pavement under the box keeps its own surface.
+      const free = freeRegion(bx.polygon, list);
+      if (free.length === 0) continue;
+      const absorbed = list.filter((a) => a.surface === bx.surface && touches(a, { polygon: bx.polygon }));
+      const shapes = mergeRegion(free, absorbed);
+      const before = absorbed.reduce((sum, a) => sum + apronArea(a), 0);
+      const after = shapes.reduce((sum, sh) => sum + apronArea(sh), 0);
+      if (after > 600000) return { code: 'apronTooLarge' };
+      const add = Math.max(0, after - before) * SURFACE_SPEC[bx.surface].costPerM2;
+      charge += add;
+      const oldCost = absorbed.reduce((sum, a) => sum + a.cost, 0);
+      const pcr = Math.max(tierOf(bx.surface, 0).pcr, ...absorbed.map((a) => a.pcr));
+      const created: Apron[] = shapes.map((sh, k) => ({
+        id: this.nextId++,
+        cost: Math.round(((oldCost + add) * apronArea(sh)) / Math.max(1, after)),
+        polygon: sh.polygon,
+        holes: sh.holes.length > 0 ? sh.holes : undefined,
+        surface: bx.surface,
+        pcr,
+        condition: 100,
+        name: k === 0 && absorbed[0]?.name ? absorbed[0].name : `Apron ${++this.apronNumber}`,
+      }));
+      list = list.filter((a) => !absorbed.includes(a)).concat(created);
+    }
+    return { aprons: list, charge: Math.round(charge) };
+  }
+
+  /** Places a row of stands with the pavement under them as one operation, charging both. */
+  private placeStands(stands: Stand[], boxes: PaveBox[], cash: number): BuildResult {
+    const paved = this.paveBoxes(boxes);
+    if (isProblem(paved)) return paved;
+    const total = stands.reduce((sum, st) => sum + st.cost, 0) + paved.charge;
+    if (total > cash) return { code: 'insufficientFunds', args: { cost: total } };
+    const existing = new Set<Apron>(this.data.aprons);
+    const replaced: Item[] = this.data.aprons.filter((a) => !paved.aprons.includes(a)).map((a) => ({ type: 'apron', obj: a }));
+    const created: Item[] = paved.aprons.filter((a) => !existing.has(a)).map((a) => ({ type: 'apron', obj: a }));
+    const items: Item[] = [...stands.map((st): Item => ({ type: 'stand', obj: st })), ...created];
+    this.removeItems(replaced);
+    this.addItems(items);
+    this.undoStack.push({ items, added: true, cashDelta: -total, replaced });
+    this.redoStack.length = 0;
+    return { cashDelta: -total };
+  }
+
+  private buildStands(cmd: Extract<Command, { type: 'buildStands' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
     const before = this.standNumber;
     const idBefore = this.nextId;
-    const items = this.makeStands(cmd.x, cmd.y, cmd.headingDeg, cmd.count, cmd.spacingM, cmd.standType, cmd.size, ctx);
-    if (!Array.isArray(items)) {
-      this.standNumber = before;
-      this.nextId = idBefore;
-      return items;
-    }
-    const r = this.place(items, cash);
+    const apronBefore = this.apronNumber;
+    const row = this.makeStands(cmd.x, cmd.y, cmd.headingDeg, cmd.count, cmd.spacingM, cmd.standType, cmd.size, ctx, cmd.surface, 'concrete', env);
+    const r = isProblem(row) ? row : this.placeStands(row.stands, row.boxes, cash);
     if (isProblem(r)) {
       this.standNumber = before;
       this.nextId = idBefore;
+      this.apronNumber = apronBefore;
     }
     return r;
   }
 
-  private buildGaBlock(cmd: Extract<Command, { type: 'buildGaBlock' }>, ctx: BuildContext, cash: number): BuildResult {
+  private buildGaBlock(cmd: Extract<Command, { type: 'buildGaBlock' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
     const n = Math.floor(cmd.count);
     if (n < 1 || n > 20) return { code: 'standCount', args: { max: 20 } };
     const spacing = STAND_SIZES.small.widthM;
@@ -629,30 +787,26 @@ export class Airfield {
     ];
     const idBefore = this.nextId;
     const numBefore = this.standNumber;
+    const apronBefore = this.apronNumber;
     const apronProblem = checkPolygon(ctx, poly);
     if (apronProblem) return apronProblem;
-    const { pcr, factor } = tierOf('asphalt', 0);
-    const apron: Apron = {
-      id: this.nextId++,
-      cost: Math.round(polygonArea(poly) * SURFACE_SPEC.asphalt.costPerM2 * factor),
-      polygon: poly.map((p) => ({ x: round05(p.x), y: round05(p.y) })),
-      surface: 'asphalt',
-      pcr,
-      condition: 100,
-    };
-    // The apron must exist for the stands to find their surface.
-    this.data.aprons.push(apron);
-    const stands = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'remote', 'small', ctx);
-    this.data.aprons.pop();
-    if (!Array.isArray(stands)) {
+    if (this.onRunway(poly)) return { code: 'onRunway' };
+    const building = this.buildingProblem(poly, env);
+    if (building) return building;
+    const block = poly.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+    // The block and its stands take the command's surface, else the apron under the block, else asphalt.
+    const surface: Surface = cmd.surface ?? this.surfaceAt((poly[0].x + poly[2].x) / 2, (poly[0].y + poly[2].y) / 2) ?? 'asphalt';
+    const row = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'remote', 'small', ctx, surface, 'asphalt', env);
+    if (isProblem(row)) {
       this.nextId = idBefore;
       this.standNumber = numBefore;
-      return stands;
+      return row;
     }
-    const r = this.place([{ type: 'apron', obj: apron }, ...stands], cash);
+    const r = this.placeStands(row.stands, [{ polygon: block, surface }, ...row.boxes], cash);
     if (isProblem(r)) {
       this.nextId = idBefore;
       this.standNumber = numBefore;
+      this.apronNumber = apronBefore;
     }
     return r;
   }

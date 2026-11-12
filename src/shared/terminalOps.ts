@@ -1,4 +1,4 @@
-import { apronContains } from '@shared/apronGeom';
+import { apronContains, overlaps } from '@shared/apronGeom';
 import { BUSINESS } from '@data/index';
 import type { AirfieldPayload } from './airfield';
 import {
@@ -241,6 +241,34 @@ function clearOfPavement(af: AirfieldPayload, x: number, y: number): boolean {
     for (let i = 1; i < t.points.length; i++) if (distToSegment(x, y, t.points[i - 1].x, t.points[i - 1].y, t.points[i].x, t.points[i].y) < t.widthM / 2 + 4) return false;
   }
   return true;
+}
+
+/** Reach from a floored cell's centre to any point of the cell: half the 2 m cell diagonal, rounded up. */
+const CELL_REACH_M = 2;
+
+/** True when a polygon overlaps the footprint of a floored cell of any terminal grid. */
+export function terminalOverlaps(grids: readonly TerminalGrid[], poly: readonly Pt[]): boolean {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of poly) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  for (const g of grids) {
+    for (let i = 0; i < g.floor.length; i++) {
+      if (g.floor[i] <= 0) continue;
+      const c = cellOf(g, i);
+      const centre = cornerWorld(g, c.x + 0.5, c.y + 0.5);
+      if (centre.x < minX - CELL_REACH_M || centre.x > maxX + CELL_REACH_M || centre.y < minY - CELL_REACH_M || centre.y > maxY + CELL_REACH_M) continue;
+      const square = [cornerWorld(g, c.x, c.y), cornerWorld(g, c.x + 1, c.y), cornerWorld(g, c.x + 1, c.y + 1), cornerWorld(g, c.x, c.y + 1)];
+      if (overlaps(square, poly)) return true;
+    }
+  }
+  return false;
 }
 
 function otherHasCell(others: readonly TerminalGrid[], self: number, x: number, y: number): boolean {

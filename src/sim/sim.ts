@@ -275,7 +275,7 @@ export class Sim {
         break;
       default: {
         const towersBefore = this.airfield.towersVersion;
-        const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes() });
+        const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids });
         if (r === null) break;
         if (isProblem(r)) {
           let e = r.code;
