@@ -607,7 +607,7 @@ export class Traffic {
 
   /**
    * True when one more movement fits the runway's rolling hour budget. Expired movements drop off the
-   * head as time passes, so the scan stays O(1) amortised (handoff/tasks/T40-atc-tower.md R4).
+   * head as time passes, so the scan stays O(1) amortised (task T40 R4).
    */
   private movementFree(r: number): boolean {
     if (this.towerLevel < 1) return true;

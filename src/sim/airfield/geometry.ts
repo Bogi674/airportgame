@@ -167,10 +167,6 @@ function dedupeHolding(list: HoldingPoint[]): HoldingPoint[] {
   return out;
 }
 
-export function taxiwayLength(t: Taxiway): number {
-  return polylineLength(t.points);
-}
-
 /**
  * Taxiway names after the usual convention: main taxiways take letters A, B, C and so on, skipping I
  * and O (they read as 1 and 0) and N and X (N for north, X for closed), then double letters. A short

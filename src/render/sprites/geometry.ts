@@ -136,18 +136,6 @@ export function teY(s: SpriteBase, w: Wing, ySpan: number): number {
   return K[1] + (TT[1] - K[1]) * f;
 }
 
-/** Ports `shoelace` and `wing_area`. */
-export function wingArea(s: SpriteBase): number {
-  const pts = wingRight(s, s.wing);
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const [x1, y1] = pts[i];
-    const [x2, y2] = pts[(i + 1) % pts.length];
-    a += x1 * y2 - x2 * y1;
-  }
-  return 2 * (Math.abs(a) / 2) + s.fw * s.wing.c;
-}
-
 /** Ports `winglet` for the right side (side = 1) or the left (side = -1). Empty when there is none. */
 export function winglet(s: SpriteBase, w: Wing, side: 1 | -1): XY[] {
   const kind = w.winglet;

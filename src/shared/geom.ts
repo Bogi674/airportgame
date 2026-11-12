@@ -3,10 +3,6 @@ export interface Pt {
   y: number;
 }
 
-export function dist(ax: number, ay: number, bx: number, by: number): number {
-  return Math.hypot(bx - ax, by - ay);
-}
-
 /** Closest point on segment ab to p, written to out with the parameter t in [0, 1]. */
 export function closestOnSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number, out: { x: number; y: number; t: number }): void {
   const dx = bx - ax;

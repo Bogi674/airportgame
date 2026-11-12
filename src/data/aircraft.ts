@@ -188,7 +188,3 @@ export function wakeSeparationSec(leader: WakeCat, follower: WakeCat): number {
 }
 
 export const RUNWAY_OCCUPANCY = wake.runwayOccupancySec;
-
-export function typeIndex(id: string): number {
-  return AIRCRAFT.findIndex((a) => a.id === id);
-}

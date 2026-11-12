@@ -4,6 +4,16 @@ The single plan for Airfield Tycoon: what is built, what is left for MVP 1, and 
 
 Last restructured on 2026-11-12, after the revamp brief.
 
+## Next session: start here
+
+1. Read `CLAUDE.md`, then this file.
+2. The next task is **T59** (stand classes, placement, lead in snapping, connection states), the first task of phase 1. Its design is `docs/DESIGN_REVISION_4.md` section 2, with the values D1 to D4 in `handoff/QUESTIONS.md` (2026-11-12 T58) and the benchmark notes in `handoff/reference/benchmark-stands.md`.
+3. T59 has no spec yet. Run the `grill-me` skill, then write `handoff/tasks/T59.md` (goal, read first, decisions, numbered requirements, acceptance criteria) and the plan in `handoff/work/T59.md`, as steps 0 to 3 of the workflow in `CLAUDE.md` describe.
+4. Build on what T57 left: the stand slot math in `src/shared/standGeom.ts`, the clearance rule `standTaxiwayClash` in `src/shared/clearance.ts`, and stands that pave their own slot. T59 needs a save migration from the four sizes to the five classes.
+5. Ask the user first about the one open point from T57: the interim turnaround crews (aircraft under 20 m get no belt loader set, GA turnarounds get a refueller only) wait for the user's confirmation, see `docs/ARCHITECTURE.md` section 12.
+6. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only, so it does not collide with T59.
+7. Known leftovers are in `handoff/BACKLOG.md`, known limits in `docs/ARCHITECTURE.md` section 13.
+
 ## 1. Direction
 
 The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
@@ -21,7 +31,8 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 * A task gets a spec only when it starts. The `grill-me` interview settles the open decisions, and the result is written to `handoff/tasks/<id>.md`. When the task closes, its decisions go to `docs/ARCHITECTURE.md` section 12, its row here is set to `done` with the commit hashes, and the spec and work notes are deleted. Git keeps the history.
 * The specs already in `handoff/tasks/` for `todo` tasks were written before the revamp. Treat them as drafts and refresh them against design revision 4 when the task starts.
 * A phase closes when every exit criterion is seen working in the dev build and the full `npm run verify` is green.
-* The "Replaces" column names older task ids whose content the task absorbs. Their old specs can be read with `git show 16e5468:handoff/tasks/<file>`.
+* The "Replaces" column names older task ids whose content the task absorbs. Their old specs can be read with `git show 16e5468:handoff/tasks/<file>`. The old milestone checklist is `git show 16e5468:docs/ROADMAP.md`.
+* Bugs passed with notice or skipped as minor are logged in `handoff/BACKLOG.md`, per the bug triage rule in `CLAUDE.md`.
 
 ## 3. What is built (2026-11-12)
 
@@ -31,17 +42,17 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | --- | --- |
 | Foundation | Deterministic sim in a worker, fixed timestep, command log and replay, saves with migrations, autosave, export and import, crash panel, quality governor, CI with lint, tests, stress and Playwright in three engines |
 | Site | Seeded terrain, parcels with purchase, wind, climate, city, two presets, minimap and camera |
-| Airfield | Runways with works, taxiways with the revision 2 pavement generator, holding points, rapid exits, parallel taxiway prefab, aprons as merging polygons, stands in four sizes with a lead in fork, GA blocks, turn pads (look frozen), obstacle surfaces, wingtip envelopes, construction grid with snapping, undo and redo |
+| Airfield | Runways with works, taxiways with the revision 2 pavement generator, holding points, rapid exits, parallel taxiway prefab, aprons as merging polygons with remove and extend tools, stands in four sizes with a lead in fork, a taxiway clearance check and their own paved slot, GA blocks, turn pads (look frozen), obstacle surfaces, wingtip envelopes, construction grid with snapping, undo and redo |
 | Aircraft and movement | 10 aircraft types with sprites in four tiers, taxi network with conflict sets, routing, reservations, junction priority, push back, deadlock handling, performance checks, wake separation |
 | ATC | Free standing tower with five levels and a movement budget per runway |
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model |
 | Passengers | Departing cohorts by profile, walking graph, service nodes and queues, journey from curb to boarding, people atlas with 30 recipes, density, queue and walking distance overlays |
 | Flights | Daily rotations offered per airline and dragged onto a stand timeline, automation toggle, flights board, general aviation arriving on its own |
-| Ground handling | Eight vehicle types that spawn near the stand and drive straight to fixed offsets, a fixed turnaround time per role |
+| Ground handling | Eight vehicle types that spawn near the stand, approach on paths that never cross the aircraft and dock at door positions from data, with ground shadows. Aircraft stop with the nose gear on their stop line. A fixed turnaround time per role |
 | Business | Seven fixed airlines with contracts and fees, daily ledger, one term loan, shop rent, ratings, weather events (rain, fog, strong wind) |
 | UI | Main menu, new game, top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
 
-Simplified today and replaced by the phases below: straight line vehicles, rotation based flights, fixed airlines, rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
+Simplified today and replaced by the phases below: vehicles without roads or depots, rotation based flights, fixed airlines, rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
 
 ## 4. MVP 1 phases
 
@@ -49,7 +60,7 @@ MVP 1 ends with the acceptance task T38.
 
 | Phase | Theme | Tasks | Status |
 | --- | --- | --- | --- |
-| 0 | Repair | T57, T58 | doing |
+| 0 | Repair | T57, T58, T69 | done |
 | 1 | Stands and flight planning | T59, T47, T61, T62 | todo |
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66 | todo |
 | 3 | People | T54, T67, T20, T68 | todo |
@@ -66,9 +77,9 @@ Goal: the current game is visually clean before new mechanics land on it.
 | --- | --- | --- | --- | --- |
 | T58 | Design revision 4 and its decision batch |  |  | done |
 | T57 | Visual repair: stand clearance against taxiways, continuous lead in paint, vehicles outside the aircraft footprint with shadows, apron remove and extend tools, stands that pave their own box |  |  | done fc6109e d7a327b eff1eda 09798a2 16e5468 c064f8c 7ec0edc cf7887c ccb2eb8 b55fc1a. Leftovers in `handoff/BACKLOG.md` |
-| T69 | Housekeeping after T57 lands: fold its result into this file, delete the legacy files of section 7, finish the cleanup of the files that were frozen for it |  | T57 | todo |
+| T69 | Housekeeping after T57: legacy plan files, finished specs and reports, unused functions and strings deleted |  | T57 | done |
 
-Exit: no parked aircraft breaks a taxiway, no vehicle is drawn through an aircraft, aprons can be cut and extended, and this file is the only plan in the repository.
+Exit, met on 2026-11-12: no parked aircraft breaks a taxiway, no vehicle is drawn through an aircraft, aprons can be cut and extended, and this file is the only plan in the repository.
 
 ### Phase 1. Stands and flight planning
 
@@ -174,25 +185,5 @@ Kept as a short record. Details are in the commit history and in `docs/ARCHITECT
 | T15, T16 | People atlas rendering, terminal overlays |
 | T55 | General aviation traffic |
 | T58 | Design revision 4 |
-
-## 7. Legacy files, frozen until T57 lands
-
-These three files are the old plan. They stay untouched so the T57 branch merges without conflicts, and task T69 deletes them. Do not plan from them.
-
-* `docs/ROADMAP.md`: the old milestone checklist M0 to M12.
-* `handoff/TASKS.md`: the old task board in seven phases.
-* `handoff/STATE.md`: the old state summary.
-
-Where they disagree with this file, this file wins.
-
-## 8. Known limits carried from finished tasks
-
-Notes from the deleted task reports that are recorded nowhere else. Task T69 moves them to `docs/ARCHITECTURE.md`.
-
-* `priorityHolder` and `conflictHolder` in `src/sim/ops/traffic.ts` loop over active aircraft for each waiting aircraft, so they are quadratic in the queue. Watch the busy50 stress scenario when traffic grows.
-* Since the conflict sets landed, the medium, large and busy50 stress scenarios each record one deadlock resolution, and medium and large complete two flights fewer in their short runs.
-* A junction margin above `CONFLICT_MARGIN_M` (30 m) cut arrivals in the tower test from over 20 to 14. A waiting span of 16 m broke the spacing test in `tests/traffic.test.ts`. Both were tried and dropped.
-* Turn pads: the look is frozen by the user, arrivals do not backtrack, pads on taxiways and blast pads do not exist, and the pad preview and inspector lines have no automated test.
-* The strings module has no plural support, so a one day closure reads "for 1 days".
-* Sprite tiers follow `docs/ART_AND_ASSETS.md` section 2 (0 arrow, 1 silhouette, 2 reference, 3 close up). Sprite baking needs a canvas and is checked in Chromium only. The pop in check on a busy apron at 1 px/m was never run.
-* The aircraft sprite sheet still awaits the user's review.
+| T57 | Visual repair: stand clearance, apron tools, vehicle docking paths and shadows |
+| T69 | Repository cleanup after the revamp |

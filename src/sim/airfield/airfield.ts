@@ -316,7 +316,7 @@ export class Airfield {
   private buildRunway(cmd: Extract<Command, { type: 'buildRunway' }>, ctx: BuildContext, cash: number): BuildResult {
     const length = Math.round(cmd.lengthM);
     if (length < MIN_RUNWAY_M || length > MAX_RUNWAY_M) return { code: 'runwayLength', args: { min: MIN_RUNWAY_M, max: MAX_RUNWAY_M } };
-    // The tower ladder caps how many runways it can serve (handoff/tasks/T40-atc-tower.md R5). Without a tower the cap is unlimited.
+    // The tower ladder caps how many runways it can serve (task T40 R5). Without a tower the cap is unlimited.
     const cap = runwayCapOf(towerLevelOf(this.data));
     if (cap >= 0 && this.data.runways.length + 1 > cap) return { code: 'towerRunwayCap', args: { level: levelForRunways(this.data.runways.length + 1) } };
     if (cmd.approach !== 'visual' && !isPaved(cmd.surface)) return { code: 'approachNeedsPaved' };
@@ -543,7 +543,7 @@ export class Airfield {
 
   /**
    * Takes a piece out of the aprons it overlaps, or out of the one given. Built pavement inside the
-   * piece stays paved (handoff/tasks/T57-visual-repair.md D5), and the removed area is refunded at the
+   * piece stays paved (task T57 D5), and the removed area is refunded at the
    * demolish share of its surface price. Ctrl cut and the remove command both come here.
    */
   private removeApron(polygon: Pt[], id?: number): BuildResult {
@@ -576,7 +576,7 @@ export class Airfield {
   }
 
   /**
-   * Adds a piece to an apron it touches, on that apron's surface (handoff/tasks/T57-visual-repair.md D6).
+   * Adds a piece to an apron it touches, on that apron's surface (task T57 D6).
    * The piece merges like any apron piece, and only its new area is paid for at the surface price.
    */
   private extendApron(cmd: Extract<Command, { type: 'extendApron' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
@@ -614,7 +614,7 @@ export class Airfield {
   /**
    * A row of stands of one size (docs/DESIGN_REVISION_2.md section 3). Spacing is at least the size's
    * width. Each stand takes the command's surface, else the apron under its slot, else the fallback, and
-   * must be on the size's list. Its slot box is returned to be paved (handoff/tasks/T57-visual-repair.md D4).
+   * must be on the size's list. Its slot box is returned to be paved (task T57 D4).
    */
   private makeStands(
     x: number,
@@ -688,7 +688,7 @@ export class Airfield {
   }
 
   /**
-   * Unions each box into the aprons of its surface, merging the ones it touches (handoff/tasks/T57-visual-repair.md D7).
+   * Unions each box into the aprons of its surface, merging the ones it touches (task T57 D7).
    * Only the area no apron covers is charged at the surface price. Returns the aprons that replace the
    * current list and that charge, or a problem when a result is too large.
    */
@@ -785,7 +785,7 @@ export class Airfield {
 
   /**
    * Builds a free standing ATC tower centred on the point, at a level from 1 to 5, paying the build
-   * cost plus one upgrade per level above 1 (handoff/tasks/T40-atc-tower.md section 1).
+   * cost plus one upgrade per level above 1 (task T40 section 1).
    */
   private buildTower(cmd: Extract<Command, { type: 'buildTower' }>, ctx: BuildContext, cash: number): BuildResult {
     const levels = BUSINESS.tower.levels;
