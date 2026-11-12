@@ -4,7 +4,7 @@ import { atan2Det, TWO_PI } from './trig';
 import type { Pt } from './geom';
 
 /**
- * Construction grid along a runway or a taxiway segment (handoff/tasks/T42-grid-snapping.md, R1).
+ * Construction grid along a runway or a taxiway segment (task T42, R1).
  * The grid is the Cities Skylines model: the player draws the runway or taxiway freely, then a
  * lattice of nodes forms along it, and placement tools snap to those nodes. Every runway carries one
  * grid anchored at threshold A along the heading from A to B, every taxiway segment carries one

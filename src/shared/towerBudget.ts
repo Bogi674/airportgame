@@ -2,7 +2,7 @@ import { BUSINESS } from '@data/index';
 import type { AirfieldPayload } from './airfield';
 
 /**
- * The ATC tower ladder (handoff/tasks/T40-atc-tower.md, "Numbers"): movements per rolling hour
+ * The ATC tower ladder (task T40, "Numbers"): movements per rolling hour
  * per runway and the runway count limit, read from `business.json` once and shared by the sim,
  * the renderer and the UI so they cannot disagree.
  */

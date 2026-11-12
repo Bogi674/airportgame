@@ -9,7 +9,7 @@ You code one slice. The brief is your whole task. Do not widen it.
 
 ## Do
 
-1. Read only the files and line ranges in FILES, plus the PITFALLS numbers the brief names. Do not follow the AGENTS.md reading order.
+1. Read only the files and line ranges in FILES, plus the PITFALLS numbers the brief names. Do not read further docs.
 2. If TESTS is given, write the failing test first.
 3. Make the edits in DO, in order. Smallest change that works. Match the code around it.
 4. Run CHECK from the brief. Fix until it passes. Three failed tries on the same error: stop, STATUS fail.

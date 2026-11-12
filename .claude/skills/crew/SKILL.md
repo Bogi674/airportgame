@@ -10,22 +10,22 @@ Three roles, one working tree, one slice at a time.
 
 | Role | Model | Does | Never does |
 | --- | --- | --- | --- |
-| Orchestrator | the session model, Fable or Opus | talks to the user, plans, writes briefs, runs verify, commits, updates handoff files | bulk coding |
+| Orchestrator | the session model, Fable or Opus | talks to the user, plans, writes briefs, runs verify, commits, updates `ROADMAP.md` and the work notes | bulk coding |
 | Coder | Haiku, agent `coder` | edits files for one slice | design decisions, commits |
 | Reviewer | Sonnet, agent `reviewer` | reads the slice diff, lists blocking problems | edits |
 
-Argument: a task id from `handoff/TASKS.md`. No argument: the first `todo` or `doing` row whose dependencies are done.
+Argument: a task id from `ROADMAP.md`. No argument: the first `todo` or `doing` row of the current phase whose dependencies are done.
 
 ## Loop
 
-1. **Plan, orchestrator.** Follow `handoff/WORKFLOW.md` up to the plan: settle open decisions with the user, write `handoff/work/<task>.md`, cut the task into slices of at most about 150 changed lines and 5 files. Each slice ends green.
+1. **Plan, orchestrator.** Follow the workflow in `CLAUDE.md` up to the plan: settle open decisions with the user, make sure the spec `handoff/tasks/<task>.md` exists, write `handoff/work/<task>.md`, cut the task into slices of at most about 150 changed lines and 5 files. Each slice ends green.
 2. **Brief.** Send the coder one brief per slice, in the format below. Spend your tokens here: the brief carries every decision, exact signatures, names, data keys and values, so the coder decides nothing.
 3. **Code.** Call the Agent tool with `subagent_type: coder`, `run_in_background: false`. One coder at a time.
 4. **Check.** Read the five line reply. On `ok`: run `git diff --stat HEAD`, then `npm run verify -- quick 2>&1 | tail -12`. On `blocked`: answer from the docs, or ask the user, then resend only the answer with SendMessage to the same coder.
 5. **Review.** Call `subagent_type: reviewer` with the brief's DO and DONT lines. Skip the reviewer when the slice touches no file under `src/sim`, `src/shared` or `src/data` and changes under 40 lines.
 6. **Fix.** On `fix`: SendMessage the findings to the same coder, word for word, nothing added. At most two fix rounds. After that, fix it yourself or stop and tell the user.
-7. **Commit.** On `pass` and green verify: tick the criteria in the work file and commit the slice, message per AGENTS.md.
-8. **Close.** After the last slice: full `npm run verify`, update `handoff/TASKS.md` and `handoff/STATE.md`, report to the user in under 10 lines.
+7. **Commit.** On `pass` and green verify: tick the criteria in the work file and commit the slice, message per `CLAUDE.md`.
+8. **Close.** After the last slice: full `npm run verify`, close the task per step 8 of the `CLAUDE.md` workflow, report to the user in under 10 lines.
 
 ## Brief format
 
