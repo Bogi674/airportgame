@@ -1,13 +1,10 @@
 import { FIXTURE_KEYS, type TerminalGrid } from '@shared/business';
-import type { OverlayData } from '@shared/overlay';
+import { OVERLAY_MAX, type OverlayData } from '@shared/overlay';
 import { cellIndex } from '@shared/terminalOps';
 import { Stage } from '../cohorts/cohorts';
 import { serviceWait, type ServiceNodes } from './serviceNodes';
 
-export type { OverlayData } from '@shared/overlay';
-
-/** Largest value a Uint16 overlay field holds. Also the marker for an unreachable gate. */
-export const OVERLAY_MAX = 65535;
+export { OVERLAY_MAX, type OverlayData };
 
 /** Cohort columns the overlay reads. Cohorts satisfy it without a copy. */
 export interface OverlayPeople {

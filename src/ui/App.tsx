@@ -224,6 +224,28 @@ export function App() {
     client.query(id, 'walkGraph', { grid: grid.id });
   }, [renderer, client, store.walkOverlay, selection, store.terminalGrids]);
 
+  // The terminal overlay feed runs only while an overlay is picked.
+  useEffect(() => {
+    client.setOverlaySub(store.overlay !== 'none');
+  }, [client, store.overlay]);
+
+  // Theme tokens feed the overlay colour ramp. They are read again when the theme attribute changes.
+  useEffect(() => {
+    if (!renderer) return;
+    const readTheme = (): void => {
+      const cs = getComputedStyle(document.documentElement);
+      renderer.setOverlayTheme(cs.getPropertyValue('--ok').trim(), cs.getPropertyValue('--warn').trim(), cs.getPropertyValue('--bad').trim(), cs.getPropertyValue('--muted').trim());
+    };
+    readTheme();
+    const observer = new MutationObserver(readTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, [renderer]);
+
+  useEffect(() => {
+    renderer?.setOverlay(store.overlay, store.overlayData, store.terminalGrids);
+  }, [renderer, store.overlay, store.overlayData, store.terminalGrids]);
+
   useEffect(() => {
     renderer?.setSelectedParcel(store.selectedParcel);
   }, [renderer, store.site, store.selectedParcel]);

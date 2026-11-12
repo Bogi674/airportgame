@@ -6,8 +6,9 @@ import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
 import { AIRFIELD, PAINT } from '@data/index';
 import { paintGhostObjects } from './markings/airfieldPaint';
 import type { Ghost, GhostShape } from '@shared/ghost';
-import type { TerminalGrid } from '@shared/business';
+import { TERMINAL_CELL_M, type TerminalGrid } from '@shared/business';
 import type { ConstructionGrid } from '@shared/constructionGrid';
+import { OVERLAY_MAX, type OverlayData, type OverlayKind } from '@shared/overlay';
 import type { WalkGraphView } from '@shared/protocol';
 import { cornerWorld } from '@shared/terminalOps';
 import { Camera } from './camera';
@@ -18,6 +19,7 @@ import { People } from './people';
 import { QualityGovernor, type QualityPreset } from './quality';
 import { vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
+import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
 
 const MAX_BACKING = 4096;
 
@@ -83,6 +85,12 @@ const WALK_EDGE_COLOR = 'rgba(120, 190, 255, 0.55)';
 /** Node kinds in WALK_NODE order: 1 lattice, 2 door, 3 fixture. */
 const WALK_NODE_COLORS = ['', 'rgba(120, 190, 255, 0.9)', '#f2b33d', '#5fd08a'] as const;
 
+/** Terminal overlay: fill alpha of the colour ramp, and the smallest cell in CSS pixels that gets a label. */
+const OVERLAY_ALPHA = 0.6;
+const OVERLAY_LABEL_MIN_PX = 14;
+const OVERLAY_LABEL_PX = 11;
+const OVERLAY_LABEL_COLOR = '#10161c';
+
 /** Canvas 2D renderer. Static layer from baked chunks, dynamic layer from interpolated snapshots. */
 export class Renderer {
   readonly camera = new Camera();
@@ -118,6 +126,19 @@ export class Renderer {
   private walk: WalkGraphView | null = null;
   private walkWorld = new Float32Array(0);
   private walkScreen = new Float32Array(0);
+  private overlayKind: OverlayKind = 'none';
+  private overlayData: OverlayData[] | null = null;
+  private overlayGrids: TerminalGrid[] = [];
+  /** Per overlay grid, six numbers: the world position of logical cell (0, 0), then the world step of one cell in x and in y. */
+  private overlayAxes = new Float64Array(0);
+  private readonly overlayMatrix = new Float64Array(6);
+  private overlayScale = 1;
+  /** Label text per building, per node or gate cell, built with the scale so drawing never builds strings. */
+  private overlayLabels: string[][] = [];
+  private overlayRamp: string[] = [];
+  private overlayThemeKey = '';
+  /** Fill of unreachable gates, the muted token at the overlay alpha. */
+  private overlayMutedFill = '';
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -271,6 +292,59 @@ export class Renderer {
     this.walk = view;
   }
 
+  /** Colours of the terminal overlay from the theme tokens. The ramp is rebuilt only when one of them changes. */
+  setOverlayTheme(ok: string, warn: string, bad: string, muted: string): void {
+    const key = `${ok}|${warn}|${bad}|${muted}`;
+    if (key === this.overlayThemeKey) return;
+    this.overlayThemeKey = key;
+    this.overlayRamp = buildRamp(ok, warn, bad, OVERLAY_ALPHA);
+    this.overlayMutedFill = withAlpha(muted, OVERLAY_ALPHA);
+  }
+
+  /**
+   * Shows one terminal overlay, or none. The scale is recomputed only when new data or a new kind arrives. The cell
+   * frames of the grids are recomputed whenever the grids or the data change, never per frame.
+   */
+  setOverlay(kind: OverlayKind, data: OverlayData[] | null, grids: TerminalGrid[]): void {
+    if (data !== this.overlayData || kind !== this.overlayKind) {
+      this.overlayScale = overlayMax(kind, data ?? []);
+      this.rebuildOverlayLabels(kind, data ?? []);
+    }
+    this.overlayKind = kind;
+    this.overlayData = data;
+    this.overlayGrids = grids;
+    this.overlayAxes = new Float64Array(6 * grids.length);
+    for (let i = 0; i < grids.length; i++) {
+      const g = grids[i]!;
+      const p0 = cornerWorld(g, 0, 0);
+      const px = cornerWorld(g, 1, 0);
+      const py = cornerWorld(g, 0, 1);
+      const o = 6 * i;
+      this.overlayAxes[o] = p0.x;
+      this.overlayAxes[o + 1] = p0.y;
+      this.overlayAxes[o + 2] = px.x - p0.x;
+      this.overlayAxes[o + 3] = px.y - p0.y;
+      this.overlayAxes[o + 4] = py.x - p0.x;
+      this.overlayAxes[o + 5] = py.y - p0.y;
+    }
+  }
+
+  /** Label text of every node or gate cell of every building. Unreachable gates get an empty label and no text. */
+  private rebuildOverlayLabels(kind: OverlayKind, data: readonly OverlayData[]): void {
+    this.overlayLabels.length = data.length;
+    for (let k = 0; k < data.length; k++) {
+      const d = data[k]!;
+      const values = kind === 'queue' ? d.nodeQueue : kind === 'walk' ? d.gateDistM : null;
+      const labels = this.overlayLabels[k] ?? [];
+      labels.length = values ? values.length : 0;
+      for (let n = 0; values && n < values.length; n++) {
+        const v = values[n]!;
+        labels[n] = kind === 'queue' ? String(v) : v === OVERLAY_MAX ? '' : `${v} m`;
+      }
+      this.overlayLabels[k] = labels;
+    }
+  }
+
   setGhost(ghost: Ghost | null): void {
     this.ghost = ghost;
   }
@@ -334,6 +408,7 @@ export class Renderer {
     if (this.overlay) {
       this.overlay.draw(ctx, { a: z * c, b: z * s, c: -z * s, d: z * c, e, f }, cam.zoom, this.showParcels);
     }
+    if (this.overlayKind !== 'none') this.drawOverlay(z * c, z * s, -z * s, z * c, e, f);
     if (this.walk) this.drawWalkGraph(ctx, z * c, z * s, -z * s, z * c, e, f);
     if (this.hover || this.selected) this.drawHighlights(z * c, z * s, -z * s, z * c, e, f);
     if (this.grid) this.drawGrid(this.grid, z * c, z * s, -z * s, z * c, e, f);
@@ -342,6 +417,98 @@ export class Renderer {
     this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(curr, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
+  }
+
+  /**
+   * Device matrix of one overlay grid's logical cells, written into overlayMatrix: the camera matrix applied to the
+   * grid's world axes. Logical cell (x, y) maps to device (m0 x + m2 y + m4, m1 x + m3 y + m5).
+   */
+  private overlayMatrixFor(grid: number, a: number, b: number, cc: number, d: number, e: number, f: number): Float64Array {
+    const o = 6 * grid;
+    const ax = this.overlayAxes;
+    const p0x = ax[o]!;
+    const p0y = ax[o + 1]!;
+    const uxx = ax[o + 2]!;
+    const uxy = ax[o + 3]!;
+    const uyx = ax[o + 4]!;
+    const uyy = ax[o + 5]!;
+    const m = this.overlayMatrix;
+    m[0] = a * uxx + cc * uxy;
+    m[1] = b * uxx + d * uxy;
+    m[2] = a * uyx + cc * uyy;
+    m[3] = b * uyx + d * uyy;
+    m[4] = a * p0x + cc * p0y + e;
+    m[5] = b * p0x + d * p0y + f;
+    return m;
+  }
+
+  /**
+   * One terminal overlay as a colour ramp over the cells of each building. Density fills cells with people, queue
+   * fills service node cells by their wait and labels the queue length, walk fills gate cells by their walking
+   * distance and labels the metres. Labels only show once a cell is at least OVERLAY_LABEL_MIN_PX on screen, so they
+   * never overlap.
+   */
+  private drawOverlay(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const data = this.overlayData;
+    if (!data || this.overlayRamp.length === 0) return;
+    const ctx = this.ctx;
+    const kind = this.overlayKind;
+    const scale = this.overlayScale;
+    const ramp = this.overlayRamp;
+    const labelled = this.camera.zoom * TERMINAL_CELL_M >= OVERLAY_LABEL_MIN_PX;
+    for (let k = 0; k < data.length; k++) {
+      const d0 = data[k]!;
+      const g = this.overlayGrids[d0.building];
+      if (!g || g.w !== d0.w || g.h !== d0.h) continue;
+      const m = this.overlayMatrixFor(d0.building, a, b, cc, d, e, f);
+      ctx.setTransform(m[0]!, m[1]!, m[2]!, m[3]!, m[4]!, m[5]!);
+      if (kind === 'density') {
+        for (let i = 0; i < d0.density.length; i++) {
+          const v = d0.density[i]!;
+          if (v > 0) this.fillOverlayCell(g, i, ramp[rampIndex(v, scale)]!);
+        }
+      } else if (kind === 'queue') {
+        for (let n = 0; n < d0.nodeCell.length; n++) {
+          const i = d0.nodeCell[n]!;
+          if (i >= 0) this.fillOverlayCell(g, i, ramp[rampIndex(d0.nodeWaitS[n]!, scale)]!);
+        }
+      } else if (kind === 'walk') {
+        for (let n = 0; n < d0.gateCell.length; n++) {
+          const i = d0.gateCell[n]!;
+          if (i < 0) continue;
+          const dist = d0.gateDistM[n]!;
+          this.fillOverlayCell(g, i, dist === OVERLAY_MAX ? this.overlayMutedFill : ramp[rampIndex(dist, scale)]!);
+        }
+      }
+      if (labelled && (kind === 'queue' || kind === 'walk')) this.labelOverlayCells(d0, kind, m, this.overlayLabels[k]!);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /** Fills one array cell of a grid. The transform must already map logical cells to device pixels. */
+  private fillOverlayCell(g: TerminalGrid, index: number, color: string): void {
+    this.ctx.fillStyle = color;
+    this.ctx.fillRect(g.x0 + (index % g.w), g.y0 + Math.floor(index / g.w), 1, 1);
+  }
+
+  /** Prebuilt labels at the centre of each node or gate cell, in screen pixels. */
+  private labelOverlayCells(d: OverlayData, kind: OverlayKind, m: Float64Array, labels: string[]): void {
+    const ctx = this.ctx;
+    const g = this.overlayGrids[d.building]!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = `${OVERLAY_LABEL_PX * this.dpr}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = OVERLAY_LABEL_COLOR;
+    const cells = kind === 'queue' ? d.nodeCell : d.gateCell;
+    for (let n = 0; n < cells.length; n++) {
+      const i = cells[n]!;
+      const text = labels[n];
+      if (i < 0 || !text) continue;
+      const lx = g.x0 + (i % g.w) + 0.5;
+      const ly = g.y0 + Math.floor(i / g.w) + 0.5;
+      ctx.fillText(text, m[0]! * lx + m[2]! * ly + m[4]!, m[1]! * lx + m[3]! * ly + m[5]!);
+    }
   }
 
   /**

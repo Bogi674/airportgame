@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { AirfieldPayload } from '@shared/airfield';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
-import type { OverlayData } from '@shared/overlay';
+import type { OverlayData, OverlayKind } from '@shared/overlay';
 import type { PerfReport } from '@shared/protocol';
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
@@ -38,6 +38,9 @@ interface GameState extends PerfReport {
   guideHidden: boolean;
   debugOverlay: boolean;
   walkOverlay: boolean;
+  /** The terminal overlay picked, one at a time. */
+  overlay: OverlayKind;
+  setOverlay(kind: OverlayKind): void;
   quality: 'auto' | 'low' | 'medium' | 'high';
   setQuality(q: 'auto' | 'low' | 'medium' | 'high'): void;
   crash: { message: string; tick: number; seed: string; commands: unknown[] } | null;
@@ -99,6 +102,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   guideHidden: false,
   debugOverlay: false,
   walkOverlay: false,
+  overlay: 'none',
   quality: ((): 'auto' | 'low' | 'medium' | 'high' => {
     try {
       const v = localStorage.getItem('airfield.quality');
@@ -119,6 +123,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setCrash: (crash) => set({ crash }),
   toggleDebugOverlay: () => set((s) => ({ debugOverlay: !s.debugOverlay })),
   toggleWalkOverlay: () => set((s) => ({ walkOverlay: !s.walkOverlay })),
+  setOverlay: (overlay) => set({ overlay }),
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
   simMsPerTick: 0,
   tickBacklog: 0,
