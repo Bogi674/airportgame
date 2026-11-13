@@ -8,7 +8,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 
 1. Read `CLAUDE.md`, then this file.
 2. The next task is **T59** (stand classes, placement, lead in snapping, connection states), the first task of phase 1. Its design is `docs/DESIGN_REVISION_4.md` section 2, with the values D1 to D4 in `handoff/QUESTIONS.md` (2026-11-12 T58) and the benchmark notes in `handoff/reference/benchmark-stands.md`.
-3. T59 has no spec yet. Run the `grill-me` skill, then write `handoff/tasks/T59.md` (goal, read first, decisions, numbered requirements, acceptance criteria) and the plan in `handoff/work/T59.md`, as steps 0 to 3 of the workflow in `CLAUDE.md` describe.
+3. T59 has no spec yet. Run the `grill-me` skill, then write `handoff/tasks/T59.md` (goal, read first, decisions, numbered requirements, acceptance criteria) and the plan in `handoff/work/T59.md`, as steps 0 to 3 of the `task` skill describe.
 4. Build on what T57 left: the stand slot math in `src/shared/standGeom.ts`, the clearance rule `standTaxiwayClash` in `src/shared/clearance.ts`, and stands that pave their own slot. T59 needs a save migration from the four sizes to the five classes.
 5. Ask the user first about the one open point from T57: the interim turnaround crews (aircraft under 20 m get no belt loader set, GA turnarounds get a refueller only) wait for the user's confirmation, see `docs/ARCHITECTURE.md` section 12.
 6. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only, so it does not collide with T59.
@@ -32,7 +32,7 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 * The specs already in `handoff/tasks/` for `todo` tasks were written before the revamp. Treat them as drafts and refresh them against design revision 4 when the task starts.
 * A phase closes when every exit criterion is seen working in the dev build and the full `npm run verify` is green.
 * The "Replaces" column names older task ids whose content the task absorbs. Their old specs can be read with `git show 16e5468:handoff/tasks/<file>`. The old milestone checklist is `git show 16e5468:docs/ROADMAP.md`.
-* Bugs passed with notice or skipped as minor are logged in `handoff/BACKLOG.md`, per the bug triage rule in `CLAUDE.md`.
+* Bugs passed with notice or skipped as minor are logged in `handoff/BACKLOG.md`, per the bug triage rule in the `task` skill.
 
 ## 3. What is built (2026-11-12)
 

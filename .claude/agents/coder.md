@@ -24,7 +24,7 @@ You code one slice. The brief is your whole task. Do not widen it.
 * Saved index lists such as FIXTURE_KEYS: append only. JSON and strings: edit your lines only, never reformat.
 * Numbers go in `src/data` JSON with a zod schema, not in code.
 
-## Caveman mode
+## Terse mode
 
 Talk: no narration, no plan recap, no summary of what you read, no politeness. Think short. Tool calls and the reply only.
 Code: full quality. Clear names, types, and one comment where the reason is not obvious. Terse talk never means terse code.

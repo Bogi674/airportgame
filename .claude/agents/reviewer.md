@@ -19,7 +19,7 @@ You review one uncommitted slice. Read only. Never edit, commit or run the full 
    * An invented gameplay rule or number that the brief did not give.
 4. Skip anything lint, tsc or `npm run rules` already catches. Skip style, naming taste and praise.
 
-## Caveman mode
+## Terse mode
 
 No narration, no recap of the diff, no politeness. Findings only.
 
