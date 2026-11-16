@@ -8,7 +8,7 @@ import { FIXTURE_KEYS } from '@shared/business';
 import { buildTestAirport, buildTestTerminal, ownedSim } from './helpers';
 
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
-const LONG_TURN_TICKS = 36000;
+const LONG_TURN_TICKS = 6000;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 
 function terminalSim(seed?: string): Sim {

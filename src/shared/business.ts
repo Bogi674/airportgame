@@ -1,7 +1,10 @@
 /** Business state shared with the UI: terminals, airlines, the ledger, the loan and the rating. */
 
-export const TICKS_PER_DAY = 864000;
-export const TICKS_PER_MINUTE = 600;
+import { TICKS_PER_GAME_MINUTE } from './time';
+
+/** Calendar ticks, derived from CLOCK_SCALE in time.ts: 50 ticks per game minute, 72000 per game day. */
+export const TICKS_PER_MINUTE = TICKS_PER_GAME_MINUTE;
+export const TICKS_PER_DAY = 24 * 60 * TICKS_PER_MINUTE;
 /** The game starts at 06:00 on day 0. */
 export const START_MINUTE = 6 * 60;
 

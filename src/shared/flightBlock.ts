@@ -7,8 +7,11 @@ import { standRefusal } from './standSizes';
  * the arrival until the turn is over, and two blocks on one stand may not overlap.
  */
 
-/** The 3000 tick gap Traffic.autoAssign keeps between two flights on one stand (5 game minutes). */
-export const STAND_BLOCK_BUFFER_MIN = 5;
+/**
+ * The gap Traffic.autoAssign keeps between two flights on one stand, in game minutes. Taxi in and push back are
+ * physical and take longer on the calendar than they used to, so the buffer covers them.
+ */
+export const STAND_BLOCK_BUFFER_MIN = 30;
 
 /** A stand block in game minutes, from arrival to the end of the turn plus the buffer. */
 export interface BlockWindow {

@@ -226,7 +226,8 @@ describe('junction conflicts in traffic', () => {
   function worstSlack(seed: string, seconds: number, perHour: number): { slack: number; pairs: number; info: string } {
     const sim = ownedSim(seed);
     buildTestAirport(sim, { standsPerRow: 10 });
-    run(sim, { type: 'setTestTraffic', perHour, turnScale: 0.1 });
+    // Test traffic is physical: the scale keeps the turn at 900 ticks whatever the calendar turnaround is.
+    run(sim, { type: 'setTestTraffic', perHour, turnScale: 0.4 });
     const t = sim.traffic;
     const net = t.net;
     let slack = Infinity;

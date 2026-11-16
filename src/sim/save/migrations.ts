@@ -4,7 +4,12 @@ import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
+
+/** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
+const OLD_CLOCK_RATIO = 12;
+/** AcState.Turnaround in ops/traffic.ts, the one aircraft state whose timer counts calendar time. */
+const TURNAROUND_STATE = 4;
 
 export interface SaveData {
   version: number;
@@ -81,5 +86,40 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 13) save.version = 13;
   // Version 13 to 14: traffic saves the GA arrival clock and its rng. Older saves load with the clock at zero.
   if (save.version < 14) save.version = 14;
+  // Version 14 to 15: the calendar runs 12 times faster than motion (CLOCK_SCALE in shared/time.ts). The tick counter keeps its value, so the day number of an old save jumps. Waits that were set on the old calendar are shortened to the same number of game minutes on the new one: works, flight arrival times and retries, turnaround lengths and timers, delays, the GA clock and the weather.
+  if (save.version < 15) {
+    const old = save as {
+      tick: number;
+      airfield?: { runways?: { works?: { doneTick: number } }[]; taxiways?: { works?: { doneTick: number } }[] };
+      traffic?: { arrays?: Record<string, string>; gaNextTick?: number };
+      business?: { weatherStart?: number; weatherEnd?: number };
+    };
+    const now = old.tick;
+    const later = (t: number): number => (t > now ? now + Math.round((t - now) / OLD_CLOCK_RATIO) : t);
+    const af = old.airfield;
+    for (const item of [...(af?.runways ?? []), ...(af?.taxiways ?? [])]) {
+      if (item.works) item.works.doneTick = later(item.works.doneTick);
+    }
+    const arrays = old.traffic?.arrays;
+    if (arrays?.fEta && arrays.fTurn && arrays.fDelay && arrays.fRetryAt && arrays.timer && arrays.state) {
+      const rescale = (key: string, f: (v: number, k: number) => number): void => {
+        const a = unpackTyped(arrays[key], Int32Array);
+        for (let k = 0; k < a.length; k++) a[k] = f(a[k], k);
+        arrays[key] = packTyped(a);
+      };
+      const state = unpackTyped(arrays.state, Uint8Array);
+      rescale('fEta', later);
+      rescale('fRetryAt', later);
+      rescale('fTurn', (v) => Math.round(v / OLD_CLOCK_RATIO));
+      rescale('fDelay', (v) => Math.round(v / OLD_CLOCK_RATIO));
+      rescale('timer', (v, k) => (state[k] === TURNAROUND_STATE ? Math.round(v / OLD_CLOCK_RATIO) : v));
+    }
+    if (old.traffic && typeof old.traffic.gaNextTick === 'number') old.traffic.gaNextTick = later(old.traffic.gaNextTick);
+    if (old.business) {
+      if (typeof old.business.weatherStart === 'number') old.business.weatherStart = later(old.business.weatherStart);
+      if (typeof old.business.weatherEnd === 'number') old.business.weatherEnd = later(old.business.weatherEnd);
+    }
+    save.version = 15;
+  }
   return save as SaveData;
 }

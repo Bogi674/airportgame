@@ -7,7 +7,7 @@ test('boots to the menu, starts a game, ticks, pauses and renders the map', asyn
   await expect(page.getByTestId('map')).toBeVisible();
 
   // The sim worker is ticking and the clock moves.
-  await expect.poll(() => page.evaluate(() => window.__store?.getState().tick ?? 0)).toBeGreaterThan(100);
+  await expect.poll(() => page.evaluate(() => window.__store?.getState().tick ?? 0)).toBeGreaterThan(20);
   await expect(page.getByTestId('clock')).toContainText('06:');
 
   // Terrain bakes and paints non background pixels.

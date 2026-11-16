@@ -81,6 +81,8 @@ async function buildScene(page: Page): Promise<void> {
 
 for (const scene of SCENES) {
   test(`${scene.size} stand with a docked aircraft and its ground equipment`, async ({ page }) => {
+    // At speed 8 the sim runs 160 ticks per real second, so the vehicles need most of a minute to drive to their docks.
+    test.setTimeout(150_000);
     const errors = watchErrors(page);
     await startNewGame(page);
     await buildScene(page);

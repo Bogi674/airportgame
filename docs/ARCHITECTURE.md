@@ -64,7 +64,8 @@ The renderer interpolates positions and headings between the last two snapshots.
 
 ## 3. Time
 
-* 1 tick is 0.1 game seconds. At speed 1 one game hour takes 20 real seconds (3 game minutes per real second, 1800 ticks per second).
+* 1 tick is 0.1 seconds of motion. The calendar runs `CLOCK_SCALE` 12 times faster than motion, so a game minute is 50 ticks and a game day is 72 000 ticks. At speed 1 the sim runs 20 ticks per real second: aircraft, vehicles and people move at twice real time, and a game day takes 60 real minutes.
+* Physical durations (taxiing, runway occupancy, wake separation, walking) are tick counts. Calendar durations (turnarounds, works, weather, lead times, service seconds in data) are game minutes or game clock seconds, converted through `TICKS_PER_MINUTE` and `gameSecondsToTicks`.
 * Cadences: aircraft and vehicles every tick, people cohorts every 5 ticks, queues and service nodes every 10, baggage and turnaround tasks every 10, ATC sequencing every 20, congestion costs every 50, market, tenants and finance once per game day, events every game hour.
 * If the worker falls behind it drops snapshots, never ticks, and reports `tickBacklog`. Over 50 ticks of backlog, speed caps automatically and the UI says so.
 
@@ -361,6 +362,14 @@ Record every architectural choice with a date and one line of reason.
   * GSE docks: station, side and orientation per vehicle kind in `gse.json`; dock lateral clears the hard footprint; vehicles on one side arrive in `DOCK_ORDER` sequence and leave in reverse; paths are prebuilt per type and kind in the `Gse` constructor. The order lives in code because the kind order of `gse.json` is the saved fleet index.
   * Interim turnaround crews until T63: aircraft under 20 m get no belt loader set, GA turnarounds get a refueller only. Pending the user's confirmation.
   * Vehicles interpolate like aircraft, only when slot id and kind match, and cast a body frame ground shadow from their footprint by their height. People draw above aircraft.
+* 2026-11-16 TIME1 game speed:
+  * The calendar runs 12 times faster than motion and speed 1 is 20 ticks per real second. Reason: the old 1800 ticks per second moved aircraft at 180 times real time, and the user asked for motion that can be watched with a day of about one hour, as in the benchmark.
+  * Rebalanced to the new clock: turnarounds ga 45, commuter 60, regional turboprop 75, regional jet 90, narrowbody 120, widebody 180 game minutes; stand block buffer 30 min; arrival delay limit 60 min; ATC wait 90 min; GA span 4 h per free stand with a 1 h minimum gap; passenger lead times 120 to 180 min. Reason: taxiing is physical and now takes many game minutes, so calendar waits must cover it.
+  * Service, boarding hold and queue seconds in data are game clock seconds. The cohort router divides a queue wait by `CLOCK_SCALE` before it compares the wait with a walk in physical seconds.
+  * The tower budget span stays 36 000 ticks and is labelled per 12 game hours. Reason: movements are physical, so the same count per span keeps the same runway load.
+  * The wind is redrawn every 12 game hours instead of every game hour. Reason: an hourly redraw would flip the runway in use every 300 s of motion and exposed a wingtip clearance shortfall while aircraft taxi during a flip, see `handoff/BACKLOG.md`.
+  * The stress scenarios keep their physical turn lengths: the default test turn scale is 0.36 (was 0.08), `busy50` uses 16 (was 4), and the test traffic command accepts a scale up to 24 (was 6). Reason: the scale multiplies calendar minutes, which are 4 to 5 times fewer ticks than before.
+  * Save version 15. The migration keeps the tick counter, so the day number of an old save jumps, and divides the remaining calendar waits by 12: works, pending arrival times and retries, turnaround lengths and timers, delays, the GA clock and the weather. Cohort timers are left alone, so passengers already in a terminal may arrive late once.
 
 ## 13. Known limits
 

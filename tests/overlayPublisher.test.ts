@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import type { Sim } from '@sim/sim';
+import { TICKS_PER_MINUTE } from '@shared/business';
 import type { OverlayData } from '@shared/overlay';
 import { emptyOverlay } from '@sim/terminal/overlays';
 import { OverlayPublisher } from '../src/worker/overlayPublisher';
 import { buildTestAirport, buildTestTerminal, ownedSim } from './helpers';
 
-const TICKS_PER_MINUTE = 600;
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
-const LONG_TURN_TICKS = 36000;
+const LONG_TURN_TICKS = 6000;
 
 describe('OverlayPublisher', () => {
   it('is never due while off', () => {
@@ -23,7 +23,7 @@ describe('OverlayPublisher', () => {
     expect(p.due(1234)).toBe(true);
   });
 
-  it('is not due again until 600 ticks after a mark', () => {
+  it('is not due again until one game minute after a mark', () => {
     const p = new OverlayPublisher();
     p.setOn(true);
     p.mark(1000);
@@ -31,7 +31,7 @@ describe('OverlayPublisher', () => {
     expect(p.due(1000 + TICKS_PER_MINUTE - 1)).toBe(false);
   });
 
-  it('is due again at exactly 600 ticks after a mark', () => {
+  it('is due again at exactly one game minute after a mark', () => {
     const p = new OverlayPublisher();
     p.setOn(true);
     p.mark(1000);

@@ -377,6 +377,9 @@ export class TaxiNetwork {
           chainFrom = n;
         }
       }
+      // A line whose last vertices merge into one node skips the cut above, so its tail is flushed
+      // here. Without this a taxiway that ends exactly on a runway threshold lost its last stretch.
+      if (chain.length > 1) raw.push({ from: chainFrom, to: own[own.length - 1], pts: chain, line });
     });
 
     this.nodeCount = nx.length;
@@ -532,7 +535,17 @@ export class TaxiNetwork {
         // Direction of travel toward the runway: arrive at `node`.
         const dir = this.adjDir[p] === 1 ? -1 : 1;
         if (dir === -1 && this.edgeOneWay[e] === 1) continue;
-        const holdAt = af.holding.find((h) => h.runwayId === en.runwayId && h.taxiwayId === en.taxiwayId);
+        // A taxiway that meets the runway twice has a holding point per entry: take the nearest one.
+        let holdAt: (typeof af.holding)[number] | undefined;
+        let holdBest = Infinity;
+        for (const h of af.holding) {
+          if (h.runwayId !== en.runwayId || h.taxiwayId !== en.taxiwayId) continue;
+          const d = Math.hypot(h.x - en.x, h.y - en.y);
+          if (d < holdBest) {
+            holdBest = d;
+            holdAt = h;
+          }
+        }
         const holdD = holdAt ? Math.hypot(holdAt.x - en.x, holdAt.y - en.y) : 0;
         this.holds.push({ entryIdx: i, node, edge: e, dir, dist: Math.max(0, this.edgeLen[e] - holdD), holdDist: holdD });
         break;

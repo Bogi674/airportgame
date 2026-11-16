@@ -56,6 +56,10 @@ describe('saves', () => {
       version: number;
       business: { grids: { id: number; building?: number; level?: number }[] };
     };
+    // Saves older than version 15 have their calendar waits shortened on load, so the reference is the same save
+    // labelled version 14: the floor step must add nothing to that.
+    const ref = new Sim('GOLDEN-0001', OPTIONS);
+    ref.restore({ ...(JSON.parse(JSON.stringify(data)) as typeof data), version: 14 } as never);
     data.version = 10;
     for (const g of data.business.grids) {
       delete g.building;
@@ -70,7 +74,7 @@ describe('saves', () => {
       expect(g.building).toBe(g.id);
       expect(terminalIssues(g)).toEqual(terminalIssues(sim.business.grids[i]));
     });
-    expect(c.stateHash()).toBe(sim.stateHash());
+    expect(c.stateHash()).toBe(ref.stateHash());
   });
 
   it('a version 10 save migrates each grid to its own building on floor 0', () => {
