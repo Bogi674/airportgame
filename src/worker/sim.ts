@@ -152,8 +152,9 @@ function loop(): void {
       tickAccumulator -= 1;
     }
     backlog = Math.floor(tickAccumulator);
-    // Never replay lost real time: drop the backlog beyond one second of ticks.
-    if (tickAccumulator > TICKS_PER_REAL_SECOND_AT_1X) tickAccumulator = TICKS_PER_REAL_SECOND_AT_1X;
+    // Never replay lost real time: drop the backlog beyond one real second of ticks at the current speed.
+    const backlogCap = TICKS_PER_REAL_SECOND_AT_1X * Math.max(1, effectiveSpeed());
+    if (tickAccumulator > backlogCap) tickAccumulator = backlogCap;
   } else {
     // Paused: keep applying queued commands so builds work while paused, without advancing time.
     sim.flushCommands();

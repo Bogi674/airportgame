@@ -38,8 +38,8 @@ const openFacts = (spec: AircraftSpec): StandFacts => ({
 
 describe('blockWindow and blocksOverlap', () => {
   it('ends the block after the turn and the buffer', () => {
-    expect(STAND_BLOCK_BUFFER_MIN).toBe(5);
-    expect(blockWindow(600, 45)).toEqual({ startMin: 600, endMin: 650 });
+    expect(STAND_BLOCK_BUFFER_MIN).toBe(30);
+    expect(blockWindow(600, 45)).toEqual({ startMin: 600, endMin: 675 });
   });
 
   it('treats touching windows as free and shared time as a clash', () => {

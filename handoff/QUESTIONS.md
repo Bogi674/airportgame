@@ -190,3 +190,12 @@ Context: `docs/DESIGN_REVISION_4.md` needs these values, plus the open questions
 Recommendation: accept all.
 
 Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 were set by the user directly. Each value moves into `src/data` with a zod schema in the task that first uses it.
+
+## 2026-11-16 TIME1 and the handover of the stands, roads and speed session
+
+| Question | Answer (owner, 2026-11-16) |
+| --- | --- |
+| Which item does this session finish | Game speed (TIME1) |
+| Time scale: motion at twice real time at speed 1, calendar 12 times faster than motion, one game day in 60 real minutes, turnarounds 45 to 180 game minutes, old saves load with a jumped day number | Confirmed as proposed |
+| Service roads and D2 (a stand without a road is bookable only for GA) | Soft penalty: commercial flights still use a stand without a road, turnarounds are slower and an alert asks for a road. Existing saves keep working. This replaces the hard rule of D2 |
+| Snapping at the last point: which tool | All drawing tools: a marker and tooltip for every snap kind in the runway, taxiway, apron and stand tools, and press and drag draws a taxiway segment |

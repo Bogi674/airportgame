@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, type TerminalGrid } from '@shared/business';
+import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, TICKS_PER_MINUTE, type TerminalGrid } from '@shared/business';
+import { STAND_BLOCK_BUFFER_MIN } from '@shared/flightBlock';
 import { BUSINESS } from '@data/index';
 import { businessSchema } from '../src/data/schemas/business';
 import { Sim } from '@sim/sim';
@@ -168,7 +169,7 @@ describe('airlines and money', () => {
     run(sim, { type: 'signAirline', airlineId: 1, rotations: 3 });
     const before = sim.cash;
     // Run until just after the first midnight.
-    const midnight = 18 * 60 * 600;
+    const midnight = 18 * 60 * TICKS_PER_MINUTE;
     while (sim.tick < midnight + 50) sim.step();
     const p = sim.business.payload(sim.tick);
     expect(sim.traffic.completedFlights + sim.traffic.count).toBeGreaterThan(0);
@@ -182,7 +183,7 @@ describe('airlines and money', () => {
     // Cash equals the starting cash minus construction and land plus everything in the ledger so far.
     expect(sim.cash).not.toBe(before);
     expect(p.day).toBe(1);
-    expect(TICKS_PER_DAY).toBe(864000);
+    expect(TICKS_PER_DAY).toBe(72000);
   }, 120000);
 
   it('loans add cash, accrue interest and are limited', () => {
@@ -537,7 +538,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(14);
+    expect(SAVE_VERSION).toBe(15);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -592,7 +593,7 @@ describe('flight offers in the business payload', () => {
       expect(pe < ce || (pe === ce && pf < cf)).toBe(true);
     }
     for (const o of offers) {
-      expect(o.endMin - o.arrMin - o.turnMin).toBe(5);
+      expect(o.endMin - o.arrMin - o.turnMin).toBe(STAND_BLOCK_BUFFER_MIN);
       expect(AIRCRAFT[o.typeIdx].icaoType).toBe(o.type);
     }
     for (const r of sim.business.payload(sim.traffic.nowTick).board) expect(AIRCRAFT[r.typeIdx].icaoType).toBe(r.type);

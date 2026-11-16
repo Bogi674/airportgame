@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIXTURE_KEYS, FIXTURE_SPAN, WALL, type FixtureKey, type TerminalGrid } from '../src/shared/business';
+import { FIXTURE_KEYS, FIXTURE_SPAN, TICKS_PER_MINUTE, WALL, type FixtureKey, type TerminalGrid } from '../src/shared/business';
 import { cellIndex, ensureCells, hEdgeIndex, newGrid, vEdgeIndex } from '../src/shared/terminalOps';
 import { buildServiceNodes, serviceJoin, serviceUpdate, serviceWait, type ServiceNodes } from '../src/sim/terminal/serviceNodes';
 import { buildWalkGraph } from '../src/sim/terminal/walkGraph';
@@ -59,10 +59,13 @@ function saturate(sn: ServiceNodes, node: number, size: number, ticks: number, e
   return done;
 }
 
+/** One game hour on the calendar. Service seconds in the data are game clock seconds. */
+const HOUR_TICKS = 60 * TICKS_PER_MINUTE;
+
 describe('service queue saturation', () => {
   it('a security lane of single people finishes about 300 an hour', () => {
     const sn = singleNodes('security');
-    const done = saturate(sn, 0, 1, 36000, 10, rngFor(1));
+    const done = saturate(sn, 0, 1, HOUR_TICKS, 10, rngFor(1));
     expect(done).toBeGreaterThanOrEqual(270);
     expect(done).toBeLessThanOrEqual(330);
   });
@@ -70,7 +73,7 @@ describe('service queue saturation', () => {
   it('a security lane of cohorts of 5 finishes about 300 an hour over four hours', () => {
     const sn = singleNodes('security');
     const hours = 4;
-    const done = saturate(sn, 0, 5, 36000 * hours, 10, rngFor(2));
+    const done = saturate(sn, 0, 5, HOUR_TICKS * hours, 10, rngFor(2));
     const perHour = done / hours;
     expect(perHour).toBeGreaterThanOrEqual(270);
     expect(perHour).toBeLessThanOrEqual(330);
@@ -78,7 +81,7 @@ describe('service queue saturation', () => {
 
   it('a toilet block of 6 servers finishes about 240 people an hour', () => {
     const sn = singleNodes('toilet');
-    const done = saturate(sn, 0, 6, 36000, 10, rngFor(3));
+    const done = saturate(sn, 0, 6, HOUR_TICKS, 10, rngFor(3));
     expect(done).toBeGreaterThanOrEqual(216);
     expect(done).toBeLessThanOrEqual(264);
   });

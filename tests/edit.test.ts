@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { STAND_SIZES } from '@data/index';
 import { Sim } from '@sim/sim';
+import { TICKS_PER_MINUTE } from '@shared/business';
 import { sizeForCode } from '@shared/standSizes';
 import { buildTestAirport, OPTIONS, ownedSim, run } from './helpers';
 
@@ -123,7 +124,8 @@ describe('stand management', () => {
     const sim = airport();
     run(sim, { type: 'setAutoStands', on: false });
     const f = sim.traffic.scheduleArrival(idx('atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
-    for (let t = 0; t < 4000; t++) sim.step();
+    // Shorter than the 60 game minutes after which a waiting arrival diverts.
+    for (let t = 0; t < 40 * TICKS_PER_MINUTE; t++) sim.step();
     expect(sim.traffic.fState[f]).toBe(1);
     run(sim, { type: 'autoAssignStands' });
     expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);

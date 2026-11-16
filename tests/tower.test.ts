@@ -489,11 +489,15 @@ describe('tower determinism and saves', () => {
       run(sim, { type: 'setTestTraffic', perHour: 60, turnScale: 0.1 });
       return sim;
     };
-    const a = make();
-    for (let t = 0; t < 2000; t++) a.step();
-
     const b = make();
     for (let t = 0; t < 1000; t++) b.step();
+    // Every save older than version 15 has its calendar waits shortened on load, so the reference run is the same
+    // save labelled version 14: the tower step itself must add nothing to that.
+    const ref = JSON.parse(JSON.stringify(b.serialize())) as { version: number };
+    ref.version = 14;
+    const a = new Sim('GOLDEN-0001', OPTIONS);
+    a.restore(ref);
+
     const old = JSON.parse(JSON.stringify(b.serialize())) as { version: number; airfield: { towers?: unknown } };
     old.version = 7;
     delete old.airfield.towers;
@@ -502,8 +506,11 @@ describe('tower determinism and saves', () => {
     const c = new Sim('GOLDEN-0001', OPTIONS);
     c.restore(old);
     expect(towers(c)).toEqual([]);
-    expect(c.stateHash()).toBe(b.stateHash());
-    for (let t = 0; t < 1000; t++) c.step();
+    expect(c.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 1000; t++) {
+      a.step();
+      c.step();
+    }
     expect(c.stateHash()).toBe(a.stateHash());
   });
 });

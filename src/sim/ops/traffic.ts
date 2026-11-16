@@ -7,7 +7,8 @@ import { foldF64, foldInts, foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type BlockWindow, type StandFacts, type StandRefusal } from '@shared/flightBlock';
-import { minuteOfDay, TICKS_PER_MINUTE } from '@shared/business';
+import { minuteOfDay, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
+import { gameSecondsToTicks } from '@shared/time';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import { parkedOffsetM } from '@shared/standGeom';
 import type { RunwayObstacles } from '@shared/obstacles';
@@ -44,15 +45,16 @@ const TOUCHDOWN_M = 300;
 const TAXI_DECEL = 1.5;
 const TAXI_ACCEL = 1.0;
 const PUSHBACK_SPEED = 1.5;
-const MAX_DELAY_TICKS = 12000;
+/** Longest an arrival waits for a stand or runway before it diverts: 60 game minutes. */
+const MAX_DELAY_TICKS = 60 * TICKS_PER_MINUTE;
 const RETRY_TICKS = 300;
 /** Longest a turnaround waits past its timer for passengers already at a gate desk. */
-const BOARD_HOLD_TICKS = PROFILES.boardingHoldS * 10;
-/** A movement waits for ATC budget for 30 game minutes, then the arrival diverts (T40 R4). */
-const ATC_MAX_WAIT_TICKS = 18000;
-// The rolling span of a movement budget, one game hour.
+const BOARD_HOLD_TICKS = gameSecondsToTicks(PROFILES.boardingHoldS);
+/** A movement waits for ATC budget for 90 game minutes, then the arrival diverts (T40 R4). */
+const ATC_MAX_WAIT_TICKS = 90 * TICKS_PER_MINUTE;
+// The rolling span of a movement budget: 36000 physical ticks, which is 12 game hours.
 const MOVEMENT_WINDOW_TICKS = 36000;
-/** Ring size for one runway's movement starts, the highest per hour budget on the ladder. */
+/** Ring size for one runway's movement starts, the highest budget per rolling span on the ladder. */
 const MOVEMENT_RING = BUSINESS.tower.levels.reduce((m, l) => Math.max(m, l.movementsPerHour), 0);
 const SLOTS = 8;
 const TURN_RATE = 0.35;
@@ -66,14 +68,20 @@ export const GA_AIRLINE = -2;
 /** GA arrivals come in the daytime span only, from 06:00 to 20:00 game time. */
 const GA_DAY_START_MIN = 6 * 60;
 const GA_DAY_END_MIN = 20 * 60;
-/** Gap between GA arrivals when one stand is free, in ticks (two game hours). The gap shrinks with more free stands. */
-const GA_DAY_SPAN_TICKS = 72000;
-const GA_MIN_GAP_TICKS = 3000;
-/** Wait before the next GA check when no type or stand fits, in ticks. */
-const GA_RETRY_TICKS = 6000;
+/** Gap between GA arrivals when one stand is free, in ticks (four game hours). The gap shrinks with more free stands. */
+const GA_DAY_SPAN_TICKS = 4 * 60 * TICKS_PER_MINUTE;
+/** Shortest gap between two GA arrivals, one game hour. */
+const GA_MIN_GAP_TICKS = 60 * TICKS_PER_MINUTE;
+/** Wait before the next GA check when no type or stand fits, 30 game minutes. */
+const GA_RETRY_TICKS = 30 * TICKS_PER_MINUTE;
 const GA_LEAD_TICKS = 1500;
+/** Highest turnaround scale of the test traffic command. 24 keeps the longest turn near the 270000 ticks it could reach before the calendar ran faster. */
+const TEST_TURN_SCALE_MAX = 24;
+/** The wind is redrawn every 12 game hours, so the runway in use changes at most twice a day. */
+const WIND_UPDATE_TICKS = 12 * 60 * TICKS_PER_MINUTE;
 
-const ROLE_TURNAROUND_MIN: Record<string, number> = { ga: 15, commuter: 20, regionalTurboprop: 30, regionalJet: 35, narrowbody: 45, widebody: 75 };
+/** Turnaround length per aircraft role in game minutes. */
+const ROLE_TURNAROUND_MIN: Record<string, number> = { ga: 45, commuter: 60, regionalTurboprop: 75, regionalJet: 90, narrowbody: 120, widebody: 180 };
 
 const SURFACE_BIT: Record<string, number> = { dirt: 1, gravel: 2, grass: 4, asphalt: 8, concrete: 16 };
 const surfaceMask = (a: AircraftSpec): number => a.surfaces.reduce((m, s) => m | SURFACE_BIT[s], 0);
@@ -277,7 +285,7 @@ export class Traffic {
 
   setTestTraffic(perHour: number, turnScale: number): void {
     this.testPerHour = Math.max(0, Math.min(240, perHour));
-    this.testTurnScale = Math.max(0.05, Math.min(6, turnScale));
+    this.testTurnScale = Math.max(0.05, Math.min(TEST_TURN_SCALE_MAX, turnScale));
   }
 
   /** Sets the tower level that meters movements. The sim calls it when a tower is built, upgraded, lost or loaded. */
@@ -456,7 +464,7 @@ export class Traffic {
   // Weather ----------------------------------------------------------------
 
   private updateWind(): void {
-    const season = Math.floor((this.tick / (600 * 60 * 24 * 91.25)) % SEASONS);
+    const season = Math.floor((this.tick / (TICKS_PER_DAY * 91.25)) % SEASONS);
     let r = this.weatherRng.next();
     let bin = 0;
     for (let b = 0; b < WIND_BINS; b++) {
@@ -515,7 +523,7 @@ export class Traffic {
   }
 
   turnaroundTicks(typeIdx: number): number {
-    return Math.round((ROLE_TURNAROUND_MIN[AIRCRAFT[typeIdx].role] ?? 45) * 600 * this.testTurnScale);
+    return Math.round((ROLE_TURNAROUND_MIN[AIRCRAFT[typeIdx].role] ?? 120) * TICKS_PER_MINUTE * this.testTurnScale);
   }
 
   /** Types that have a runway, an exit and a stand they can use right now. */
@@ -591,7 +599,7 @@ export class Traffic {
   updateFlights(tick: number): void {
     this.tick = tick;
     if (this.testPerHour > 0 && this.tick % 50 === 0) {
-      // Probability per 5 game seconds.
+      // Test traffic is tuned in physical time: the draw happens every 50 ticks (5 s of motion).
       if (this.rng.next() < (this.testPerHour * 5) / 3600) this.generateTestFlight();
     }
     for (let f = 0; f < MAX_FLIGHTS; f++) {
@@ -600,7 +608,7 @@ export class Traffic {
       if (this.tick < startAt || this.tick < this.fRetryAt[f]) continue;
       this.trySpawnArrival(f);
     }
-    if (this.tick % 36000 === 0 && this.tick > 0) this.updateWind();
+    if (this.tick % WIND_UPDATE_TICKS === 0 && this.tick > 0) this.updateWind();
   }
 
   // Runway reservations ----------------------------------------------------
@@ -1401,7 +1409,7 @@ export class Traffic {
       this.releaseAll(i);
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
-      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 6000;
+      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 45 * TICKS_PER_MINUTE;
       this.boardHold[i] = 0;
       if (f >= 0) {
         this.fState[f] = FlState.OnGround;

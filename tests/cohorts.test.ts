@@ -6,6 +6,7 @@ import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
 import type { ServiceNodes } from '@sim/terminal/serviceNodes';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
+import { gameSecondsToTicks } from '@shared/time';
 import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import { cornerWorld } from '@shared/terminalOps';
 import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run, type TerminalOptions } from './helpers';
@@ -140,7 +141,7 @@ describe('cohort store', () => {
 });
 
 /** Turnaround long enough that the passengers reach the gate desks before push back. */
-const LONG_TURN_TICKS = 36000;
+const LONG_TURN_TICKS = 6000;
 const RUN_TICKS = 6000;
 
 function scheduleLong(sim: Sim): number {
@@ -283,12 +284,12 @@ describe('cohort journey from curb to boarded', () => {
   });
 });
 
-const BOARD_HOLD_TICKS = PROFILES.boardingHoldS * 10;
+const BOARD_HOLD_TICKS = gameSecondsToTicks(PROFILES.boardingHoldS);
 const SMALL = AIRCRAFT.findIndex((a) => a.id === 'atr72_600');
 /** Turnaround that lets every passenger of a small aircraft board. */
 const FULL_TURN_TICKS = 50000;
 /** Turnaround that ends while some passengers are at the gate desks, so the push back holds. */
-const HOLD_TURN_TICKS = 24000;
+const HOLD_TURN_TICKS = 3800;
 const ARRIVE_TICKS = 4000;
 const DEPART_TICKS = 100000;
 const PASSENGERS = LEDGER_CATEGORIES.indexOf('passengers');

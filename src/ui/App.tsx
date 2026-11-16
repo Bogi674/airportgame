@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Renderer } from '@render/renderer';
 import type { Command } from '@sim/commands';
-import type { TerminalGrid } from '@shared/business';
+import { dayIndex, type TerminalGrid } from '@shared/business';
 import type { GameOptions, WalkGraphView } from '@shared/protocol';
 import type { Preset } from '@shared/site';
 import type { Speed } from '@shared/time';
@@ -102,7 +102,7 @@ export function App() {
           pending.current.delete(id);
           if (!p) return;
           const s = useGameStore.getState();
-          const day = Math.floor((tick + 360 * 600) / 864000);
+          const day = dayIndex(tick);
           const name = p.auto ? tFormat('save.autoName', { n: day }) : tFormat('save.manualName', { seed: s.game.seed, n: day });
           if (p.toFile) {
             void exportToFile(data, `${s.game.seed}-day${day}`);

@@ -1,6 +1,7 @@
 import { PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE } from '@shared/business';
+import { CLOCK_SCALE } from '@shared/time';
 import type { Business } from '../business/business';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -508,7 +509,7 @@ export class Cohorts {
     for (let n = 0; n < t.count; n++) {
       const k = t.kind[n];
       if ((k !== kindA && k !== kindB) || t.queueCap[n] <= 0) continue;
-      const cost = this.business.walkDistance(id, fromWalk, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick);
+      const cost = this.business.walkDistance(id, fromWalk, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick) / CLOCK_SCALE;
       if (cost < bestCost) {
         bestCost = cost;
         best = n;

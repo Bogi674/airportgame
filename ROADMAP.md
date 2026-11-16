@@ -36,7 +36,7 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 
 ## 3. What is built (2026-11-12)
 
-A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Save format version 14.
+A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 15.
 
 | Area | Built |
 | --- | --- |
@@ -78,6 +78,7 @@ Goal: the current game is visually clean before new mechanics land on it.
 | T58 | Design revision 4 and its decision batch |  |  | done |
 | T57 | Visual repair: stand clearance against taxiways, continuous lead in paint, vehicles outside the aircraft footprint with shadows, apron remove and extend tools, stands that pave their own box |  |  | done fc6109e d7a327b eff1eda 09798a2 16e5468 c064f8c 7ec0edc cf7887c ccb2eb8 b55fc1a. Leftovers in `handoff/BACKLOG.md` |
 | T69 | Housekeeping after T57: legacy plan files, finished specs and reports, unused functions and strings deleted |  | T57 | done |
+| TIME1 | Game speed: motion at twice real time at speed 1, calendar 12 times faster than motion, turnarounds and waits rebalanced, save version 15 |  |  | done HASH |
 
 Exit, met on 2026-11-12: no parked aircraft breaks a taxiway, no vehicle is drawn through an aircraft, aprons can be cut and extended, and this file is the only plan in the repository.
 

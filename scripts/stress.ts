@@ -38,7 +38,7 @@ const SCENARIOS: Scenario[] = [
   { name: 'small', seed: 'STRESS-SMALL', stands: 8, perHour: 40, budgetMsPerTick: 1 },
   { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4, cohortTerminal: true },
   { name: 'large', seed: 'STRESS-LARGE', stands: 30, perHour: 240, budgetMsPerTick: 8 },
-  { name: 'busy50', seed: 'STRESS-BUSY', stands: 60, standCode: 'B', perHour: 720, budgetMsPerTick: 4, turnScale: 4, ticks: 60_000, minPeak: 50 },
+  { name: 'busy50', seed: 'STRESS-BUSY', stands: 60, standCode: 'B', perHour: 720, budgetMsPerTick: 4, turnScale: 16, ticks: 60_000, minPeak: 50 },
   { name: 'terminal640', seed: 'STRESS-TERMINAL', stands: 20, perHour: 120, budgetMsPerTick: 4, bigTerminal: true },
 ];
 
@@ -144,7 +144,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
   if (s.cohortTerminal) buildCohortTerminal(sim);
   // A level 5 tower keeps the benchmark measuring traffic, not ATC starvation (task T40 R4).
   sim.enqueue({ type: 'buildTower', x: 2700, y: 4800, level: 5 });
-  sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.08 });
+  sim.enqueue({ type: 'setTestTraffic', perHour: s.perHour, turnScale: s.turnScale ?? 0.36 });
   const n = sim.subsystemCount;
   const ticks = s.ticks ?? TICKS;
   const samples: Float64Array[] = [];
@@ -178,7 +178,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     if (co.generated === 0) cohortFailures.push(s.name);
   }
   peakCounts[s.name] = peak;
-  peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.deadlocks} deadlocks${s.bigTerminal ? `, terminal ${(sim.business.terminals[0]?.cells ?? 0) * 4} m2` : ''}`;
+  peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.divertedFlights} diverted, ${sim.traffic.deadlocks} deadlocks${s.bigTerminal ? `, terminal ${(sim.business.terminals[0]?.cells ?? 0) * 4} m2` : ''}`;
   const out: Record<string, Stat> = {};
   const addStat = (name: string, arr: Float64Array): void => {
     let sum = 0;

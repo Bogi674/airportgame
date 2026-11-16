@@ -1,5 +1,6 @@
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, ZONE, fixtureKey, type TerminalGrid } from '@shared/business';
+import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { canStep } from '@shared/terminalRooms';
 import type { Rng } from '../rng';
 import { packTyped, unpackTyped } from '../save/pack';
@@ -289,8 +290,6 @@ function lognormalDraw(rng: Rng, sigma: number, s2: number): number {
   return expSeries(sigma * z - s2 / 2);
 }
 
-/** Ticks per game second, see docs/ARCHITECTURE.md. */
-const TICKS_PER_S = 10;
 
 /**
  * Queues a cohort of `size` people at a node. False when the node is out of range, the cohort is empty, the
@@ -348,19 +347,19 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
       const f = lognormalDraw(rng, sigma, s2);
       sn.serving[k] = sn.qCohort[slot];
       sn.servingSize[k] = size;
-      sn.busyUntil[k] = start + Math.max(1, Math.round((size * sn.meanS[k] * f * TICKS_PER_S) / sn.servers[k]));
+      sn.busyUntil[k] = start + gameSecondsToTicks((size * sn.meanS[k] * f) / sn.servers[k]);
     }
   }
 }
 
 /**
- * Seconds a person joining node now would wait: the time left on the cohort being served plus the people
+ * Game clock seconds a person joining node now would wait: the time left on the cohort being served plus the people
  * queued ahead, each at the node's mean service time over its servers. Infinity for a node out of range.
  */
 // hot
 export function serviceWait(sn: ServiceNodes, node: number, tick: number): number {
   if (node < 0 || node >= sn.count) return Infinity;
-  const left = sn.serving[node] >= 0 ? Math.max(0, sn.busyUntil[node] - tick) / TICKS_PER_S : 0;
+  const left = sn.serving[node] >= 0 ? (Math.max(0, sn.busyUntil[node] - tick) * CLOCK_SCALE) / 10 : 0;
   return left + (sn.queueLen[node] * sn.meanS[node]) / sn.servers[node];
 }
 
