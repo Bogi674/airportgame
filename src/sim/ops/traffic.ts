@@ -726,6 +726,21 @@ export class Traffic {
     return f >= 0 && this.fAirline[f] === GA_AIRLINE && !this.gaEligible(s);
   }
 
+  /** Holding points a departure can stop at, for tests and the stand inspector. */
+  holdCount(): number {
+    return this.net.holds.length;
+  }
+
+  /** True when a taxi route leads from the node to any stand the flight may use, free or occupied. */
+  private exitReachesStand(t: number, fromNode: number, f: number): boolean {
+    for (let s = 0; s < this.af.stands.length; s++) {
+      if (this.net.standNode[s] < 0 || this.gaBarred(f, s) || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
+      if (f >= 0 && this.fStand[f] >= 0 && this.af.stands[s].id !== this.fStand[f]) continue;
+      if (this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE) >= 0) return true;
+    }
+    return false;
+  }
+
   private pickStand(t: number, fromNode: number, f = -1): number {
     // A stand the player or the scheduler assigned goes first. Without auto scheduling it is the only choice.
     if (f >= 0 && this.fStand[f] >= 0) {
@@ -863,10 +878,9 @@ export class Traffic {
     const t = this.fType[f];
     const a = AIRCRAFT[t];
     const af = this.af;
-    // Choose the runway end with the best headwind that the type can land on.
-    let bestR = -1;
-    let bestDir = 1;
-    let bestHead = -Infinity;
+    // Runway ends the type can land on, best headwind first. A later end is taken when no exit of a
+    // better one leads to a free stand, for example behind a one way taxiway.
+    const cands: { r: number; dir: 1 | -1; hw: number }[] = [];
     let firstFail = '';
     for (let r = 0; r < af.runways.length; r++) {
       const rw = af.runways[r];
@@ -890,15 +904,10 @@ export class Traffic {
         const hdg = dir === 1 ? rw.headingDeg : (rw.headingDeg + 180) % 360;
         const limit = a.weights.mtowKg < 30000 ? 15 : 20;
         if (this.crosswind(hdg) > limit) continue;
-        const hw = this.headwind(hdg);
-        if (hw > bestHead) {
-          bestHead = hw;
-          bestR = r;
-          bestDir = dir;
-        }
+        cands.push({ r, dir, hw: this.headwind(hdg) });
       }
     }
-    if (bestR < 0) {
+    if (cands.length === 0) {
       if (firstFail) {
         const parts = firstFail.split('|');
         this.refuse(f, parts[0], `|${parts[1]}|${parts[2]}`);
@@ -909,35 +918,56 @@ export class Traffic {
       this.delay(f, 'crosswind');
       return;
     }
-    const rw = af.runways[bestR];
+    // Stable order: headwind first, then the build order of the runway ends.
+    cands.sort((p, q) => q.hw - p.hw || p.r - q.r || q.dir - p.dir);
     const vTd = a.performance.vrefKt * KT * 0.95;
     const vExit = a.derivedForReading.code === 'A' || a.derivedForReading.code === 'B' ? 8 : 15;
     const decel = a.weights.mtowKg > 200000 ? 1.8 : 2.2;
     const minRoll = (vTd * vTd - vExit * vExit) / (2 * decel);
-    // Candidate exits ordered along the landing direction.
-    const exits: { idx: number; s: number }[] = [];
-    af.entries.forEach((e, idx) => {
-      if (e.runwayId !== rw.id || this.net.entryNode[idx] < 0) return;
-      const dAlong = Math.hypot(e.x - rw.x1, e.y - rw.y1);
-      exits.push({ idx, s: bestDir === 1 ? dAlong : rw.lengthM - dAlong });
-    });
-    exits.sort((p, q) => p.s - q.s);
-    const viable = exits.filter((e) => e.s >= TOUCHDOWN_M + minRoll);
-    const ordered = viable.length > 0 ? viable : exits.slice(-1);
+    let bestR = -1;
+    let bestDir: 1 | -1 = 1;
     let chosen = -1;
     let stand = -1;
-    for (const ex of ordered) {
-      if (this.exitQueued(ex.idx) || this.entryDeparting[ex.idx] > 0) continue;
-      const node = this.net.entryNode[ex.idx];
-      const s = this.pickStand(t, node, f);
-      if (s >= 0) {
-        chosen = ex.idx;
-        stand = s;
+    let sExit = 0;
+    let anyExit = false;
+    let routeBlocked = false;
+    for (const c of cands) {
+      const crw = af.runways[c.r];
+      // Candidate exits ordered along the landing direction.
+      const exits: { idx: number; s: number }[] = [];
+      af.entries.forEach((e, idx) => {
+        if (e.runwayId !== crw.id || this.net.entryNode[idx] < 0) return;
+        const dAlong = Math.hypot(e.x - crw.x1, e.y - crw.y1);
+        exits.push({ idx, s: c.dir === 1 ? dAlong : crw.lengthM - dAlong });
+      });
+      exits.sort((p, q) => p.s - q.s);
+      const viable = exits.filter((e) => e.s >= TOUCHDOWN_M + minRoll);
+      const ordered = viable.length > 0 ? viable : exits.slice(-1);
+      if (ordered.length > 0) anyExit = true;
+      for (const ex of ordered) {
+        if (this.exitQueued(ex.idx) || this.entryDeparting[ex.idx] > 0) continue;
+        const s = this.pickStand(t, this.net.entryNode[ex.idx], f);
+        if (s >= 0) {
+          chosen = ex.idx;
+          stand = s;
+          sExit = ex.s;
+          break;
+        }
+      }
+      if (chosen >= 0) {
+        bestR = c.r;
+        bestDir = c.dir;
         break;
       }
+      // Busy exits or full stands clear by waiting. Only an end whose exits reach no stand the type
+      // may use, occupied or not, hands the landing to the next best end.
+      let reaches = false;
+      for (const ex of ordered) reaches = reaches || this.exitReachesStand(t, this.net.entryNode[ex.idx], f);
+      if (reaches) break;
+      if (ordered.length > 0) routeBlocked = true;
     }
     if (chosen < 0) {
-      this.delay(f, ordered.length === 0 ? 'noExit' : 'noStand');
+      this.delay(f, !anyExit ? 'noExit' : routeBlocked ? 'noRoute' : 'noStand');
       return;
     }
     // A departure that has waited too long goes first: new landings wait their turn until it is away.
@@ -952,7 +982,6 @@ export class Traffic {
     }
     // Runway window for the landing.
     const approachTicks = Math.round(((APPROACH_START_M + TOUCHDOWN_M) / (a.performance.vrefKt * KT)) * 10);
-    const sExit = ordered.find((e) => e.idx === chosen)?.s ?? rw.lengthM;
     const rollTicks = Math.round(((2 * (sExit - TOUCHDOWN_M)) / (vTd + vExit)) * 10);
     const start = this.tick + approachTicks - 100;
     const end = this.tick + approachTicks + rollTicks + RUNWAY_OCCUPANCY.landingRollout * 2;
@@ -1748,6 +1777,7 @@ export class Traffic {
     let bestBack = 0;
     const f = this.flight[i];
     let waitedOnly = false;
+    let softFail = '';
     for (const h of this.net.holds) {
       // A queue of more than two departures per entry spills onto the taxiway and blocks arrivals.
       if (this.entryInbound[h.entryIdx] > 0 || this.entryDeparting[h.entryIdx] >= 2) {
@@ -1785,9 +1815,15 @@ export class Traffic {
           continue;
         }
         const limit = a.weights.mtowKg < 30000 ? 15 : 20;
-        if (this.crosswind(hdg) > limit) continue;
+        if (this.crosswind(hdg) > limit) {
+          softFail = softFail || 'crosswind';
+          continue;
+        }
         const n = this.net.route(from, h.node, CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
-        if (n < 0) continue;
+        if (n < 0) {
+          softFail = 'noRouteOut';
+          continue;
+        }
         let time = 0;
         for (let k = 0; k < n; k++) time += this.net.edgeLen[this.tmpEdge[k]] / Math.max(1, this.net.edgeSpeed[this.tmpEdge[k]]);
         if (back > 0) time += back / AIRFIELD.turnPad.backtrackSpeedMs + AIRFIELD.turnPad.turnSeconds;
@@ -1802,10 +1838,17 @@ export class Traffic {
       }
     }
     if (bestHold < 0) {
-      if (firstFail && !waitedOnly && this.stuckTicks[i] === 0) {
-        const parts = firstFail.split('|');
-        this.refuse(f, parts[0], `|${parts[1]}|${parts[2]}`);
-        this.stuckTicks[i] = 1;
+      // Tell the player once why the aircraft stays on its stand. A length that would do in the
+      // other direction is not the cause when the wind or a missing route ruled that direction out.
+      if (!waitedOnly && this.stuckTicks[i] === 0) {
+        if (softFail || this.net.holds.length === 0) {
+          this.refuse(f, softFail || 'noRouteOut', '');
+          this.stuckTicks[i] = 1;
+        } else if (firstFail) {
+          const parts = firstFail.split('|');
+          this.refuse(f, parts[0], `|${parts[1]}|${parts[2]}`);
+          this.stuckTicks[i] = 1;
+        }
       }
       return;
     }

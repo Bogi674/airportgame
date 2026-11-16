@@ -130,15 +130,32 @@ export function deriveNetwork(af: AirfieldPayload): void {
       }
       if (parallelMin < Infinity) t.maxCode = minCode(t.maxCode, codeForSeparation(r.approach, parallelMin));
       if (firstTouch < 0) continue;
-      const tt = ts[firstTouch];
-      entries.push({
-        x: r.x1 + (r.x2 - r.x1) * tt,
-        y: r.y1 + (r.y2 - r.y1) * tt,
-        runwayId: r.id,
-        taxiwayId: t.id,
-        todaTowardB: Math.round(r.lengthM * (1 - tt)),
-        todaTowardA: Math.round(r.lengthM * tt),
-      });
+      // One entry per stretch that touches the runway, so a loop that meets both ends of one runway
+      // gets an entry at each end. The first stretch keeps its first touching sample, later ones
+      // take the sample nearest the centerline.
+      let runStart = -1;
+      let runBest = -1;
+      for (let i = firstTouch; i <= lastTouch + 1; i++) {
+        const touching = i <= lastTouch && ds[i] <= touchD;
+        if (touching) {
+          if (runStart < 0) {
+            runStart = i;
+            runBest = i;
+          } else if (ds[i] < ds[runBest]) runBest = i;
+          continue;
+        }
+        if (runStart < 0) continue;
+        const tt = ts[runStart === firstTouch ? firstTouch : runBest];
+        entries.push({
+          x: r.x1 + (r.x2 - r.x1) * tt,
+          y: r.y1 + (r.y2 - r.y1) * tt,
+          runwayId: r.id,
+          taxiwayId: t.id,
+          todaTowardB: Math.round(r.lengthM * (1 - tt)),
+          todaTowardA: Math.round(r.lengthM * tt),
+        });
+        runStart = -1;
+      }
       // The player may move a holding position further out on either side (docs/GAME_DESIGN.md section 6).
       const holdOn = (side: 1 | -1): number => {
         const set = t.holds?.find((h) => h.runwayId === r.id && h.side === side);

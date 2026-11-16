@@ -522,6 +522,8 @@
   "reason.strength": "pavement too weak, needs PCR {needed}, has {available}",
   "reason.noStand": "no free stand",
   "reason.noExit": "no runway exit",
+  "reason.noRoute": "no taxi route from a runway exit to a free stand, check one way taxiways",
+  "reason.noRouteOut": "no taxi route from its stand to a runway holding point, check one way taxiways",
   "reason.runwayBusy": "runway busy",
   "reason.crosswind": "crosswind too strong",
   "reason.fog": "fog closes visual runways",
