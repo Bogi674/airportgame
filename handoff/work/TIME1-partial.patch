@@ -1,0 +1,378 @@
+diff --git a/src/data/profiles.json b/src/data/profiles.json
+index dab7a3c..9bccad3 100644
+--- a/src/data/profiles.json
++++ b/src/data/profiles.json
+@@ -5,11 +5,11 @@
+   "boardingHoldS": 600,
+   "sampleCap": 3000,
+   "profiles": {
+-    "business": { "leadMin": 60,  "walkSpeed": 1.4, "patienceS": 600,  "spend": 25, "bagsPerPax": 0.4, "mix": 0.15 },
+-    "leisure":  { "leadMin": 90,  "walkSpeed": 1.2, "patienceS": 900,  "spend": 30, "bagsPerPax": 1.0, "mix": 0.40 },
+-    "family":   { "leadMin": 150, "walkSpeed": 0.9, "patienceS": 720,  "spend": 35, "bagsPerPax": 1.2, "mix": 0.15 },
+-    "budget":   { "leadMin": 120, "walkSpeed": 1.3, "patienceS": 1200, "spend": 10, "bagsPerPax": 0.3, "mix": 0.20 },
+-    "premium":  { "leadMin": 75,  "walkSpeed": 1.3, "patienceS": 480,  "spend": 60, "bagsPerPax": 1.0, "mix": 0.10 },
+-    "crew":     { "leadMin": 90,  "walkSpeed": 1.5, "patienceS": 600,  "spend": 5,  "bagsPerPax": 0,   "mix": 0 }
++    "business": { "leadMin": 120,  "walkSpeed": 1.4, "patienceS": 600,  "spend": 25, "bagsPerPax": 0.4, "mix": 0.15 },
++    "leisure":  { "leadMin": 150,  "walkSpeed": 1.2, "patienceS": 900,  "spend": 30, "bagsPerPax": 1.0, "mix": 0.40 },
++    "family":   { "leadMin": 180, "walkSpeed": 0.9, "patienceS": 720,  "spend": 35, "bagsPerPax": 1.2, "mix": 0.15 },
++    "budget":   { "leadMin": 150, "walkSpeed": 1.3, "patienceS": 1200, "spend": 10, "bagsPerPax": 0.3, "mix": 0.20 },
++    "premium":  { "leadMin": 120,  "walkSpeed": 1.3, "patienceS": 480,  "spend": 60, "bagsPerPax": 1.0, "mix": 0.10 },
++    "crew":     { "leadMin": 120,  "walkSpeed": 1.5, "patienceS": 600,  "spend": 5,  "bagsPerPax": 0,   "mix": 0 }
+   }
+ }
+diff --git a/src/shared/business.ts b/src/shared/business.ts
+index 33b358c..eca1fbe 100644
+--- a/src/shared/business.ts
++++ b/src/shared/business.ts
+@@ -1,7 +1,10 @@
+ /** Business state shared with the UI: terminals, airlines, the ledger, the loan and the rating. */
+ 
+-export const TICKS_PER_DAY = 864000;
+-export const TICKS_PER_MINUTE = 600;
++import { TICKS_PER_GAME_MINUTE } from './time';
++
++/** Calendar ticks, derived from CLOCK_SCALE in time.ts: 50 ticks per game minute, 72000 per game day. */
++export const TICKS_PER_MINUTE = TICKS_PER_GAME_MINUTE;
++export const TICKS_PER_DAY = 24 * 60 * TICKS_PER_MINUTE;
+ /** The game starts at 06:00 on day 0. */
+ export const START_MINUTE = 6 * 60;
+ 
+diff --git a/src/shared/flightBlock.ts b/src/shared/flightBlock.ts
+index 283c563..d8796ab 100644
+--- a/src/shared/flightBlock.ts
++++ b/src/shared/flightBlock.ts
+@@ -7,8 +7,11 @@ import { standRefusal } from './standSizes';
+  * the arrival until the turn is over, and two blocks on one stand may not overlap.
+  */
+ 
+-/** The 3000 tick gap Traffic.autoAssign keeps between two flights on one stand (5 game minutes). */
+-export const STAND_BLOCK_BUFFER_MIN = 5;
++/**
++ * The gap Traffic.autoAssign keeps between two flights on one stand, in game minutes. Taxi in and push back are
++ * physical and take longer on the calendar than they used to, so the buffer covers them.
++ */
++export const STAND_BLOCK_BUFFER_MIN = 30;
+ 
+ /** A stand block in game minutes, from arrival to the end of the turn plus the buffer. */
+ export interface BlockWindow {
+diff --git a/src/shared/time.ts b/src/shared/time.ts
+index fab519e..95d8dde 100644
+--- a/src/shared/time.ts
++++ b/src/shared/time.ts
+@@ -1,8 +1,28 @@
+ /** Fixed simulation step in game seconds (hard rule 3). */
+ export const TICK_SECONDS = 0.1;
+ 
+-/** At speed 1 one game hour takes 20 real seconds, so a game day is 8 real minutes (docs/ARCHITECTURE.md section 3). */
+-export const TICKS_PER_REAL_SECOND_AT_1X = 1800;
++/**
++ * The game calendar runs this many times faster than physical motion. One tick is always 0.1 s of motion
++ * (aircraft, vehicles and walkers), but one tick advances the game clock by CLOCK_SCALE tenths of a game
++ * second, so a game minute is 600 / CLOCK_SCALE ticks and a game day is 72000 ticks. Durations given in game
++ * minutes, hours or days (turnarounds, works, weather, service times in data) follow the calendar; physical
++ * durations (taxiing, runway occupancy, wake separation, walking) keep their tick counts.
++ */
++export const CLOCK_SCALE = 12;
++
++/** Ticks in one game minute on the calendar (50 with CLOCK_SCALE 12). */
++export const TICKS_PER_GAME_MINUTE = 600 / CLOCK_SCALE;
++
++/** Game clock seconds to ticks, at least one tick. Used for durations in data files that are stated in game seconds. */
++export function gameSecondsToTicks(s: number): number {
++  return Math.max(1, Math.round((s * 10) / CLOCK_SCALE));
++}
++
++/**
++ * At speed 1 the sim runs 20 ticks per real second: motion at 2x real time, and one game day in 60 real
++ * minutes (72000 ticks / 20).
++ */
++export const TICKS_PER_REAL_SECOND_AT_1X = 20;
+ 
+ /** Snapshots leave the sim worker at a steady 20 Hz regardless of sim speed. */
+ export const SNAPSHOT_INTERVAL_MS = 50;
+diff --git a/src/sim/cohorts/cohorts.ts b/src/sim/cohorts/cohorts.ts
+index 67b1b50..1119869 100644
+--- a/src/sim/cohorts/cohorts.ts
++++ b/src/sim/cohorts/cohorts.ts
+@@ -1,6 +1,7 @@
+ import { PROFILES } from '@data/index';
+ import { PROFILE_KEYS } from '@data/schemas/profiles';
+ import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE } from '@shared/business';
++import { CLOCK_SCALE } from '@shared/time';
+ import type { Business } from '../business/business';
+ import { foldU32 } from '../hash';
+ import { packTyped, unpackInto } from '../save/pack';
+@@ -508,7 +509,7 @@ export class Cohorts {
+     for (let n = 0; n < t.count; n++) {
+       const k = t.kind[n];
+       if ((k !== kindA && k !== kindB) || t.queueCap[n] <= 0) continue;
+-      const cost = this.business.walkDistance(id, fromWalk, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick);
++      const cost = this.business.walkDistance(id, fromWalk, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick) / CLOCK_SCALE;
+       if (cost < bestCost) {
+         bestCost = cost;
+         best = n;
+diff --git a/src/sim/ops/traffic.ts b/src/sim/ops/traffic.ts
+index 62a273a..6f84a2f 100644
+--- a/src/sim/ops/traffic.ts
++++ b/src/sim/ops/traffic.ts
+@@ -7,7 +7,8 @@ import { foldF64, foldInts, foldU32 } from '../hash';
+ import { packTyped, unpackInto } from '../save/pack';
+ import type { Rng } from '../rng';
+ import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_BLOCK_BUFFER_MIN, type BlockWindow, type StandFacts, type StandRefusal } from '@shared/flightBlock';
+-import { minuteOfDay, TICKS_PER_MINUTE } from '@shared/business';
++import { minuteOfDay, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
++import { gameSecondsToTicks } from '@shared/time';
+ import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
+ import { parkedOffsetM } from '@shared/standGeom';
+ import type { RunwayObstacles } from '@shared/obstacles';
+@@ -44,15 +45,16 @@ const TOUCHDOWN_M = 300;
+ const TAXI_DECEL = 1.5;
+ const TAXI_ACCEL = 1.0;
+ const PUSHBACK_SPEED = 1.5;
+-const MAX_DELAY_TICKS = 12000;
++/** Longest an arrival waits for a stand or runway before it diverts: 60 game minutes. */
++const MAX_DELAY_TICKS = 60 * TICKS_PER_MINUTE;
+ const RETRY_TICKS = 300;
+ /** Longest a turnaround waits past its timer for passengers already at a gate desk. */
+-const BOARD_HOLD_TICKS = PROFILES.boardingHoldS * 10;
+-/** A movement waits for ATC budget for 30 game minutes, then the arrival diverts (T40 R4). */
+-const ATC_MAX_WAIT_TICKS = 18000;
+-// The rolling span of a movement budget, one game hour.
++const BOARD_HOLD_TICKS = gameSecondsToTicks(PROFILES.boardingHoldS);
++/** A movement waits for ATC budget for 90 game minutes, then the arrival diverts (T40 R4). */
++const ATC_MAX_WAIT_TICKS = 90 * TICKS_PER_MINUTE;
++// The rolling span of a movement budget: 36000 physical ticks, which is 12 game hours.
+ const MOVEMENT_WINDOW_TICKS = 36000;
+-/** Ring size for one runway's movement starts, the highest per hour budget on the ladder. */
++/** Ring size for one runway's movement starts, the highest budget per movement window on the ladder. */
+ const MOVEMENT_RING = BUSINESS.tower.levels.reduce((m, l) => Math.max(m, l.movementsPerHour), 0);
+ const SLOTS = 8;
+ const TURN_RATE = 0.35;
+@@ -66,14 +68,16 @@ export const GA_AIRLINE = -2;
+ /** GA arrivals come in the daytime span only, from 06:00 to 20:00 game time. */
+ const GA_DAY_START_MIN = 6 * 60;
+ const GA_DAY_END_MIN = 20 * 60;
+-/** Gap between GA arrivals when one stand is free, in ticks (two game hours). The gap shrinks with more free stands. */
+-const GA_DAY_SPAN_TICKS = 72000;
+-const GA_MIN_GAP_TICKS = 3000;
+-/** Wait before the next GA check when no type or stand fits, in ticks. */
+-const GA_RETRY_TICKS = 6000;
++/** Gap between GA arrivals when one stand is free, in ticks (four game hours). The gap shrinks with more free stands. */
++const GA_DAY_SPAN_TICKS = 4 * 60 * TICKS_PER_MINUTE;
++/** Shortest gap between two GA arrivals, one game hour. */
++const GA_MIN_GAP_TICKS = 60 * TICKS_PER_MINUTE;
++/** Wait before the next GA check when no type or stand fits, 30 game minutes. */
++const GA_RETRY_TICKS = 30 * TICKS_PER_MINUTE;
+ const GA_LEAD_TICKS = 1500;
+ 
+-const ROLE_TURNAROUND_MIN: Record<string, number> = { ga: 15, commuter: 20, regionalTurboprop: 30, regionalJet: 35, narrowbody: 45, widebody: 75 };
++/** Turnaround length per aircraft role in game minutes. */
++const ROLE_TURNAROUND_MIN: Record<string, number> = { ga: 45, commuter: 60, regionalTurboprop: 75, regionalJet: 90, narrowbody: 120, widebody: 180 };
+ 
+ const SURFACE_BIT: Record<string, number> = { dirt: 1, gravel: 2, grass: 4, asphalt: 8, concrete: 16 };
+ const surfaceMask = (a: AircraftSpec): number => a.surfaces.reduce((m, s) => m | SURFACE_BIT[s], 0);
+@@ -456,7 +460,7 @@ export class Traffic {
+   // Weather ----------------------------------------------------------------
+ 
+   private updateWind(): void {
+-    const season = Math.floor((this.tick / (600 * 60 * 24 * 91.25)) % SEASONS);
++    const season = Math.floor((this.tick / (TICKS_PER_DAY * 91.25)) % SEASONS);
+     let r = this.weatherRng.next();
+     let bin = 0;
+     for (let b = 0; b < WIND_BINS; b++) {
+@@ -515,7 +519,7 @@ export class Traffic {
+   }
+ 
+   turnaroundTicks(typeIdx: number): number {
+-    return Math.round((ROLE_TURNAROUND_MIN[AIRCRAFT[typeIdx].role] ?? 45) * 600 * this.testTurnScale);
++    return Math.round((ROLE_TURNAROUND_MIN[AIRCRAFT[typeIdx].role] ?? 120) * TICKS_PER_MINUTE * this.testTurnScale);
+   }
+ 
+   /** Types that have a runway, an exit and a stand they can use right now. */
+@@ -591,7 +595,7 @@ export class Traffic {
+   updateFlights(tick: number): void {
+     this.tick = tick;
+     if (this.testPerHour > 0 && this.tick % 50 === 0) {
+-      // Probability per 5 game seconds.
++      // Test traffic is tuned in physical time: the draw happens every 50 ticks (5 s of motion).
+       if (this.rng.next() < (this.testPerHour * 5) / 3600) this.generateTestFlight();
+     }
+     for (let f = 0; f < MAX_FLIGHTS; f++) {
+@@ -600,7 +604,7 @@ export class Traffic {
+       if (this.tick < startAt || this.tick < this.fRetryAt[f]) continue;
+       this.trySpawnArrival(f);
+     }
+-    if (this.tick % 36000 === 0 && this.tick > 0) this.updateWind();
++    if (this.tick % (60 * TICKS_PER_MINUTE) === 0 && this.tick > 0) this.updateWind();
+   }
+ 
+   // Runway reservations ----------------------------------------------------
+@@ -1401,7 +1405,7 @@ export class Traffic {
+       this.releaseAll(i);
+       this.state[i] = AcState.Turnaround;
+       const f = this.flight[i];
+-      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 6000;
++      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 45 * TICKS_PER_MINUTE;
+       this.boardHold[i] = 0;
+       if (f >= 0) {
+         this.fState[f] = FlState.OnGround;
+diff --git a/src/sim/save/migrations.ts b/src/sim/save/migrations.ts
+index bd66f1f..59a4aeb 100644
+--- a/src/sim/save/migrations.ts
++++ b/src/sim/save/migrations.ts
+@@ -4,7 +4,7 @@ import { sizeCode, sizeForCode } from '@shared/standSizes';
+ import { packTyped, unpackTyped } from './pack';
+ 
+ /** Bump on every change to the saved shape and add a migration for the old version. */
+-export const SAVE_VERSION = 14;
++export const SAVE_VERSION = 15;
+ 
+ export interface SaveData {
+   version: number;
+@@ -81,5 +81,14 @@ export function migrate(raw: unknown): SaveData {
+   if (save.version < 13) save.version = 13;
+   // Version 13 to 14: traffic saves the GA arrival clock and its rng. Older saves load with the clock at zero.
+   if (save.version < 14) save.version = 14;
++  // Version 14 to 15: the calendar runs 12 times faster than motion. No field changes: the tick counter keeps its value and the calendar is re-based, so the day number of an old save jumps. Works that are still running keep their remaining time on the new calendar.
++  if (save.version < 15) {
++    const old = save as { tick: number; airfield?: { runways?: { works?: { doneTick: number } }[]; taxiways?: { works?: { doneTick: number } }[] } };
++    const af = old.airfield;
++    for (const item of [...(af?.runways ?? []), ...(af?.taxiways ?? [])]) {
++      if (item.works) item.works.doneTick = old.tick + Math.round((item.works.doneTick - old.tick) / 12);
++    }
++    save.version = 15;
++  }
+   return save as SaveData;
+ }
+diff --git a/src/sim/terminal/serviceNodes.ts b/src/sim/terminal/serviceNodes.ts
+index 87f653b..a97b7c0 100644
+--- a/src/sim/terminal/serviceNodes.ts
++++ b/src/sim/terminal/serviceNodes.ts
+@@ -1,5 +1,6 @@
+ import { BUSINESS } from '@data/index';
+ import { FIXTURE_KEYS, TERMINAL_CELL_M, ZONE, fixtureKey, type TerminalGrid } from '@shared/business';
++import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
+ import { canStep } from '@shared/terminalRooms';
+ import type { Rng } from '../rng';
+ import { packTyped, unpackTyped } from '../save/pack';
+@@ -289,8 +290,6 @@ function lognormalDraw(rng: Rng, sigma: number, s2: number): number {
+   return expSeries(sigma * z - s2 / 2);
+ }
+ 
+-/** Ticks per game second, see docs/ARCHITECTURE.md. */
+-const TICKS_PER_S = 10;
+ 
+ /**
+  * Queues a cohort of `size` people at a node. False when the node is out of range, the cohort is empty, the
+@@ -348,19 +347,19 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
+       const f = lognormalDraw(rng, sigma, s2);
+       sn.serving[k] = sn.qCohort[slot];
+       sn.servingSize[k] = size;
+-      sn.busyUntil[k] = start + Math.max(1, Math.round((size * sn.meanS[k] * f * TICKS_PER_S) / sn.servers[k]));
++      sn.busyUntil[k] = start + gameSecondsToTicks((size * sn.meanS[k] * f) / sn.servers[k]);
+     }
+   }
+ }
+ 
+ /**
+- * Seconds a person joining node now would wait: the time left on the cohort being served plus the people
++ * Game clock seconds a person joining node now would wait: the time left on the cohort being served plus the people
+  * queued ahead, each at the node's mean service time over its servers. Infinity for a node out of range.
+  */
+ // hot
+ export function serviceWait(sn: ServiceNodes, node: number, tick: number): number {
+   if (node < 0 || node >= sn.count) return Infinity;
+-  const left = sn.serving[node] >= 0 ? Math.max(0, sn.busyUntil[node] - tick) / TICKS_PER_S : 0;
++  const left = sn.serving[node] >= 0 ? (Math.max(0, sn.busyUntil[node] - tick) * CLOCK_SCALE) / 10 : 0;
+   return left + (sn.queueLen[node] * sn.meanS[node]) / sn.servers[node];
+ }
+ 
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 0d7551b..b83cf3a 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -1,7 +1,7 @@
+ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+ import type { Renderer } from '@render/renderer';
+ import type { Command } from '@sim/commands';
+-import type { TerminalGrid } from '@shared/business';
++import { dayIndex, type TerminalGrid } from '@shared/business';
+ import type { GameOptions, WalkGraphView } from '@shared/protocol';
+ import type { Preset } from '@shared/site';
+ import type { Speed } from '@shared/time';
+@@ -102,7 +102,7 @@ export function App() {
+           pending.current.delete(id);
+           if (!p) return;
+           const s = useGameStore.getState();
+-          const day = Math.floor((tick + 360 * 600) / 864000);
++          const day = dayIndex(tick);
+           const name = p.auto ? tFormat('save.autoName', { n: day }) : tFormat('save.manualName', { seed: s.game.seed, n: day });
+           if (p.toFile) {
+             void exportToFile(data, `${s.game.seed}-day${day}`);
+diff --git a/src/ui/strings/en.json b/src/ui/strings/en.json
+index 42f2835..8237787 100644
+--- a/src/ui/strings/en.json
++++ b/src/ui/strings/en.json
+@@ -221,8 +221,8 @@
+   "top.pause": "Menu",
+   "top.slots": "Flight offers",
+   "slots.title": "Flight offers",
+-  "slots.help": "Every signed airline offers its flights for the day with a fixed schedule and turnaround. Pick a stand here, or drag a flight onto a stand row in the stand timeline. The bar counts landings and takeoffs per hour against the tower's {cap} movements.",
+-  "slots.load": "Movements per hour, budget {cap}",
++  "slots.help": "Every signed airline offers its flights for the day with a fixed schedule and turnaround. Pick a stand here, or drag a flight onto a stand row in the stand timeline. The bar counts landings and takeoffs per game hour. The tower allows {cap} movements per 12 game hours.",
++  "slots.load": "Movements per game hour, tower budget {cap} per 12 game hours",
+   "slots.auto": "Automatic",
+   "slots.type": "Type",
+   "slots.arrival": "Arrival",
+@@ -502,7 +502,7 @@
+   "inspector.tower": "ATC tower",
+   "inspector.towerLevel": "Level",
+   "inspector.towerLevelValue": "{level} of {max}",
+-  "inspector.towerBudget": "Movements per hour per runway",
++  "inspector.towerBudget": "Movements per 12 game hours per runway",
+   "inspector.towerRunways": "Runways allowed",
+   "inspector.unlimited": "Unlimited",
+   "inspector.towerQueue": "Movements waiting",
+@@ -528,7 +528,7 @@
+   "reason.crosswind": "crosswind too strong",
+   "reason.fog": "fog closes visual runways",
+   "reason.runwayWorks": "the runway is closed for works",
+-  "reason.noMovement": "no movement slot for 30 minutes",
++  "reason.noMovement": "no movement slot for 90 game minutes",
+   "inspector.runwayWorks": "Closed for works, {days} days left",
+   "inspector.runwayWorksPreview": "Closes the runway for {days} days",
+   "notice.terminalOnPavement": "A terminal cannot sit on a runway, taxiway or apron, or too close to one.",
+@@ -565,7 +565,7 @@
+   "notice.zoneHasFixture": "A fixture stands there that does not fit the zone you are painting.",
+   "alert.noAtc": "{name} cannot fly here until an ATC tower stands at the airport.",
+   "alert.atcLost": "Your old control room no longer provides ATC. Build an ATC tower to bring the airlines back.",
+-  "alert.atcOverload": "The tower is at its hourly limit. {n} movements are waiting. Upgrade the tower to handle more.",
++  "alert.atcOverload": "The tower is at its movement limit. {n} movements are waiting. Upgrade the tower to handle more.",
+   "fixture.12": "Control room (ATC)",
+   "terminal.sub.erase": "Erase",
+   "terminal.floor.1": "Concrete",
+@@ -600,7 +600,7 @@
+   "ghost.terminal": "{n} cells, {cost}",
+   "ghost.terminalWall": "{n} edges, {cost}",
+   "terminal.summary": "{cells} cells, {area} m2",
+-  "terminal.arrivals": "Arrivals {arr} per hour",
++  "terminal.arrivals": "Arrivals {arr} per game hour",
+   "terminal.leased": "{n} shops leased",
+   "inspector.terminalHint": "Use the terminal tool to add or change anything.",
+   "notice.terminalBounds": "That is outside the terminal's building area (320 m square).",
+diff --git a/src/worker/sim.ts b/src/worker/sim.ts
+index b0002a0..d1bc36b 100644
+--- a/src/worker/sim.ts
++++ b/src/worker/sim.ts
+@@ -152,8 +152,9 @@ function loop(): void {
+       tickAccumulator -= 1;
+     }
+     backlog = Math.floor(tickAccumulator);
+-    // Never replay lost real time: drop the backlog beyond one second of ticks.
+-    if (tickAccumulator > TICKS_PER_REAL_SECOND_AT_1X) tickAccumulator = TICKS_PER_REAL_SECOND_AT_1X;
++    // Never replay lost real time: drop the backlog beyond one real second of ticks at the current speed.
++    const backlogCap = TICKS_PER_REAL_SECOND_AT_1X * Math.max(1, effectiveSpeed());
++    if (tickAccumulator > backlogCap) tickAccumulator = backlogCap;
+   } else {
+     // Paused: keep applying queued commands so builds work while paused, without advancing time.
+     sim.flushCommands();
