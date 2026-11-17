@@ -370,6 +370,15 @@ Record every architectural choice with a date and one line of reason.
   * The wind is redrawn every 12 game hours instead of every game hour. Reason: an hourly redraw would flip the runway in use every 300 s of motion and exposed a wingtip clearance shortfall while aircraft taxi during a flip, see `handoff/BACKLOG.md`.
   * The stress scenarios keep their physical turn lengths: the default test turn scale is 0.36 (was 0.08), `busy50` uses 16 (was 4), and the test traffic command accepts a scale up to 24 (was 6). Reason: the scale multiplies calendar minutes, which are 4 to 5 times fewer ticks than before.
   * Save version 15. The migration keeps the tick counter, so the day number of an old save jumps, and divides the remaining calendar waits by 12: works, pending arrival times and retries, turnaround lengths and timers, delays, the GA clock and the weather. Cohort timers are left alone, so passengers already in a terminal may arrive late once.
+* 2026-11-17 T59 stands:
+  * Four stand sizes stay (small, medium, large, extra large); the GA class of D1 is dropped. Reason: the user decided that GA, commercial and cargo are a property of the stand, not a size.
+  * `Stand.accepts` is a bit set (GA 1, commercial 2, cargo 4), never zero, and replaces `usage`. A flight of the GA airline needs the GA bit, every other flight the commercial bit; traffic without a flight record takes its category from the type role. New stands start from `accepts` in `stand_sizes.json` (small GA and commercial, larger commercial only); GA blocks take GA only. Reason: any mix must be expressible, and the old seat count rule could not tell a GA flight from a small commercial one.
+  * The automatic stand choice scores by `sizeGap`: own size first, then the next larger, never smaller. Manual assignment may use any size that fits. Reason: user answer of 2026-11-17.
+  * Save version 16 maps `usage`: GA to 1, commercial to 2, any or missing to 3 on small remote stands and 2 elsewhere, which keeps the old behaviour.
+  * The stand tool places single stands. With no player heading a stand faces away from the nearest centerline, square to it; R turns it 15 degrees and Shift+R 1 degree from where it faces; Escape gives back auto facing. It slides along its axis so its tail edge sits at `leadInTargetGapM` (the fork radius, or the lead in taxiway half span plus the size's wingtip clearance when larger, plus 1 m). The math is `src/shared/standSnap.ts`.
+  * The 60 m lead in reach (D3) is a tool rule only. Reason: an unconnected stand is a valid state that the inspector reports (section 2.3), for example after a taxiway is demolished, and the sim already refuses to book it.
+  * The business payload is resent when the airfield version changes. Reason: its stand link facts went stale for up to ten game minutes after a build.
+  * Pass through stands, map icons for connection states and the box of a stand with no lead in are split off to T72 and T47.
 
 ## 13. Known limits
 

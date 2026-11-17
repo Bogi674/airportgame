@@ -7,12 +7,12 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. The next task is **T59** (stand classes, placement, lead in snapping, connection states), the first task of phase 1. Its design is `docs/DESIGN_REVISION_4.md` section 2, with the values D1 to D4 in `handoff/QUESTIONS.md` (2026-11-12 T58) and the benchmark notes in `handoff/reference/benchmark-stands.md`.
-3. T59 has no spec yet. Run the `grill-me` skill, then write `handoff/tasks/T59.md` (goal, read first, decisions, numbered requirements, acceptance criteria) and the plan in `handoff/work/T59.md`, as steps 0 to 3 of the workflow in `CLAUDE.md` describe.
-4. Build on what T57 left: the stand slot math in `src/shared/standGeom.ts`, the clearance rule `standTaxiwayClash` in `src/shared/clearance.ts`, and stands that pave their own slot. T59 needs a save migration from the four sizes to the five classes.
-5. Ask the user first about the one open point from T57: the interim turnaround crews (aircraft under 20 m get no belt loader set, GA turnarounds get a refueller only) wait for the user's confirmation, see `docs/ARCHITECTURE.md` section 12.
-6. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only, so it does not collide with T59.
-7. Known leftovers are in `handoff/BACKLOG.md`, known limits in `docs/ARCHITECTURE.md` section 13.
+2. T59 is done (2026-11-17). The next task is **T47** (stand markings), then T72 (pass through stands), T70 (snap markers) and T71 (taxiway sections) in the order of the phase 1 table. Run the `grill-me` skill and write the spec first; the old draft `handoff/tasks/T47-stand-markings.md` predates revision 4 and the user answers of 2026-11-17 in `handoff/QUESTIONS.md` (four sizes, accepts toggles, jet bridge as an upgrade that needs a second terminal floor).
+3. Build on what T59 left: `src/shared/standSnap.ts` (single stand snapping), `leadInGapM` and `leadInTargetGapM` in `src/shared/standGeom.ts`, `Stand.accepts` with `acceptBit` in `src/shared/airfield.ts`, and the connection line in the stand inspector.
+4. Findings for T70 and T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
+5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
+6. Known leftovers are in `handoff/BACKLOG.md`, known limits in `docs/ARCHITECTURE.md` section 13.
+7. Browser tests in the cloud session run with `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test --project=chromium --trace off`.
 
 ## 1. Direction
 
@@ -34,15 +34,15 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 * The "Replaces" column names older task ids whose content the task absorbs. Their old specs can be read with `git show 16e5468:handoff/tasks/<file>`. The old milestone checklist is `git show 16e5468:docs/ROADMAP.md`.
 * Bugs passed with notice or skipped as minor are logged in `handoff/BACKLOG.md`, per the bug triage rule in `CLAUDE.md`.
 
-## 3. What is built (2026-11-12)
+## 3. What is built (2026-11-17)
 
-A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 15.
+A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 16.
 
 | Area | Built |
 | --- | --- |
 | Foundation | Deterministic sim in a worker, fixed timestep, command log and replay, saves with migrations, autosave, export and import, crash panel, quality governor, CI with lint, tests, stress and Playwright in three engines |
 | Site | Seeded terrain, parcels with purchase, wind, climate, city, two presets, minimap and camera |
-| Airfield | Runways with works, taxiways with the revision 2 pavement generator, holding points, rapid exits, parallel taxiway prefab, aprons as merging polygons with remove and extend tools, stands in four sizes with a lead in fork, a taxiway clearance check and their own paved slot, GA blocks, turn pads (look frozen), obstacle surfaces, wingtip envelopes, construction grid with snapping, undo and redo |
+| Airfield | Runways with works, taxiways with the revision 2 pavement generator, holding points, rapid exits, parallel taxiway prefab, aprons as merging polygons with remove and extend tools, single stands in four sizes that face and snap onto the nearest taxiway with R rotation, a lead in fork, a taxiway clearance check, their own paved slot, GA, commercial and cargo toggles and a taxiway connection line in the inspector, GA blocks, turn pads (look frozen), obstacle surfaces, wingtip envelopes, construction grid with snapping, undo and redo |
 | Aircraft and movement | 10 aircraft types with sprites in four tiers, taxi network with conflict sets, routing, reservations, junction priority, push back, deadlock handling, performance checks, wake separation |
 | ATC | Free standing tower with five levels and a movement budget per runway |
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model |
@@ -61,7 +61,7 @@ MVP 1 ends with the acceptance task T38.
 | Phase | Theme | Tasks | Status |
 | --- | --- | --- | --- |
 | 0 | Repair | T57, T58, T69 | done |
-| 1 | Stands and flight planning | T59, T47, T61, T62 | todo |
+| 1 | Stands and flight planning | T59, T47, T61, T62, T72, T70, T71 | todo |
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66 | todo |
 | 3 | People | T54, T67, T20, T68 | todo |
 | 4 | Tenants and events | T32, T50 | todo |
@@ -84,14 +84,15 @@ Exit, met on 2026-11-12: no parked aircraft breaks a taxiway, no vehicle is draw
 
 ### Phase 1. Stands and flight planning
 
-Goal: stands become prefabs in five classes, and flights are planned by the week from generated airlines and destinations.
+Goal: stands become prefabs in four sizes, and flights are planned by the week from generated airlines and destinations.
 
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
-| T59 | Stand sizes small to extra large with nose in or pass through layout, GA, commercial and cargo toggles, single placement with rotation, lead in snapping to a centerline, live connection states, save migration (revision 4 section 2.1 to 2.4, user answers of 2026-11-17) |  | T57 | doing |
+| T59 | Stand sizes small to extra large with nose in or pass through layout, GA, commercial and cargo toggles, single placement with rotation, lead in snapping to a centerline, live connection states, save migration (revision 4 section 2.1 to 2.4, user answers of 2026-11-17) |  | T57 | done 5bb09f6 0689ecf b7e005a. Pass through moved to T72, map icons to T47 |
 | T47 | Stand markings per design revision 3, regenerated from class, access type and upgrades, with connection state icons on the stand and the box drawn on stands with no lead in (moved from T59) |  | T59 | todo |
 | T61 | Weekly planner and flight series with a seven day stand timeline, auto planner, rotations migrated to daily series (section 3.1, 3.2, 3.5) | T41 model, T31 | T59 | todo |
 | T62 | Procedural destination network, generated airlines, series offers that grow with the rating, airline satisfaction (section 3.3, 3.4). Keep invented names and fleets limited to the MVP 1 types | T30, T31 | T61 | todo |
+| T72 | Pass through stands in all four sizes: layout picker in the stand tool, a lead out from the nose to a centerline ahead, departure forward with no push back, never a jet bridge (user, 2026-11-17, split from T59) |  | T59 | todo |
 | T70 | Snap markers and tooltips for every snap kind in the runway, taxiway, apron and stand tools; press and drag draws a taxiway segment (user, 2026-11-16) |  | T59 | todo |
 | T71 | Taxiway sections: a taxiway splits into separate records at every junction when one is built, with no seam in the pavement (user, 2026-11-16) |  | T59 | todo |
 
