@@ -3,7 +3,7 @@ import { CELL_M, GRID_N } from '@shared/site';
 import { SNAPSHOT_VEHICLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import type { SitePayload } from '@shared/site';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
-import { AIRFIELD, GSE, PAINT } from '@data/index';
+import { AIRFIELD, GSE, PAINT, SPRITES } from '@data/index';
 import { paintGhostObjects } from './markings/airfieldPaint';
 import { standStates, type StandState } from './standStates';
 
@@ -1093,7 +1093,8 @@ export class Renderer {
       }
       const ch = Math.cos(h);
       const sh = Math.sin(h);
-      const k = 1 / sprite.ppm;
+      // The tier 0 arrow is a marker, not a true scale asset: zoomed far out it grows to a readable size (user, 2026-11-17).
+      const k = (tier === 0 ? Math.max(1, SPRITES.tiers.arrowMinPx / ((sprite.width / sprite.ppm) * this.camera.zoom)) : 1) / sprite.ppm;
       const ma = (a * ch + cc * sh) * k;
       const mb = (b * ch + d * sh) * k;
       const mc = (-a * sh + cc * ch) * k;

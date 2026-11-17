@@ -50,8 +50,9 @@ describe('air2.py port helpers', () => {
 describe('sprite tiers and cache', () => {
   it('picks the tier from the zoom thresholds in the data', () => {
     expect(tierForZoom(0.2)).toBe(0);
-    expect(tierForZoom(0.99)).toBe(0);
-    expect(tierForZoom(1)).toBe(1);
+    expect(tierForZoom(0.29)).toBe(0);
+    expect(tierForZoom(0.99)).toBe(1);
+    expect(tierForZoom(0.3)).toBe(1);
     expect(tierForZoom(3.9)).toBe(1);
     expect(tierForZoom(4)).toBe(2);
     expect(tierForZoom(15.9)).toBe(2);

@@ -1,9 +1,10 @@
 {
   "version": 1,
-  "note": "Aircraft sprite tiers, cache limit and liveries. Tiers follow docs/ART_AND_ASSETS.md section 2: 0 heading arrow, 1 flat silhouette with shadow, 2 reference style, 3 close up. minZoom is the lowest camera zoom in px per m that selects the tier. bakePpm is the resolution the tier is baked at.",
+  "note": "Aircraft sprite tiers, cache limit and liveries. Tiers follow docs/ART_AND_ASSETS.md section 2: 0 heading arrow, 1 flat silhouette with shadow, 2 reference style, 3 close up. minZoom is the lowest camera zoom in px per m that selects the tier. bakePpm is the resolution the tier is baked at. arrowMinPx is the smallest on screen length of the tier 0 arrow, a marker that grows when zoomed out so it stays visible.",
   "tiers": {
-    "minZoom": [0, 1, 4, 16],
-    "bakePpm": [2, 4, 8, 16]
+    "minZoom": [0, 0.3, 4, 16],
+    "bakePpm": [2, 4, 8, 16],
+    "arrowMinPx": 24
   },
   "cache": { "maxEntries": 96 },
   "padM": 4,

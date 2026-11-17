@@ -18,6 +18,7 @@ export const spritesSchema = z.strictObject({
   tiers: z.strictObject({
     minZoom: z.tuple([z.number().nonnegative(), z.number().positive(), z.number().positive(), z.number().positive()]),
     bakePpm: z.tuple([z.number().positive(), z.number().positive(), z.number().positive(), z.number().positive()]),
+    arrowMinPx: z.number().positive(),
   }),
   cache: z.strictObject({ maxEntries: z.number().int().min(8) }),
   padM: z.number().positive(),
