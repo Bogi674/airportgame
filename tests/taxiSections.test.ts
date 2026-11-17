@@ -137,3 +137,32 @@ const base: Taxiway = {
   speedKmh: 30,
   name: 'A',
 };
+
+describe('every intersection is a junction (user, 2026-11-17)', () => {
+  it('two taxiways that cross without a shared point split at the crossing', () => {
+    const sim = ownedSim();
+    run(sim, tw([{ x: 3000, y: 5000 }, { x: 4000, y: 5000 }]), tw([{ x: 3500, y: 4700 }, { x: 3500, y: 5300 }]));
+    const ts = sim.airfield.data.taxiways;
+    expect(ts.length).toBe(4);
+    const g = taxiGraph(ts).graph;
+    expect(g.nodes.length).toBe(5);
+  });
+
+  it('a save with an unsplit taxiway is split on load', () => {
+    const sim = ownedSim();
+    tee(sim);
+    const raw = structuredClone(sim.airfield.saveState()) as { taxiways: Taxiway[] };
+    // Rebuild the pre T71 shape: one record through the junction.
+    const main = raw.taxiways.filter((t) => t.points.every((p) => p.y === 5000));
+    main[0].points = [{ x: 3000, y: 5000 }, { x: 3500, y: 5000 }, { x: 4000, y: 5000 }];
+    delete main[0].line;
+    raw.taxiways = raw.taxiways.filter((t) => t !== main[1]);
+    const other = ownedSim();
+    other.airfield.loadState(raw);
+    expect(other.airfield.data.taxiways.length).toBe(3);
+    // Loading again changes nothing.
+    const again = ownedSim();
+    again.airfield.loadState(structuredClone(other.airfield.saveState()));
+    expect(again.airfield.data.taxiways.map((t) => t.points)).toEqual(other.airfield.data.taxiways.map((t) => t.points));
+  });
+});

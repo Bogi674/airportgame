@@ -28,7 +28,7 @@ import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
-import { sectionPolylines } from '@shared/pavement/sections';
+import { crossingTooClose, sectionPolylines } from '@shared/pavement/sections';
 import { apronArea, apronContains, type ApronShape, overlaps, touches } from '@shared/apronGeom';
 import {
   MAX_APRON_M2,
@@ -409,6 +409,7 @@ export class Airfield {
     );
     if ('problem' in snapped) return { code: snapped.problem, args: { min: TAXI_TOOL.minNodeGapM } };
     const pts = snapped.points;
+    if (crossingTooClose(pts, this.data.taxiways)) return { code: 'nodesTooClose', args: { min: TAXI_TOOL.minNodeGapM } };
     if (polylineLength(pts) > 8000) return { code: 'taxiwayTooLong', args: { max: 8000 } };
     const t = this.makeTaxiway(pts, cmd.code, cmd.kind, cmd.surface, cmd.tier, this.nextTaxiName(), ctx);
     if (!('points' in t)) {
@@ -1215,6 +1216,7 @@ export class Airfield {
       if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
       t.points = next;
       t.cost += cost;
+      this.sectionize([t.id], [t.id], () => undefined);
       this.refresh();
       return { cashDelta: -cost };
     }
@@ -1376,6 +1378,9 @@ export class Airfield {
     this.apronNumber = (raw as { apronNumber?: number }).apronNumber ?? o.aprons.length;
     this.undoStack = [];
     this.redoStack = [];
+    // Every intersection is a junction (user, 2026-11-17): older layouts split here. Idempotent, so newer saves load unchanged.
+    const ids = d.taxiways.map((t) => t.id);
+    this.sectionize(ids, ids, () => undefined);
     this.refresh();
     d.version = o.version + 1;
   }

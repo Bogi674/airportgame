@@ -244,7 +244,7 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Question | Answer (owner, 2026-11-17) |
 | --- | --- |
 | Name of each section after a split | Sections keep the parent name, like a real taxiway that runs through junctions |
-| Split taxiways in existing saves | New builds only, no data migration |
+| Split taxiways in existing saves | First answered new builds only, then replaced by the user the same day: follow Airport CEO, every intersection (crossings included) is a junction, older saves split on load |
 | Look of the weekly planner (T61) | Mon to Sun day tabs over the daily stand timeline plus a week strip per stand; one drop places the series on all its operating days |
 | Where series come from before T62 | Build T61 and T62 together, so series point to generated destinations from the start |
 | Day pattern weights (D9) | Equal weights for every pattern and airline |
