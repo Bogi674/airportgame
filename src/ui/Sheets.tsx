@@ -3,10 +3,11 @@ import { BUSINESS } from '@data/index';
 import { LEDGER_CATEGORIES, type FeeLevel } from '@shared/business';
 import type { Command } from '@sim/commands';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { BoardRow, BusinessPayload, OfferRow } from '@shared/business';
+import { GA_LABEL, type BoardRow, type BusinessPayload, type OfferRow } from '@shared/business';
 import type { Stand } from '@shared/airfield';
 import { blockWindow, blocksOverlap, refuseBlock, type BlockWindow, type PlacedBlock, type StandRefusal } from '@shared/flightBlock';
 import { standRefusalAt } from './standRule';
+import { AcceptToggles } from './AcceptToggles';
 import { Icon } from './icons';
 import { compassName, formatInt, formatMoney, formatNumber } from './format';
 import { useGameStore } from './stores/gameStore';
@@ -171,7 +172,7 @@ const OFFER_COLS = 'display:grid;grid-template-columns:70px 64px 90px 90px 1fr;g
 function allStandsRefuse(o: OfferRow, b: BusinessPayload, stands: Stand[]): StandRefusal | null {
   let first: StandRefusal | null = null;
   for (let i = 0; i < stands.length; i++) {
-    const r = standRefusalAt(b, i, stands[i], AIRCRAFT[o.typeIdx]);
+    const r = standRefusalAt(b, i, stands[i], AIRCRAFT[o.typeIdx], 'commercial');
     if (r === null) return null;
     if (first === null) first = r;
   }
@@ -248,7 +249,7 @@ function SlotsSheet({ send }: Props) {
                         >
                           <option value={-1}>{t('slots.auto')}</option>
                           {af.stands.map((st, i) => (
-                            <option key={st.id} value={st.id} disabled={st.id !== o.standId && standRefusalAt(b, i, st, AIRCRAFT[o.typeIdx]) !== null}>
+                            <option key={st.id} value={st.id} disabled={st.id !== o.standId && standRefusalAt(b, i, st, AIRCRAFT[o.typeIdx], 'commercial') !== null}>
                               {st.number}
                             </option>
                           ))}
@@ -365,7 +366,7 @@ function packLanes(list: BoardRow[]): { r: BoardRow; lane: number }[] {
 function rowFault(b: BusinessPayload, stands: Stand[], standId: number, r: BoardRow, spans: Span[]): RowFault | null {
   const i = stands.findIndex((s) => s.id === standId);
   if (i < 0) return { code: 'standNoLink', flight: -1 };
-  const refusal = standRefusalAt(b, i, stands[i], AIRCRAFT[r.typeIdx]);
+  const refusal = standRefusalAt(b, i, stands[i], AIRCRAFT[r.typeIdx], r.airline === GA_LABEL ? 'ga' : 'commercial');
   if (refusal !== null) return { code: refusal, flight: -1 };
   const others: PlacedBlock[] = spans.filter((o) => o.standId === standId && o.flight !== r.flight).map((o) => ({ flight: o.flight, window: { startMin: o.startMin, endMin: o.endMin } }));
   const clash = refuseBlock(blockWindow(r.startMin, r.turnMin), others, r.flight);
@@ -628,11 +629,7 @@ function StandsSheet({ send }: Props) {
                       <input data-testid={`stand-open-${s.id}`} type="checkbox" checked={s.closed !== true} onChange={(e) => send({ type: 'setStandProps', id: s.id, closed: !(e.target as HTMLInputElement).checked })} />
                       <span>{s.closed === true ? t('stands.closed') : t('stands.open')}</span>
                     </label>
-                    <select data-testid={`stand-usage-${s.id}`} value={s.usage ?? 'any'} onChange={(e) => send({ type: 'setStandProps', id: s.id, usage: (e.target as HTMLSelectElement).value as 'any' | 'commercial' | 'ga' })}>
-                      <option value="any">{t('stands.usage.any')}</option>
-                      <option value="commercial">{t('stands.usage.commercial')}</option>
-                      <option value="ga">{t('stands.usage.ga')}</option>
-                    </select>
+                    <AcceptToggles stand={s} send={send} />
                   </span>
                 </div>
                 <div

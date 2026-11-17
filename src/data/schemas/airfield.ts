@@ -120,6 +120,8 @@ const standSize = z
     stopBarGapM: z.number().positive(),
     jetBridges: z.number().int().nonnegative(),
     hydrants: z.boolean(),
+    /** Flight categories a new stand of this size takes (user, 2026-11-17). */
+    accepts: z.array(z.enum(['ga', 'commercial', 'cargo'])).min(1),
   })
   .refine((s) => s.widthM >= s.maxSpanM + 2 * s.wingtipClearanceM - 1, { message: 'stand width must hold the largest span plus both wingtip clearances' });
 

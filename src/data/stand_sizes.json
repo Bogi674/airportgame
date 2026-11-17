@@ -27,7 +27,8 @@
       },
       "stopBarGapM": 3.0,
       "jetBridges": 0,
-      "hydrants": false
+      "hydrants": false,
+      "accepts": ["ga", "commercial"]
     },
     "medium": {
       "codes": [
@@ -53,7 +54,8 @@
       },
       "stopBarGapM": 3.5,
       "jetBridges": 1,
-      "hydrants": false
+      "hydrants": false,
+      "accepts": ["commercial"]
     },
     "large": {
       "codes": [
@@ -77,7 +79,8 @@
       },
       "stopBarGapM": 5.0,
       "jetBridges": 2,
-      "hydrants": true
+      "hydrants": true,
+      "accepts": ["commercial"]
     },
     "xl": {
       "codes": [
@@ -100,7 +103,8 @@
       },
       "stopBarGapM": 5.0,
       "jetBridges": 2,
-      "hydrants": true
+      "hydrants": true,
+      "accepts": ["commercial"]
     }
   },
   "markings": {

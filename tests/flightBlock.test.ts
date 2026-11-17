@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT, type AircraftSpec } from '@data/aircraft';
 import { STAND_SIZES } from '@data/index';
-import type { Stand } from '@shared/airfield';
+import { ACCEPT_ALL, ACCEPT_CARGO, ACCEPT_COMMERCIAL, ACCEPT_GA, type FlightCategory, type Stand } from '@shared/airfield';
 import {
   blockWindow,
   blocksOverlap,
@@ -27,7 +27,7 @@ const light = byId('c172s');
 /** Facts that pass every check for the given aircraft, so one field can be broken per test. */
 const openFacts = (spec: AircraftSpec): StandFacts => ({
   closed: false,
-  usage: 'any',
+  accepts: ACCEPT_ALL,
   size: 'xl',
   surface: spec.surfaces[0],
   type: 'remote',
@@ -52,70 +52,74 @@ describe('blockWindow and blocksOverlap', () => {
 
 describe('refuseStand', () => {
   it('passes a stand that fits every check', () => {
-    expect(refuseStand(openFacts(jet), jet)).toBeNull();
+    expect(refuseStand(openFacts(jet), jet, 'commercial')).toBeNull();
   });
 
   it('refuses a wingspan too big for the stand size', () => {
     expect(jet.dimensions.wingspanM).toBeGreaterThan(STAND_SIZES.small.maxSpanM);
-    expect(refuseStand({ ...openFacts(jet), size: 'small' }, jet)).toBe('standSpan');
+    expect(refuseStand({ ...openFacts(jet), size: 'small' }, jet, 'commercial')).toBe('standSpan');
   });
 
   it('refuses a surface not on the aircraft list', () => {
     const off = (['dirt', 'gravel', 'grass'] as const).find((s) => !jet.surfaces.includes(s));
     if (!off) throw new Error('no surface outside the aircraft list');
-    expect(refuseStand({ ...openFacts(jet), surface: off }, jet)).toBe('standSurfaceType');
+    expect(refuseStand({ ...openFacts(jet), surface: off }, jet, 'commercial')).toBe('standSurfaceType');
   });
 
   it('refuses a closed stand', () => {
-    expect(refuseStand({ ...openFacts(jet), closed: true }, jet)).toBe('standClosed');
+    expect(refuseStand({ ...openFacts(jet), closed: true }, jet, 'commercial')).toBe('standClosed');
   });
 
-  it('refuses a commercial only stand for a general aviation type', () => {
-    expect(light.capacity.seatsTypical).toBeLessThan(20);
-    expect(refuseStand({ ...openFacts(light), usage: 'commercial' }, light)).toBe('standUsage');
+  it('refuses a commercial only stand for a GA flight', () => {
+    expect(refuseStand({ ...openFacts(light), accepts: ACCEPT_COMMERCIAL }, light, 'ga')).toBe('standUsage');
   });
 
-  it('refuses a ga only stand for a commercial type', () => {
-    expect(jet.capacity.seatsTypical).toBeGreaterThanOrEqual(20);
-    expect(refuseStand({ ...openFacts(jet), usage: 'ga' }, jet)).toBe('standUsage');
+  it('refuses a GA only stand for a commercial flight', () => {
+    expect(refuseStand({ ...openFacts(jet), accepts: ACCEPT_GA }, jet, 'commercial')).toBe('standUsage');
+  });
+
+  it('refuses a cargo only stand for GA and commercial flights', () => {
+    expect(refuseStand({ ...openFacts(jet), accepts: ACCEPT_CARGO }, jet, 'commercial')).toBe('standUsage');
+    expect(refuseStand({ ...openFacts(light), accepts: ACCEPT_CARGO }, light, 'ga')).toBe('standUsage');
   });
 
   it('refuses a contact stand outside terminal reach', () => {
-    expect(refuseStand({ ...openFacts(jet), type: 'contact', contactOk: () => false }, jet)).toBe('standNoTerminal');
+    expect(refuseStand({ ...openFacts(jet), type: 'contact', contactOk: () => false }, jet, 'commercial')).toBe('standNoTerminal');
   });
 
   it('refuses a stand with no taxi link', () => {
-    expect(refuseStand({ ...openFacts(jet), linked: false }, jet)).toBe('standNoLink');
+    expect(refuseStand({ ...openFacts(jet), linked: false }, jet, 'commercial')).toBe('standNoLink');
   });
 
   it('does not query terminal reach when span already fails', () => {
     let asked = 0;
     const f = { ...openFacts(jet), size: 'small' as const, type: 'contact' as const, contactOk: () => { asked++; return true; } };
-    expect(refuseStand(f, jet)).toBe('standSpan');
+    expect(refuseStand(f, jet, 'commercial')).toBe('standSpan');
     expect(refuseFit(f, jet)).toBe('standSpan');
     expect(asked).toBe(0);
   });
 });
 
 describe('refuseFit and refuseUsage', () => {
-  it('refuseUsage takes a ga stand only for small types', () => {
-    expect(refuseUsage('ga', light)).toBeNull();
-    expect(refuseUsage('ga', jet)).toBe('standUsage');
-    expect(refuseUsage('commercial', light)).toBe('standUsage');
-    expect(refuseUsage('any', light)).toBeNull();
+  it('refuseUsage reads the category bit and nothing else', () => {
+    expect(refuseUsage(ACCEPT_GA, 'ga')).toBeNull();
+    expect(refuseUsage(ACCEPT_GA, 'commercial')).toBe('standUsage');
+    expect(refuseUsage(ACCEPT_COMMERCIAL, 'ga')).toBe('standUsage');
+    expect(refuseUsage(ACCEPT_GA | ACCEPT_COMMERCIAL, 'ga')).toBeNull();
+    expect(refuseUsage(ACCEPT_ALL, 'cargo')).toBeNull();
   });
 
-  it('refuseFit ignores closed state and usage', () => {
-    expect(refuseFit({ ...openFacts(jet), closed: true, usage: 'ga' }, jet)).toBeNull();
+  it('refuseFit ignores closed state and accepted categories', () => {
+    expect(refuseFit({ ...openFacts(jet), closed: true, accepts: ACCEPT_GA }, jet)).toBeNull();
   });
 });
 
 describe('standFacts', () => {
-  it('defaults closed to false and usage to any', () => {
-    const st = { id: 1, cost: 0, number: '1', x: 0, y: 0, headingDeg: 0, type: 'remote', size: 'xl', code: 'E', surface: 'asphalt', pushback: 'none' } as unknown as Stand;
+  it('defaults closed to false and copies the accepts bits', () => {
+    const st = { id: 1, cost: 0, number: '1', x: 0, y: 0, headingDeg: 0, type: 'remote', size: 'xl', code: 'E', surface: 'asphalt', pushback: 'none', accepts: ACCEPT_COMMERCIAL } as unknown as Stand;
     const f = standFacts(st, true, () => true);
     expect(f.closed).toBe(false);
-    expect(f.usage).toBe('any');
+    expect(f.accepts).toBe(ACCEPT_COMMERCIAL);
   });
 });
 
@@ -153,17 +157,19 @@ describe('Traffic stand gates agree with refuseStand', () => {
     const tr = sim.traffic as unknown as StandGates;
     expect(tr.af.stands.length).toBeGreaterThan(2);
     tr.af.stands[0].closed = true;
-    tr.af.stands[1].usage = 'ga';
+    tr.af.stands[1].accepts = ACCEPT_GA;
     const types = ['a320neo', 'c172s', 'b737_800'].map((id) => AIRCRAFT.findIndex((a) => a.id === id));
+    // Traffic without a flight record takes its category from the type role.
+    const CAT = AIRCRAFT.map((a): FlightCategory => (a.role === 'ga' ? 'ga' : 'commercial'));
     for (let s = 0; s < tr.af.stands.length; s++) {
       const st = tr.af.stands[s];
       for (const t of types) {
         const spec = AIRCRAFT[t];
         const linked = tr.net.standNode[s] >= 0;
         const base = standFacts(st, linked, () => true);
-        const fitView = refuseStand({ ...base, closed: false, usage: 'any', linked: true }, spec);
+        const fitView = refuseStand({ ...base, closed: false, accepts: ACCEPT_ALL, linked: true }, spec, CAT[t]);
         expect(tr.standFits(t, s)).toBe(fitView !== 'standSpan' && fitView !== 'standSurfaceType' && fitView !== 'standNoTerminal');
-        const allowView = refuseStand({ ...base, size: 'xl', surface: spec.surfaces[0], type: 'remote', linked: true }, spec);
+        const allowView = refuseStand({ ...base, size: 'xl', surface: spec.surfaces[0], type: 'remote', linked: true }, spec, CAT[t]);
         expect(tr.standAllows(t, s)).toBe(allowView !== 'standClosed' && allowView !== 'standUsage');
       }
     }

@@ -1,10 +1,10 @@
 import type { GameOptions } from '@shared/protocol';
-import type { CodeLetter } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -120,6 +120,17 @@ export function migrate(raw: unknown): SaveData {
       if (typeof old.business.weatherEnd === 'number') old.business.weatherEnd = later(old.business.weatherEnd);
     }
     save.version = 15;
+  }
+  // Version 15 to 16: the stand usage setting became the accepts bits (user, 2026-11-17). GA only and commercial only keep their meaning. Any meant GA on small remote stands and commercial everywhere.
+  if (save.version < 16) {
+    const af = (save as { airfield?: { stands?: Record<string, unknown>[] } }).airfield;
+    for (const st of af?.stands ?? []) {
+      const usage = st.usage;
+      const both = ACCEPT_GA | ACCEPT_COMMERCIAL;
+      st.accepts = usage === 'ga' ? ACCEPT_GA : usage === 'commercial' ? ACCEPT_COMMERCIAL : st.size === 'small' && st.type === 'remote' ? both : ACCEPT_COMMERCIAL;
+      delete st.usage;
+    }
+    save.version = 16;
   }
   return save as SaveData;
 }

@@ -26,7 +26,7 @@ import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
+import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { blockWindow } from '@shared/flightBlock';
 import type { BuildContext } from '@shared/validate';
@@ -536,7 +536,7 @@ export class Business {
   /** Row label for a flight: the airline name, GA for general aviation, Test for the test flights. */
   private airlineLabel(al: number): string {
     if (al >= 0) return this.airlines[al].name;
-    return al === GA_AIRLINE ? 'GA' : 'Test';
+    return al === GA_AIRLINE ? GA_LABEL : 'Test';
   }
 
   private onDocked(f: number): void {

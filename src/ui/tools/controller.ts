@@ -1,8 +1,8 @@
 import { apronContains, touches } from '@shared/apronGeom';
 import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standRowPricing, type RemovePlan } from '@shared/apronPricing';
 import { AIRFIELD, BUSINESS, PAINT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
-import { sizeCode } from '@shared/standSizes';
-import { codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
+import { defaultAccepts, sizeCode } from '@shared/standSizes';
+import { ACCEPT_GA, codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
 import {
   frameHeadings,
   pickObject,
@@ -1618,6 +1618,7 @@ export class ToolController {
       code: sizeCode(plan.size),
       surface: plan.surface,
       pushback: 'auto',
+      accepts: plan.ga ? ACCEPT_GA : defaultAccepts(plan.size),
     }));
     const shapes: GhostShape[] = [];
     let problem: Problem | null = null;

@@ -130,8 +130,27 @@ export interface Stand {
   pushback: PushbackDir;
   /** Closed stands take no aircraft. */
   closed?: boolean;
-  /** Which flights may use the stand. Missing means any. */
-  usage?: 'any' | 'commercial' | 'ga';
+  /** Flight categories the stand takes, as `ACCEPT_*` bits in any mix, never zero (user, 2026-11-17). */
+  accepts: number;
+}
+
+/** Flight categories a stand can be set to take (user, 2026-11-17). Cargo is stored only until cargo flights exist. */
+export type FlightCategory = 'ga' | 'commercial' | 'cargo';
+export const FLIGHT_CATEGORIES: readonly FlightCategory[] = ['ga', 'commercial', 'cargo'];
+export const ACCEPT_GA = 1;
+export const ACCEPT_COMMERCIAL = 2;
+export const ACCEPT_CARGO = 4;
+/** Every valid accepts value is a non zero subset of these bits. */
+export const ACCEPT_ALL = ACCEPT_GA | ACCEPT_COMMERCIAL | ACCEPT_CARGO;
+
+/** The accepts bit of a flight category. */
+export function acceptBit(c: FlightCategory): number {
+  return c === 'ga' ? ACCEPT_GA : c === 'commercial' ? ACCEPT_COMMERCIAL : ACCEPT_CARGO;
+}
+
+/** True when a value is a valid accepts bit set: a whole number with at least one known bit and no other. */
+export function validAccepts(v: number): boolean {
+  return Number.isInteger(v) && v > 0 && (v & ~ACCEPT_ALL) === 0;
 }
 
 export interface HoldingPoint {

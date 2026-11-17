@@ -1,5 +1,5 @@
 import type { AircraftSpec } from '@data/aircraft';
-import type { CodeLetter, Stand, StandSize, StandType, Surface } from './airfield';
+import { acceptBit, type CodeLetter, type FlightCategory, type Stand, type StandSize, type StandType, type Surface } from './airfield';
 import { standRefusal } from './standSizes';
 
 /**
@@ -35,7 +35,8 @@ export type StandRefusal = 'standSpan' | 'standSurfaceType' | 'standClosed' | 's
 /** The stand properties the refusal rule reads, gathered once per stand. */
 export interface StandFacts {
   closed: boolean;
-  usage: 'any' | 'commercial' | 'ga';
+  /** Flight categories the stand takes, as accepts bits. */
+  accepts: number;
   size: StandSize;
   surface: Surface;
   type: StandType;
@@ -46,11 +47,11 @@ export interface StandFacts {
   contactOk: () => boolean;
 }
 
-/** Reads the refusal facts of a stand. Closed defaults to false and usage defaults to any. */
+/** Reads the refusal facts of a stand. Closed defaults to false. */
 export function standFacts(st: Stand, linked: boolean, contactOk: () => boolean): StandFacts {
   return {
     closed: st.closed === true,
-    usage: st.usage ?? 'any',
+    accepts: st.accepts,
     size: st.size,
     surface: st.surface,
     type: st.type,
@@ -73,23 +74,22 @@ function refuseContact(f: StandFacts): 'standNoTerminal' | null {
   return f.type === 'contact' && !f.contactOk() ? 'standNoTerminal' : null;
 }
 
-/** Span and surface, then contact, for the physical fit of an aircraft type on a stand. Closed state and usage are not part of it. */
+/** Span and surface, then contact, for the physical fit of an aircraft type on a stand. Closed state and accepted categories are not part of it. */
 export function refuseFit(f: StandFacts, spec: AircraftSpec): 'standSpan' | 'standSurfaceType' | 'standNoTerminal' | null {
   return refuseSpanSurface(f, spec) ?? refuseContact(f);
 }
 
-/** Usage refusal: a ga only stand takes small types and a commercial only stand takes larger ones. */
-export function refuseUsage(usage: 'any' | 'commercial' | 'ga', spec: AircraftSpec): 'standUsage' | null {
-  const ga = spec.capacity.seatsTypical < 20;
-  return (usage === 'ga' && !ga) || (usage === 'commercial' && ga) ? 'standUsage' : null;
+/** Category refusal: the stand must take the flight's category (user, 2026-11-17). */
+export function refuseUsage(accepts: number, cat: FlightCategory): 'standUsage' | null {
+  return (accepts & acceptBit(cat)) === 0 ? 'standUsage' : null;
 }
 
-/** The first reason a stand refuses this aircraft type for a flight, or null when the stand takes it. */
-export function refuseStand(f: StandFacts, spec: AircraftSpec): StandRefusal | null {
+/** The first reason a stand refuses this aircraft type for a flight of a category, or null when the stand takes it. */
+export function refuseStand(f: StandFacts, spec: AircraftSpec, cat: FlightCategory): StandRefusal | null {
   if (f.closed) return 'standClosed';
   const fit = refuseSpanSurface(f, spec);
   if (fit !== null) return fit;
-  const usage = refuseUsage(f.usage, spec);
+  const usage = refuseUsage(f.accepts, cat);
   if (usage !== null) return usage;
   const contact = refuseContact(f);
   if (contact !== null) return contact;

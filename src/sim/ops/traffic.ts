@@ -1,5 +1,5 @@
 import { AIRCRAFT, RUNWAY_OCCUPANCY, wakeSeparationSec, WAKE_ORDER, type AircraftSpec } from '@data/aircraft';
-import { codeIndex, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type Runway } from '@shared/airfield';
+import { ACCEPT_GA, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type FlightCategory, type Runway } from '@shared/airfield';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
@@ -10,6 +10,7 @@ import { blockWindow, blocksOverlap, refuseFit, refuseStand, refuseUsage, STAND_
 import { minuteOfDay, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { gameSecondsToTicks } from '@shared/time';
 import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
+import { sizeGap } from '@shared/standSizes';
 import { parkedOffsetM } from '@shared/standGeom';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { AIRFIELD, BUSINESS, PROFILES } from '@data/index';
@@ -87,6 +88,8 @@ const SURFACE_BIT: Record<string, number> = { dirt: 1, gravel: 2, grass: 4, asph
 const surfaceMask = (a: AircraftSpec): number => a.surfaces.reduce((m, s) => m | SURFACE_BIT[s], 0);
 const MASKS = AIRCRAFT.map(surfaceMask);
 const CODES_OF: CodeLetter[] = AIRCRAFT.map((a) => a.derivedForReading.code);
+/** Flight category of traffic without a flight record, such as test traffic: GA types count as GA. */
+const CAT_OF: FlightCategory[] = AIRCRAFT.map((a) => (a.role === 'ga' ? 'ga' : 'commercial'));
 const WAKE_OF = AIRCRAFT.map((a) => WAKE_ORDER.indexOf(a.derivedForReading.wake));
 const ACR_OF = AIRCRAFT.map((a) => {
   const gear = a.weights.mtowKg < 7000 ? 1 : a.weights.mtowKg < 100000 ? 0.8 : a.weights.mtowKg < 280000 ? 0.65 : 0.55;
@@ -252,7 +255,7 @@ export class Traffic {
     const st = this.af.stands[this.reachStand];
     return !this.hooks?.contactOk || this.hooks.contactOk(st.x, st.y);
   };
-  private readonly standScratch: StandFacts = { closed: false, usage: 'any', size: 'small', surface: 'asphalt', type: 'remote', code: 'A', linked: false, contactOk: this.reachOf };
+  private readonly standScratch: StandFacts = { closed: false, accepts: 0, size: 'small', surface: 'asphalt', type: 'remote', code: 'A', linked: false, contactOk: this.reachOf };
   weather: 'clear' | 'rain' | 'fog' | 'wind' = 'clear';
 
   // Weather and settings
@@ -699,7 +702,7 @@ export class Traffic {
     const st = this.af.stands[s];
     const f = this.standScratch;
     f.closed = st.closed === true;
-    f.usage = st.usage ?? 'any';
+    f.accepts = st.accepts;
     f.size = st.size;
     f.surface = st.surface;
     f.type = st.type;
@@ -715,23 +718,21 @@ export class Traffic {
     return refuseFit(this.standFactsOf(s), AIRCRAFT[t]) === null;
   }
 
-  /** True when a stand may take this aircraft type under its open or closed state and usage setting. */
-  private standAllows(t: number, s: number): boolean {
-    const st = this.af.stands[s];
-    return st.closed !== true && refuseUsage(st.usage ?? 'any', AIRCRAFT[t]) === null;
+  /** The category of flight f: GA for the GA airline, else commercial. Without a flight it follows the type. */
+  private categoryOf(f: number, t: number): FlightCategory {
+    if (f < 0) return CAT_OF[t];
+    return this.fAirline[f] === GA_AIRLINE ? 'ga' : 'commercial';
   }
 
-  /** True when a stand may take general aviation: a GA usage stand, or an untagged small remote stand with a taxi node. */
+  /** True when a stand is open and takes the category of flight f (user, 2026-11-17). Without a flight the type decides. */
+  private standAllows(t: number, s: number, f = -1): boolean {
+    const st = this.af.stands[s];
+    return st.closed !== true && refuseUsage(st.accepts, this.categoryOf(f, t)) === null;
+  }
+
+  /** True when a stand with a taxi node takes general aviation. */
   private gaEligible(s: number): boolean {
-    const st = this.af.stands[s];
-    if (this.net.standNode[s] < 0) return false;
-    const usage = st.usage ?? 'any';
-    return usage === 'ga' || (usage === 'any' && st.size === 'small' && st.type === 'remote');
-  }
-
-  /** True when a GA flight may not use stand s. Other flights are never barred by this rule. */
-  private gaBarred(f: number, s: number): boolean {
-    return f >= 0 && this.fAirline[f] === GA_AIRLINE && !this.gaEligible(s);
+    return this.net.standNode[s] >= 0 && (this.af.stands[s].accepts & ACCEPT_GA) !== 0;
   }
 
   /** Holding points a departure can stop at, for tests and the stand inspector. */
@@ -742,7 +743,7 @@ export class Traffic {
   /** True when a taxi route leads from the node to any stand the flight may use, free or occupied. */
   private exitReachesStand(t: number, fromNode: number, f: number): boolean {
     for (let s = 0; s < this.af.stands.length; s++) {
-      if (this.net.standNode[s] < 0 || this.gaBarred(f, s) || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
+      if (this.net.standNode[s] < 0 || !this.standFits(t, s) || !this.standAllows(t, s, f)) continue;
       if (f >= 0 && this.fStand[f] >= 0 && this.af.stands[s].id !== this.fStand[f]) continue;
       if (this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE) >= 0) return true;
     }
@@ -754,7 +755,7 @@ export class Traffic {
     if (f >= 0 && this.fStand[f] >= 0) {
       // A flight with a stand set waits for that stand and never takes another one (T41 R22).
       const s = this.standIndexOf(this.fStand[f]);
-      if (s >= 0 && this.standOwner[s] === -1 && this.net.standNode[s] >= 0 && !this.gaBarred(f, s) && this.standFits(t, s) && this.standAllows(t, s)) {
+      if (s >= 0 && this.standOwner[s] === -1 && this.net.standNode[s] >= 0 && this.standFits(t, s) && this.standAllows(t, s, f)) {
         const n = this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
         if (n >= 0) return s;
       }
@@ -765,11 +766,9 @@ export class Traffic {
     let bestScore = Infinity;
     for (let s = 0; s < this.af.stands.length; s++) {
       if (this.standOwner[s] !== -1 || this.net.standNode[s] < 0) continue;
-      if (this.gaBarred(f, s) || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
-      const waste = codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t]);
-      const light = CODES_OF[t] === 'A' || CODES_OF[t] === 'B';
-      const gaBonus = light && this.af.stands[s].size === 'small' ? -1 : 0;
-      const score = waste * 100 + gaBonus * 50 + s * 0.01;
+      if (!this.standFits(t, s) || !this.standAllows(t, s, f)) continue;
+      // Own size first, then the next larger (user, 2026-11-17). standFits already bars smaller sizes.
+      const score = sizeGap(this.af.stands[s].size, AIRCRAFT[t]) * 100 + s * 0.01;
       if (score >= bestScore) continue;
       const n = this.net.route(fromNode, this.net.standNode[s], CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE);
       if (n < 0) continue;
@@ -813,7 +812,7 @@ export class Traffic {
   refuseAssign(f: number, standId: number): StandRefusal | null {
     const s = this.standIndexOf(standId);
     if (s < 0) return 'standNoLink';
-    const r = refuseStand(this.standFactsOf(s), AIRCRAFT[this.fType[f]]);
+    const r = refuseStand(this.standFactsOf(s), AIRCRAFT[this.fType[f]], this.categoryOf(f, this.fType[f]));
     if (r !== null) return r;
     const mine = this.flightBlock(f);
     for (let g = 0; g < MAX_FLIGHTS; g++) {
@@ -841,9 +840,9 @@ export class Traffic {
       let best = -1;
       let bestScore = Infinity;
       for (let s = 0; s < this.af.stands.length; s++) {
-        if (this.net.standNode[s] < 0 || this.gaBarred(f, s) || !this.standFits(t, s) || !this.standAllows(t, s)) continue;
+        if (this.net.standNode[s] < 0 || !this.standFits(t, s) || !this.standAllows(t, s, f)) continue;
         if (this.clashes(s, from, to)) continue;
-        const score = (codeIndex(this.af.stands[s].code) - codeIndex(CODES_OF[t])) * 100 + s * 0.01;
+        const score = sizeGap(this.af.stands[s].size, AIRCRAFT[t]) * 100 + s * 0.01;
         if (score < bestScore) {
           bestScore = score;
           best = s;

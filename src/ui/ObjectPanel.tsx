@@ -8,6 +8,7 @@ import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSi
 import { AIRCRAFT } from '@data/aircraft';
 import { standRefusal } from '@shared/standSizes';
 import { ClassHelp } from './ClassHelp';
+import { AcceptToggles } from './AcceptToggles';
 import type { Command } from '@sim/commands';
 import { useState } from 'preact/hooks';
 import { useGameStore } from './stores/gameStore';
@@ -420,6 +421,10 @@ export function ObjectPanel({ send }: Props) {
             {t('inspector.stand.clearanceBreach')}
           </div>
         )}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:4px">
+          {t('inspector.accepts')}
+          <AcceptToggles stand={x} send={send} />
+        </div>
         <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
           {t('inspector.pushback')}
           <select data-testid="stand-pushback" value={x.pushback} onChange={(e) => send({ type: 'setStandProps', id: x.id, pushback: (e.target as HTMLSelectElement).value as PushbackDir })}>

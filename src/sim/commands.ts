@@ -42,7 +42,7 @@ export type Command =
   /** Moves a holding position along its taxiway, never closer to the runway than the default. */
   | { type: 'moveHolding'; runwayId: number; taxiwayId: number; side: 1 | -1; distM: number }
   | { type: 'buyGse'; kind: string; count: number }
-  | { type: 'setStandProps'; id: number; closed?: boolean; usage?: 'any' | 'commercial' | 'ga'; pushback?: PushbackDir }
+  | { type: 'setStandProps'; id: number; closed?: boolean; accepts?: number; pushback?: PushbackDir }
   | { type: 'assignStand'; flight: number; standId: number }
   | { type: 'cancelFlight'; flight: number }
   | { type: 'setAutoStands'; on: boolean }

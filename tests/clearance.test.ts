@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AIRFIELD } from '@data/index';
-import { EMPTY_AIRFIELD, type AirfieldPayload, type Taxiway } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, EMPTY_AIRFIELD, type AirfieldPayload, type Taxiway } from '@shared/airfield';
 import { envelopeType, taxiClashes } from '@shared/clearance';
 
 const taxiway = (pts: { x: number; y: number }[]): Taxiway => ({
@@ -31,7 +31,7 @@ describe('wingtip envelope', () => {
 
   it('flags stands and buildings inside the taxiway to object distance', () => {
     const d = AIRFIELD.codes.C.taxiObjectM;
-    const stand = { id: 1, cost: 0, number: '1', x: 300, y: 300, headingDeg: 0, type: 'remote' as const, size: 'medium' as const, code: 'C' as const, surface: 'concrete' as const, pushback: 'auto' as const };
+    const stand = { id: 1, cost: 0, number: '1', x: 300, y: 300, headingDeg: 0, type: 'remote' as const, size: 'medium' as const, code: 'C' as const, surface: 'concrete' as const, pushback: 'auto' as const, accepts: ACCEPT_COMMERCIAL };
     const arm = [{ x: 0, y: 300 - 22.5 - d + 3 }, { x: 600, y: 300 - 22.5 - d + 3 }];
     expect(taxiClashes(arm, 'C', af({ taxiways: [], stands: [stand] }), none).object).toBe(true);
     const building = [{ x: 200, y: 500 }, { x: 400, y: 500 }, { x: 400, y: 600 }, { x: 200, y: 600 }];

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { STAND_MARKINGS, STAND_SIZES } from '@data/index';
-import { STAND_SIZES_ORDER, type Stand, type StandSize } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, STAND_SIZES_ORDER, type Stand, type StandSize } from '@shared/airfield';
 import { standFork, standForks } from '@shared/standFork';
 import { standSlot } from '@shared/standGeom';
 import { sizeCode, standRefusal } from '@shared/standSizes';
@@ -13,7 +13,7 @@ import { OPTIONS, ownedSim, run } from './helpers';
 
 /** A straight east west taxilane at y = 0 and a stand north of it, nose pointing north (away from it). */
 const lane = [{ pts: [{ x: -500, y: 0 }, { x: 500, y: 0 }] }];
-const stand = (size: StandSize, x = 0, dist = 120): Stand => ({ id: 1, cost: 0, number: '1', x, y: -dist, headingDeg: 0, type: 'contact', size, code: 'C', surface: 'concrete', pushback: 'auto' });
+const stand = (size: StandSize, x = 0, dist = 120): Stand => ({ id: 1, cost: 0, number: '1', x, y: -dist, headingDeg: 0, type: 'contact', size, code: 'C', surface: 'concrete', pushback: 'auto', accepts: ACCEPT_COMMERCIAL });
 
 describe('stand lead in fork (revision 2 section 1, test 1)', () => {
   for (const size of STAND_SIZES_ORDER) {
@@ -203,7 +203,7 @@ describe('restored stands that break a taxiway clearance (T57 slice 2)', () => {
     const sim = ownedSim();
     run(sim, taxi(5000), taxi(sy - slot.far - 10));
     // Injected past makeStands, as an old save would hold it.
-    const illegal: Stand = { id: 900, cost: 0, number: '900', x: 4000, y: sy, headingDeg: 0, type: 'remote', size: 'medium', code: sizeCode('medium'), surface: 'concrete', pushback: 'auto' };
+    const illegal: Stand = { id: 900, cost: 0, number: '900', x: 4000, y: sy, headingDeg: 0, type: 'remote', size: 'medium', code: sizeCode('medium'), surface: 'concrete', pushback: 'auto', accepts: ACCEPT_COMMERCIAL };
     sim.airfield.data.stands.push(illegal);
     const data = JSON.parse(JSON.stringify(sim.serialize())) as unknown;
     const loaded = new Sim('GOLDEN-0001', OPTIONS);

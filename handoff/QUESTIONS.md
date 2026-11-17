@@ -199,3 +199,15 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Time scale: motion at twice real time at speed 1, calendar 12 times faster than motion, one game day in 60 real minutes, turnarounds 45 to 180 game minutes, old saves load with a jumped day number | Confirmed as proposed |
 | Service roads and D2 (a stand without a road is bookable only for GA) | Soft penalty: commercial flights still use a stand without a road, turnarounds are slower and an alert asks for a road. Existing saves keep working. This replaces the hard rule of D2 |
 | Snapping at the last point: which tool | All drawing tools: a marker and tooltip for every snap kind in the runway, taxiway, apron and stand tools, and press and drag draws a taxiway segment |
+
+## 2026-11-17 T59 stand classes and placement
+
+| Question | Answer (owner, 2026-11-17) |
+| --- | --- |
+| Stand classes under D1 (GA code A as a fifth class) | Replaced by the user: four sizes only, small, medium, large and extra large, plus a pass through layout. GA, commercial and cargo are a property of the stand, set with toggles, any mix. This replaces D1 |
+| Jet bridges | An upgrade on any size except pass through; it needs a second terminal floor. Built in T66 |
+| Stand choice | Manual assignment may put a smaller aircraft on a larger stand. Automatic choice takes the aircraft's own size first, then the next larger, never a smaller one |
+| Pass through sizes | All four sizes, chosen as a layout beside the size |
+| Rows of stands | Single stands only: one stand per click, each with its own snap and rotation |
+| Scope of T59 | Classes, pass through, accepts toggles, placement with rotation and lead in snapping, ghost fix, migration. Snap markers for all tools and taxiway sections become two new roadmap rows |
+| Interim turnaround crews from T57 (under 20 m no belt loader set, GA refueller only) | Confirmed as is until T63 |

@@ -4,7 +4,7 @@ import { aircraftBoundary, footprintSpecSchema } from '@shared/aircraftFootprint
 import { standRefusal } from '@shared/standSizes';
 import { parkedCentre, parkedOffsetM, standSlot, standTypes, stopBarIndex, stopBarOffset } from '@shared/standGeom';
 import { refuseFit } from '@shared/flightBlock';
-import { STAND_SIZES_ORDER } from '@shared/airfield';
+import { ACCEPT_ALL, STAND_SIZES_ORDER } from '@shared/airfield';
 import { AcState } from '@sim/ops/traffic';
 import type { Command } from '@sim/commands';
 import { Sim } from '@sim/sim';
@@ -195,7 +195,7 @@ describe('stop bar rule', () => {
       const bars = standTypes(size);
       if (bars.length === 0) continue;
       for (const a of AIRCRAFT) {
-        const refusal = refuseFit({ closed: false, usage: 'any', size, surface: 'concrete', type: 'remote', code: 'E', linked: true, contactOk: () => true }, a);
+        const refusal = refuseFit({ closed: false, accepts: ACCEPT_ALL, size, surface: 'concrete', type: 'remote', code: 'E', linked: true, contactOk: () => true }, a);
         if (a.dimensions.lengthM > bars[0].dimensions.lengthM) expect(refusal, `${a.id} on ${size}`).not.toBeNull();
       }
     }

@@ -1,9 +1,11 @@
 import { AIRFIELD, BUSINESS, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
-import { sizeCode } from '@shared/standSizes';
+import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { standBox, standTaxiwayClash } from '@shared/clearance';
 import { standFork } from '@shared/standFork';
 import { standSlot } from '@shared/standGeom';
 import {
+  ACCEPT_GA,
+  validAccepts,
   codeIndex,
   compassVector,
   towerRect,
@@ -288,8 +290,10 @@ export class Airfield {
       case 'setStandProps': {
         const s = this.data.stands.find((x) => x.id === cmd.id);
         if (!s) return { code: 'nothingThere' };
+        // A stand takes at least one flight category, so a value with none is refused before anything changes.
+        if (cmd.accepts !== undefined && !validAccepts(cmd.accepts)) return { code: 'stand.acceptsNone' };
         if (cmd.closed !== undefined) s.closed = cmd.closed;
-        if (cmd.usage !== undefined) s.usage = cmd.usage;
+        if (cmd.accepts !== undefined) s.accepts = cmd.accepts;
         if (cmd.pushback !== undefined) s.pushback = cmd.pushback;
         this.refresh();
         return { cashDelta: 0 };
@@ -628,6 +632,7 @@ export class Airfield {
     pick: Surface | undefined,
     fallback: Surface,
     env: BuildEnv,
+    accepts?: number,
   ): StandRow | Problem {
     const n = Math.floor(count);
     if (n < 1 || n > 30) return { code: 'standCount', args: { max: 30 } };
@@ -666,6 +671,7 @@ export class Airfield {
         code: sizeCode(size),
         surface,
         pushback: 'auto',
+        accepts: accepts ?? defaultAccepts(size),
       };
       // A stand box must clear every taxiway it does not lead into, and the one it leads into by its wingtip envelope.
       const fork = standFork(stand, lines);
@@ -757,7 +763,7 @@ export class Airfield {
     const block = roundApronPoly(poly);
     // The block and its stands take the command's surface, else the apron under the block, else asphalt.
     const surface: Surface = cmd.surface ?? this.surfaceAt((poly[0].x + poly[2].x) / 2, (poly[0].y + poly[2].y) / 2) ?? 'asphalt';
-    const row = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'remote', 'small', ctx, surface, 'asphalt', env);
+    const row = this.makeStands(cmd.x + d.x * 8, cmd.y + d.y * 8, cmd.headingDeg, n, spacing, 'remote', 'small', ctx, surface, 'asphalt', env, ACCEPT_GA);
     if (isProblem(row)) {
       this.nextId = idBefore;
       this.standNumber = numBefore;

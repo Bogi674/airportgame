@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ACCEPT_COMMERCIAL, ACCEPT_GA } from '@shared/airfield';
 import { Sim } from '@sim/sim';
 import { AcState, FlState, GA_AIRLINE } from '@sim/ops/traffic';
 import { buildTestAirport, OPTIONS, ownedSim, run } from './helpers';
@@ -56,24 +57,24 @@ describe('general aviation arrivals', () => {
     expect(gaFlights(sim)).toBe(0);
   });
 
-  it('spawns nothing when every stand is commercial usage', () => {
+  it('spawns nothing when every stand is commercial only', () => {
     const sim = ownedSim();
     buildTestAirport(sim, { standCode: 'A', standType: 'remote' });
-    for (const s of sim.airfield.data.stands) run(sim, { type: 'setStandProps', id: s.id, usage: 'commercial' });
+    for (const s of sim.airfield.data.stands) run(sim, { type: 'setStandProps', id: s.id, accepts: ACCEPT_COMMERCIAL });
     for (let t = 0; t < 10000; t++) sim.step();
     expect(gaFlights(sim)).toBe(0);
   });
 
-  it('spawns nothing when the only stands are code C with default usage', () => {
+  it('spawns nothing when the only stands are code C with default accepts', () => {
     const sim = gaAirport(undefined, 'C');
     for (let t = 0; t < 10000; t++) sim.step();
     expect(gaFlights(sim)).toBe(0);
   });
 
-  it('takes a code C stand set to GA usage', () => {
+  it('takes a code C stand set to GA', () => {
     const sim = ownedSim();
     buildTestAirport(sim, { standCode: 'C', standType: 'remote' });
-    for (const s of sim.airfield.data.stands) run(sim, { type: 'setStandProps', id: s.id, usage: 'ga' });
+    for (const s of sim.airfield.data.stands) run(sim, { type: 'setStandProps', id: s.id, accepts: ACCEPT_GA });
     const ticks = stepUntilGaSpawn(sim, 10000);
     expect(ticks).toBeLessThan(10000);
     expect(gaFlights(sim)).toBeGreaterThan(0);
@@ -83,12 +84,12 @@ describe('general aviation arrivals', () => {
     const sim = ownedSim('GOLDEN-0004');
     buildTestAirport(sim, { standCode: 'C', standType: 'remote' });
     const ids = sim.airfield.data.stands.map((s) => s.id);
-    // Code C stands are barred for GA unless set to GA usage. The first four stay barred and the lowest index.
+    // Code C stands are barred for GA unless set to GA. The first four stay barred and the lowest index.
     const gaIds = new Set(ids.slice(4));
-    for (const id of gaIds) run(sim, { type: 'setStandProps', id, usage: 'ga' });
+    for (const id of gaIds) run(sim, { type: 'setStandProps', id, accepts: ACCEPT_GA });
     stepUntilGaSpawn(sim, 10000);
     // The stand command makes the automatic assigner run on the flight that is still waiting for a stand.
-    run(sim, { type: 'setStandProps', id: ids[7], usage: 'ga' });
+    run(sim, { type: 'setStandProps', id: ids[7], accepts: ACCEPT_GA });
     const used = new Set<number>();
     let ticks = 0;
     // A flight that holds a barred stand stays scheduled until it diverts, far past this window.

@@ -5,7 +5,7 @@ import { AcState } from '@sim/ops/traffic';
 import { Rng, hashString } from '@sim/rng';
 import { ownedSim, run, buildTestAirport } from './helpers';
 import { EdgeKind, SAMPLE_M, TaxiNetwork } from '@sim/airfield/network';
-import type { AirfieldPayload, Stand, Taxiway } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, type AirfieldPayload, type Stand, type Taxiway } from '@shared/airfield';
 
 const RUNWAY_Y = 0;
 const SPINE_Y = 200;
@@ -113,6 +113,7 @@ function randomLayout(seed: string): AirfieldPayload {
       code: 'C',
       surface: 'concrete',
       pushback: 'auto',
+      accepts: ACCEPT_COMMERCIAL,
     });
   }
   return {

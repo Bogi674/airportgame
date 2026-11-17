@@ -1,6 +1,6 @@
 import { STAND_SIZES } from '@data/index';
 import type { AircraftSpec } from '@data/aircraft';
-import { STAND_SIZES_ORDER, type CodeLetter, type Stand, type StandSize } from './airfield';
+import { acceptBit, STAND_SIZES_ORDER, type CodeLetter, type Stand, type StandSize } from './airfield';
 
 /**
  * Stand size rules (docs/DESIGN_REVISION_2.md section 3): a type belongs to the smallest size whose
@@ -30,4 +30,20 @@ export function standRefusal(stand: Pick<Stand, 'size' | 'surface'>, a: Aircraft
   if (a.dimensions.wingspanM > STAND_SIZES[stand.size].maxSpanM) return 'span';
   if (!a.surfaces.includes(stand.surface)) return 'surface';
   return null;
+}
+
+/** The accepts bits a new stand of a size starts with, from `stand_sizes.json`. */
+export function defaultAccepts(size: StandSize): number {
+  let bits = 0;
+  for (const c of STAND_SIZES[size].accepts) bits |= acceptBit(c);
+  return bits;
+}
+
+/**
+ * How many sizes a stand is above the aircraft type's own size, for the automatic stand choice: 0 on
+ * its own size, 1 on the next larger (user, 2026-11-17). A type too large for every size counts from the largest.
+ */
+export function sizeGap(size: StandSize, a: AircraftSpec): number {
+  const own = sizeForSpan(a.dimensions.wingspanM) ?? STAND_SIZES_ORDER[STAND_SIZES_ORDER.length - 1];
+  return STAND_SIZES_ORDER.indexOf(size) - STAND_SIZES_ORDER.indexOf(own);
 }

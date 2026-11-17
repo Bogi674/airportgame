@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ACCEPT_COMMERCIAL, ACCEPT_GA } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
 import { STAND_SIZES } from '@data/index';
 import { Sim } from '@sim/sim';
@@ -213,7 +214,7 @@ describe('stand management', () => {
     const live = airport();
     const stands = live.airfield.data.stands;
     const f = live.traffic.scheduleArrival(idx('atr72_600'), live.traffic.nowTick + 100, 0, 600, -1);
-    live.enqueue({ type: 'setStandProps', id: stands[0].id, usage: 'any' });
+    live.enqueue({ type: 'setStandProps', id: stands[0].id, accepts: ACCEPT_GA | ACCEPT_COMMERCIAL });
     live.flushCommands();
     expect(live.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
     const save = JSON.parse(JSON.stringify(live.serialize())) as ReturnType<Sim['serialize']>;
