@@ -36,6 +36,8 @@ const PARKED_OFFSET = (() => {
 })();
 /** Index in STAND_SIZES_ORDER by size name, read in the tick without a search. */
 const SIZE_INDEX: Readonly<Record<string, number>> = Object.fromEntries(STAND_SIZES_ORDER.map((size, k) => [size, k]));
+/** A push back waits while a taxiing aircraft will pass its junction within this many metres of taxi route (user, 2026-11-17). */
+const PUSH_GIVE_WAY_M = 250;
 /** Extra reach of a junction zone, about one aircraft length, so an aircraft already past the node still holds its conflicts. */
 const CONFLICT_MARGIN_M = 30;
 const MAX_FLIGHTS = 1024;
@@ -1623,6 +1625,8 @@ export class Traffic {
         const nb = this.net.edgeBlock[this.routeEdge[nextIdx + 1]];
         if (nb >= 0 && this.blockCount[nb] > 0 && this.blockDir[nb] !== this.routeDir[nextIdx + 1] && this.blockLast[nb] !== i) blocker = this.blockHolder(i, nb);
       }
+      // Taxiing traffic about to pass where the push meets the taxilane goes first (user, 2026-11-17).
+      if (blocker < 0) blocker = this.approachingNode(i, this.net.edgeFrom[this.routeEdge[nextIdx]]);
       if (blocker >= 0) {
         this.waitingFor[i] = blocker;
         return false;
@@ -1643,8 +1647,46 @@ export class Traffic {
         if (Math.hypot(this.x[j] - this.net.nodeX[node], this.y[j] - this.net.nodeY[node]) < 28) return false;
       }
     }
+    // A push that has not left the stand yet gives way to taxiing traffic about to pass its junction.
+    if (this.nodeOwner[node] !== i) {
+      const j = this.approachingNode(i, node);
+      if (j >= 0) {
+        this.waitingFor[i] = j;
+        return false;
+      }
+    }
     if (this.nodeOwner[node] !== i) this.holdNode(i, node);
     return true;
+  }
+
+  /**
+   * A taxiing aircraft whose route passes `node` within PUSH_GIVE_WAY_M, or -1. Real ground control
+   * holds a push back while traffic taxis behind it, so the later aircraft waits on the stand instead
+   * of meeting the taxiing one between two intersections (user, 2026-11-17). An aircraft that waits
+   * for i, or that heads for the stand i is leaving, never holds i back, so the two cannot lock.
+   */
+  private approachingNode(i: number, node: number): number {
+    const net = this.net;
+    const myFlight = this.flight[i];
+    const myStand = myFlight >= 0 ? this.fStand[myFlight] : -1;
+    for (let k = 0; k < this.count; k++) {
+      const j = this.activeList[k];
+      if (j === i || this.waitingFor[j] === i) continue;
+      const st = this.state[j];
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut) continue;
+      const fj = this.flight[j];
+      if (myStand >= 0 && fj >= 0 && this.fStand[fj] === myStand) continue;
+      const base = j * MAX_ROUTE;
+      let ahead = -this.dist[j];
+      for (let q = this.routeIdx[j]; q < this.routeLen[j]; q++) {
+        const e = this.routeEdge[base + q];
+        ahead += net.edgeLen[e];
+        if (ahead > PUSH_GIVE_WAY_M) break;
+        const end = this.routeDir[base + q] === 1 ? net.edgeTo[e] : net.edgeFrom[e];
+        if (end === node) return j;
+      }
+    }
+    return -1;
   }
 
   /** Who keeps aircraft i from pushing along a fork arc: the owner of its taxilane node or an aircraft in the stretch, or -1. */
