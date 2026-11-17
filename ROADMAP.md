@@ -89,7 +89,7 @@ Goal: stands become prefabs in five classes, and flights are planned by the week
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
 | T59 | Stand sizes small to extra large with nose in or pass through layout, GA, commercial and cargo toggles, single placement with rotation, lead in snapping to a centerline, live connection states, save migration (revision 4 section 2.1 to 2.4, user answers of 2026-11-17) |  | T57 | doing |
-| T47 | Stand markings per design revision 3, regenerated from class, access type and upgrades |  | T59 | todo |
+| T47 | Stand markings per design revision 3, regenerated from class, access type and upgrades, with connection state icons on the stand and the box drawn on stands with no lead in (moved from T59) |  | T59 | todo |
 | T61 | Weekly planner and flight series with a seven day stand timeline, auto planner, rotations migrated to daily series (section 3.1, 3.2, 3.5) | T41 model, T31 | T59 | todo |
 | T62 | Procedural destination network, generated airlines, series offers that grow with the rating, airline satisfaction (section 3.3, 3.4). Keep invented names and fleets limited to the MVP 1 types | T30, T31 | T61 | todo |
 | T70 | Snap markers and tooltips for every snap kind in the runway, taxiway, apron and stand tools; press and drag draws a taxiway segment (user, 2026-11-16) |  | T59 | todo |

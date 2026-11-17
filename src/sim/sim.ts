@@ -42,6 +42,8 @@ export class Sim {
   private businessSent = -1;
   private gridsSent = -1;
   private businessSentTick = -1000000;
+  /** Airfield version of the last business payload, whose stand link and contact facts follow the airfield. */
+  private businessAirfield = -1;
   private airfieldSent = -1;
   private obstaclesSent = -1;
   private towersSent = -1;
@@ -355,10 +357,12 @@ export class Sim {
     this.book('land', -total);
   }
 
-  /** The business payload when it changed or ten game minutes passed, otherwise null. */
+  /** The business payload when it or the airfield changed or ten game minutes passed, otherwise null. */
   takeBusiness(): ReturnType<Business['payload']> | null {
-    if (this.business.version === this.businessSent && this.tick - this.businessSentTick < 6000) return null;
+    const afVersion = this.airfield.data.version;
+    if (this.business.version === this.businessSent && afVersion === this.businessAirfield && this.tick - this.businessSentTick < 6000) return null;
     this.businessSent = this.business.version;
+    this.businessAirfield = afVersion;
     this.businessSentTick = this.tick;
     return this.business.payload(this.tick);
   }

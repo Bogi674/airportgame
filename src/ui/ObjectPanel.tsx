@@ -4,9 +4,10 @@ import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
 import { apronArea } from '@shared/apronGeom';
-import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Surface, type Taxiway } from '@shared/airfield';
+import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
 import { standRefusal } from '@shared/standSizes';
+import { standFork } from '@shared/standFork';
 import { ClassHelp } from './ClassHelp';
 import { AcceptToggles } from './AcceptToggles';
 import type { Command } from '@sim/commands';
@@ -208,6 +209,24 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
         {t('inspector.apply')}
       </button>
       <ClassHelp />
+    </div>
+  );
+}
+
+/** The taxiway connection line of a stand: the lead in taxiway by name, or a warning that flights cannot use it. */
+function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
+  const af = useGameStore((s) => s.airfield);
+  const fork = linked ? standFork(stand, af.taxiways.map((t) => ({ pts: t.points }))) : null;
+  if (!linked) {
+    return (
+      <div style="color:var(--warn)" data-testid="stand-link">
+        {t('inspector.stand.noTaxiway')}
+      </div>
+    );
+  }
+  return (
+    <div style="color:var(--muted)" data-testid="stand-link">
+      {fork ? tFormat('inspector.stand.leadIn', { name: af.taxiways[fork.lane].name }) : t('inspector.stand.linked')}
     </div>
   );
 }
@@ -416,13 +435,15 @@ export function ObjectPanel({ send }: Props) {
             {tFormat('inspector.standSurfaceRefused', { types: AIRCRAFT.filter((a) => standRefusal(x, a) === 'surface').map((a) => a.icaoType).join(', ') })}
           </div>
         )}
+        {/* Connection states (docs/DESIGN_REVISION_4.md section 2.3): the taxiway lead in decides whether the stand can be booked. */}
+        <StandLink stand={x} linked={biz?.standLinked[af.stands.indexOf(x)] === 1} />
         {af.clearanceBreaches?.includes(x.id) && (
           <div style="color:var(--warn)" data-testid="stand-clearance-breach">
             {t('inspector.stand.clearanceBreach')}
           </div>
         )}
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:4px">
-          {t('inspector.accepts')}
+        <div style="margin-top:4px">
+          <div>{t('inspector.accepts')}</div>
           <AcceptToggles stand={x} send={send} />
         </div>
         <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
