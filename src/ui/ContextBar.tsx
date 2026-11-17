@@ -198,7 +198,6 @@ export function ContextBar({ send }: Props) {
           <>
             <Select label={t('opt.standType')} value={s.standType} testId="opt-standType" options={STAND_TYPES.map((x) => ({ v: x, text: tDynamic(`standType.${x}`) }))} onChange={(v) => s.set({ standType: v })} />
             <Select label={t('opt.standSize')} value={s.standSize} testId="opt-standSize" options={STAND_SIZES_ORDER.map((z) => ({ v: z, text: tDynamic(`standSize.${z}`) }))} onChange={(v: StandSize) => s.set({ standSize: v })} />
-            <Num label={t('opt.standCount')} value={s.standCount} min={1} max={30} onChange={(v) => s.set({ standCount: v })} />
           </>
         )}
         {s.tool === 'terminal' && (

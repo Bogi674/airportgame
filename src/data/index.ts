@@ -44,6 +44,8 @@ export const PROFILES: ProfilesData = profilesSchema.parse(profilesJson);
 export const SPRITES: SpritesData = spritesSchema.parse(spritesJson);
 const STAND_DATA: StandSizesData = standSizesSchema.parse(standSizesJson);
 export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
+/** Single stand placement: lead in reach and rotation steps. */
+export const STAND_PLACEMENT: StandSizesData['placement'] = STAND_DATA.placement;
 /** Stand marking dimensions. */
 export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
 

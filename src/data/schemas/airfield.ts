@@ -130,6 +130,13 @@ export const standSizesSchema = z
     version: z.literal(1),
     note: z.string(),
     sizes: z.strictObject({ small: standSize, medium: standSize, large: standSize, xl: standSize }),
+    /** Single stand placement: the lead in snap reach from the box tail edge (D3) and the rotation steps (D4). */
+    placement: z.strictObject({
+      note: z.string(),
+      leadInReachM: z.number().positive(),
+      rotateStepDeg: z.number().positive(),
+      fineStepDeg: z.number().positive(),
+    }),
     markings: z.strictObject({
       note: z.string(),
       funnelSideM: z.number().positive(),

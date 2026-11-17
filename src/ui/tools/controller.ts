@@ -1,6 +1,6 @@
 import { apronContains, touches } from '@shared/apronGeom';
-import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standRowPricing, type RemovePlan } from '@shared/apronPricing';
-import { AIRFIELD, BUSINESS, PAINT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standHeading, standRowPricing, type RemovePlan } from '@shared/apronPricing';
+import { AIRFIELD, BUSINESS, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { ACCEPT_GA, codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
 import {
@@ -24,7 +24,10 @@ import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcel
 import type { Command } from '@sim/commands';
 import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
-import { envelopeType, taxiClashes } from '@shared/clearance';
+import { envelopeType, standBox, standTaxiwayClash, taxiClashes } from '@shared/clearance';
+import { standSlot } from '@shared/standGeom';
+import { standFork } from '@shared/standFork';
+import { snapStand } from '@shared/standSnap';
 import { runwayWorksDays } from '@shared/surfaceRules';
 import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
@@ -665,6 +668,12 @@ export class ToolController {
 
   key(e: KeyboardEvent): boolean {
     const st = useToolStore.getState();
+    if (e.key === 'Escape' && st.tool === 'stands' && st.standHeading !== null) {
+      // The first Escape gives a turned stand back to auto facing, the next one leaves the tool.
+      st.set({ standHeading: null });
+      this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
     if (e.key === 'Escape') {
       // The first Escape cancels what is being laid out, the next one leaves the tool.
       const busy = this.gestureActive;
@@ -691,7 +700,14 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
-    if ((e.key === 'r' || e.key === 'R') && (st.tool === 'stands' || st.tool === 'gaBlock' || st.tool === 'terminal')) {
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'stands') {
+      // R turns the stand by the rotation step from where it faces now, Shift+R by the fine step (D4).
+      const step = e.shiftKey ? STAND_PLACEMENT.fineStepDeg : STAND_PLACEMENT.rotateStepDeg;
+      st.set({ standHeading: (this.standFacing + step) % 360 });
+      this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
+    if ((e.key === 'r' || e.key === 'R') && (st.tool === 'gaBlock' || st.tool === 'terminal')) {
       st.set({ rowHeading: (st.rowHeading + (e.shiftKey ? 15 : 90)) % 360 });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
@@ -1580,27 +1596,51 @@ export class ToolController {
     return heading;
   }
 
-  private standPlan(p: Pt, mods: Mods): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean; surface: Surface; type: StandType } {
+  /** Heading the stand ghost faced last, so R turns it from where the player sees it. */
+  private standFacing = 0;
+  /** The last stand plan and ghost, reused while the pointer stays on the same snapped spot. */
+  private standCache: { key: string; ghost: Ghost; problem: Problem | null } | null = null;
+
+  private standPlan(p: Pt, mods: Mods): { x: number; y: number; count: number; spacing: number; heading: number; size: StandSize; ga: boolean; surface: Surface; type: StandType; leadIn: boolean } {
     const st = useToolStore.getState();
     const ga = st.tool === 'gaBlock';
     const size: StandSize = ga ? 'small' : st.standSize;
     const q = this.placeAt(p, mods);
-    // Stands sit side by side at the size's width (docs/DESIGN_REVISION_2.md table 3.2). The sim prices a GA block as remote.
-    return {
-      x: q.x,
-      y: q.y,
-      count: ga ? st.gaCount : st.standCount,
-      spacing: STAND_SIZES[size].widthM,
-      heading: this.rowHeadingAt(p, mods),
-      size,
-      ga,
-      surface: pickedStandSurface(st.surface, size),
-      type: ga ? 'remote' : st.standType,
-    };
+    const base = { count: ga ? st.gaCount : 1, spacing: STAND_SIZES[size].widthM, size, ga, surface: pickedStandSurface(st.surface, size), type: ga ? 'remote' : st.standType };
+    if (ga) return { ...base, x: q.x, y: q.y, heading: this.rowHeadingAt(p, mods), leadIn: true };
+    // A single stand faces the nearest centerline and slides onto its lead in (docs/DESIGN_REVISION_4.md section 2.2).
+    // On the grid it keeps the grid heading unless the player turned it.
+    const g = this.snapGrid(mods);
+    const heading = st.standHeading ?? (g ? g.headingDeg : null);
+    const snap = snapStand(q, size, this.af.taxiways, heading);
+    if (snap) return { ...base, x: snap.x, y: snap.y, heading: snap.headingDeg, leadIn: true };
+    return { ...base, x: q.x, y: q.y, heading: standHeading(heading ?? this.rowHeadingAt(p, mods)), leadIn: false };
+  }
+
+  /** The first rule a single stand ghost breaks that the sim checks too: taxiway clearance, then overlap with a built stand. */
+  private standProblem(s: Stand): Problem | null {
+    const slot = standSlot(s.size);
+    if (!slot) return { code: 'stand.taxiwayClearance' };
+    const fork = standFork(s, this.af.taxiways.map((t) => ({ pts: t.points })));
+    const lead = fork ? this.af.taxiways[fork.lane].id : -1;
+    if (standTaxiwayClash(standBox(s, slot), lead, this.af.taxiways, AIRFIELD.codes, STAND_SIZES[s.size].wingtipClearanceM)) return { code: 'stand.taxiwayClearance' };
+    const half = STAND_SIZES[s.size].widthM / 2;
+    for (const o of this.af.stands) {
+      if (Math.hypot(o.x - s.x, o.y - s.y) < STAND_SIZES[o.size].widthM / 2 + half - 0.5) return { code: 'standOverlap' };
+    }
+    return null;
   }
 
   private previewStands(p: Pt, mods: Mods): void {
+    const st = useToolStore.getState();
     const plan = this.standPlan(p, mods);
+    this.standFacing = plan.heading;
+    // The same snapped spot gives the same ghost, so pointer jitter does not redo the pricing and the forks.
+    const key = `${this.af.version}|${plan.x.toFixed(2)}|${plan.y.toFixed(2)}|${plan.heading}|${plan.size}|${plan.type}|${plan.surface}|${plan.count}|${plan.ga}|${st.gridId ?? ''}`;
+    if (this.standCache && this.standCache.key === key) {
+      this.show(this.standCache.ghost, this.standCache.problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
+      return;
+    }
     // The sim's own row or block pricing, so the ghost shows the cash the command takes.
     const pricing = plan.ga
       ? gaBlockPricing(this.af.aprons, plan.x, plan.y, plan.heading, plan.count, plan.surface)
@@ -1620,31 +1660,40 @@ export class ToolController {
       pushback: 'auto',
       accepts: plan.ga ? ACCEPT_GA : defaultAccepts(plan.size),
     }));
+    // The slot box is always drawn, so a stand far from any taxiway still shows where it would go.
     const shapes: GhostShape[] = [];
+    const slot = standSlot(plan.size);
+    if (slot) for (const c of cands) shapes.push({ k: 'poly', pts: standBox(c, slot) });
     let problem: Problem | null = null;
     if (this.ctx()) {
       const first = pricing.slots[0];
       const last = pricing.slots[pricing.slots.length - 1];
       problem = this.landProblem({ pts: [first, last], widthM: STAND_SIZES[plan.size].maxSpanM });
+      if (!problem && !plan.leadIn) problem = { code: 'stand.noLeadIn', args: { m: STAND_PLACEMENT.leadInReachM } };
+      if (!problem && !plan.ga) problem = this.standProblem(cands[0]);
       if (!problem && pricing.tooLarge) problem = { code: 'apronTooLarge' };
     }
-    this.show(
-      {
-        valid: problem === null,
-        shapes,
-        preview: { stands: cands },
-        label: { x: plan.x, y: plan.y, text: tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0'), cost: formatMoney(Math.round(pricing.total)) }) },
+    const ghost: Ghost = {
+      valid: problem === null,
+      shapes,
+      preview: { stands: cands },
+      label: {
+        x: plan.x,
+        y: plan.y,
+        text: plan.ga
+          ? tFormat('ghost.stands', { n: plan.count, hdg: String(plan.heading).padStart(3, '0'), cost: formatMoney(Math.round(pricing.total)) })
+          : tFormat('ghost.stand', { hdg: String(plan.heading).padStart(3, '0'), cost: formatMoney(Math.round(pricing.total)) }),
       },
-      problem,
-      plan.ga ? 'hint.gaBlock' : 'hint.stands',
-    );
+    };
+    this.standCache = { key, ghost, problem };
+    this.show(ghost, problem, plan.ga ? 'hint.gaBlock' : 'hint.stands');
   }
 
   private commitStands(p: Pt, mods: Mods): void {
     const st = useToolStore.getState();
     const plan = this.standPlan(p, mods);
     if (plan.ga) this.deps.send({ type: 'buildGaBlock', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, surface: plan.surface });
-    else this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: plan.count, spacingM: plan.spacing, standType: st.standType, size: plan.size, surface: plan.surface });
+    else if (plan.leadIn) this.deps.send({ type: 'buildStands', x: plan.x, y: plan.y, headingDeg: plan.heading, count: 1, spacingM: plan.spacing, standType: st.standType, size: plan.size, surface: plan.surface });
   }
 
   // ATC tower --------------------------------------------------------------

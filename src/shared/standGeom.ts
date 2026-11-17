@@ -1,6 +1,6 @@
 import { AIRCRAFT, standGeometry, type AircraftSpec } from '@data/aircraft';
-import { STAND_MARKINGS, STAND_SIZES } from '@data/index';
-import type { Stand, StandSize } from './airfield';
+import { AIRFIELD, STAND_MARKINGS, STAND_SIZES } from '@data/index';
+import type { CodeLetter, Stand, StandSize } from './airfield';
 import { sizeForSpan } from './standSizes';
 import { atan2Det, cosLut, PI, sinLut } from './trig';
 
@@ -80,4 +80,24 @@ export function standSlot(size: StandSize): StandSlot | null {
   const spec = STAND_SIZES[size];
   const far = (spec.noseClearanceM ?? spec.wingtipClearanceM) + standGeometry(types[0]).noseGearM;
   return { near: far - spec.depthM, far, widthM: spec.widthM };
+}
+
+/**
+ * Meters from the tail edge of the stand slot back to where the stand axis meets the lead in
+ * centerline (D3 measures the snap reach this way). Negative when the centerline runs inside the slot.
+ */
+export function leadInGapM(stand: Pick<Stand, 'x' | 'y' | 'size'>, hit: { x: number; y: number }, slot: StandSlot): number {
+  return Math.hypot(hit.x - stand.x, hit.y - stand.y) + slot.near;
+}
+
+/** Spare meters the snapped stand keeps beyond the lead in clearance, so rounding never turns it red. */
+const SNAP_SPARE_M = 1;
+
+/**
+ * The tail gap a snapped stand takes from its lead in centerline: the fork radius, or more when the
+ * lead in taxiway's half span plus the size's wingtip clearance needs more room (the T57 rule).
+ */
+export function leadInTargetGapM(size: StandSize, taxiCode: CodeLetter): number {
+  const spec = STAND_SIZES[size];
+  return Math.max(spec.forkRadiusM, AIRFIELD.codes[taxiCode].spanM / 2 + spec.wingtipClearanceM) + SNAP_SPARE_M;
 }

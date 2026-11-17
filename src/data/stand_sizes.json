@@ -107,6 +107,12 @@
       "accepts": ["commercial"]
     }
   },
+  "placement": {
+    "note": "Single stand placement (docs/DESIGN_REVISION_4.md section 2.2, D3 and D4). Meters and degrees.",
+    "leadInReachM": 60,
+    "rotateStepDeg": 15,
+    "fineStepDeg": 1
+  },
   "markings": {
     "note": "Contact and small stand markings (docs/DESIGN_REVISION_2.md sections 3.3 to 3.5), from fig4_stand_data.py and fig5.py.",
     "funnelSideM": 4.5,

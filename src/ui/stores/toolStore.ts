@@ -46,7 +46,8 @@ interface ToolState {
   standSize: StandSize;
   /** Apron tool: free polygon or rectangle (docs/DESIGN_REVISION_2.md section 4). */
   apronMode: 'polygon' | 'rect';
-  standCount: number;
+  /** Heading the player gave the next stand with R, or null while it faces the nearest centerline on its own. */
+  standHeading: number | null;
   exitAngle: 30 | 45 | 90;
   connectors: number;
   gaCount: number;
@@ -94,7 +95,7 @@ export const useToolStore = create<ToolState>((set) => ({
   standType: 'remote',
   standSize: 'medium',
   apronMode: 'polygon',
-  standCount: 4,
+  standHeading: null,
   exitAngle: 30,
   connectors: 3,
   gaCount: 6,
