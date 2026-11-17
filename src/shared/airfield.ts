@@ -74,6 +74,8 @@ export interface Taxiway {
   works?: Works;
   /** Holding positions the player moved further out than the default, per runway and side. */
   holds?: HoldSetting[];
+  /** Id of the taxiway this record is a section of (T71). Sections of one line share its name. Missing means its own id. */
+  line?: number;
 }
 
 /** A holding position moved out by the player: never closer than the default for the runway. */

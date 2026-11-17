@@ -109,8 +109,9 @@ describe('Taxiway and network', () => {
     run(far, RUNWAY);
     run(far, { type: 'buildParallelTaxiway', runwayId: far.airfield.data.runways[0].id, side: 'right', offsetM: 190, code: 'C', connectors: 2, surface: 'asphalt', tier: 0 });
     expect(far.airfield.data.taxiways.find((t) => t.name === 'A')?.maxCode).toBe('C');
-    expect(far.airfield.data.taxiways).toHaveLength(3);
-    expect(far.airfield.data.taxiways.map((t) => t.name).sort()).toEqual(['A', 'A1', 'A2']);
+    // The two inset connectors cut the parallel into three sections that keep the name A (T71).
+    expect(far.airfield.data.taxiways).toHaveLength(5);
+    expect(far.airfield.data.taxiways.map((t) => t.name).sort()).toEqual(['A', 'A', 'A', 'A1', 'A2']);
   });
 
   it('builds a rapid exit that leaves the runway at the preset angle', () => {
@@ -218,7 +219,7 @@ describe('Undo, redo, demolish and resurface', () => {
     const sim = ownedSim();
     run(sim, RUNWAY);
     run(sim, { type: 'buildParallelTaxiway', runwayId: sim.airfield.data.runways[0].id, side: 'left', offsetM: 190, code: 'C', connectors: 3, surface: 'asphalt', tier: 0 });
-    expect(sim.airfield.data.taxiways).toHaveLength(4);
+    expect(sim.airfield.data.taxiways).toHaveLength(7);
     run(sim, { type: 'undo' });
     expect(sim.airfield.data.taxiways).toHaveLength(0);
   });

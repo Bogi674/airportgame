@@ -238,3 +238,16 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Which snap kinds show a marker and a tooltip | All of them: vertex, runway edge, centerline, alignment guide, angle step, stand lead in and the taxiway node, end and segment. Grid nodes get a small marker but no tooltip |
 | Snap radius | Taxiway snap 20 m, the other tools 16 screen px with an 8 m floor |
 | Press and drag in the taxiway tool | A drag longer than 8 screen px places a point at the press and one at the release, so one drag draws a segment. The polyline stays open, a click still adds one point |
+
+## 2026-11-17 T71 taxiway sections, T61 and T62 flight series
+
+| Question | Answer (owner, 2026-11-17) |
+| --- | --- |
+| Name of each section after a split | Sections keep the parent name, like a real taxiway that runs through junctions |
+| Split taxiways in existing saves | New builds only, no data migration |
+| Look of the weekly planner (T61) | Mon to Sun day tabs over the daily stand timeline plus a week strip per stand; one drop places the series on all its operating days |
+| Where series come from before T62 | Build T61 and T62 together, so series point to generated destinations from the start |
+| Day pattern weights (D9) | Equal weights for every pattern and airline |
+| Preferred arrival windows (D12, 4 h wide) | Window start uniform over the day |
+| How stars are counted (D15) | From two experiences: passengers (toilets, shops and food, queues, cleanliness, on time) and airlines (ground handling support, airside infrastructure and facilities, timeliness, cleanliness) |
+| Airline pool at the start of a seed | Keep the seven slots and their rating gates, with generated names, hubs and fleets |

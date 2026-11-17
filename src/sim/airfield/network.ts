@@ -15,6 +15,8 @@ interface Line {
   /** Source: kind of object and its id. */
   edgeKind: number;
   sourceId: number;
+  /** The taxiway line a section belongs to (T71), else the source id. Blocks and junction conflicts group by it. */
+  lineId: number;
   pts: Pt[];
   oneWay: boolean;
   preferred: number;
@@ -74,6 +76,8 @@ export class TaxiNetwork {
   edgeForkStand = new Int32Array(0);
   edgeForkSide = new Int8Array(0);
   edgeSource = new Int32Array(0);
+  /** Line id per edge: the taxiway a section belongs to (T71), else the source id. */
+  edgeLine = new Int32Array(0);
   /** Reservation block per edge, or -1 for one way edges. Two way taxiway edges share one block per taxiway, so opposing aircraft never meet on it. */
   edgeBlock = new Int32Array(0);
   blockTotal = 0;
@@ -138,6 +142,7 @@ export class TaxiNetwork {
       lines.push({
         edgeKind: t.kind === 'taxilane' ? EdgeKind.Taxilane : t.kind === 'rapidExit' ? EdgeKind.RapidExit : EdgeKind.Taxiway,
         sourceId: t.id,
+        lineId: t.line ?? t.id,
         pts: t.points.map((p) => ({ x: p.x, y: p.y })),
         oneWay: t.oneWay,
         preferred: t.preferred ?? 0,
@@ -170,6 +175,7 @@ export class TaxiNetwork {
       lines.push({
         edgeKind: EdgeKind.Runway,
         sourceId: r.id,
+        lineId: r.id,
         pts: [{ x: r.x1, y: r.y1 }, { x: r.x2, y: r.y2 }],
         oneWay: false,
         preferred: 0,
@@ -191,6 +197,7 @@ export class TaxiNetwork {
     const standLine = (s: AirfieldPayload['stands'][number], idx: number, pts: Pt[], kind: number, side: number): Line => ({
       edgeKind: kind,
       sourceId: s.id,
+      lineId: s.id,
       pts,
       oneWay: false,
       preferred: 0,
@@ -415,6 +422,7 @@ export class TaxiNetwork {
     this.edgeForkStand = new Int32Array(E).fill(-1);
     this.edgeForkSide = new Int8Array(E).fill(-1);
     this.edgeSource = new Int32Array(E);
+    this.edgeLine = new Int32Array(E);
     this.edgeBlock = new Int32Array(E).fill(-1);
     this.edgeSampleStart = new Int32Array(E);
     this.edgeSampleCount = new Int32Array(E);
@@ -437,6 +445,7 @@ export class TaxiNetwork {
       this.edgeForkStand[e] = r.line.forkStand;
       this.edgeForkSide[e] = r.line.forkSide;
       this.edgeSource[e] = r.line.sourceId;
+      this.edgeLine[e] = r.line.lineId;
       if (r.line.edgeKind === EdgeKind.Runway) {
         this.nodeOnRunway[r.from] = 1;
         this.nodeOnRunway[r.to] = 1;
@@ -471,7 +480,7 @@ export class TaxiNetwork {
       const kind = this.edgeKind[e];
       if (kind === EdgeKind.Runway || this.edgeOneWay[e] === 1) continue;
       // Taxiway edges share their taxiway's block, stand lead ins have their own.
-      const key = kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork || kind === EdgeKind.StandLeadOut ? 1_000_000 + e : this.edgeSource[e];
+      const key = kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork || kind === EdgeKind.StandLeadOut ? 1_000_000 + e : this.edgeLine[e];
       let b = blockOfKey.get(key);
       if (b === undefined) {
         b = blockOfKey.size;
@@ -607,7 +616,7 @@ export class TaxiNetwork {
         if (!takes[e]) continue;
         radius = Math.max(radius, sep(e));
         if (first < 0) first = e;
-        else if (this.edgeSource[e] !== this.edgeSource[first]) junction = true;
+        else if (this.edgeLine[e] !== this.edgeLine[first]) junction = true;
       }
       if (!junction) continue;
       near.length = 0;
@@ -625,7 +634,7 @@ export class TaxiNetwork {
         for (let b = a + 1; b < near.length; b++) {
           const ea = near[a];
           const eb = near[b];
-          if (this.edgeSource[ea] === this.edgeSource[eb]) continue;
+          if (this.edgeLine[ea] === this.edgeLine[eb]) continue;
           const key = ea * E + eb;
           if (pairs.has(key)) continue;
           if (this.envelopesOverlap(ea, eb, n, radius, (sep(ea) + sep(eb)) / 2)) {

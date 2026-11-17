@@ -67,8 +67,9 @@ describe('TaxiNetwork', () => {
     expect(base.route(base.standNode[0], base.entryNode[0], 'D', 40, 0b11111, edges, dirs, 64)).toBe(-1);
     // Too heavy for the pavement strength.
     expect(base.route(base.standNode[0], base.entryNode[0], 'C', 500, 0b11111, edges, dirs, 64)).toBe(-1);
-    // Closing the parallel taxiway cuts every route.
-    run(sim, { type: 'setTaxiwayProps', id: af.taxiways[0].id, closed: true });
+    // Closing every section of the parallel taxiway cuts every route.
+    const line = af.taxiways[0].line ?? af.taxiways[0].id;
+    for (const t of af.taxiways.filter((x) => (x.line ?? x.id) === line)) run(sim, { type: 'setTaxiwayProps', id: t.id, closed: true });
     const closed = TaxiNetwork.build(af, 2);
     expect(closed.route(closed.standNode[0], closed.entryNode[0], 'C', 40, 0b11111, edges, dirs, 64)).toBe(-1);
   });

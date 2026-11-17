@@ -28,6 +28,7 @@ import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
+import { sectionPolylines } from '@shared/pavement/sections';
 import { apronArea, apronContains, type ApronShape, overlaps, touches } from '@shared/apronGeom';
 import {
   MAX_APRON_M2,
@@ -211,7 +212,8 @@ export class Airfield {
   }
 
   private addItems(items: Item[]): void {
-    for (const it of items) this.list(it.type).push(it.obj);
+    // Taxiways go in as copies: later edits change list records in place and must not reach the undo snapshot.
+    for (const it of items) this.list(it.type).push(it.type === 'taxiway' ? structuredClone(it.obj) : it.obj);
     this.refreshFor(items);
   }
 
@@ -444,8 +446,10 @@ export class Airfield {
       merged = o;
     }
     if (merged) this.nameIndex--;
-    const items: Item[] = merged ? [] : [{ type: 'taxiway', obj: t }];
-    for (const it of items) this.list(it.type).push(it.obj);
+    const own = merged ?? t;
+    if (!merged) this.data.taxiways.push(t);
+    const sections = this.sectionize([own.id], merged ? [] : [t.id], touch);
+    const items: Item[] = [...(merged ? [] : [t]), ...sections].map((obj) => ({ type: 'taxiway', obj: structuredClone(obj) }));
     this.refresh();
     const swaps = [...before.values()].map((b) => ({ before: b, after: structuredClone(this.data.taxiways.find((x) => x.id === b.id) as Taxiway) }));
     this.undoStack.push({ items, added: true, cashDelta: -t.cost, swaps });
@@ -463,7 +467,7 @@ export class Airfield {
       this.nameIndex--;
       return t;
     }
-    return this.place([{ type: 'taxiway', obj: t }], cash);
+    return this.placeTaxiways([t], cash);
   }
 
   private buildParallel(cmd: Extract<Command, { type: 'buildParallelTaxiway' }>, ctx: BuildContext, cash: number): BuildResult {
@@ -496,7 +500,61 @@ export class Airfield {
       }
       items.push({ type: 'taxiway', obj: c });
     }
-    return this.place(items, cash);
+    return this.placeTaxiways(items.map((it) => it.obj as Taxiway), cash);
+  }
+
+  /**
+   * Adds new taxiways, charging their summed cost, and splits them and every taxiway they meet into
+   * sections at each junction (T71). Undo restores the taxiways the split touched.
+   */
+  private placeTaxiways(list: Taxiway[], cash: number): BuildResult {
+    let cost = 0;
+    for (const t of list) cost += t.cost;
+    if (cost > cash) return { code: 'insufficientFunds', args: { cost } };
+    const before = new Map<number, Taxiway>();
+    const touch = (x: Taxiway): void => {
+      if (!before.has(x.id)) before.set(x.id, structuredClone(x));
+    };
+    this.data.taxiways.push(...list);
+    const ids = list.map((t) => t.id);
+    const sections = this.sectionize(ids, ids, touch);
+    const items: Item[] = [...list, ...sections].map((obj) => ({ type: 'taxiway', obj: structuredClone(obj) }));
+    this.refresh();
+    const swaps = [...before.values()].map((b) => ({ before: b, after: structuredClone(this.data.taxiways.find((x) => x.id === b.id) as Taxiway) }));
+    this.undoStack.push({ items, added: true, cashDelta: -cost, swaps });
+    this.redoStack.length = 0;
+    return { cashDelta: -cost };
+  }
+
+  /**
+   * Splits the taxiways in `seeds` at every junction with any other taxiway, and every other
+   * taxiway at its junctions with a seed (T71). Taxiways that meet no seed stay whole, so older
+   * layouts are only split where something new is built. The first section keeps the record and its
+   * id; the rest are new records of the same line, pushed to the list and returned. Pre existing
+   * records go through `touch` before they change; records in `fresh` were just added.
+   */
+  private sectionize(seeds: readonly number[], fresh: readonly number[], touch: (t: Taxiway) => void): Taxiway[] {
+    const all = this.data.taxiways;
+    const seedList = all.filter((t) => seeds.includes(t.id));
+    const plans: { t: Taxiway; parts: Pt[][] }[] = [];
+    for (const t of all.slice().sort((p, q) => p.id - q.id)) {
+      const parts = sectionPolylines(t, seeds.includes(t.id) ? all : seedList);
+      if (parts.length > 1) plans.push({ t, parts });
+    }
+    const added: Taxiway[] = [];
+    for (const { t, parts } of plans) {
+      if (!fresh.includes(t.id)) touch(t);
+      const total = polylineLength(t.points);
+      const line = t.line ?? t.id;
+      // Later sections get their share of the cost by length; the first keeps the remainder, so the sum never drifts.
+      const rest = parts.slice(1).map((pts) => ({ ...structuredClone(t), id: this.nextId++, points: pts, cost: Math.round(total > 0 ? (t.cost * polylineLength(pts)) / total : 0), line }));
+      t.cost -= rest.reduce((n, x) => n + x.cost, 0);
+      t.points = parts[0];
+      t.line = line;
+      added.push(...rest);
+    }
+    all.push(...added);
+    return added;
   }
 
   /**
@@ -1332,7 +1390,7 @@ export class Airfield {
       acc = foldU32(acc, (x.pads?.a === 'left' ? 1 : x.pads?.a === 'right' ? 2 : 0) + (x.pads?.b === 'left' ? 4 : x.pads?.b === 'right' ? 8 : 0));
     }
     for (const t of this.data.taxiways) {
-      acc = foldU32(foldU32(acc, t.id), t.points.length);
+      acc = foldU32(foldU32(foldU32(acc, t.id), t.points.length), t.line ?? t.id);
       acc = foldU32(foldU32(acc, codeIndex(t.maxCode)), (t.closed ? 1 : 0) + (t.oneWay ? 2 : 0) + ((t.preferred ?? 0) + 1) * 4);
       acc = foldU32(foldU32(acc, surfaceRank(t.surface)), t.works ? t.works.doneTick % 0xffffffff : 0);
       for (const h of t.holds ?? []) acc = foldU32(foldU32(acc, h.runwayId * 2 + (h.side > 0 ? 1 : 0)), h.distM);

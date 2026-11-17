@@ -3,9 +3,9 @@ import type { Pt } from '../geom';
 import type { PaveEdge, PaveGraph, PaveNode } from './pavement';
 
 /** Taxiway ends this close to another taxiway's centerline land on it and split it there. */
-const LAND_M = 1.5;
+export const LAND_M = 1.5;
 /** Polyline points this close together are one node. */
-const MERGE_M = 1;
+export const MERGE_M = 1;
 
 export interface TaxiGraph {
   graph: PaveGraph;
@@ -13,7 +13,7 @@ export interface TaxiGraph {
   edgesOf: Map<number, number[]>;
 }
 
-interface Split {
+export interface Split {
   seg: number;
   t: number;
   x: number;
@@ -115,7 +115,7 @@ export function taxiGraph(taxiways: readonly Taxiway[]): TaxiGraph {
 }
 
 /** Where a point lands on the middle of a polyline, or null when it is off it or at one of its ends. */
-function landing(pts: readonly Pt[], p: Pt): Split | null {
+export function landing(pts: readonly Pt[], p: Pt): Split | null {
   let best: Split | null = null;
   let bestD = LAND_M;
   let along = 0;

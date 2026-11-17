@@ -254,7 +254,9 @@ describe('taxiway naming and upgrades', () => {
     expect(names).toContain('A');
     expect(names).toContain('A1');
     expect(names.some((n) => /[IONX]/.test(n))).toBe(false);
-    expect(new Set(names).size).toBe(names.length);
+    // Sections of one taxiway share its name; different taxiways never do.
+    const lines = new Set(sim.airfield.data.taxiways.map((t) => t.line ?? t.id));
+    expect(new Set(names).size).toBe(lines.size);
   });
 
   it('changes class and surface, and reverses direction', () => {

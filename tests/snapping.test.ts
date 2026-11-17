@@ -44,15 +44,18 @@ describe('taxiway snapping (revision 2 section 2.2, test 3)', () => {
     run(sim, taxi([{ x: 4000, y: 5600 }, { x: 4400, y: 5600 }]));
     const original = armSet(sim);
     expect(run(sim, taxi([{ x: 4210, y: 5450 }, { x: 4205, y: 5610 }]))).toEqual([]);
+    // The split segment becomes two sections that meet at the new node (T71).
     const a = sim.airfield.data.taxiways[0];
-    expect(a.points.length).toBe(3);
+    expect(a.points.length).toBe(2);
     expect(a.points[1]).toEqual({ x: 4205, y: 5600 });
+    expect(sim.airfield.data.taxiways.length).toBe(3);
     expect(taxiNodes(sim.airfield.data.taxiways).filter((n) => n.arms === 3).length).toBe(1);
     run(sim, { type: 'undo' });
     expect(armSet(sim)).toEqual(original);
+    expect(sim.airfield.data.taxiways.length).toBe(1);
     expect(sim.airfield.data.taxiways[0].points.length).toBe(2);
     run(sim, { type: 'redo' });
-    expect(sim.airfield.data.taxiways[0].points.length).toBe(3);
+    expect(sim.airfield.data.taxiways.length).toBe(3);
     expect(taxiNodes(sim.airfield.data.taxiways).filter((n) => n.arms === 3).length).toBe(1);
   });
 

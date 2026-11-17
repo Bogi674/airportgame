@@ -11,7 +11,7 @@ import {
   type Taxiway,
   runwaySide,
 } from '@shared/airfield';
-import { closestOnSegment, polylineLength } from '@shared/geom';
+import { closestOnSegment, polylineLength, type Pt } from '@shared/geom';
 
 const SAMPLE_M = 2;
 
@@ -193,37 +193,55 @@ function dedupeHolding(list: HoldingPoint[]): HoldingPoint[] {
 const NAME_LETTERS = 'ABCDEFGHJKLMPQRSTUVWYZ';
 
 export function assignTaxiNames(taxiways: Taxiway[]): void {
+  // Sections of one taxiway (T71) are named as one line: lengths add up and only the line's own ends count.
+  const lines = new Map<number, Taxiway[]>();
+  for (const t of taxiways) {
+    const k = t.line ?? t.id;
+    const l = lines.get(k);
+    if (l) l.push(t);
+    else lines.set(k, [t]);
+  }
   const lens = new Map<number, number>();
-  for (const t of taxiways) lens.set(t.id, polylineLength(t.points));
-  // Which longer taxiway does each short one end on, and where along it.
+  for (const [k, l] of lines) lens.set(k, l.reduce((n, t) => n + polylineLength(t.points), 0));
+  const offsets = new Map<number, number>();
+  for (const l of lines.values()) chainOffsets(l, offsets);
+  const near = (a: Pt, b: Pt): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 1;
+  const lineEnds = (l: readonly Taxiway[]): Pt[] => {
+    const ends = l.flatMap((t) => [t.points[0], t.points[t.points.length - 1]]);
+    return ends.filter((e, i) => !ends.some((f, j) => j !== i && near(e, f)));
+  };
+  // Which longer line does each short one end on, and where along it.
   const parent = new Map<number, { id: number; at: number }>();
   const c = { x: 0, y: 0, t: 0 };
-  for (const t of taxiways) {
-    if ((lens.get(t.id) ?? 0) > 400) continue;
+  for (const [k, l] of lines) {
+    const len = lens.get(k) ?? 0;
+    if (len > 400) continue;
     let best: { id: number; at: number; d: number } | null = null;
-    for (const end of [t.points[0], t.points[t.points.length - 1]]) {
-      for (const o of taxiways) {
-        if (o.id === t.id || (lens.get(o.id) ?? 0) <= (lens.get(t.id) ?? 0)) continue;
-        let run = 0;
-        for (let i = 1; i < o.points.length; i++) {
-          const a = o.points[i - 1];
-          const b = o.points[i];
-          closestOnSegment(end.x, end.y, a.x, a.y, b.x, b.y, c);
-          const d = Math.hypot(end.x - c.x, end.y - c.y);
-          const sl = Math.hypot(b.x - a.x, b.y - a.y);
-          if (d < 2 && (!best || d < best.d)) best = { id: o.id, at: run + sl * c.t, d };
-          run += sl;
+    for (const end of lineEnds(l)) {
+      for (const [ok, ol] of lines) {
+        if (ok === k || (lens.get(ok) ?? 0) <= len) continue;
+        for (const o of ol) {
+          let run = offsets.get(o.id) ?? 0;
+          for (let i = 1; i < o.points.length; i++) {
+            const a = o.points[i - 1];
+            const b = o.points[i];
+            closestOnSegment(end.x, end.y, a.x, a.y, b.x, b.y, c);
+            const d = Math.hypot(end.x - c.x, end.y - c.y);
+            const sl = Math.hypot(b.x - a.x, b.y - a.y);
+            if (d < 2 && (!best || d < best.d)) best = { id: ok, at: run + sl * c.t, d };
+            run += sl;
+          }
         }
       }
     }
-    if (best) parent.set(t.id, { id: best.id, at: best.at });
+    if (best) parent.set(k, { id: best.id, at: best.at });
   }
   // Main taxiways first, longest first so the main parallel takes A.
-  const mains = taxiways.filter((t) => !parent.has(t.id)).sort((p, q) => (lens.get(q.id) ?? 0) - (lens.get(p.id) ?? 0) || p.id - q.id);
+  const mains = [...lines.keys()].filter((k) => !parent.has(k)).sort((p, q) => (lens.get(q) ?? 0) - (lens.get(p) ?? 0) || p - q);
   const names = new Map<number, string>();
-  mains.forEach((t, i) => {
+  mains.forEach((k, i) => {
     const letter = NAME_LETTERS[i % NAME_LETTERS.length];
-    names.set(t.id, i < NAME_LETTERS.length ? letter : `${letter}${letter}`);
+    names.set(k, i < NAME_LETTERS.length ? letter : `${letter}${letter}`);
   });
   const byParent = new Map<number, { id: number; at: number }[]>();
   for (const [id, p] of parent) {
@@ -235,5 +253,38 @@ export function assignTaxiNames(taxiways: Taxiway[]): void {
     list.sort((a, b) => a.at - b.at || a.id - b.id);
     list.forEach((x, i) => names.set(x.id, `${names.get(pid) ?? 'T'}${i + 1}`));
   }
-  for (const t of taxiways) t.name = names.get(t.id) ?? t.name;
+  for (const t of taxiways) t.name = names.get(t.line ?? t.id) ?? t.name;
+}
+
+/**
+ * Arc length at which each section of one line starts, walking the chain forward and back from the
+ * section that kept the line's id. Sections cut off from the chain sort after it.
+ */
+function chainOffsets(line: readonly Taxiway[], out: Map<number, number>): void {
+  const sorted = line.slice().sort((p, q) => p.id - q.id);
+  const near = (a: Pt, b: Pt): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 1;
+  const first = (t: Taxiway): Pt => t.points[0];
+  const last = (t: Taxiway): Pt => t.points[t.points.length - 1];
+  const root = sorted[0];
+  out.set(root.id, 0);
+  let cur = root;
+  let at = polylineLength(root.points);
+  for (;;) {
+    const next = sorted.find((t) => !out.has(t.id) && near(first(t), last(cur)));
+    if (!next) break;
+    out.set(next.id, at);
+    at += polylineLength(next.points);
+    cur = next;
+  }
+  cur = root;
+  at = 0;
+  for (;;) {
+    const prev = sorted.find((t) => !out.has(t.id) && near(last(t), first(cur)));
+    if (!prev) break;
+    at -= polylineLength(prev.points);
+    out.set(prev.id, at);
+    cur = prev;
+  }
+  let tail = 1e7;
+  for (const t of sorted) if (!out.has(t.id)) out.set(t.id, (tail += 1e5));
 }

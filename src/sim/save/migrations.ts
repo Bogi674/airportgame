@@ -4,7 +4,7 @@ import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 16;
+export const SAVE_VERSION = 17;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -132,5 +132,7 @@ export function migrate(raw: unknown): SaveData {
     }
     save.version = 16;
   }
+  // Version 16 to 17: a taxiway may name the line it is a section of (T71). Older taxiways have none and are their own line.
+  if (save.version < 17) save.version = 17;
   return save as SaveData;
 }

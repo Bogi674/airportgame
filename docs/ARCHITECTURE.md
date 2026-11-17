@@ -398,6 +398,13 @@ Record every architectural choice with a date and one line of reason.
   * The taxiway snap radius is 20 m (was 15 m), the other tools snap within 16 screen px with an 8 m floor (was 12 px and 6 m), in `taxiwayTool` and the new `snapTool` block of `airfield_codes.json`. The sim uses the same 20 m in `snapPolyline`, so a command log recorded before may snap differently on replay. Reason: user answer of 2026-11-17; the UI already sends snapped points, so live play is unchanged.
   * A press in the taxiway tool that moves more than `snapTool.dragStartPx` before the release adds the snapped press point and the release point, so one drag draws a segment and the polyline stays open. A plain click adds one point as before. Reason: user answer of 2026-11-17.
 
+* 2026-11-17 T71 taxiway sections:
+  * Every taxiway build (taxiway tool, rapid exit, parallel prefab) splits the new taxiway and each taxiway it meets into separate records at every junction (`sectionPolylines` in `src/shared/pavement/sections.ts`, `sectionize` in `airfield.ts`). Junctions are the nodes `taxiGraph` already merges, so the pavement graph and paint are the same with or without the split and no seam appears. Reason: the user wants each piece between junctions to be its own record.
+  * Sections share a `line` id, the id of the record they were split from. Names are worked out per line, so both sides of a junction keep the parent name (user, 2026-11-17). Reservation blocks and junction conflict sets also group by line (`edgeLine` in `network.ts`), so traffic behaves as before the split.
+  * Only junctions made from now on split taxiways; older saves keep their records until something is built onto them (user, 2026-11-17). Save version 17 adds the optional `line` field with no data change.
+  * The first section keeps the record, its id and the remainder of the cost; later sections get a new id and their share of the cost by length. Holds, works and settings are copied to every section.
+  * Taxiways enter the list as copies on redo, so later in place edits never reach an undo snapshot.
+
 ## 13. Known limits
 
 Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.
