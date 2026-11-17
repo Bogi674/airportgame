@@ -93,7 +93,7 @@ Goal: stands become prefabs in four sizes, and flights are planned by the week f
 | T61 | Weekly planner and flight series with a seven day stand timeline, auto planner, rotations migrated to daily series (section 3.1, 3.2, 3.5) | T41 model, T31 | T59 | todo |
 | T62 | Procedural destination network, generated airlines, series offers that grow with the rating, airline satisfaction (section 3.3, 3.4). Keep invented names and fleets limited to the MVP 1 types | T30, T31 | T61 | todo |
 | T72 | Pass through stands in all four sizes: layout picker in the stand tool, a lead out from the nose to a centerline ahead, departure forward with no push back, never a jet bridge, and the taxi through markings of `surfaces_stands.png` (lead in and out line with arrow, marshaller spot, fuel truck box, zebra walkway, bus only bay) (user, 2026-11-17, split from T59 and T47) |  | T59 | done a24faca fed30a7. Price assumed equal to remote |
-| T70 | Snap markers and tooltips for every snap kind in the runway, taxiway, apron and stand tools; press and drag draws a taxiway segment (user, 2026-11-16) |  | T59 | done HASH |
+| T70 | Snap markers and tooltips for every snap kind in the runway, taxiway, apron and stand tools; press and drag draws a taxiway segment (user, 2026-11-16) |  | T59 | done 3c7fd45 |
 | T71 | Taxiway sections: a taxiway splits into separate records at every junction when one is built, with no seam in the pavement (user, 2026-11-16) |  | T59 | todo |
 
 Exit: a new seed offers its own airlines and destinations, a series dropped once appears on all its operating days, a stand shows why it cannot be booked, and old saves load with their flights intact.
