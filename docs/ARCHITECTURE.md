@@ -385,6 +385,13 @@ Record every architectural choice with a date and one line of reason.
   * Contact stands are drawn as access type 1 until T66; remote stands keep the bus bay. Taxi through markings come with T72, MARS markings with the MVP 2 MARS task. Reason: user answer of 2026-11-17, no marking code waits unused.
   * Stand text reads upright with the terminal at the bottom of the page, as on the sheet. GA stands that take GA show their number as G plus the number on the map.
   * Connection badges (red no taxiway, amber clearance breach) are drawn by the renderer at a fixed screen size from `src/render/standStates.ts`, refreshed with the airfield, so they show at every zoom. A stand with no lead in paints its box and number.
+* 2026-11-17 T72 pass through stands:
+  * `through` is a third `StandType`, so no save migration was needed. Small through stands stay through; only contact turns into remote on small stands. Reason: user answer of 2026-11-17.
+  * A through stand gets a lead out when a centerline lies ahead of its nose within `leadInReachM` of the slot's nose edge and beyond it: a stem from the stand point to a fork and two arcs, the lead in fork mirrored (`standLeadOut` in `src/shared/standFork.ts`). Without one it pushes back. Reason: the user made the lead out optional.
+  * Lead out edges are their own `EdgeKind.StandLeadOut`, driven forward only and only on a route that starts at their stand; the lead in of a stand with a lead out may not be driven backward. One way flags were not used because one way edges carry no block. Reason: keep reservations of stand edges as they are.
+  * A forward departure prepends the lead in edge driven forward from the parked distance, so the aircraft starts where it stands, never jumps to the stand point, and never enters the Pushback state. The stand is freed where the lead out meets the taxiway.
+  * The lead out taxiway counts as a lead taxiway for the parked box clearance (`standLeadTaxiways`), like the lead in one.
+  * Markings: the funnel, ladder and front zones of a nose in remote stand (emergency triangle, GSE box, GPU) plus the sheet's taxi through marks. The front bus box gives way to the side bus only bay with its walkway at the last door of the largest type; the fuel truck box is skipped where hydrant pits exist; the push limit is dropped on a stand left forward. Dimensions measured on the sheet, in the `markings` block of `stand_sizes.json`. Cost equals the remote cost (`cost.through`), assumed since the price was not answered separately.
 
 ## 13. Known limits
 
