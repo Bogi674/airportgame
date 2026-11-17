@@ -45,6 +45,8 @@ export interface StandLayout {
   nose0: number;
   funnel: Funnel | null;
   zones: FrontZones | null;
+  /** Taxi through marks of a pass through stand of size medium or larger, else null. */
+  through: ThroughMarks | null;
 }
 
 export const toWorld = (l: Pick<StandLayout, 'origin' | 'axis' | 'right'>, x: number, y: number): Pt => ({
@@ -189,6 +191,46 @@ export function frontZones(l: Pick<StandLayout, 'W' | 'top' | 'funnel' | 'types'
   };
 }
 
+/** Taxi through marks of the sheet's remote taxi through template, in stand local meters (T72). */
+export interface ThroughMarks {
+  /** Marshaller spot just ahead of the nose of the largest type. */
+  marshaller: Pt;
+  /** Dashed fuel truck box under the wing on the emergency side. */
+  fuelTruck: Pt[];
+  /** Bus only bay at the stand edge on the bus side, level with the last door. */
+  busBay: Pt[];
+  /** Zebra walkway from the last door to the bus bay: its x span and its y. */
+  walkX0: number;
+  walkX1: number;
+  walkY: number;
+}
+
+/**
+ * Places the taxi through marks: the marshaller spot ahead of the nose, the fuel truck box under the
+ * wing on the side of the emergency triangle, and the bus only bay with its walkway at the last door of
+ * the largest type, on the side of the bus zone, kept between the safety line and the GSE box.
+ */
+export function throughMarks(l: Pick<StandLayout, 'W' | 'D' | 'types' | 'nose0' | 'zones'>): ThroughMarks {
+  const a = l.types[0];
+  const hx = l.W / 2;
+  const fw = a.dimensions.fuselageWidthM / 2;
+  const [tw, tl] = MK.fuelTruckBoxM;
+  const tx = fw + MK.fuelTruckGapM;
+  const ty = l.nose0 - a.dimensions.lengthM * MK.fuelTruckAtLength;
+  const doors = standGeometry(a).doorStationsM;
+  const [bw, bl] = MK.busBayM;
+  const top = l.zones ? Math.min(...l.zones.gse.map((p) => p.y)) - MK.zoneClearM : l.nose0;
+  const walkY = Math.max(l.D + bl / 2, Math.min(l.nose0 - (doors.length > 0 ? doors[doors.length - 1] : a.dimensions.lengthM / 2), top - bl / 2));
+  return {
+    marshaller: { x: 0, y: l.nose0 + MK.marshallerAheadM },
+    fuelTruck: rect(tx, tx + tw, ty - tl / 2, ty + tl / 2),
+    busBay: rect(-hx, -hx + bw, walkY - bl / 2, walkY + bl / 2),
+    walkX0: -hx + bw,
+    walkX1: -(fw + MK.zoneClearM),
+    walkY,
+  };
+}
+
 /** Outlines of every assigned type parked on its own stop bar. */
 export function standOutlines(l: Pick<StandLayout, 'types' | 'bars'>): Pt[][] {
   return l.types.flatMap((a, k) => typeOutlines(a, l.bars[k].y + standGeometry(a).noseGearM));
@@ -208,10 +250,11 @@ export function standLayout(s: Stand, fork: StandFork | null): StandLayout | nul
   const top = bar0 + slot.far;
   const halfW = types[0].dimensions.fuselageWidthM / 2 + 1;
   const bars = types.map((a, k) => ({ y: bar0 + stopBarOffset(s.size, k), label: s.size === 'small' ? 'GA' : a.icaoType, halfW }));
-  const layout: StandLayout = { size: s.size, origin: fork.hit, axis, right, D: fork.radius, W: spec.widthM, top, types, bars, nose0: bar0 + ng0, funnel: null, zones: null };
+  const layout: StandLayout = { size: s.size, origin: fork.hit, axis, right, D: fork.radius, W: spec.widthM, top, types, bars, nose0: bar0 + ng0, funnel: null, zones: null, through: null };
   if (s.size !== 'small') {
     layout.funnel = sheetFunnel(top, types[0].dimensions.fuselageWidthM / 2 + MK.funnelSideM);
     layout.zones = frontZones(layout, standOutlines(layout));
+    if (s.type === 'through') layout.through = throughMarks(layout);
   }
   return layout;
 }

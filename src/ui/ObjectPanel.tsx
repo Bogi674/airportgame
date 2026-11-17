@@ -7,7 +7,7 @@ import { apronArea } from '@shared/apronGeom';
 import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
 import { standRefusal } from '@shared/standSizes';
-import { standFork } from '@shared/standFork';
+import { standFork, standLeadOut } from '@shared/standFork';
 import { ClassHelp } from './ClassHelp';
 import { AcceptToggles } from './AcceptToggles';
 import type { Command } from '@sim/commands';
@@ -216,7 +216,9 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
 /** The taxiway connection line of a stand: the lead in taxiway by name, or a warning that flights cannot use it. */
 function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
   const af = useGameStore((s) => s.airfield);
-  const fork = linked ? standFork(stand, af.taxiways.map((t) => ({ pts: t.points }))) : null;
+  const lines = af.taxiways.map((t) => ({ pts: t.points }));
+  const fork = linked ? standFork(stand, lines) : null;
+  const out = fork ? standLeadOut(stand, lines) : null;
   if (!linked) {
     return (
       <div style="color:var(--warn)" data-testid="stand-link">
@@ -227,6 +229,7 @@ function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
   return (
     <div style="color:var(--muted)" data-testid="stand-link">
       {fork ? tFormat('inspector.stand.leadIn', { name: af.taxiways[fork.lane].name }) : t('inspector.stand.linked')}
+      {stand.type === 'through' && <div data-testid="stand-lead-out">{out ? tFormat('inspector.stand.leadOut', { name: af.taxiways[out.lane].name }) : t('inspector.stand.noLeadOut')}</div>}
     </div>
   );
 }
@@ -424,6 +427,9 @@ export function ObjectPanel({ send }: Props) {
     const x = af.stands.find((o) => o.id === id);
     if (!x) return null;
     name = x.number;
+    const lines = af.taxiways.map((t) => ({ pts: t.points }));
+    // A pass through stand with a lead out is left forward, so it has no push back side (T72).
+    const leavesForward = standFork(x, lines) !== null && standLeadOut(x, lines) !== null;
     body = (
       <>
         <div>
@@ -446,16 +452,18 @@ export function ObjectPanel({ send }: Props) {
           <div>{t('inspector.accepts')}</div>
           <AcceptToggles stand={x} send={send} />
         </div>
-        <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
-          {t('inspector.pushback')}
-          <select data-testid="stand-pushback" value={x.pushback} onChange={(e) => send({ type: 'setStandProps', id: x.id, pushback: (e.target as HTMLSelectElement).value as PushbackDir })}>
-            {(['auto', 'left', 'right'] as const).map((d) => (
-              <option key={d} value={d}>
-                {tDynamic(`pushback.${d}`)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!leavesForward && (
+          <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
+            {t('inspector.pushback')}
+            <select data-testid="stand-pushback" value={x.pushback} onChange={(e) => send({ type: 'setStandProps', id: x.id, pushback: (e.target as HTMLSelectElement).value as PushbackDir })}>
+              {(['auto', 'left', 'right'] as const).map((d) => (
+                <option key={d} value={d}>
+                  {tDynamic(`pushback.${d}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {x.type === 'contact' && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
       </>
     );

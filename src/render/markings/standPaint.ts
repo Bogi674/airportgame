@@ -3,9 +3,9 @@ import { standGeometry } from '@data/aircraft';
 import { ACCEPT_GA, type AirfieldPayload, type Stand } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
 import { standBox } from '@shared/clearance';
-import { standForks, type StandFork } from '@shared/standFork';
+import { standForks, standLeadOut, type StandFork } from '@shared/standFork';
 import { standSlot } from '@shared/standGeom';
-import { standLayout, toWorld, type FrontZones, type StandLayout } from './standLayout';
+import { standLayout, toWorld, type FrontZones, type StandLayout, type ThroughMarks } from './standLayout';
 
 /**
  * Stand markings drawn from stand data (docs/DESIGN_REVISION_2.md sections 1 and 3): the lead in fork
@@ -39,14 +39,22 @@ const px = (w: StandWindow, n: number): number => n / w.scale;
 const widthM = (w: StandWindow, meters: number, minPx: number): number => Math.max(meters, minPx / w.scale);
 const isPaved = (s: Stand): boolean => s.surface === 'asphalt' || s.surface === 'concrete';
 
-const forkCache = new WeakMap<object, (StandFork | null)[]>();
+interface StandForks {
+  forks: (StandFork | null)[];
+  /** Lead outs of pass through stands (T72), null for every other stand. */
+  outs: (StandFork | null)[];
+}
 
-/** Forks of a stand list on the taxiways of an airfield, cached per pair of lists. */
-function forksFor(af: AirfieldPayload, stands: readonly Stand[]): (StandFork | null)[] {
+const forkCache = new WeakMap<object, StandForks>();
+
+/** Lead in forks and lead outs of a stand list on the taxiways of an airfield, cached per pair of lists. */
+function forksFor(af: AirfieldPayload, stands: readonly Stand[]): StandForks {
   const key = stands === af.stands ? af : stands;
   let f = forkCache.get(key);
   if (!f) {
-    f = standForks(stands, af.taxiways.map((t) => ({ pts: t.points })));
+    const lines = af.taxiways.map((t) => ({ pts: t.points }));
+    const forks = standForks(stands, lines);
+    f = { forks, outs: stands.map((s, i) => (forks[i] ? standLeadOut(s, lines) : null)) };
     forkCache.set(key, f);
   }
   return f;
@@ -179,13 +187,13 @@ function overlapsStand(w: StandWindow, s: Stand): boolean {
 
 /** Paints the markings of the given stands. Shared fork ends are drawn once, since each arc ends there. */
 export function paintStands(ctx: Ctx, af: AirfieldPayload, stands: readonly Stand[], w: StandWindow): void {
-  const forks = forksFor(af, stands);
+  const { forks, outs } = forksFor(af, stands);
   stands.forEach((s, i) => {
-    if (overlapsStand(w, s)) paintStand(ctx, s, forks[i], w);
+    if (overlapsStand(w, s)) paintStand(ctx, s, forks[i], outs[i], w);
   });
 }
 
-function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow): void {
+function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, out: StandFork | null, w: StandWindow): void {
   const l = standLayout(s, fork);
   if (!l || !fork) {
     paintLoose(ctx, s, w);
@@ -253,14 +261,17 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow):
     paintText(ctx, l, at(0, sy), 'STOP', bh * 0.6, C.yellow, 'c', bw * 0.85);
   }
 
-  // Lead in: fork arcs and the stand centerline from the fork to the first stop bar.
+  // Lead in: fork arcs and the stand centerline from the fork to the first stop bar. A pass through stand
+  // with a lead out runs its centerline on through the stand to the lead out fork and its arcs (T72).
+  const centerline = out ? [fork.fork, out.fork] : [fork.fork, at(0, l.bars[0].y)];
+  const guides = out ? [...fork.arcs, ...out.arcs, centerline] : [...fork.arcs, centerline];
   if (paved) {
-    for (const arc of fork.arcs) yellow(ctx, w, arc, concrete);
-    yellow(ctx, w, [fork.fork, at(0, l.bars[0].y)], concrete);
+    for (const g of guides) yellow(ctx, w, g, concrete);
+    if (out) paintLeadOutArrow(ctx, l, out, concrete, w);
   } else {
     // Unpaved: no paint, cones along the lead in.
     ctx.fillStyle = CONE;
-    for (const pts of [...fork.arcs, [fork.fork, at(0, l.bars[0].y)]]) {
+    for (const pts of guides) {
       let acc = 0;
       for (let k = 1; k < pts.length; k++) {
         const seg = Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
@@ -281,7 +292,7 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow):
   } else if (l.funnel) {
     const f = l.funnel;
     const hx = l.W / 2;
-    if (detail && l.zones) paintZones(ctx, l, l.zones, w, contact);
+    if (detail && l.zones) paintZones(ctx, l, l.zones, w, contact ? 'bridge' : l.through ? 'none' : 'bus');
     // Wing stop outline: the solid restraint line down both sides, angled in to the nose line and closed at the road.
     const rx = hx - MK.restraintInsetM;
     const ry = l.D + MK.restraintTopM;
@@ -302,9 +313,11 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow):
       const ex = hx - MK.edgeDashInsetM;
       for (const sx of [-1, 1]) red([at(sx * ex, l.D), at(sx * ex, l.top)], MK.edgeDashM);
       paintLadder(ctx, l, w, concrete);
-      paintPushLimit(ctx, l, w);
+      // An aircraft leaving forward is never pushed, so its stand has no push limit.
+      if (!out) paintPushLimit(ctx, l, w);
       if (STAND_SIZES[s.size].hydrants) paintPits(ctx, l, w);
       if (contact) paintBridges(ctx, l, w);
+      if (l.through) paintThrough(ctx, l, l.through, w, !STAND_SIZES[s.size].hydrants);
     }
   }
   // Stand number box on the centerline inside the stand; unpaved stands have a signboard instead.
@@ -396,8 +409,79 @@ function firePoint(ctx: Ctx, l: StandLayout, p: Pt): void {
   paintText(ctx, l, c, 'F', MK.fireRadiusM * 1.1, C.white, 'c', MK.fireRadiusM * 1.4);
 }
 
-/** Emergency triangle, bridge band or bus bay, GSE box, GPU spot and fire points (revision 3 section 3 items 5 to 7). */
-function paintZones(ctx: Ctx, l: StandLayout, z: FrontZones, w: StandWindow, contact: boolean): void {
+/** A filled yellow arrow on the stand centerline with its tip at the lead out fork, pointing the way out. */
+function paintLeadOutArrow(ctx: Ctx, l: StandLayout, out: StandFork, concrete: boolean, w: StandWindow): void {
+  const tip = (out.fork.x - l.origin.x) * l.axis.x + (out.fork.y - l.origin.y) * l.axis.y;
+  const [len, wide] = MK.leadOutArrowM;
+  const head = [toWorld(l, 0, tip), toWorld(l, wide / 2, tip - len), toWorld(l, -wide / 2, tip - len)];
+  if (concrete) {
+    ctx.strokeStyle = C.outline;
+    ctx.lineWidth = px(w, 2 * TW.concreteOutlinePx);
+    path(ctx, head, true);
+    ctx.stroke();
+  }
+  ctx.fillStyle = C.yellow;
+  path(ctx, head, true);
+  ctx.fill();
+}
+
+/** Marshaller spot, fuel truck box, zebra walkway and bus only bay of the sheet's taxi through template (T72). */
+function paintThrough(ctx: Ctx, l: StandLayout, t: ThroughMarks, w: StandWindow, truck: boolean): void {
+  const at = (p: Pt): Pt => toWorld(l, p.x, p.y);
+  // Fuel truck box where no hydrant pits fuel the aircraft: white dashes, FUEL TRUCK written on the tail side.
+  if (truck) paintFuelTruck(ctx, l, t, w);
+  paintWalkway(ctx, l, t, w);
+  // Marshaller spot: white ring with M ahead of the nose.
+  const c = at(t.marshaller);
+  ctx.strokeStyle = C.white;
+  ctx.lineWidth = widthM(w, 0.15, 1.2);
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, MK.marshallerRadiusM, 0, Math.PI * 2);
+  ctx.stroke();
+  paintText(ctx, l, c, 'M', MK.marshallerRadiusM * 1.1, C.white, 'c', MK.marshallerRadiusM * 1.4);
+}
+
+function paintFuelTruck(ctx: Ctx, l: StandLayout, t: ThroughMarks, w: StandWindow): void {
+  const at = (p: Pt): Pt => toWorld(l, p.x, p.y);
+  const th = MK.zoneTextHeightM;
+  ctx.strokeStyle = C.white;
+  ctx.lineWidth = widthM(w, 0.2, 1.4);
+  ctx.setLineDash([1.2, 0.9]);
+  path(ctx, t.fuelTruck.map(at), true);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const fx0 = Math.min(...t.fuelTruck.map((p) => p.x));
+  const fx1 = Math.max(...t.fuelTruck.map((p) => p.x));
+  const fy = Math.min(...t.fuelTruck.map((p) => p.y));
+  paintText(ctx, l, at({ x: (fx0 + fx1) / 2, y: fy - th }), 'FUEL TRUCK', th, C.white, 'c', MK.fuelTruckBoxM[0] * 2);
+}
+
+/** Zebra walkway from the last door to the bus only bay, and the bay as a red outline with BUS inside. */
+function paintWalkway(ctx: Ctx, l: StandLayout, t: ThroughMarks, w: StandWindow): void {
+  const at = (p: Pt): Pt => toWorld(l, p.x, p.y);
+  // Zebra walkway: white stripes across the walking direction.
+  const [bw] = MK.busBayM;
+  const span = t.walkX1 - t.walkX0;
+  if (span > 0) {
+    const pitch = span / MK.walkwayStripes;
+    ctx.fillStyle = C.white;
+    for (let k = 0; k < MK.walkwayStripes; k++) {
+      const x0 = t.walkX0 + k * pitch + pitch / 4;
+      path(ctx, [at({ x: x0, y: t.walkY - MK.zebraWidthM / 2 }), at({ x: x0 + pitch / 2, y: t.walkY - MK.zebraWidthM / 2 }), at({ x: x0 + pitch / 2, y: t.walkY + MK.zebraWidthM / 2 }), at({ x: x0, y: t.walkY + MK.zebraWidthM / 2 })], true);
+      ctx.fill();
+    }
+  }
+  // Bus only bay: red outline with BUS inside.
+  ctx.strokeStyle = C.red;
+  ctx.lineWidth = widthM(w, MK.boundaryWidthM, MK.boundaryMinPx);
+  path(ctx, t.busBay.map(at), true);
+  ctx.stroke();
+  const bx = Math.min(...t.busBay.map((p) => p.x)) + bw / 2;
+  labelBox(ctx, l, at({ x: bx, y: t.walkY - MK.zebraWidthM / 2 - MK.ladderBoxHeightM }), 'BUS', MK.ladderBoxHeightM, C.signBlack, C.white);
+}
+
+/** Emergency triangle, bridge band or bus bay, GSE box, GPU spot and fire points (revision 3 section 3 items 5 to 7). A pass through stand has its bus bay at the side instead. */
+function paintZones(ctx: Ctx, l: StandLayout, z: FrontZones, w: StandWindow, access: 'bridge' | 'bus' | 'none'): void {
   const at = (p: Pt): Pt => toWorld(l, p.x, p.y);
   const th = MK.zoneTextHeightM;
   hatched(ctx, w, z.emergency.map(at), C.red);
@@ -407,11 +491,11 @@ function paintZones(ctx: Ctx, l: StandLayout, z: FrontZones, w: StandWindow, con
   const bx0 = Math.min(...z.bridge.map((p) => p.x));
   const bx1 = Math.max(...z.bridge.map((p) => p.x));
   const by = Math.min(...z.bridge.map((p) => p.y));
-  if (contact) {
+  if (access === 'bridge') {
     hatched(ctx, w, z.bridge.map(at), C.red);
     paintText(ctx, l, at({ x: bx1, y: z.textY }), 'NO PARKING', th, C.red, 'nx', bx1 - bx0 - 3 * MK.fireRadiusM);
     firePoint(ctx, l, z.fire[1]);
-  } else {
+  } else if (access === 'bus') {
     ctx.strokeStyle = C.white;
     ctx.lineWidth = widthM(w, 0.2, 1.4);
     ctx.setLineDash([2, 1.5]);

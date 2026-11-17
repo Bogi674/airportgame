@@ -210,6 +210,15 @@ export const standSizesSchema = z
       boundaryWidthM: z.number().positive(),
       boundaryMinPx: z.number().positive(),
       hatchSpacingM: z.number().positive(),
+      throughNote: z.string(),
+      leadOutArrowM: z.tuple([z.number().positive(), z.number().positive()]),
+      marshallerAheadM: z.number().positive(),
+      marshallerRadiusM: z.number().positive(),
+      fuelTruckBoxM: z.tuple([z.number().positive(), z.number().positive()]),
+      fuelTruckGapM: z.number().positive(),
+      fuelTruckAtLength: z.number().positive(),
+      busBayM: z.tuple([z.number().positive(), z.number().positive()]),
+      walkwayStripes: z.number().int().positive(),
     }),
   })
   .refine((d) => d.sizes.small.maxSpanM < d.sizes.medium.maxSpanM && d.sizes.medium.maxSpanM < d.sizes.large.maxSpanM && d.sizes.large.maxSpanM < d.sizes.xl.maxSpanM, {

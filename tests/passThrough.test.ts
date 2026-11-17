@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { AcState } from '@sim/ops/traffic';
 import { EdgeKind } from '@sim/airfield/network';
 import type { Sim } from '@sim/sim';
+import { ACCEPT_COMMERCIAL, type Stand, type StandSize } from '@shared/airfield';
+import { standFork, standLeadOut } from '@shared/standFork';
+import { polygonDistance, standLayout } from '@render/markings/standLayout';
 import { buildTestAirport, ownedSim, run } from './helpers';
 
 /**
@@ -90,5 +93,36 @@ describe('pass through stands', () => {
       return sim.stateHash();
     };
     expect(hash()).toBe(hash());
+  });
+});
+
+describe('taxi through marks (sheet remote taxi through template)', () => {
+  const lane = [{ pts: [{ x: -500, y: 0 }, { x: 500, y: 0 }] }];
+  const front = [{ pts: [{ x: -500, y: -170 }, { x: 500, y: -170 }] }];
+  const through = (size: StandSize): Stand => ({ id: 1, cost: 0, number: '1', x: 0, y: -120, headingDeg: 0, type: 'through', size, code: 'C', surface: 'concrete', pushback: 'auto', accepts: ACCEPT_COMMERCIAL });
+  for (const size of ['medium', 'large', 'xl'] as const) {
+    it(`${size}: the bus bay, walkway and fuel truck box stay inside the stand and clear of the front zones`, () => {
+      const s = through(size);
+      const l = standLayout(s, standFork(s, lane));
+      if (!l || !l.zones || !l.through) throw new Error('no layout');
+      const t = l.through;
+      const zones = [l.zones.emergency, l.zones.gse];
+      for (const z of zones) {
+        expect(polygonDistance(t.busBay, z)).toBeGreaterThan(0);
+        expect(polygonDistance(t.fuelTruck, z)).toBeGreaterThan(0);
+      }
+      for (const p of [...t.busBay, ...t.fuelTruck]) expect(Math.abs(p.x)).toBeLessThanOrEqual(l.W / 2 + 1e-9);
+      expect(Math.min(...t.busBay.map((p) => p.y))).toBeGreaterThanOrEqual(l.D - 1e-9);
+      expect(t.walkX1).toBeGreaterThan(t.walkX0);
+      expect(t.marshaller.y).toBeGreaterThan(l.nose0);
+      expect(t.marshaller.y).toBeLessThan(l.top);
+    });
+  }
+
+  it('a lead out exists only ahead of the nose, beyond the slot', () => {
+    const s = through('medium');
+    expect(standLeadOut(s, [...lane, ...front])).not.toBeNull();
+    expect(standLeadOut(s, lane)).toBeNull();
+    expect(standLeadOut({ ...s, type: 'remote' }, [...lane, ...front])).toBeNull();
   });
 });

@@ -192,6 +192,15 @@
     "stopBarMinPx": 3,
     "boundaryWidthM": 0.3,
     "boundaryMinPx": 2.4,
-    "hatchSpacingM": 1.4
+    "hatchSpacingM": 1.4,
+    "throughNote": "Taxi through stand (T72), measured on the sheet's remote taxi through template. Walkway and bus bay sit at the last door of the largest type, the fuel truck box under the other wing.",
+    "leadOutArrowM": [3.2, 2.4],
+    "marshallerAheadM": 2,
+    "marshallerRadiusM": 0.9,
+    "fuelTruckBoxM": [3.4, 11],
+    "fuelTruckGapM": 6,
+    "fuelTruckAtLength": 0.43,
+    "busBayM": [3.3, 16.5],
+    "walkwayStripes": 9
   }
 }
