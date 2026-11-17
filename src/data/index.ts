@@ -1,5 +1,6 @@
 import airfieldCodesJson from './airfield_codes.json';
 import businessJson from './business.json';
+import marketJson from './market.json';
 import gseJson from './gse.json';
 import paintJson from './paint.json';
 import peopleJson from './people.json';
@@ -10,6 +11,7 @@ import surfacesJson from './surfaces.json';
 import {
   airfieldCodesSchema,
   businessSchema,
+  marketSchema,
   gseSchema,
   paintSchema,
   peopleSchema,
@@ -19,6 +21,7 @@ import {
   surfacesSchema,
   type AirfieldCodes,
   type BusinessData,
+  type MarketData,
   type GseData,
   type PaintData,
   type PeopleData,
@@ -31,6 +34,8 @@ import {
 /** Validated once at load, then trusted (docs/PERFORMANCE.md section 7). */
 export const AIRFIELD: AirfieldCodes = airfieldCodesSchema.parse(airfieldCodesJson);
 export const BUSINESS: BusinessData = businessSchema.parse(businessJson);
+/** Destinations, flight series, airline satisfaction and growth. */
+export const MARKET: MarketData = marketSchema.parse(marketJson);
 export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
 /** Per surface rules, costs and look, keyed by surface name. */
 export const SURFACE_SPEC: SurfacesData['surfaces'] = SURFACE_DATA.surfaces;
