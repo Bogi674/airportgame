@@ -17,6 +17,8 @@ export interface StandSnap {
   headingDeg: number;
   /** The taxiway the lead in joins. */
   taxiwayId: number;
+  /** Where the stand axis meets that taxiway's centerline, for the snap marker. */
+  join: Pt;
 }
 
 /** Compass degrees of a direction in screen axes (y down), the inverse of `compassVector`. */
@@ -78,5 +80,5 @@ export function snapStand(p: Pt, size: StandSize, taxiways: readonly Taxiway[], 
   if (!best) return null;
   const axis = compassVector(best.heading);
   const along = leadInTargetGapM(size, best.t.code) - slot.near;
-  return { x: best.hit.x + axis.x * along, y: best.hit.y + axis.y * along, headingDeg: best.heading, taxiwayId: best.t.id };
+  return { x: best.hit.x + axis.x * along, y: best.hit.y + axis.y * along, headingDeg: best.heading, taxiwayId: best.t.id, join: best.hit };
 }

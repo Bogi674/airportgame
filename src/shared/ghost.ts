@@ -13,8 +13,11 @@ export type GhostShape =
   | { k: 'surfaces'; approachA: Pt[]; approachB: Pt[]; transitional: Pt[][]; hits: Pt[] }
   /** A red band over a stretch that breaks a clearance. */
   | { k: 'clash'; pts: Pt[]; w: number }
-  /** A snap marker drawn at a fixed size on screen: a node dot, or the active target (docs/DESIGN_REVISION_2.md 2.2). */
-  | { k: 'marker'; x: number; y: number; shape: 'dot' | 'ring' | 'square' | 'diamond'; label?: string };
+  /** A snap marker drawn at a fixed size on screen: a node dot, the active target, or a grid node (docs/DESIGN_REVISION_2.md 2.2, T70). */
+  | { k: 'marker'; x: number; y: number; shape: MarkerShape; label?: string };
+
+/** Screen shapes of snap markers: node dots, and the ring, square, diamond or plus of the active target. */
+export type MarkerShape = 'dot' | 'ring' | 'square' | 'diamond' | 'plus';
 
 /** Objects drawn the way they will look once built, so the preview matches the result. */
 export interface GhostPreview {

@@ -11,7 +11,7 @@ import { standStates, type StandState } from './standStates';
 const STAND_BADGE_PX = 9;
 const BADGE_RED = '#ff3b30';
 const BADGE_AMBER = '#ffb020';
-import type { Ghost, GhostShape } from '@shared/ghost';
+import type { Ghost, GhostShape, MarkerShape } from '@shared/ghost';
 import { TERMINAL_CELL_M, type TerminalGrid } from '@shared/business';
 import type { ConstructionGrid } from '@shared/constructionGrid';
 import { OVERLAY_MAX, type OverlayData, type OverlayKind } from '@shared/overlay';
@@ -959,8 +959,8 @@ export class Renderer {
     }
   }
 
-  /** A snap marker at screen position (x, y): node dots, and the ring, square or diamond of the active target. */
-  private drawMarker(shape: 'dot' | 'ring' | 'square' | 'diamond', x: number, y: number, label?: string): void {
+  /** A snap marker at screen position (x, y): node dots, the ring, square or diamond of the active target, or a grid plus. */
+  private drawMarker(shape: MarkerShape, x: number, y: number, label?: string): void {
     const ctx = this.ctx;
     const k = this.dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1006,7 +1006,13 @@ export class Renderer {
       return;
     }
     if (shape === 'square') ctx.rect(x - 10 * k, y - 10 * k, 20 * k, 20 * k);
-    else {
+    else if (shape === 'plus') {
+      // A grid node: a small plus, quieter than the object snaps.
+      ctx.moveTo(x - 6 * k, y);
+      ctx.lineTo(x + 6 * k, y);
+      ctx.moveTo(x, y - 6 * k);
+      ctx.lineTo(x, y + 6 * k);
+    } else {
       ctx.moveTo(x, y - 12 * k);
       ctx.lineTo(x + 12 * k, y);
       ctx.lineTo(x, y + 12 * k);

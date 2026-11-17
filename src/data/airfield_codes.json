@@ -119,7 +119,8 @@
     "areaFactor": 0.15,
     "approachDays": { "visual": 1, "nonPrecision": 10, "precision": 21 }
   },
-  "taxiwayTool": { "snapRadiusM": 15, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 },
+  "taxiwayTool": { "snapRadiusM": 20, "minNodeGapM": 15, "angleStepDeg": 15, "angleTolDeg": 3 },
+  "snapTool": { "note": "Snapping of the runway, apron and stand tools (T70). The radius is in screen pixels with a floor in meters. A press that moves further than dragStartPx before the release is a drag.", "radiusPx": 16, "minRadiusM": 8, "dragStartPx": 8 },
   "constructionGrid": {
     "note": "Snappable construction grid along a runway or taxiway segment (T42). spacingMinorM is the distance between neighbouring nodes, spacingMajorM the distance between the highlighted lines, which must be a whole multiple of it.",
     "spacingMinorM": 2,

@@ -230,3 +230,11 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Data shape | A third stand type `through` beside contact and remote. Old saves keep their shape, no migration. Never a jet bridge |
 | Lead in and lead out shape | The two arc fork at both ends |
 | Markings and price | The sheet's taxi through markings plus the nose in extras (emergency triangle and GSE box). Price and box size as the remote stand of the same size (assumed, the price was not answered separately) |
+
+## 2026-11-17 T70 snap markers
+
+| Question | Answer (owner, 2026-11-17) |
+| --- | --- |
+| Which snap kinds show a marker and a tooltip | All of them: vertex, runway edge, centerline, alignment guide, angle step, stand lead in and the taxiway node, end and segment. Grid nodes get a small marker but no tooltip |
+| Snap radius | Taxiway snap 20 m, the other tools 16 screen px with an 8 m floor |
+| Press and drag in the taxiway tool | A drag longer than 8 screen px places a point at the press and one at the release, so one drag draws a segment. The polyline stays open, a click still adds one point |

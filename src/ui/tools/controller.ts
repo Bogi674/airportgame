@@ -40,6 +40,7 @@ import { tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
 import { fixtureEdit, footprintRect, isTwoCell, nextFixtureRot } from './fixtureRot';
+import { markShape, markTip, type SnapMark } from './snapMark';
 
 export interface Mods {
   shift: boolean;
@@ -295,6 +296,8 @@ export class ToolController {
     this.rectFrame = null;
     this.tStart = null;
     this.tGrid = null;
+    this.mark = null;
+    this.taxiPress = null;
     this.deps.setGhost(null);
     useToolStore.getState().set({ hint: null, problem: null, buy: null });
   }
@@ -302,6 +305,22 @@ export class ToolController {
   private nodeCache: { af: AirfieldPayload; nodes: TaxiNode[] } | null = null;
   /** The taxiway tool's current snap target, shown as a marker with a tooltip. */
   private snapHit: SnapHit | null = null;
+  /** What the last snap of any drawing tool locked onto, shown as a marker with a tooltip (T70). */
+  private mark: SnapMark | null = null;
+  /** Where a press in the taxiway tool started, so a drag adds a segment (T70). */
+  private taxiPress: Pt | null = null;
+
+  /** The snap radius of the drawing tools in meters: a fixed size on screen with a floor (T70). */
+  private snapRadius(): number {
+    return Math.max(AIRFIELD.snapTool.minRadiusM, AIRFIELD.snapTool.radiusPx / this.deps.zoom());
+  }
+
+  /** Pushes the marker of the current snap target and returns its tooltip, or null when nothing snapped. */
+  private markDecor(shapes: GhostShape[]): string | null {
+    if (!this.mark) return null;
+    shapes.push(markShape(this.mark));
+    return markTip(this.mark);
+  }
 
   private taxiNodes(): TaxiNode[] {
     if (!this.nodeCache || this.nodeCache.af !== this.af) this.nodeCache = { af: this.af, nodes: taxiNodes(this.af.taxiways) };
@@ -314,6 +333,7 @@ export class ToolController {
    */
   private taxiSnap(p: Pt, prev: Pt | null, mods: Mods): Pt {
     this.snapHit = null;
+    this.mark = null;
     if (mods.alt) {
       this.deps.setGuide(null, null);
       return p;
@@ -321,6 +341,7 @@ export class ToolController {
     const hit = findSnap(this.af.taxiways, this.taxiNodes(), p);
     if (hit) {
       this.snapHit = hit;
+      this.mark = { kind: hit.kind, p: hit.p, label: hit.label || undefined };
       this.deps.setGuide(null, null);
       return hit.p;
     }
@@ -329,19 +350,30 @@ export class ToolController {
 
   /** Snaps to vertices, centerlines and the alignment frame. Shift gives 15 degree steps, Alt is free. */
   private snap(p: Pt, prev: Pt | null, mods: Mods, centerlines: boolean, stepDeg = 90): Pt {
-    const radius = Math.max(6, 12 / this.deps.zoom());
+    this.mark = null;
+    const radius = this.snapRadius();
     const v = snapToVertex(this.af, p.x, p.y, radius);
-    if (v) return v;
+    if (v) {
+      this.mark = { kind: 'vertex', p: v };
+      return v;
+    }
     if (centerlines) {
       const edge = snapToRunwayEdge(this.af, p.x, p.y, radius * 1.2, prev);
-      if (edge) return edge;
+      if (edge) {
+        this.mark = { kind: 'runwayEdge', p: edge };
+        return edge;
+      }
       const c = snapToCenterline(this.af, p.x, p.y, radius * 0.7);
-      if (c) return c;
+      if (c) {
+        this.mark = { kind: 'centerline', p: c };
+        return c;
+      }
     }
     if (!mods.alt) {
       const g = alignGuide(this.af, this.pts.length > 0 ? this.pts : this.start ? [this.start] : [], p.x, p.y, Math.max(4, 9 / this.deps.zoom()));
       if (g) {
         this.deps.setGuide(g.from, g.p);
+        this.mark = { kind: 'guide', p: g.p };
         return g.p;
       }
     }
@@ -349,7 +381,9 @@ export class ToolController {
     const grid = this.snapGrid(mods);
     if (grid) {
       this.deps.setGuide(null, null);
-      return snapToGrid(p, grid).p;
+      const q = snapToGrid(p, grid).p;
+      this.mark = { kind: 'grid', p: q };
+      return q;
     }
     this.deps.setGuide(null, null);
     if (!prev || mods.alt) return p;
@@ -377,7 +411,9 @@ export class ToolController {
     }
     if (best > tol) return p;
     const dir = compassVector(target);
-    return { x: prev.x + dir.x * len, y: prev.y + dir.y * len };
+    const q = { x: prev.x + dir.x * len, y: prev.y + dir.y * len };
+    this.mark = { kind: 'angle', p: q, label: String(Math.round((((target % 360) + 360) % 360)) % 360).padStart(3, '0') };
+    return q;
   }
 
   // Construction grid ------------------------------------------------------
@@ -508,7 +544,27 @@ export class ToolController {
       this.dragging = true;
     } else if (tool === 'terminal') {
       this.terminalDown(p, mods);
+    } else if ((tool === 'taxiway' || tool === 'taxilane') && this.taxiDrawing()) {
+      this.taxiPress = p;
     }
+  }
+
+  /** True while the taxiway tool lays out a polyline: a new taxiway, or the extension of a picked one. */
+  private taxiDrawing(): boolean {
+    const st = useToolStore.getState();
+    return st.taxiMode === 'new' || (st.taxiMode === 'extend' && this.tEdit !== null);
+  }
+
+  /**
+   * The points laid out so far, plus the snapped press point while the pointer drags away from it, so
+   * one press and drag draws a whole segment (T70). A plain click adds only the release point.
+   */
+  private taxiBase(p: Pt, mods: Mods): Pt[] {
+    const press = this.taxiPress;
+    if (!press || Math.hypot(p.x - press.x, p.y - press.y) * this.deps.zoom() <= AIRFIELD.snapTool.dragStartPx) return this.pts;
+    const last = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
+    const a = this.taxiSnap(press, last, mods);
+    return last && Math.hypot(a.x - last.x, a.y - last.y) < 3 ? this.pts : [...this.pts, a];
   }
 
   move(p: Pt, mods: Mods): void {
@@ -522,7 +578,7 @@ export class ToolController {
         break;
       case 'taxiway':
       case 'taxilane':
-        if (st.taxiMode !== 'new' && !(st.taxiMode === 'extend' && this.tEdit)) this.previewTaxiEdit(p);
+        if (!this.taxiDrawing()) this.previewTaxiEdit(p);
         else this.previewTaxiway(p, mods, st.tool === 'taxilane');
         break;
       case 'rapidExit':
@@ -540,7 +596,7 @@ export class ToolController {
         if (st.tool === 'apronExtend' && !this.extendTarget()) this.show({ valid: true, shapes: [] }, null, 'hint.apronExtendPick');
         else if (st.apronMode === 'rect') {
           if (this.dragging && this.start) this.previewApronRect(p, mods);
-          else this.show({ valid: true, shapes: [] }, null, this.apronHint(true));
+          else this.previewApronHover(p, mods);
         } else this.previewApron(p, mods);
         break;
       case 'stands':
@@ -579,10 +635,12 @@ export class ToolController {
         break;
       case 'taxiway':
       case 'taxilane': {
-        if (st.taxiMode !== 'new' && !(st.taxiMode === 'extend' && this.tEdit)) {
+        if (!this.taxiDrawing()) {
           this.taxiEditClick(p);
           break;
         }
+        this.pts = [...this.taxiBase(p, mods)];
+        this.taxiPress = null;
         const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
         const q = this.taxiSnap(p, prev, mods);
         if (prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 3) break;
@@ -860,7 +918,11 @@ export class ToolController {
     if (this.frozen && !this.dragging) return;
     const g = this.runwayGeometry(p, mods);
     if (!this.start || !this.dragging || !g) {
-      this.deps.setGhost({ valid: true, shapes: [{ k: 'ring', x: p.x, y: p.y, r: 15 }] });
+      // The hover point snaps as the press will, so the marker shows where the runway would start.
+      const q = this.snap(p, null, mods, false);
+      const shapes: GhostShape[] = [{ k: 'ring', x: q.x, y: q.y, r: 15 }];
+      const tip = this.markDecor(shapes);
+      this.deps.setGhost({ valid: true, shapes, tone: 'snap', tip: tip ? { x: q.x, y: q.y, text: tip } : undefined });
       st.set({ hint: 'hint.runway', problem: null, buy: null });
       return;
     }
@@ -945,15 +1007,15 @@ export class ToolController {
 
   private previewTaxiway(p: Pt, mods: Mods, lane: boolean): void {
     const st = useToolStore.getState();
-    const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
+    const base = this.taxiBase(p, mods);
+    const prev = base.length > 0 ? base[base.length - 1] : null;
     const q = this.taxiSnap(p, prev, mods);
     const width = AIRFIELD.codes[st.code].taxiwayWidthM;
-    const pts = [...this.pts, q];
+    const pts = [...base, q];
     const shapes: GhostShape[] = [];
     // Every node shows while the tool is open, and the active target gets its own marker.
     for (const n of this.taxiNodes()) shapes.push({ k: 'marker', x: n.p.x, y: n.p.y, shape: 'dot', label: n.arms >= 3 ? n.label : undefined });
-    const hit = this.snapHit;
-    if (hit) shapes.push({ k: 'marker', x: hit.p.x, y: hit.p.y, shape: hit.kind === 'node' ? 'ring' : hit.kind === 'end' ? 'square' : 'diamond', label: hit.label || undefined });
+    const snapTip = this.markDecor(shapes);
     let problem: Problem | null = null;
     if (pts.length >= 2) {
       // Corners are rounded as they will be built, so the preview matches the pavement.
@@ -974,7 +1036,8 @@ export class ToolController {
     }
     const env = this.envelopeAt(q, prev, st.code, clash);
     if (env) shapes.push(env);
-    const tip = hit ? (hit.kind === 'node' ? tFormat('ghost.snapNode', { label: hit.label }) : hit.kind === 'end' ? tFormat('ghost.snapEnd', {}) : tFormat('ghost.snapSegment', {})) : clashTip;
+    // A taxiway node, end or segment names itself first; a clearance warning outranks the softer guide, angle and grid snaps.
+    const tip = this.snapHit ? snapTip : (clashTip ?? snapTip);
     const ctx = this.ctx();
     const cost = ctx && pts.length >= 2 ? estimateStripCost(ctx, pts, width, st.surface, st.tier) : 0;
     this.show(
@@ -1384,12 +1447,14 @@ export class ToolController {
     const area = pts.length >= 3 ? polygonArea(pts) : 0;
     const problem = pts.length >= 3 ? this.apronProblem(pts, area, cut, target) : null;
     const shapes: GhostShape[] = pts.length >= 3 ? [{ k: 'poly', pts }] : [{ k: 'strip', pts, w: 1 }];
+    const tip = this.markDecor(shapes);
     this.show(
       {
         valid: problem === null,
         shapes,
         // A legal cut reads amber, distinct from the red of an invalid placement.
         tone: st.tool === 'apronRemove' ? 'remove' : 'snap',
+        tip: tip && this.mark ? { x: this.mark.p.x, y: this.mark.p.y, text: tip } : undefined,
         tags,
         label: pts.length >= 3 ? { x: anchor.x, y: anchor.y, text: this.apronLabel(pts, area, cut, target) } : undefined,
       },
@@ -1458,6 +1523,7 @@ export class ToolController {
    * nearest apron edge, apron corner or taxiway edge parallel to it within a few meters. Alt is free.
    */
   private rectSnap(p: Pt, frame: number, mods: Mods): Pt {
+    this.mark = null;
     if (mods.alt) return p;
     const u = compassVector(frame);
     const v = { x: -u.y, y: u.x };
@@ -1491,7 +1557,9 @@ export class ToolController {
         for (const side of [1, -1]) for (const q of [a, b]) take({ x: q.x + nx * side * (t.widthM / 2), y: q.y + ny * side * (t.widthM / 2) });
       }
     }
-    return { x: u.x * bu + v.x * bv, y: u.y * bu + v.y * bv };
+    const q = { x: u.x * bu + v.x * bv, y: u.y * bu + v.y * bv };
+    if (du < tol || dv < tol) this.mark = { kind: 'apronEdge', p: q };
+    return q;
   }
 
   /**
@@ -1529,7 +1597,7 @@ export class ToolController {
     if (!g) return this.snap(p, prev, mods, false);
     // The grid wins, so no alignment guide is drawn for a snapped corner.
     this.deps.setGuide(null, null);
-    return snapToGrid(p, g).p;
+    return this.gridMark(p, g);
   }
 
   /**
@@ -1538,7 +1606,14 @@ export class ToolController {
    */
   private rectCorner(p: Pt, frame: number, mods: Mods): Pt {
     const g = this.snapGrid(mods);
-    return g ? snapToGrid(p, g).p : this.rectSnap(p, frame, mods);
+    return g ? this.gridMark(p, g) : this.rectSnap(p, frame, mods);
+  }
+
+  /** Snaps to the nearest node of a grid and records it as the quiet grid marker. */
+  private gridMark(p: Pt, g: ConstructionGrid): Pt {
+    const q = snapToGrid(p, g).p;
+    this.mark = { kind: 'grid', p: q };
+    return q;
   }
 
   /** The rectangle from the drag start to p, aligned to the frame captured at the press. */
@@ -1556,6 +1631,15 @@ export class ToolController {
     const dv = (q.x - s0.x) * v.x + (q.y - s0.y) * v.y;
     const pts = [s0, { x: s0.x + u.x * du, y: s0.y + u.y * du }, { x: s0.x + u.x * du + v.x * dv, y: s0.y + u.y * du + v.y * dv }, { x: s0.x + v.x * dv, y: s0.y + v.y * dv }];
     return { pts, w: Math.abs(du), h: Math.abs(dv) };
+  }
+
+  /** Before the press of a rectangle apron: the marker of the corner the press would snap to. */
+  private previewApronHover(p: Pt, mods: Mods): void {
+    this.rectCorner(p, this.apronFrame(p, mods), mods);
+    const shapes: GhostShape[] = [];
+    const tip = this.markDecor(shapes);
+    const m = this.mark;
+    this.show({ valid: true, shapes, tone: 'snap', tip: tip && m ? { x: m.p.x, y: m.p.y, text: tip } : undefined }, null, this.apronHint(true));
   }
 
   /** Rectangle apron: live width, height and area; Ctrl cuts. */
@@ -1605,15 +1689,19 @@ export class ToolController {
     const st = useToolStore.getState();
     const ga = st.tool === 'gaBlock';
     const size: StandSize = ga ? 'small' : st.standSize;
-    const q = this.placeAt(p, mods);
+    const grid = this.snapGrid(mods);
+    const q = grid ? this.gridMark(p, grid) : p;
+    if (!grid) this.mark = null;
     const base = { count: ga ? st.gaCount : 1, spacing: STAND_SIZES[size].widthM, size, ga, surface: pickedStandSurface(st.surface, size), type: ga ? 'remote' : st.standType };
     if (ga) return { ...base, x: q.x, y: q.y, heading: this.rowHeadingAt(p, mods), leadIn: true };
     // A single stand faces the nearest centerline and slides onto its lead in (docs/DESIGN_REVISION_4.md section 2.2).
     // On the grid it keeps the grid heading unless the player turned it.
-    const g = this.snapGrid(mods);
-    const heading = st.standHeading ?? (g ? g.headingDeg : null);
+    const heading = st.standHeading ?? (grid ? grid.headingDeg : null);
     const snap = snapStand(q, size, this.af.taxiways, heading);
-    if (snap) return { ...base, x: snap.x, y: snap.y, heading: snap.headingDeg, leadIn: true };
+    if (snap) {
+      this.mark = { kind: 'leadIn', p: snap.join, label: this.af.taxiways.find((t) => t.id === snap.taxiwayId)?.name || undefined };
+      return { ...base, x: snap.x, y: snap.y, heading: snap.headingDeg, leadIn: true };
+    }
     return { ...base, x: q.x, y: q.y, heading: standHeading(heading ?? this.rowHeadingAt(p, mods)), leadIn: false };
   }
 
@@ -1662,6 +1750,8 @@ export class ToolController {
     const shapes: GhostShape[] = [];
     const slot = standSlot(plan.size);
     if (slot) for (const c of cands) shapes.push({ k: 'poly', pts: standBox(c, slot) });
+    const tip = this.markDecor(shapes);
+    const m = this.mark;
     let problem: Problem | null = null;
     if (this.ctx()) {
       const first = pricing.slots[0];
@@ -1674,6 +1764,7 @@ export class ToolController {
     const ghost: Ghost = {
       valid: problem === null,
       shapes,
+      tip: tip && m ? { x: m.p.x, y: m.p.y, text: tip } : undefined,
       preview: { stands: cands },
       label: {
         x: plan.x,
