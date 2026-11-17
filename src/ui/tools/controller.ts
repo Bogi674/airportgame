@@ -26,7 +26,7 @@ import { planFor, smoothCorners } from '@render/markings/taxiPlan';
 import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
 import { envelopeType, standBox, standTaxiwayClash, taxiClashes } from '@shared/clearance';
 import { standSlot } from '@shared/standGeom';
-import { standFork } from '@shared/standFork';
+import { standLeadTaxiways } from '@shared/standFork';
 import { snapStand } from '@shared/standSnap';
 import { runwayWorksDays } from '@shared/surfaceRules';
 import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
@@ -1621,9 +1621,7 @@ export class ToolController {
   private standProblem(s: Stand): Problem | null {
     const slot = standSlot(s.size);
     if (!slot) return { code: 'stand.taxiwayClearance' };
-    const fork = standFork(s, this.af.taxiways.map((t) => ({ pts: t.points })));
-    const lead = fork ? this.af.taxiways[fork.lane].id : -1;
-    if (standTaxiwayClash(standBox(s, slot), lead, this.af.taxiways, AIRFIELD.codes, STAND_SIZES[s.size].wingtipClearanceM)) return { code: 'stand.taxiwayClearance' };
+    if (standTaxiwayClash(standBox(s, slot), standLeadTaxiways(s, this.af.taxiways), this.af.taxiways, AIRFIELD.codes, STAND_SIZES[s.size].wingtipClearanceM)) return { code: 'stand.taxiwayClearance' };
     const half = STAND_SIZES[s.size].widthM / 2;
     for (const o of this.af.stands) {
       if (Math.hypot(o.x - s.x, o.y - s.y) < STAND_SIZES[o.size].widthM / 2 + half - 0.5) return { code: 'standOverlap' };
@@ -1653,7 +1651,7 @@ export class ToolController {
       x: c.x,
       y: c.y,
       headingDeg: plan.heading,
-      type: plan.size === 'small' ? 'remote' : plan.type,
+      type: plan.size === 'small' && plan.type === 'contact' ? 'remote' : plan.type,
       size: plan.size,
       code: sizeCode(plan.size),
       surface: plan.surface,

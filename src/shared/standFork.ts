@@ -1,7 +1,8 @@
-import { STAND_SIZES } from '@data/index';
-import { compassVector, type Stand } from './airfield';
+import { STAND_PLACEMENT, STAND_SIZES } from '@data/index';
+import { compassVector, type Stand, type Taxiway } from './airfield';
 import { closestOnSegment, segmentIntersection, type Pt } from './geom';
 import { atan2Det } from './trig';
+import { standSlot } from './standGeom';
 import { arcPoints, fillet, wrapAngle } from './pavement/fillet';
 
 /**
@@ -40,7 +41,7 @@ export interface Polyline {
 }
 
 /** The fork of a stand on the nearest taxilane behind it, or null when no taxilane is behind the stand. */
-export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lines: readonly Polyline[]): StandFork | null {
+export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lines: readonly Polyline[], reachM = REACH_M): StandFork | null {
   const back = compassVector((s.headingDeg + 180) % 360);
   let bestT = Infinity;
   let tx = 0;
@@ -51,7 +52,7 @@ export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lin
     for (let i = 1; i < l.pts.length; i++) {
       const a = l.pts[i - 1];
       const b = l.pts[i];
-      const t = segmentIntersection(s.x, s.y, s.x + back.x * REACH_M, s.y + back.y * REACH_M, a.x, a.y, b.x, b.y);
+      const t = segmentIntersection(s.x, s.y, s.x + back.x * reachM, s.y + back.y * reachM, a.x, a.y, b.x, b.y);
       if (t < 0 || t >= bestT) continue;
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       if (len === 0) continue;
@@ -62,7 +63,7 @@ export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lin
     }
   }
   if (bestT === Infinity) return null;
-  const dist = REACH_M * bestT;
+  const dist = reachM * bestT;
   const hit = { x: s.x + back.x * dist, y: s.y + back.y * dist };
   const axis = { x: -back.x, y: -back.y };
   const radius = Math.min(STAND_SIZES[s.size].forkRadiusM, dist * MAX_FORK_SHARE);
@@ -96,6 +97,32 @@ export function standFork(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size'>, lin
       { x: -tx * sideL, y: -ty * sideL },
     ],
   };
+}
+
+/**
+ * Lead out of a pass through stand (T72): the fork on the nearest centerline ahead of the nose, within
+ * the lead in reach of the slot's nose edge, mirrored from the lead in fork. Its arcs run from the fork to
+ * the centerline, the way a departing aircraft drives. Null for other stand types or with no centerline
+ * ahead beyond the nose edge, in which case the stand departs by push back.
+ */
+export function standLeadOut(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size' | 'type'>, lines: readonly Polyline[]): StandFork | null {
+  if (s.type !== 'through') return null;
+  const slot = standSlot(s.size);
+  if (!slot) return null;
+  const f = standFork({ x: s.x, y: s.y, headingDeg: (s.headingDeg + 180) % 360, size: s.size }, lines, slot.far + STAND_PLACEMENT.leadInReachM);
+  if (!f || Math.hypot(f.hit.x - s.x, f.hit.y - s.y) <= slot.far) return null;
+  return f;
+}
+
+/** Ids of the taxiways a stand leads into: the lead in, and the lead out of a pass through stand. */
+export function standLeadTaxiways(s: Pick<Stand, 'x' | 'y' | 'headingDeg' | 'size' | 'type'>, taxiways: readonly Taxiway[]): number[] {
+  const lines = taxiways.map((t) => ({ pts: t.points }));
+  const out: number[] = [];
+  const fork = standFork(s, lines);
+  if (fork) out.push(taxiways[fork.lane].id);
+  const lead = fork ? standLeadOut(s, lines) : null;
+  if (lead) out.push(taxiways[lead.lane].id);
+  return out;
 }
 
 /** Nearest point on any polyline within reach, for stands with no taxilane straight behind them. */

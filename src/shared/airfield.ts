@@ -8,9 +8,9 @@ export const CODES: readonly CodeLetter[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 export type Approach = 'visual' | 'nonPrecision' | 'precision';
 export const APPROACHES: readonly Approach[] = ['visual', 'nonPrecision', 'precision'];
 export type TaxiKind = 'taxiway' | 'taxilane' | 'rapidExit';
-/** Contact stands sit at a terminal with jet bridges, remote stands do not (docs/DESIGN_REVISION_2.md 3.5). */
-export type StandType = 'contact' | 'remote';
-export const STAND_TYPES: readonly StandType[] = ['contact', 'remote'];
+/** Contact stands sit at a terminal with jet bridges, remote stands do not (docs/DESIGN_REVISION_2.md 3.5). Through stands are remote stands an aircraft leaves forward (T72). */
+export type StandType = 'contact' | 'remote' | 'through';
+export const STAND_TYPES: readonly StandType[] = ['contact', 'remote', 'through'];
 /** The four stand sizes (docs/DESIGN_REVISION_2.md section 3.1). */
 export type StandSize = 'small' | 'medium' | 'large' | 'xl';
 export const STAND_SIZES_ORDER: readonly StandSize[] = ['small', 'medium', 'large', 'xl'];

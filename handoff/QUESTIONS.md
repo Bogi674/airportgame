@@ -221,3 +221,12 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Bridge side before the access types of T66 | Contact stands are drawn as access type 1 (bridge zone front left, staging and GSE front right). Remote stands keep the bus bay |
 | Connection state icons on the map | The states the game can compute today: no taxiway (red) and breaks taxiway clearance (amber), shown at every zoom. A stand with no lead in draws its box outline. Further states join when their systems exist |
 | Marking dimensions missing from the docs and data | Measured from the sheet at 7.5 px per meter and stored in `stand_sizes.json`. The user may change any of them later |
+
+## 2026-11-17 T72 pass through stands
+
+| Question | Answer (owner, 2026-11-17) |
+| --- | --- |
+| Connection of a pass through stand | Lead out optional: the stand is green with its lead in alone. With a lead out the aircraft enters from the tail side and leaves forward from the nose, one way. Without one it pushes back like any stand |
+| Data shape | A third stand type `through` beside contact and remote. Old saves keep their shape, no migration. Never a jet bridge |
+| Lead in and lead out shape | The two arc fork at both ends |
+| Markings and price | The sheet's taxi through markings plus the nose in extras (emergency triangle and GSE box). Price and box size as the remote stand of the same size (assumed, the price was not answered separately) |

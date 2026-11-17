@@ -109,11 +109,11 @@ function polylinePolygonDistance(pts: readonly Pt[], poly: readonly Pt[]): numbe
  * taxiway a stand leads into must clear the box by half the code span plus the stand's wingtip clearance,
  * every other taxiway by the code's taxiway to object distance. Null when the box is clear of all.
  */
-export function standTaxiwayClash(box: readonly Pt[], leadTaxiwayId: number, taxiways: readonly Taxiway[], codes: Record<CodeLetter, CodeClearance>, wingtipClearanceM: number): { taxiwayId: number } | null {
+export function standTaxiwayClash(box: readonly Pt[], leadTaxiwayIds: readonly number[], taxiways: readonly Taxiway[], codes: Record<CodeLetter, CodeClearance>, wingtipClearanceM: number): { taxiwayId: number } | null {
   const ordered = [...taxiways].sort((p, q) => p.id - q.id);
   for (const t of ordered) {
     const row = codes[t.code];
-    const required = t.id === leadTaxiwayId ? row.spanM / 2 + wingtipClearanceM : row.taxiObjectM;
+    const required = leadTaxiwayIds.includes(t.id) ? row.spanM / 2 + wingtipClearanceM : row.taxiObjectM;
     if (polylinePolygonDistance(t.points, box) < required) return { taxiwayId: t.id };
   }
   return null;

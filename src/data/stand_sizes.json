@@ -23,7 +23,8 @@
       "mergeable": false,
       "cost": {
         "contact": 8000,
-        "remote": 5000
+        "remote": 5000,
+        "through": 5000
       },
       "stopBarGapM": 3.0,
       "jetBridges": 0,
@@ -50,7 +51,8 @@
       "mergeable": false,
       "cost": {
         "contact": 120000,
-        "remote": 40000
+        "remote": 40000,
+        "through": 40000
       },
       "stopBarGapM": 3.5,
       "jetBridges": 1,
@@ -75,7 +77,8 @@
       "mergeable": false,
       "cost": {
         "contact": 220000,
-        "remote": 70000
+        "remote": 70000,
+        "through": 70000
       },
       "stopBarGapM": 5.0,
       "jetBridges": 2,
@@ -99,7 +102,8 @@
       "mergeable": true,
       "cost": {
         "contact": 300000,
-        "remote": 100000
+        "remote": 100000,
+        "through": 100000
       },
       "stopBarGapM": 5.0,
       "jetBridges": 2,

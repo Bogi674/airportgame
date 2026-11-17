@@ -1364,6 +1364,11 @@ export class Traffic {
           const sIdx = this.af.stands.findIndex((x) => x.id === this.standId[i]);
           if (sIdx >= 0 && this.standOwner[sIdx] === i) this.standOwner[sIdx] = -1;
           this.standId[i] = -1;
+        } else if (st === AcState.TaxiOut && this.standId[i] >= 0 && this.net.edgeKind[e] === EdgeKind.StandLeadOut && this.net.edgeKind[nextE] !== EdgeKind.StandLeadOut) {
+          // A forward departure from a pass through stand frees the stand where its lead out meets the taxilane (T72).
+          const sIdx = this.af.stands.findIndex((x) => x.id === this.standId[i]);
+          if (sIdx >= 0 && this.standOwner[sIdx] === i) this.standOwner[sIdx] = -1;
+          this.standId[i] = -1;
         }
         this.dist[i] -= len;
         if (this.dist[i] < 0) this.dist[i] = 0;
@@ -1869,7 +1874,19 @@ export class Traffic {
       this.depRetryAt[i] = this.tick + RETRY_TICKS;
       return;
     }
-    const bestN = this.forkPushback(s, this.net.route(from, hold.node, CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE), hold.node, t);
+    let bestN = this.forkPushback(s, this.net.route(from, hold.node, CODES_OF[t], ACR_OF[t], MASKS[t], this.tmpEdge, this.tmpDir, MAX_ROUTE), hold.node, t);
+    // A pass through stand is left forward (T72): the aircraft first drives the rest of its lead in, from
+    // its stop bar to the stand point, and then the lead out.
+    const forward = bestN > 0 && bestN < MAX_ROUTE && this.net.edgeKind[this.tmpEdge[0]] === EdgeKind.StandLeadOut;
+    if (forward) {
+      for (let k = bestN; k > 0; k--) {
+        this.tmpEdge[k] = this.tmpEdge[k - 1];
+        this.tmpDir[k] = this.tmpDir[k - 1];
+      }
+      this.tmpEdge[0] = this.net.standEdge[s];
+      this.tmpDir[0] = 1;
+      bestN++;
+    }
     const base = i * MAX_ROUTE;
     for (let k = 0; k < bestN; k++) {
       this.routeEdge[base + k] = this.tmpEdge[k];
@@ -1878,8 +1895,11 @@ export class Traffic {
     this.routeLen[i] = bestN;
     this.routeIdx[i] = 0;
     // Push back starts where the aircraft stands: an aircraft parked on its stop bar sits behind the stand point.
-    this.dist[i] = bestN > 0 && this.net.edgeKind[this.tmpEdge[0]] === EdgeKind.StandLeadIn && this.tmpDir[0] === -1
-      ? Math.min(this.net.edgeLen[this.tmpEdge[0]], Math.hypot(this.x[i] - this.af.stands[s].x, this.y[i] - this.af.stands[s].y))
+    const behind = Math.hypot(this.x[i] - this.af.stands[s].x, this.y[i] - this.af.stands[s].y);
+    this.dist[i] = bestN > 0 && this.net.edgeKind[this.tmpEdge[0]] === EdgeKind.StandLeadIn
+      ? this.tmpDir[0] === -1
+        ? Math.min(this.net.edgeLen[this.tmpEdge[0]], behind)
+        : Math.max(0, this.net.edgeLen[this.tmpEdge[0]] - behind)
       : 0;
     this.speed[i] = 0;
     this.depWait[i] = 0;
@@ -1897,7 +1917,7 @@ export class Traffic {
     this.state[i] = bestN === 1 ? AcState.TaxiOut : AcState.Pushback;
     this.stuckTicks[i] = 0;
     // The first edge is the stand lead in, driven backward as the push back.
-    if (this.net.edgeKind[this.tmpEdge[0]] !== EdgeKind.StandLeadIn) this.state[i] = AcState.TaxiOut;
+    if (forward || this.net.edgeKind[this.tmpEdge[0]] !== EdgeKind.StandLeadIn) this.state[i] = AcState.TaxiOut;
     if (f >= 0) {
       this.fState[f] = FlState.Departing;
       this.hooks?.pushback(f);

@@ -2,9 +2,9 @@ import { CODES, codeIndex, type AirfieldPayload, type CodeLetter, type Surface }
 import { AIRFIELD } from '@data/index';
 import { atan2Det } from '@shared/trig';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
-import { nearestOnLines, standForks } from '@shared/standFork';
+import { nearestOnLines, standForks, standLeadOut } from '@shared/standFork';
 
-export const EdgeKind = { Taxiway: 0, Taxilane: 1, RapidExit: 2, Runway: 3, StandLeadIn: 4, StandFork: 5 } as const;
+export const EdgeKind = { Taxiway: 0, Taxilane: 1, RapidExit: 2, Runway: 3, StandLeadIn: 4, StandFork: 5, StandLeadOut: 6 } as const;
 export const SAMPLE_M = 2;
 const MERGE_M = 3.5;
 const SNAP_M = 7;
@@ -26,12 +26,12 @@ interface Line {
   runwayId: number;
   /** Stand index for lead in lines, else -1. */
   standIdx: number;
-  /** Stand index for fork arcs (0 left, 1 right), else -1. */
+  /** Stand index for fork arcs (0 left, 1 right) and lead out lines, else -1. */
   forkStand: number;
   forkSide: number;
 }
 
-const isStandLine = (l: Line): boolean => l.edgeKind === EdgeKind.StandLeadIn || l.edgeKind === EdgeKind.StandFork;
+const isStandLine = (l: Line): boolean => l.edgeKind === EdgeKind.StandLeadIn || l.edgeKind === EdgeKind.StandFork || l.edgeKind === EdgeKind.StandLeadOut;
 
 /** Where aircraft hold before a runway entry. */
 export interface HoldInfo {
@@ -98,6 +98,8 @@ export class TaxiNetwork {
   adjDir = new Int8Array(0);
 
   standNode: Int32Array = new Int32Array(0);
+  /** 1 for a pass through stand with a lead out (T72), which departs forward. */
+  standOut: Uint8Array = new Uint8Array(0);
   standEdge: Int32Array = new Int32Array(0);
   /** Fork node per stand, and the arc edge per stand and side (index stand * 2 + side) that ends at it. */
   forkNode: Int32Array = new Int32Array(0);
@@ -199,7 +201,7 @@ export class TaxiNetwork {
       surface: surfaceIndex(s.surface),
       runwayId: -1,
       standIdx: kind === EdgeKind.StandLeadIn ? idx : -1,
-      forkStand: kind === EdgeKind.StandFork ? idx : -1,
+      forkStand: kind === EdgeKind.StandFork || kind === EdgeKind.StandLeadOut ? idx : -1,
       forkSide: side,
     });
     const forks = standForks(af.stands, taxiLines);
@@ -222,6 +224,16 @@ export class TaxiNetwork {
       }
       const hit = nearestOnLines(s, taxiLines, 150);
       if (hit) lines.push(standLine(s, idx, [hit, { x: s.x, y: s.y }], EdgeKind.StandLeadIn, -1));
+    });
+    // Lead outs of pass through stands (T72): a stem from the stop point to the out fork and two arcs onto
+    // the centerline ahead, driven only forward and only by an aircraft leaving that stand.
+    this.standOut = new Uint8Array(af.stands.length);
+    af.stands.forEach((s, idx) => {
+      const out = forks[idx] ? standLeadOut(s, taxiLines) : null;
+      if (!out) return;
+      this.standOut[idx] = 1;
+      lines.push(standLine(s, idx, [{ x: s.x, y: s.y }, out.fork], EdgeKind.StandLeadOut, -1));
+      out.arcs.forEach((arc, side) => lines.push(standLine(s, idx, arc.slice(), EdgeKind.StandLeadOut, side)));
     });
 
     this.splitCrossings(lines);
@@ -341,7 +353,7 @@ export class TaxiNetwork {
       ny.push(p.y);
       return nx.length - 1;
     };
-    const ids: number[][] = lines.map((l) => l.pts.map((p, k) => (l.edgeKind === EdgeKind.StandFork && k > 0 && k < l.pts.length - 1 ? privateNode(p) : nodeFor(p))));
+    const ids: number[][] = lines.map((l) => l.pts.map((p, k) => ((l.edgeKind === EdgeKind.StandFork || l.edgeKind === EdgeKind.StandLeadOut) && k > 0 && k < l.pts.length - 1 ? privateNode(p) : nodeFor(p))));
     const seqs: number[][] = ids.map((line) => {
       const seq: number[] = [];
       for (const n of line) if (seq.length === 0 || seq[seq.length - 1] !== n) seq.push(n);
@@ -459,7 +471,7 @@ export class TaxiNetwork {
       const kind = this.edgeKind[e];
       if (kind === EdgeKind.Runway || this.edgeOneWay[e] === 1) continue;
       // Taxiway edges share their taxiway's block, stand lead ins have their own.
-      const key = kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork ? 1_000_000 + e : this.edgeSource[e];
+      const key = kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork || kind === EdgeKind.StandLeadOut ? 1_000_000 + e : this.edgeSource[e];
       let b = blockOfKey.get(key);
       if (b === undefined) {
         b = blockOfKey.size;
@@ -507,7 +519,7 @@ export class TaxiNetwork {
     for (let st = 0; st < af.stands.length; st++) if (this.standEdge[st] >= 0) this.forkNode[st] = this.edgeFrom[this.standEdge[st]];
     for (let e = 0; e < E; e++) {
       const st = this.edgeForkStand[e];
-      if (st >= 0 && this.edgeTo[e] === this.forkNode[st]) this.forkEdge[st * 2 + this.edgeForkSide[e]] = e;
+      if (st >= 0 && this.edgeKind[e] === EdgeKind.StandFork && this.edgeTo[e] === this.forkNode[st]) this.forkEdge[st * 2 + this.edgeForkSide[e]] = e;
     }
     this.entryNode = new Int32Array(af.entries.length).fill(-1);
     af.entries.forEach((en, i) => {
@@ -754,6 +766,10 @@ export class TaxiNetwork {
         if (this.closed[m] === 1) continue;
         // Stand lead ins are dead ends: only the start or goal may sit on one.
         if (kind === EdgeKind.StandLeadIn && n !== from && m !== to) continue;
+        // A pass through stand with a lead out is left forward, never by push back (T72).
+        if (kind === EdgeKind.StandLeadIn && dir === -1 && this.standOut[this.edgeStand[e]] === 1) continue;
+        // A lead out is driven forward and only by an aircraft leaving its own stand.
+        if (kind === EdgeKind.StandLeadOut && (dir === -1 || from !== this.standNode[this.edgeForkStand[e]])) continue;
         // A fork is entered only on the way to its own stand and left only from it, never driven through.
         if (kind === EdgeKind.StandFork) {
           const st = this.edgeForkStand[e];

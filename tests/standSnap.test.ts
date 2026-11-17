@@ -79,7 +79,7 @@ describe('snapStand', () => {
         expect(fork).not.toBeNull();
         const slot = standSlot(size);
         if (!slot) throw new Error('no slot');
-        expect(standTaxiwayClash(standBox(stand, slot), t.id, [t], AIRFIELD.codes, STAND_SIZES[size].wingtipClearanceM)).toBeNull();
+        expect(standTaxiwayClash(standBox(stand, slot), [t.id], [t], AIRFIELD.codes, STAND_SIZES[size].wingtipClearanceM)).toBeNull();
       }
     }
   });

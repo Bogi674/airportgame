@@ -1,7 +1,7 @@
 import { AIRFIELD, BUSINESS, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { standBox, standTaxiwayClash } from '@shared/clearance';
-import { standFork } from '@shared/standFork';
+import { standLeadTaxiways } from '@shared/standFork';
 import { standSlot } from '@shared/standGeom';
 import {
   ACCEPT_GA,
@@ -114,14 +114,11 @@ const APPROACH_FEE: Record<string, number> = { visual: 0, nonPrecision: 250_000,
 
 /** Stands whose parked box breaks a taxiway clearance, ascending by id. Old saves can hold such stands, so they are flagged, not removed. */
 function findClearanceBreaches(af: AirfieldPayload): number[] {
-  const lines = af.taxiways.map((t) => ({ pts: t.points }));
   const out: number[] = [];
   for (const s of af.stands.slice().sort((p, q) => p.id - q.id)) {
     const slot = standSlot(s.size);
     if (!slot) continue;
-    const fork = standFork(s, lines);
-    const lead = fork ? af.taxiways[fork.lane].id : -1;
-    if (standTaxiwayClash(standBox(s, slot), lead, af.taxiways, AIRFIELD.codes, STAND_SIZES[s.size].wingtipClearanceM)) out.push(s.id);
+    if (standTaxiwayClash(standBox(s, slot), standLeadTaxiways(s, af.taxiways), af.taxiways, AIRFIELD.codes, STAND_SIZES[s.size].wingtipClearanceM)) out.push(s.id);
   }
   return out;
 }
@@ -642,7 +639,6 @@ export class Airfield {
     const boxes: PricedBox[] = [];
     if (spacing < spec.widthM) return { code: 'standSpacing', args: { min: Math.ceil(spec.widthM) } };
     const halfW = spec.widthM / 2;
-    const lines = this.data.taxiways.map((t) => ({ pts: t.points }));
     let number = this.standNumber;
     const slots = rowSlots(x, y, headingDeg, n, spacing);
     for (let i = 0; i < n; i++) {
@@ -665,17 +661,16 @@ export class Airfield {
         x: sx,
         y: sy,
         headingDeg: standHeading(headingDeg),
-        // Small stands have no jet bridges, so they are always remote.
-        type: size === 'small' ? 'remote' : type,
+        // Small stands have no jet bridges, so they are never contact stands.
+        type: size === 'small' && type === 'contact' ? 'remote' : type,
         size,
         code: sizeCode(size),
         surface,
         pushback: 'auto',
         accepts: accepts ?? defaultAccepts(size),
       };
-      // A stand box must clear every taxiway it does not lead into, and the one it leads into by its wingtip envelope.
-      const fork = standFork(stand, lines);
-      const lead = fork ? this.data.taxiways[fork.lane].id : -1;
+      // A stand box must clear every taxiway it does not lead into, and those it leads into by its wingtip envelope.
+      const lead = standLeadTaxiways(stand, this.data.taxiways);
       // A size with no rated aircraft has no slot to check, so its stands are refused rather than passed unchecked.
       const slot = standSlot(size);
       if (!slot) return { code: 'stand.taxiwayClearance' };

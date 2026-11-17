@@ -115,7 +115,7 @@ const standSize = z
     noseClearanceM: z.number().positive().nullable(),
     mergeable: z.boolean(),
     /** Build cost of one stand of this size. */
-    cost: z.strictObject({ contact: z.number().nonnegative(), remote: z.number().nonnegative() }),
+    cost: z.strictObject({ contact: z.number().nonnegative(), remote: z.number().nonnegative(), through: z.number().nonnegative() }),
     /** Spacing of the stop bars of the type groups, jet bridges on a contact stand, hydrant fuel pits. */
     stopBarGapM: z.number().positive(),
     jetBridges: z.number().int().nonnegative(),
