@@ -7,8 +7,8 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. T59 is done (2026-11-17). The next task is **T47** (stand markings), then T72 (pass through stands), T70 (snap markers) and T71 (taxiway sections) in the order of the phase 1 table. Run the `grill-me` skill and write the spec first; the old draft `handoff/tasks/T47-stand-markings.md` predates revision 4 and the user answers of 2026-11-17 in `handoff/QUESTIONS.md` (four sizes, accepts toggles, jet bridge as an upgrade that needs a second terminal floor).
-3. Build on what T59 left: `src/shared/standSnap.ts` (single stand snapping), `leadInGapM` and `leadInTargetGapM` in `src/shared/standGeom.ts`, `Stand.accepts` with `acceptBit` in `src/shared/airfield.ts`, and the connection line in the stand inspector.
+2. T47 is done (2026-11-17). The next task is **T72** (pass through stands, with the taxi through markings of the sheet), then T70 (snap markers) and T71 (taxiway sections), then T61. Run the `grill-me` skill and write the spec first.
+3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T70 and T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
 6. Known leftovers are in `handoff/BACKLOG.md`, known limits in `docs/ARCHITECTURE.md` section 13.
@@ -42,7 +42,7 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | --- | --- |
 | Foundation | Deterministic sim in a worker, fixed timestep, command log and replay, saves with migrations, autosave, export and import, crash panel, quality governor, CI with lint, tests, stress and Playwright in three engines |
 | Site | Seeded terrain, parcels with purchase, wind, climate, city, two presets, minimap and camera |
-| Airfield | Runways with works, taxiways with the revision 2 pavement generator, holding points, rapid exits, parallel taxiway prefab, aprons as merging polygons with remove and extend tools, single stands in four sizes that face and snap onto the nearest taxiway with R rotation, a lead in fork, a taxiway clearance check, their own paved slot, GA, commercial and cargo toggles and a taxiway connection line in the inspector, GA blocks, turn pads (look frozen), obstacle surfaces, wingtip envelopes, construction grid with snapping, undo and redo |
+| Airfield | Runways with works, taxiways with the revision 2 pavement generator, holding points, rapid exits, parallel taxiway prefab, aprons as merging polygons with remove and extend tools, single stands in four sizes that face and snap onto the nearest taxiway with R rotation, a lead in fork, a taxiway clearance check, their own paved slot, GA, commercial and cargo toggles and a taxiway connection line in the inspector, stand markings that follow the surfaces sheet (wing stop outline, double restraint line, stop ladder, push limit, emergency, no parking, GSE and GPU zones, zebra and STOP on the service road, GA marks per surface), red and amber connection badges on the map, GA blocks, turn pads (look frozen), obstacle surfaces, wingtip envelopes, construction grid with snapping, undo and redo |
 | Aircraft and movement | 10 aircraft types with sprites in four tiers, taxi network with conflict sets, routing, reservations, junction priority, push back, deadlock handling, performance checks, wake separation |
 | ATC | Free standing tower with five levels and a movement budget per runway |
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model |
@@ -89,10 +89,10 @@ Goal: stands become prefabs in four sizes, and flights are planned by the week f
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
 | T59 | Stand sizes small to extra large with nose in or pass through layout, GA, commercial and cargo toggles, single placement with rotation, lead in snapping to a centerline, live connection states, save migration (revision 4 section 2.1 to 2.4, user answers of 2026-11-17) |  | T57 | done 5bb09f6 0689ecf b7e005a. Pass through moved to T72, map icons to T47 |
-| T47 | Stand markings per design revision 3, regenerated from class, access type and upgrades, with connection state icons on the stand and the box drawn on stands with no lead in (moved from T59) |  | T59 | doing |
+| T47 | Stand markings per design revision 3, regenerated from class, access type and upgrades, with connection state icons on the stand and the box drawn on stands with no lead in (moved from T59) |  | T59 | done df63182. Taxi through markings moved to T72, MARS stays MVP 2 |
 | T61 | Weekly planner and flight series with a seven day stand timeline, auto planner, rotations migrated to daily series (section 3.1, 3.2, 3.5) | T41 model, T31 | T59 | todo |
 | T62 | Procedural destination network, generated airlines, series offers that grow with the rating, airline satisfaction (section 3.3, 3.4). Keep invented names and fleets limited to the MVP 1 types | T30, T31 | T61 | todo |
-| T72 | Pass through stands in all four sizes: layout picker in the stand tool, a lead out from the nose to a centerline ahead, departure forward with no push back, never a jet bridge (user, 2026-11-17, split from T59) |  | T59 | todo |
+| T72 | Pass through stands in all four sizes: layout picker in the stand tool, a lead out from the nose to a centerline ahead, departure forward with no push back, never a jet bridge, and the taxi through markings of `surfaces_stands.png` (lead in and out line with arrow, marshaller spot, fuel truck box, zebra walkway, bus only bay) (user, 2026-11-17, split from T59 and T47) |  | T59 | todo |
 | T70 | Snap markers and tooltips for every snap kind in the runway, taxiway, apron and stand tools; press and drag draws a taxiway segment (user, 2026-11-16) |  | T59 | todo |
 | T71 | Taxiway sections: a taxiway splits into separate records at every junction when one is built, with no seam in the pavement (user, 2026-11-16) |  | T59 | todo |
 

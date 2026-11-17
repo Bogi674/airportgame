@@ -379,6 +379,12 @@ Record every architectural choice with a date and one line of reason.
   * The 60 m lead in reach (D3) is a tool rule only. Reason: an unconnected stand is a valid state that the inspector reports (section 2.3), for example after a taxiway is demolished, and the sim already refuses to book it.
   * The business payload is resent when the airfield version changes. Reason: its stand link facts went stale for up to ten game minutes after a build.
   * Pass through stands, map icons for connection states and the box of a stand with no lead in are split off to T72 and T47.
+* 2026-11-17 T47 stand markings:
+  * Nose in stands follow `docs/art/surfaces_stands.png` exactly, with dimensions measured at 7.5 px per meter and stored in the `markings` block of `stand_sizes.json`. The wing stop outline angles in by a fixed 4 m to a nose line 15.2 m before the stand top. Reason: the user found the clearance searched funnel of revision 2 too steep and asked for the sheet.
+  * Front zones (emergency triangle, bridge band or bus bay, GSE box) keep `zoneClearM` from every assigned type by lowering their top, tested for every size. Sim values stay: the 12 m service road, stop bar gaps, nose clearance and hydrants (so medium stands show no fuel pits).
+  * Contact stands are drawn as access type 1 until T66; remote stands keep the bus bay. Taxi through markings come with T72, MARS markings with the MVP 2 MARS task. Reason: user answer of 2026-11-17, no marking code waits unused.
+  * Stand text reads upright with the terminal at the bottom of the page, as on the sheet. GA stands that take GA show their number as G plus the number on the map.
+  * Connection badges (red no taxiway, amber clearance breach) are drawn by the renderer at a fixed screen size from `src/render/standStates.ts`, refreshed with the airfield, so they show at every zoom. A stand with no lead in paints its box and number.
 
 ## 13. Known limits
 
