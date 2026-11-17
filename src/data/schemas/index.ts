@@ -5,3 +5,4 @@ export * from './people';
 export * from './profiles';
 export * from './sprites';
 export * from './market';
+export * from './fixtures';
