@@ -236,13 +236,28 @@ export class Sim {
         this.report(this.business.demolishTerminal(cmd.id));
         break;
       case 'signAirline':
-        this.report(this.business.signAirline(cmd.airlineId, cmd.rotations));
+        this.report(this.business.signAirline(cmd.airlineId, cmd.sign));
+        break;
+      case 'placeSeries':
+        this.report(this.business.market.place(cmd.seriesId, cmd.standId, cmd.minute, this.traffic.nowTick));
+        this.business.version++;
+        break;
+      case 'unplaceSeries':
+        this.report(this.business.market.unplace(cmd.seriesId));
+        this.business.version++;
+        break;
+      case 'cancelSeries':
+        this.report(this.business.market.cancel(cmd.seriesId));
+        this.business.version++;
+        break;
+      case 'renewSeries':
+        this.report(this.business.market.renew(cmd.seriesId, this.traffic.nowTick));
+        this.business.version++;
         break;
       case 'assignStand': {
         if (this.traffic.fState[cmd.flight] !== FlState.Scheduled) break;
         if (cmd.standId === -1) {
           this.traffic.fStand[cmd.flight] = -1;
-          this.rememberStand(cmd.flight, -1);
           this.business.version++;
           break;
         }
@@ -252,7 +267,6 @@ export class Sim {
           break;
         }
         this.traffic.fStand[cmd.flight] = cmd.standId;
-        this.rememberStand(cmd.flight, cmd.standId);
         this.business.version++;
         break;
       }
@@ -317,13 +331,6 @@ export class Sim {
     }
     this.traffic.fStand[f] = standId;
     this.business.version++;
-  }
-
-  /** Remembers a stand choice for the rotation of a flight, so the next day's flight of that rotation takes it. */
-  private rememberStand(flight: number, standId: number): void {
-    const airline = this.traffic.fAirline[flight];
-    const rot = this.traffic.fRot[flight];
-    if (airline >= 0 && rot >= 0) this.business.setStandPref(airline, rot, standId);
   }
 
   private report(problem: string | null): void {

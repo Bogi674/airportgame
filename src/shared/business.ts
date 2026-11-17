@@ -134,7 +134,7 @@ export interface Terminal {
   leased: number;
 }
 
-export type AirlineScope = 'regional' | 'national';
+export type AirlineScope = 'regional' | 'national' | 'international';
 export type FeeLevel = 0 | 1 | 2;
 
 export interface Airline {
@@ -145,15 +145,55 @@ export interface Airline {
   /** Aircraft type indexes the airline flies. */
   fleet: number[];
   minRating: number;
-  /** Rotations per day under contract, 0 when not signed. */
-  rotations: number;
-  /** Arrival slot of each rotation, minute of the day, in the order the player sees them. */
-  slots: number[];
-  /** Stand id the player chose for each rotation, -1 for none. Applied to the rotation's flight every morning (T41 D2). */
-  standPrefs: number[];
+  /** True while the airline has a contract with the airport. */
+  signed: boolean;
+  /** Destination index of the airline's home base. */
+  hub: number;
+  /** Airline satisfaction 0 to 100 (D14). */
+  happiness: number;
+  /** Weeks in a row below the cancel and the end thresholds of D14. */
+  lowWeeks: number;
+  veryLowWeeks: number;
   feeLevel: FeeLevel;
   flights: number;
   pax: number;
+}
+
+/** A generated airport the airlines fly to (docs/DESIGN_REVISION_4.md section 3.4). Rebuilt from the seed, never saved. */
+export interface Destination {
+  id: number;
+  name: string;
+  /** Great circle distance from the site in km. */
+  km: number;
+  bearingDeg: number;
+  /** 1 (small) to 5 (large), also the demand weight. */
+  size: number;
+  /** Index into the region list of market.json. */
+  region: number;
+}
+
+/**
+ * A flight series under contract (section 3.1): one aircraft type to one destination on fixed
+ * weekdays. The player places it once with a stand and an arrival minute, and it flies on every
+ * operating day at that time until it expires or is cancelled.
+ */
+export interface FlightSeries {
+  id: number;
+  airline: number;
+  dest: number;
+  typeIdx: number;
+  /** Operating weekdays as bits, Monday is bit 0. */
+  days: number;
+  /** Start of the preferred arrival window, minute of the day. */
+  winMin: number;
+  /** First and last game day of the contract, as day indexes; the series flies while startDay <= day < endDay. */
+  startDay: number;
+  endDay: number;
+  /** Placed stand and arrival minute of the day, -1 while unplaced. */
+  standId: number;
+  minute: number;
+  /** Nominal turnaround in minutes. */
+  turnMin: number;
 }
 
 export type WeatherKind = 'clear' | 'rain' | 'fog' | 'wind';
@@ -181,36 +221,16 @@ export interface BoardRow {
   startMin: number;
 }
 
-/** One scheduled rotation of a signed airline, as the flight offers sheet shows it. */
-export interface OfferRow {
-  /** Flight index for commands. */
-  flight: number;
-  /** Airline id, an index of the airline list. */
-  airline: number;
-  /** Aircraft type icao code, for display. Codes repeat across variants, so use typeIdx for data. */
-  type: string;
-  /** Index of the aircraft in the aircraft data list. */
-  typeIdx: number;
-  /** Scheduled arrival, minute of the day. */
-  arrMin: number;
-  /** Nominal turnaround in minutes, not stretched by ground handling slowdown. */
-  turnMin: number;
-  /** Arrival plus turnaround plus STAND_BLOCK_BUFFER_MIN: the minute the stand block ends. */
-  endMin: number;
-  /** Arrival in absolute game minutes, unwrapped, as the stand rule compares it. */
-  startMin: number;
-  /** Aircraft code letter, A to F, which the stand sizes and routing read. */
-  code: string;
-  /** Stage length in km, 0 for test flights. */
-  stageKm: number;
-  /** Stand the flight is assigned to, -1 for automatic. */
-  standId: number;
-}
-
 export interface BusinessPayload {
   board: BoardRow[];
-  /** Scheduled flights of signed airlines, earliest first, capped like the board. */
-  offers: OfferRow[];
+  /** Flight series of every signed airline (T61). */
+  series: FlightSeries[];
+  /** The destination network of the seed (T62). */
+  destinations: Destination[];
+  /** Airport stars from the rating (D27) and the two experiences behind the rating, in percent. */
+  stars: number;
+  paxScore: number;
+  airlineScore: number;
   /** 1 or 0 per stand, indexed like airfield.data.stands: a taxi node reaches the stand. */
   standLinked: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a contact stand has a terminal in reach, others are 1. */

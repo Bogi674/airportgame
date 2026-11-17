@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. T71 is done (2026-11-17). T61 and T62 are built together (user, 2026-11-17).
+2. Phase 1 is done (2026-11-17). The next task is **T60** (service roads and apron lanes). Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
@@ -36,7 +36,7 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 
 ## 3. What is built (2026-11-17)
 
-A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 16.
+A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 18.
 
 | Area | Built |
 | --- | --- |
@@ -47,12 +47,12 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | ATC | Free standing tower with five levels and a movement budget per runway |
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model |
 | Passengers | Departing cohorts by profile, walking graph, service nodes and queues, journey from curb to boarding, people atlas with 30 recipes, density, queue and walking distance overlays |
-| Flights | Daily rotations offered per airline and dragged onto a stand timeline, automation toggle, flights board, general aviation arriving on its own |
+| Flights | A destination network of 80 generated airports per seed, airlines that sign with flight series on fixed weekdays, a weekly planner with day tabs where one drop places a series on all its days, an auto planner, airline satisfaction with cancellations, renewals and new airlines approaching as stars grow, flights board, general aviation arriving on its own |
 | Ground handling | Eight vehicle types that spawn near the stand, approach on paths that never cross the aircraft and dock at door positions from data, with ground shadows. Aircraft stop with the nose gear on their stop line. A fixed turnaround time per role |
-| Business | Seven fixed airlines with contracts and fees, daily ledger, one term loan, shop rent, ratings, weather events (rain, fog, strong wind) |
+| Business | Seven generated airline slots with rating gates, contracts and fees, stars from passenger and airline experience, daily ledger, one term loan, shop rent, ratings, weather events (rain, fog, strong wind) |
 | UI | Main menu, new game, top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
 
-Simplified today and replaced by the phases below: vehicles without roads or depots, rotation based flights, fixed airlines, rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
+Simplified today and replaced by the phases below: vehicles without roads or depots, rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
 
 ## 4. MVP 1 phases
 
@@ -61,7 +61,7 @@ MVP 1 ends with the acceptance task T38.
 | Phase | Theme | Tasks | Status |
 | --- | --- | --- | --- |
 | 0 | Repair | T57, T58, T69 | done |
-| 1 | Stands and flight planning | T59, T47, T61, T62, T72, T70, T71 | todo |
+| 1 | Stands and flight planning | T59, T47, T61, T62, T72, T70, T71 | done |
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66 | todo |
 | 3 | People | T54, T67, T20, T68 | todo |
 | 4 | Tenants and events | T32, T50 | todo |
@@ -90,8 +90,8 @@ Goal: stands become prefabs in four sizes, and flights are planned by the week f
 | --- | --- | --- | --- | --- |
 | T59 | Stand sizes small to extra large with nose in or pass through layout, GA, commercial and cargo toggles, single placement with rotation, lead in snapping to a centerline, live connection states, save migration (revision 4 section 2.1 to 2.4, user answers of 2026-11-17) |  | T57 | done 5bb09f6 0689ecf b7e005a. Pass through moved to T72, map icons to T47 |
 | T47 | Stand markings per design revision 3, regenerated from class, access type and upgrades, with connection state icons on the stand and the box drawn on stands with no lead in (moved from T59) |  | T59 | done df63182. Taxi through markings moved to T72, MARS stays MVP 2 |
-| T61 | Weekly planner and flight series with a seven day stand timeline, auto planner, rotations migrated to daily series (section 3.1, 3.2, 3.5) | T41 model, T31 | T59 | todo |
-| T62 | Procedural destination network, generated airlines, series offers that grow with the rating, airline satisfaction (section 3.3, 3.4). Keep invented names and fleets limited to the MVP 1 types | T30, T31 | T61 | todo |
+| T61 | Weekly planner and flight series with a seven day stand timeline, auto planner, rotations migrated to daily series (section 3.1, 3.2, 3.5) | T41 model, T31 | T59 | done SERIESC. Built with T62 |
+| T62 | Procedural destination network, generated airlines, series offers that grow with the rating, airline satisfaction (section 3.3, 3.4). Keep invented names and fleets limited to the MVP 1 types | T30, T31 | T61 | done SERIESC. Cleanliness joins the rating in T63 |
 | T72 | Pass through stands in all four sizes: layout picker in the stand tool, a lead out from the nose to a centerline ahead, departure forward with no push back, never a jet bridge, and the taxi through markings of `surfaces_stands.png` (lead in and out line with arrow, marshaller spot, fuel truck box, zebra walkway, bus only bay) (user, 2026-11-17, split from T59 and T47) |  | T59 | done a24faca fed30a7. Price assumed equal to remote |
 | T70 | Snap markers and tooltips for every snap kind in the runway, taxiway, apron and stand tools; press and drag draws a taxiway segment (user, 2026-11-16) |  | T59 | done 3c7fd45 |
 | T71 | Taxiway sections: a taxiway splits into separate records at every junction when one is built, with no seam in the pavement (user, 2026-11-16) |  | T59 | done 3875d8d |

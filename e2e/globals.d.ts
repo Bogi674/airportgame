@@ -11,7 +11,7 @@ interface E2EGame {
   cash: number;
   tick: number;
   screen: string;
-  business: { today: number[]; terminals: unknown[]; rating: number; paxToday: number; history: number[][]; airlines: { rotations: number }[]; board: unknown[]; day: number } | null;
+  business: { today: number[]; terminals: unknown[]; rating: number; paxToday: number; history: number[][]; airlines: { signed: boolean }[]; board: unknown[]; day: number } | null;
   site: { parcelCount: number; corridor: { cx: number; cy: number }; parcelId: Uint16Array; parcelType: Uint8Array } | null;
 }
 

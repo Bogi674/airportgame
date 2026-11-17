@@ -1,9 +1,10 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS } from '@data/index';
-import { LEDGER_CATEGORIES, type FeeLevel } from '@shared/business';
+import { LEDGER_CATEGORIES } from '@shared/business';
 import type { Command } from '@sim/commands';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { GA_LABEL, type BoardRow, type BusinessPayload, type OfferRow } from '@shared/business';
+import { GA_LABEL, type BoardRow, type BusinessPayload } from '@shared/business';
+import { AirlinesSheet, PlannerSheet } from './Planner';
 import type { Stand } from '@shared/airfield';
 import { blockWindow, blocksOverlap, refuseBlock, type BlockWindow, type PlacedBlock, type StandRefusal } from '@shared/flightBlock';
 import { standRefusalAt } from './standRule';
@@ -19,7 +20,7 @@ interface Props {
 
 const TABS = ['airlines', 'slots', 'stands', 'flights', 'finance', 'site'] as const;
 
-function Sheet({ title, children, testId }: { title: string; children: preact.ComponentChildren; testId: string }) {
+export function Sheet({ title, children, testId }: { title: string; children: preact.ComponentChildren; testId: string }) {
   const setSheet = useGameStore((s) => s.setSheet);
   const current = useGameStore((s) => s.sheet);
   return (
@@ -39,63 +40,6 @@ function Sheet({ title, children, testId }: { title: string; children: preact.Co
       </div>
       {children}
     </div>
-  );
-}
-
-function AirlinesSheet({ send }: Props) {
-  const b = useGameStore((s) => s.business);
-  if (!b) return null;
-  const max = Math.min(6, 1 + Math.floor(b.rating / 20));
-  return (
-    <Sheet title={t('airlines.title')} testId="sheet-airlines">
-      <div style="color:var(--muted);font-size:12px;margin-bottom:8px">{tFormat('airlines.max', { n: max })}</div>
-      <div style="display:grid;gap:8px">
-        {b.airlines.map((a) => {
-          const locked = b.rating < a.minRating && a.rotations === 0;
-          return (
-            <div key={a.id} data-testid={`airline-${a.id}`} style="display:grid;grid-template-columns:1.4fr 1.6fr 1fr 1.6fr;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:10px">
-              <div>
-                <div style="font-weight:600">{a.name}</div>
-                <div style="font-size:12px;color:var(--muted)">{tDynamic(`airlines.scope.${a.scope}`)}</div>
-              </div>
-              <div style="font-size:12px">
-                {t('airlines.fleet')}: {a.fleet.map((f) => AIRCRAFT[f].name).join(', ')}
-                <div style="color:var(--muted)">{tFormat('airlines.stats', { flights: a.flights, pax: formatInt(a.pax) })}</div>
-              </div>
-              <label style="font-size:12px">
-                {t('airlines.fee')}
-                <select value={a.feeLevel} onChange={(e) => send({ type: 'setAirlineFee', airlineId: a.id, level: Number((e.target as HTMLSelectElement).value) as FeeLevel })}>
-                  {[0, 1, 2].map((l) => (
-                    <option key={l} value={l}>
-                      {tDynamic(`airlines.fee.${l}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
-                {locked ? (
-                  <span style="color:var(--warn);font-size:12px">{tFormat('airlines.need', { n: a.minRating })}</span>
-                ) : (
-                  <>
-                    <label style="font-size:12px">
-                      {t('airlines.rotations')}
-                      <input data-testid={`rot-${a.id}`} type="number" min="0" max={max} value={a.rotations} style="width:48px" onChange={(e) => send({ type: 'signAirline', airlineId: a.id, rotations: Number((e.target as HTMLInputElement).value) })} />
-                    </label>
-                    {a.rotations === 0 ? (
-                      <button data-testid={`sign-${a.id}`} onClick={() => send({ type: 'signAirline', airlineId: a.id, rotations: 1 })}>
-                        {t('airlines.sign')}
-                      </button>
-                    ) : (
-                      <button onClick={() => send({ type: 'signAirline', airlineId: a.id, rotations: 0 })}>{t('airlines.end')}</button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Sheet>
   );
 }
 
@@ -164,129 +108,22 @@ function FinanceSheet({ send }: Props) {
   );
 }
 
-const clock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-/** Grid columns of an offer row: type, arrival, turnaround, stage and the stand select. */
-const OFFER_COLS = 'display:grid;grid-template-columns:70px 64px 90px 90px 1fr;gap:8px;align-items:center;font-size:12px';
-
-/** The refusal of the first stand when every stand refuses the offer's aircraft, otherwise null. */
-function allStandsRefuse(o: OfferRow, b: BusinessPayload, stands: Stand[]): StandRefusal | null {
-  let first: StandRefusal | null = null;
-  for (let i = 0; i < stands.length; i++) {
-    const r = standRefusalAt(b, i, stands[i], AIRCRAFT[o.typeIdx], 'commercial');
-    if (r === null) return null;
-    if (first === null) first = r;
-  }
-  return first;
-}
-
-/** The reason the offers list is empty, or null when it has rows. */
-function offersEmptyKey(b: BusinessPayload, runways: number, stands: number): StringKey | null {
-  if (b.airlines.every((a) => a.rotations <= 0)) return 'slots.noAirline';
-  if (runways === 0) return 'slots.noRunway';
-  if (stands === 0) return 'slots.noStand';
-  if (b.offers.length === 0) return 'slots.noOffers';
-  return null;
-}
-
-/**
- * Flight offers: every signed airline offers its scheduled flights for the day. A stand select per row
- * assigns the stand. The load bar counts landings and takeoffs per hour against the tower budget. No time is editable.
- */
-function SlotsSheet({ send }: Props) {
-  const b = useGameStore((s) => s.business);
-  const af = useGameStore((s) => s.airfield);
-  if (!b) return null;
-  const signed = b.airlines.filter((a) => a.rotations > 0);
-  const perHour = new Array<number>(24).fill(0);
-  for (const o of b.offers) {
-    perHour[Math.floor(o.arrMin / 60) % 24]++;
-    perHour[Math.floor((o.arrMin + o.turnMin) / 60) % 24]++;
-  }
-  const peak = Math.max(1, ...perHour);
-  const emptyKey = offersEmptyKey(b, af.runways.length, af.stands.length);
-  return (
-    <Sheet title={t('slots.title')} testId="sheet-slots">
-      <div style="color:var(--muted);font-size:12px;margin-bottom:8px">{tFormat('slots.help', { cap: b.movementBudget })}</div>
-      <div class="section">{tFormat('slots.load', { cap: b.movementBudget })}</div>
-      <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:64px;margin-bottom:12px" data-testid="slot-load">
-        {perHour.map((n, h) => (
-          <div key={h} title={`${String(h).padStart(2, '0')}:00, ${n}`} style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10px;color:var(--muted)">
-            <div style={`width:100%;height:${Math.round((n / peak) * 40)}px;background:${n > b.movementBudget ? 'var(--bad)' : 'var(--accent)'};border-radius:2px`} />
-            {String(h).padStart(2, '0')}
-          </div>
-        ))}
-      </div>
-      {emptyKey !== null && <div>{t(emptyKey)}</div>}
-      {emptyKey === null && (
-        <div style="display:grid;gap:8px">
-          {signed.map((a) => {
-            const rows = b.offers.filter((o) => o.airline === a.id);
-            if (rows.length === 0) return null;
-            return (
-              <div key={a.id} data-testid={`slots-${a.id}`} style="padding:8px;border:1px solid var(--line);border-radius:10px">
-                <div style="font-weight:600;margin-bottom:6px">{a.name}</div>
-                <div style={`${OFFER_COLS};color:var(--muted);margin-bottom:4px`}>
-                  <span>{t('slots.type')}</span>
-                  <span>{t('slots.arrival')}</span>
-                  <span>{t('slots.turnaround')}</span>
-                  <span>{t('slots.stage')}</span>
-                  <span>{t('slots.stand')}</span>
-                </div>
-                {rows.map((o) => {
-                  const bad = allStandsRefuse(o, b, af.stands);
-                  return (
-                    <div key={o.flight} data-testid={`offer-row-${o.flight}`} style="margin-bottom:4px">
-                      <div style={OFFER_COLS}>
-                        <span>{o.type}</span>
-                        <span>{clock(o.arrMin)}</span>
-                        <span>{o.turnMin} min</span>
-                        <span>{formatInt(o.stageKm)} km</span>
-                        <select
-                          data-testid={`offer-stand-${o.flight}`}
-                          style="min-width:0"
-                          value={o.standId}
-                          onChange={(e) => send({ type: 'assignStand', flight: o.flight, standId: Number((e.target as HTMLSelectElement).value) })}
-                        >
-                          <option value={-1}>{t('slots.auto')}</option>
-                          {af.stands.map((st, i) => (
-                            <option key={st.id} value={st.id} disabled={st.id !== o.standId && standRefusalAt(b, i, st, AIRCRAFT[o.typeIdx], 'commercial') !== null}>
-                              {st.number}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      {bad !== null && (
-                        <div data-testid={`offer-bad-${o.flight}`} style="color:var(--bad);font-size:12px">
-                          {noticeText(bad, {})}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Sheet>
-  );
-}
-
-const HOUR_PX = 72;
+export const clock = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+export const HOUR_PX = 72;
 /** A block shows its aircraft code only when it is this wide in pixels: the code is 32 px, plus 6 px padding and 2 px border. */
 const LABEL_MIN_PX = 40;
 
-function airlineHue(name: string): number {
+export function airlineHue(name: string): number {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
   return h;
 }
 
 /** Pointer travel in pixels before a press on a block becomes a drag, so a plain click still selects. */
-const DRAG_START_PX = 4;
+export const DRAG_START_PX = 4;
 /** Smallest hit area of a block in pixels, so a short turn stays easy to grab. */
 const MIN_HIT_PX = 24;
-const ROW_PX = 34;
+export const ROW_PX = 34;
 
 type FaultCode = StandRefusal | 'standBusy';
 
@@ -376,7 +213,7 @@ function rowFault(b: BusinessPayload, stands: Stand[], standId: number, r: Board
 const faultText = (f: RowFault): string => (f.code === 'standBusy' ? tFormat('stands.conflict', { flight: f.flight }) : noticeText(f.code, {}));
 
 /** The row element under a pointer, its stand id (-1 for unassigned) and its top edge. */
-function rowUnder(e: PointerEvent): { id: number; top: number } | null {
+export function rowUnder(e: PointerEvent): { id: number; top: number } | null {
   const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-row]');
   if (!el) return null;
   return { id: Number(el.dataset.row), top: el.getBoundingClientRect().top };
@@ -731,7 +568,7 @@ function SiteSheet() {
 export function Sheets({ send }: Props) {
   const sheet = useGameStore((s) => s.sheet);
   if (sheet === 'airlines') return <AirlinesSheet send={send} />;
-  if (sheet === 'slots') return <SlotsSheet send={send} />;
+  if (sheet === 'slots') return <PlannerSheet send={send} />;
   if (sheet === 'stands') return <StandsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;

@@ -2,7 +2,7 @@ import { tDynamic, tFormat, type StringKey } from './strings';
 import { formatInt } from './format';
 
 /** Event codes that become alerts, as opposed to build notices. */
-export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'noAtc', 'atcLost', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock']);
+export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'noAtc', 'atcLost', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock', 'seriesExpired', 'seriesRenewal', 'seriesCancelled', 'seriesOffered', 'airlineLeft', 'airlineApproach']);
 
 export function parseEvent(code: string): { name: string; args: Record<string, string> } {
   const parts = code.split('|');
@@ -26,6 +26,14 @@ export function alertText(code: string): { text: string; tone: 'info' | 'warn' }
   switch (name) {
     case 'airlineSigned':
       return { text: tFormat('alert.airlineSigned', { name: args.name ?? '' }), tone: 'info' };
+    case 'seriesExpired':
+    case 'seriesRenewal':
+    case 'seriesCancelled':
+      return { text: tDynamic(`alert.${name}`).replace('{name}', args.name ?? '').replace('{dest}', args.dest ?? ''), tone: name === 'seriesRenewal' ? 'info' : 'warn' };
+    case 'seriesOffered':
+    case 'airlineApproach':
+    case 'airlineLeft':
+      return { text: tDynamic(`alert.${name}`).replace('{name}', args.name ?? ''), tone: name === 'airlineLeft' ? 'warn' : 'info' };
     case 'airlineIdle':
       return { text: tFormat('alert.airlineIdle', { name: args.name ?? '' }), tone: 'warn' };
     case 'noAtc':

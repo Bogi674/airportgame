@@ -405,6 +405,19 @@ Record every architectural choice with a date and one line of reason.
   * The first section keeps the record, its id and the remainder of the cost; later sections get a new id and their share of the cost by length. Holds, works and settings are copied to every section.
   * Taxiways enter the list as copies on redo, so later in place edits never reach an undo snapshot.
 
+* 2026-11-17 T61 and T62 flight series, destinations and generated airlines (built together, user):
+  * Rotations are gone. A signed airline brings D11 base series plus two per star (D15), each one type to one destination on fixed weekdays (D9 patterns, equal weights, user), a uniform 4 h preferred window from 05:00 to 20:00 (D12, user) and a 26 week contract (D10). All values live in `src/data/market.json`. Reason: section 3 of design revision 4.
+  * `Market` (`src/sim/market/market.ts`) owns the series, the airline generator and the destination network. Destinations come from their own RNG fork and are rebuilt from the seed, never saved; series and their RNG state are saved. Flights carry their series id in `fRot`.
+  * The weekly rule (`src/shared/seriesPlan.ts`) checks the stand block of every operating day with wrap past midnight and past Sunday, so the planner preview and the sim agree. Placement also checks the stand rule, takeoff for the stage on some runway, and the tower budget per hour of the week. One drop places all operating days; a placement for today still flies today when its arrival is at least 45 minutes ahead, the same spawn lead rotations used.
+  * The automation toggle is the auto planner: it places unplaced series at the first valid stand and minute inside the window, own stand size first.
+  * Airline satisfaction follows D14 with weekly drift on Mondays; on time is pushback within 15 minutes of the scheduled off block (D13). The worst series dropped at the cancel threshold is an unplaced one first, then the most frequent, then the newest.
+  * Stars count the D27 cuts the rating has passed. The rating now follows two experiences (user): passengers (toilets, shops, queues as the share served in time, punctuality) and airlines (ground handling from the service slowdown, airside infrastructure, punctuality). Cleanliness joins both with cleaning in T63. The airline list stops growing at 120, because `fAirline` is an Int8Array.
+  * Save version 18 turns each rotation into a daily series at its old slot, on its remembered stand or unplaced, to the destination nearest its scope's typical stage, with a fresh contract.
+* 2026-11-17 user reports during T61:
+  * Apron and stand overlaps are measured with the clipper on both sides; the shoelace area of a rotated box differed from its clipped area and refused stands far from any runway.
+  * A push back that has not left its stand waits while a taxiing aircraft's route passes its junction within 250 m, unless that aircraft waits for it or heads for the stand it leaves.
+  * The aircraft silhouette tier starts at 0.3 px per metre, and the tier 0 arrow, a marker rather than a true scale asset, grows to at least 24 px on screen (`arrowMinPx`).
+
 ## 13. Known limits
 
 Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.

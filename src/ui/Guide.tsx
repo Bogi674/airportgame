@@ -18,7 +18,7 @@ export function Guide() {
     { key: 'guide.stand', done: af.stands.length > 0 },
     { key: 'guide.terminal', done: terminalReady },
     { key: 'guide.atc', done: af.runways.length > 0 && (af.towers?.length ?? 0) > 0 },
-    { key: 'guide.airline', done: !!b && b.airlines.some((a) => a.rotations > 0) },
+    { key: 'guide.airline', done: !!b && b.airlines.some((a) => a.signed) },
   ];
   const all = steps.every((s) => s.done);
   return (

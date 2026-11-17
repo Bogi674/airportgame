@@ -10,8 +10,8 @@ function prepared(): Sim {
   sim.cash = 80_000_000;
   buildTestAirport(sim, { standsPerRow: 6 });
   buildTestTerminal(sim, { shop: true });
-  run(sim, { type: 'signAirline', airlineId: 0, rotations: 3 });
-  run(sim, { type: 'signAirline', airlineId: 1, rotations: 3 });
+  run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+  run(sim, { type: 'signAirline', airlineId: 1, sign: true });
   run(sim, { type: 'setTestTraffic', perHour: 20, turnScale: 0.1 });
   return sim;
 }
@@ -34,21 +34,6 @@ describe('saves', () => {
     expect(c.stateHash()).toBe(a.stateHash());
     expect(c.traffic.completedFlights).toBe(a.traffic.completedFlights);
   }, 120000);
-
-  it('a version 9 save loads with no remembered stands per rotation', () => {
-    const sim = prepared();
-    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
-      version: number;
-      business: { airlines: { standPrefs?: number[] }[] };
-      traffic: { arrays: Record<string, string> };
-    };
-    data.version = 9;
-    for (const a of data.business.airlines) delete a.standPrefs;
-    delete data.traffic.arrays.fRot;
-    const c = new Sim('GOLDEN-0001', OPTIONS);
-    expect(() => c.restore(data)).not.toThrow();
-    for (const a of c.business.airlines) expect(a.standPrefs).toEqual(new Array<number>(a.rotations).fill(-1));
-  });
 
   it('a version 10 save loads with every terminal on floor 0', () => {
     const sim = prepared();

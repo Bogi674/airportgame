@@ -56,7 +56,12 @@ export type Command =
   /** level is the floor index and defaults to 0, the only floor that can be built for now. */
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; level?: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
-  | { type: 'signAirline'; airlineId: number; rotations: number }
+  | { type: 'signAirline'; airlineId: number; sign: boolean }
+  /** Weekly planner (T61): place a flight series on a stand at an arrival minute of the day, on all its operating days. */
+  | { type: 'placeSeries'; seriesId: number; standId: number; minute: number }
+  | { type: 'unplaceSeries'; seriesId: number }
+  | { type: 'cancelSeries'; seriesId: number }
+  | { type: 'renewSeries'; seriesId: number }
   | { type: 'setAirlineFee'; airlineId: number; level: FeeLevel }
   | { type: 'takeLoan'; amount: number }
   | { type: 'repayLoan'; amount: number }

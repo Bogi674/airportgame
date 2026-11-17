@@ -4,7 +4,7 @@ import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 17;
+export const SAVE_VERSION = 18;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -134,5 +134,41 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 16 to 17: a taxiway may name the line it is a section of (T71). Older taxiways have none and are their own line.
   if (save.version < 17) save.version = 17;
+  // Version 17 to 18: daily rotations become flight series (docs/DESIGN_REVISION_4.md section 3.5). Each rotation flies
+  // daily at its old slot, on its remembered stand when it had one, to the destination nearest its scope's typical
+  // stage. The destination is stored as a negative stage in km and resolved when the market loads.
+  if (save.version < 18) {
+    const b = (save as { business?: { day?: number; airlines?: Record<string, unknown>[]; market?: unknown } }).business;
+    if (b?.airlines && b.market === undefined) {
+      const day = typeof b.day === 'number' ? b.day : 0;
+      const series: Record<string, number>[] = [];
+      let next = 1;
+      for (const a of b.airlines) {
+        if (!('rotations' in a)) continue;
+        const rotations = typeof a.rotations === 'number' ? a.rotations : 0;
+        const slots = (a.slots as number[] | undefined) ?? [];
+        const prefs = (a.standPrefs as number[] | undefined) ?? [];
+        const fleet = (a.fleet as number[] | undefined) ?? [];
+        const id = a.id as number;
+        const stage = a.scope === 'regional' ? 525 : 1450;
+        for (let k = 0; k < rotations && fleet.length > 0; k++) {
+          const slot = slots[k] ?? 360;
+          const stand = prefs[k] ?? -1;
+          series.push({ id: next++, airline: id, dest: -stage, typeIdx: fleet[(id + k) % fleet.length], days: 127, winMin: slot, startDay: day, endDay: day + 26 * 7, standId: stand, minute: stand >= 0 ? slot : -1, turnMin: 0 });
+        }
+        a.signed = rotations > 0;
+        a.hub = -1;
+        a.happiness = 60;
+        a.lowWeeks = 0;
+        a.veryLowWeeks = 0;
+        if (a.minRating === 70) a.scope = 'international';
+        delete a.rotations;
+        delete a.slots;
+        delete a.standPrefs;
+      }
+      b.market = { series, nextSeries: next };
+    }
+    save.version = 18;
+  }
   return save as SaveData;
 }

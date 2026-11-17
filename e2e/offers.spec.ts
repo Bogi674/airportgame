@@ -31,71 +31,64 @@ async function buildOffersAirport(page: Page): Promise<void> {
   await edit(1, { op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 });
   await edit(1, { op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 });
   await send({ type: 'buildTower', x: 3300, y: 5600, level: 1 });
-  await send({ type: 'signAirline', airlineId: 0, rotations: 2 });
-  await send({ type: 'signAirline', airlineId: 1, rotations: 2 });
+  await send({ type: 'signAirline', airlineId: 0, sign: true });
+  await send({ type: 'signAirline', airlineId: 1, sign: true });
 }
 
-/** Flight indexes that are scheduled and hold no stand, earliest first. */
-function unassignedFlights(page: Page): Promise<number[]> {
+/** Ids of series that are signed and not yet placed. */
+function unplacedSeries(page: Page): Promise<number[]> {
   return page.evaluate(() => {
-    const board = (window.__store?.getState().business?.board ?? []) as { flight: number; standId: number; status: string }[];
-    return board.filter((r) => r.flight >= 0 && r.standId < 0 && r.status === 'scheduled').map((r) => r.flight);
+    const series = (window.__store?.getState().business as unknown as { series: { id: number; minute: number }[] } | null)?.series ?? [];
+    return series.filter((s) => s.minute < 0).map((s) => s.id);
   });
 }
 
-function standOf(page: Page, flight: number): Promise<number> {
-  return page.evaluate((f) => {
-    const board = (window.__store?.getState().business?.board ?? []) as { flight: number; standId: number }[];
-    return board.find((r) => r.flight === f)?.standId ?? -2;
-  }, flight);
+function standOfSeries(page: Page, id: number): Promise<number> {
+  return page.evaluate((sid) => {
+    const series = (window.__store?.getState().business as unknown as { series: { id: number; standId: number }[] } | null)?.series ?? [];
+    return series.find((s) => s.id === sid)?.standId ?? -2;
+  }, id);
 }
 
-/** Drags a block with the mouse onto a stand row, and checks the row shows the expected drop mark while the pointer is over it. */
-async function dragOnto(page: Page, flight: number, rowTestId: string, mark: 'drop-ok' | 'drop-bad'): Promise<void> {
+/** Drags a series with the mouse onto a planner row at about 08:00, and checks the drop mark while the pointer is over it. */
+async function dragOnto(page: Page, id: number, rowTestId: string, mark: 'drop-ok' | 'drop-bad'): Promise<void> {
   const row = page.getByTestId(rowTestId);
   await row.scrollIntoViewIfNeeded();
-  const block = page.getByTestId(`offer-${flight}`);
-  await block.scrollIntoViewIfNeeded();
-  const from = await block.boundingBox();
-  const to = await row.boundingBox();
-  if (!from || !to) throw new Error('block or row is not on screen');
-  const sx = from.x + from.width / 2;
+  const chip = page.getByTestId('lane-unplaced').getByTestId(`series-${id}`);
+  const from = await chip.boundingBox();
+  const grid = await row.locator('.tl-grid').boundingBox();
+  if (!from || !grid) throw new Error('series or row is not on screen');
+  const sx = from.x + 6;
   const sy = from.y + from.height / 2;
   await page.mouse.move(sx, sy);
   await page.mouse.down();
-  await page.mouse.move(sx, sy + 8, { steps: 2 });
-  await page.mouse.move(sx, to.y + to.height / 2, { steps: 12 });
+  await page.mouse.move(sx + 8, sy + 8, { steps: 2 });
+  await page.mouse.move(grid.x + 8 * 72 + 6, grid.y + grid.height / 2, { steps: 12 });
   await expect(page.getByTestId(mark)).toBeVisible();
   await page.mouse.up();
 }
 
-test('stand timeline: a flight dragged onto a stand row takes it, a refused drop stays with a notice', async ({ page }) => {
+test('weekly planner: a series dragged onto a stand row is placed, a refused drop stays unplaced with a notice', async ({ page }) => {
   const errors = watchErrors(page);
   await startNewGame(page);
+  await page.evaluate(() => window.__send?.({ type: 'setAutoStands', on: false }));
   await buildOffersAirport(page);
-  await expect.poll(async () => (await unassignedFlights(page)).length, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
-  const [first, second] = await unassignedFlights(page);
+  await expect.poll(async () => (await unplacedSeries(page)).length, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+  const [first, second] = await unplacedSeries(page);
 
-  await page.getByTestId('tool-stands').click();
-  await page.getByTestId('menutab-manage').click();
-  await page.getByTestId('card-standManagement').click();
-  await expect(page.getByTestId('sheet-stands')).toBeVisible();
-  await page.getByTestId('auto-stands').uncheck();
-  await expect(page.getByTestId('lane-unassigned').getByTestId(`offer-${first}`)).toBeVisible();
-
+  await page.evaluate(() => (window.__store?.getState() as unknown as { setSheet(s: string): void }).setSheet('slots'));
+  await expect(page.getByTestId('sheet-slots')).toBeVisible();
   const stand = await page.evaluate(() => {
     const stands = (window.__store?.getState().airfield.stands ?? []) as { id: number }[];
     return stands[0]?.id ?? -1;
   });
   expect(stand).toBeGreaterThanOrEqual(0);
-  await dragOnto(page, first, `stand-row-${stand}`, 'drop-ok');
-  await expect(page.getByTestId(`stand-row-${stand}`).getByTestId(`offer-${first}`)).toBeVisible();
-  await expect.poll(() => standOf(page, first)).toBe(stand);
+  await dragOnto(page, first, `plan-row-${stand}`, 'drop-ok');
+  await expect.poll(() => standOfSeries(page, first)).toBe(stand);
 
-  await page.getByTestId(`stand-open-${stand}`).uncheck();
-  await expect(page.getByTestId(`stand-row-${stand}`).locator('.tl-grid.closed')).toBeVisible();
-  await dragOnto(page, second, `stand-row-${stand}`, 'drop-bad');
-  await expect(page.getByTestId('lane-unassigned').getByTestId(`offer-${second}`)).toBeVisible();
+  await page.evaluate((id) => window.__send?.({ type: 'setStandProps', id, closed: true }), stand);
+  await dragOnto(page, second, `plan-row-${stand}`, 'drop-bad');
   await expect(page.getByTestId('notice')).toContainText('closed');
+  expect(await standOfSeries(page, second)).toBe(-1);
   expect(errors).toEqual([]);
 });

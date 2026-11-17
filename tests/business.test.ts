@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, TICKS_PER_MINUTE, type TerminalGrid } from '@shared/business';
-import { STAND_BLOCK_BUFFER_MIN } from '@shared/flightBlock';
-import { BUSINESS } from '@data/index';
+import { FIXTURE_KEYS, FIXTURE_SPAN, FLOOR, LEDGER_CATEGORIES, TICKS_PER_DAY, TICKS_PER_MINUTE, type FlightSeries, type TerminalGrid } from '@shared/business';
+import { frequency, inWindow, operatesOn, seriesClash, weekdayOf } from '@shared/seriesPlan';
+import { BUSINESS, MARKET } from '@data/index';
 import { businessSchema } from '../src/data/schemas/business';
 import { Sim } from '@sim/sim';
 import { SAVE_VERSION } from '@sim/save/migrations';
@@ -152,21 +152,23 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
 });
 
 describe('airlines and money', () => {
-  it('only signs airlines the rating allows, and caps rotations', () => {
+  it('only signs airlines the rating allows, and signing brings the series offer', () => {
     const { sim } = airportWithTerminal();
     const heavy = sim.business.airlines.find((a) => a.minRating >= 70);
     expect(heavy).toBeDefined();
-    expect(run(sim, { type: 'signAirline', airlineId: heavy?.id ?? 0, rotations: 1 })[0]).toMatch(/^ratingTooLow/);
+    expect(run(sim, { type: 'signAirline', airlineId: heavy?.id ?? 0, sign: true })[0]).toMatch(/^ratingTooLow/);
     const regional = sim.business.airlines[0];
-    run(sim, { type: 'signAirline', airlineId: regional.id, rotations: 99 });
-    expect(regional.rotations).toBe(sim.business.maxRotations());
+    run(sim, { type: 'signAirline', airlineId: regional.id, sign: true });
+    expect(regional.signed).toBe(true);
+    const series = sim.business.market.series.filter((x) => x.airline === regional.id);
+    expect(series.length).toBe(MARKET.series.onSigning[regional.scope] + MARKET.series.perStar * sim.business.stars());
     expect(regional.fleet.every((t) => AIRCRAFT[t].capacity.seatsTypical >= 9)).toBe(true);
   });
 
   it('a signed airline brings flights, fees and a daily ledger', () => {
     const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 3 });
-    run(sim, { type: 'signAirline', airlineId: 1, rotations: 3 });
+    run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+    run(sim, { type: 'signAirline', airlineId: 1, sign: true });
     const before = sim.cash;
     // Run until just after the first midnight.
     const midnight = 18 * 60 * TICKS_PER_MINUTE;
@@ -211,7 +213,7 @@ describe('determinism with business', () => {
   it('same seed and commands give the same hash', () => {
     const make = () => {
       const { sim } = airportWithTerminal();
-      run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+      run(sim, { type: 'signAirline', airlineId: 0, sign: true });
       for (let t = 0; t < 30000; t++) sim.step();
       return sim.stateHash();
     };
@@ -260,16 +262,6 @@ describe('zones, control room and slots', () => {
     expect(sim.business.readiness()).toContain('noAtc');
   });
 
-  it('slots default across the day and keep their pattern through a day', () => {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    const before = [...sim.business.airlines[0].slots];
-    expect(before).toHaveLength(2);
-    expect(before[0]).toBeLessThan(before[1]);
-    (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(TICKS_PER_DAY);
-    expect(sim.business.airlines[0].slots).toEqual(before);
-  });
-
   it('a day close assigns a waiting flight at once when automatic stands are on', () => {
     const { sim } = airportWithTerminal();
     const f = sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'atr72_600'), sim.traffic.nowTick + 100, 0, 600, -1);
@@ -278,18 +270,6 @@ describe('zones, control room and slots', () => {
     expect(sim.traffic.fStand[f]).toBeGreaterThanOrEqual(0);
   });
 
-  it('more rotations keep the earlier slots and append, fewer drop from the end', () => {
-    const { sim } = airportWithTerminal();
-    sim.business.rating = 60;
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    const two = [...sim.business.airlines[0].slots];
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 3 });
-    const three = sim.business.airlines[0].slots;
-    expect(three).toHaveLength(3);
-    expect(three.slice(0, 2)).toEqual(two);
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 1 });
-    expect(sim.business.airlines[0].slots).toEqual([two[0]]);
-  });
 });
 
 describe('room validation', () => {
@@ -309,95 +289,160 @@ describe('room validation', () => {
   });
 });
 
-/** The scheduled flight of each rotation that arrives latest, which is the newest day's flight. */
-function newestByRotation(sim: Sim, airline: number, rotations: number): number[] {
+/** Scheduled flights of one series, latest arrival first. */
+function flightsOf(sim: Sim, seriesId: number): number[] {
   const out: number[] = [];
-  for (let k = 0; k < rotations; k++) {
-    let best = -1;
-    for (let f = 0; f < 1024; f++) {
-      if (sim.traffic.fState[f] !== FlState.Scheduled || sim.traffic.fAirline[f] !== airline || sim.traffic.fRot[f] !== k) continue;
-      if (best < 0 || sim.traffic.fEta[f] > sim.traffic.fEta[best]) best = f;
-    }
-    out.push(best);
-  }
-  return out;
+  for (let f = 0; f < 1024; f++) if (sim.traffic.fState[f] === FlState.Scheduled && sim.traffic.fRot[f] === seriesId) out.push(f);
+  return out.sort((p, q) => sim.traffic.fEta[q] - sim.traffic.fEta[p]);
 }
 
 function closeDay(sim: Sim, day: number): void {
   (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(day * TICKS_PER_DAY);
 }
 
-describe('rotations keep their type and stand from day to day', () => {
-  it('a rotation flies the same type on consecutive days', () => {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    closeDay(sim, 1);
-    const day1 = newestByRotation(sim, 0, 2);
-    expect(day1.every((f) => f >= 0)).toBe(true);
-    const types1 = day1.map((f) => sim.traffic.fType[f]);
-    closeDay(sim, 2);
-    const types2 = newestByRotation(sim, 0, 2).map((f) => sim.traffic.fType[f]);
-    expect(types2).toEqual(types1);
+/** A signed regional airline with the auto planner off, so its series wait unplaced. */
+function signedManual(): { sim: Sim; series: FlightSeries[] } {
+  const { sim } = airportWithTerminal();
+  run(sim, { type: 'setAutoStands', on: false });
+  run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+  return { sim, series: sim.business.market.series.filter((s) => s.airline === 0) };
+}
+
+/** The first stand that takes the series' type. */
+function standFor(sim: Sim, s: FlightSeries): number {
+  const st = sim.airfield.data.stands.find((x) => sim.traffic.refuseStandType(s.typeIdx, x.id) === null);
+  if (!st) throw new Error('no stand fits');
+  return st.id;
+}
+
+describe('flight series and the weekly planner (T61, T62)', () => {
+  it('a seed has 80 named destinations between 150 and 4 000 km, the same on every run', () => {
+    const a = ownedSim().business.market.destinations;
+    const b = ownedSim().business.market.destinations;
+    expect(a).toHaveLength(MARKET.destinations.count);
+    expect(new Set(a.map((d) => d.name)).size).toBe(a.length);
+    for (const d of a) {
+      expect(d.km).toBeGreaterThanOrEqual(150);
+      expect(d.km).toBeLessThanOrEqual(4000);
+      expect(d.size).toBeGreaterThanOrEqual(1);
+      expect(d.size).toBeLessThanOrEqual(5);
+    }
+    expect(b).toEqual(a);
+    expect(ownedSim('OTHER-SEED').business.market.destinations.map((d) => d.name)).not.toEqual(a.map((d) => d.name));
   });
 
-  it('a stand chosen for a rotation is taken by the next day flight of that rotation', () => {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    const today = newestByRotation(sim, 0, 2)[0];
-    const stand = sim.airfield.data.stands.find((s) => sim.traffic.refuseAssign(today, s.id) === null);
-    expect(stand).toBeDefined();
-    run(sim, { type: 'assignStand', flight: today, standId: stand?.id ?? -1 });
-    expect(sim.traffic.fStand[today]).toBe(stand?.id);
-    closeDay(sim, 1);
-    const next = newestByRotation(sim, 0, 2)[0];
-    expect(next).not.toBe(today);
-    expect(sim.traffic.fStand[next]).toBe(stand?.id);
+  it('every series has fixed weekdays, a 26 week contract and starts unplaced without the auto planner', () => {
+    const { sim, series } = signedManual();
+    expect(series.length).toBe(MARKET.series.onSigning.regional + MARKET.series.perStar * sim.business.stars());
+    for (const s of series) {
+      expect(s.days).toBeGreaterThan(0);
+      expect(s.endDay - s.startDay).toBe(26 * 7);
+      expect(s.minute).toBe(-1);
+      expect(sim.business.market.destinations[s.dest]).toBeDefined();
+    }
   });
 
-  it('clearing a stand with -1 forgets it for the next day', () => {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    run(sim, { type: 'setAutoStands', on: false });
-    const today = newestByRotation(sim, 0, 2)[0];
-    const stand = sim.airfield.data.stands.find((s) => sim.traffic.refuseAssign(today, s.id) === null);
-    run(sim, { type: 'assignStand', flight: today, standId: stand?.id ?? -1 });
-    expect(sim.business.airlines[0].standPrefs[0]).toBe(stand?.id);
-    run(sim, { type: 'assignStand', flight: today, standId: -1 });
-    expect(sim.business.airlines[0].standPrefs[0]).toBe(-1);
+  it('one drop places a series on all its operating days at the same time and stand', () => {
+    const { sim, series } = signedManual();
+    const s = series[0];
+    const stand = standFor(sim, s);
+    expect(run(sim, { type: 'placeSeries', seriesId: s.id, standId: stand, minute: 600 })).toEqual([]);
+    let flown = 0;
+    for (let day = 1; day <= 7; day++) {
+      const before = flightsOf(sim, s.id).length;
+      closeDay(sim, day);
+      const after = flightsOf(sim, s.id);
+      const flies = operatesOn(s.days, weekdayOf(day));
+      expect(after.length - before).toBe(flies ? 1 : 0);
+      if (flies) {
+        expect(sim.traffic.fStand[after[0]]).toBe(stand);
+        flown++;
+      }
+    }
+    expect(flown).toBe(frequency(s.days));
+  });
+
+  it('refuses a second series that overlaps a placed one on a shared day', () => {
+    const { sim, series } = signedManual();
+    const daily = series.find((x) => x.days === 0b1111111) ?? series[0];
+    const other = series.find((x) => x !== daily && (x.days & daily.days) !== 0 && sim.traffic.refuseStandType(x.typeIdx, standFor(sim, daily)) === null);
+    const stand = standFor(sim, daily);
+    expect(run(sim, { type: 'placeSeries', seriesId: daily.id, standId: stand, minute: 600 })).toEqual([]);
+    if (!other) return;
+    expect(run(sim, { type: 'placeSeries', seriesId: other.id, standId: stand, minute: 610 })[0]).toMatch(/^seriesBusy/);
+    expect(seriesClash(other.days, other.turnMin, 600 + daily.turnMin + 30, stand, sim.business.market.series, other.id)).toBeNull();
+  });
+
+  it('unplaced frequency costs the airline 2 satisfaction per operating day', () => {
+    const { sim, series } = signedManual();
+    const a = sim.business.airlines[0];
+    const before = a.happiness;
     closeDay(sim, 1);
-    const next = newestByRotation(sim, 0, 2)[0];
-    expect(sim.traffic.fStand[next]).toBe(-1);
+    const wd = weekdayOf(1);
+    const flying = series.filter((s) => operatesOn(s.days, wd)).length;
+    expect(a.happiness).toBe(Math.max(0, before - 2 * flying));
+  });
+
+  it('the auto planner places every series inside its preferred window', () => {
+    const { sim } = airportWithTerminal();
+    run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+    const mine = sim.business.market.series.filter((s) => s.airline === 0);
+    expect(mine.some((s) => s.minute >= 0)).toBe(true);
+    for (const s of mine) if (s.minute >= 0) expect(inWindow(s.winMin, MARKET.series.windowMin, s.minute)).toBe(true);
+  });
+
+  it('cancel and unplace remove the series flight of today', () => {
+    const { sim, series } = signedManual();
+    const s = series[0];
+    run(sim, { type: 'placeSeries', seriesId: s.id, standId: standFor(sim, s), minute: 1430 });
+    run(sim, { type: 'unplaceSeries', seriesId: s.id });
+    expect(flightsOf(sim, s.id)).toEqual([]);
+    run(sim, { type: 'cancelSeries', seriesId: s.id });
+    expect(sim.business.market.series.some((x) => x.id === s.id)).toBe(false);
+  });
+
+  it('a version 17 save turns each rotation into a daily series at its old slot and stand', () => {
+    const { sim } = airportWithTerminal();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { airlines: Record<string, unknown>[]; market?: unknown } };
+    data.version = 17;
+    delete data.business.market;
+    const stand = sim.airfield.data.stands[0].id;
+    Object.assign(data.business.airlines[0], { rotations: 2, slots: [420, 900], standPrefs: [stand, -1] });
+    for (const a of data.business.airlines) for (const k of ['signed', 'hub', 'happiness', 'lowWeeks', 'veryLowWeeks']) if (a !== data.business.airlines[0]) delete a[k];
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(data);
+    const s = c.business.market.series.filter((x) => x.airline === 0);
+    expect(s).toHaveLength(2);
+    expect(s.every((x) => x.days === 0b1111111)).toBe(true);
+    expect([s[0].standId, s[0].minute]).toEqual([stand, 420]);
+    expect(s[1].minute).toBe(-1);
+    expect(c.business.airlines[0].signed).toBe(true);
+    expect(s[0].turnMin).toBeGreaterThan(0);
   });
 });
 
-describe('stand choices with determinism', () => {
-  function standedSim(autoStands: boolean): Sim {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    if (!autoStands) run(sim, { type: 'setAutoStands', on: false });
-    const f = newestByRotation(sim, 0, 2)[0];
-    const stand = sim.airfield.data.stands.find((s) => sim.traffic.refuseAssign(f, s.id) === null);
-    run(sim, { type: 'assignStand', flight: f, standId: stand?.id ?? -1 });
+describe('series with determinism', () => {
+  function placed(): Sim {
+    const { sim, series } = signedManual();
+    run(sim, { type: 'placeSeries', seriesId: series[0].id, standId: standFor(sim, series[0]), minute: 400 });
     return sim;
   }
 
-  it('same seed and commands give the same hash with a remembered stand, auto stands on and off', () => {
-    const make = (auto: boolean): number => {
-      const sim = standedSim(auto);
+  it('same seed and commands give the same hash over 2 000 ticks', () => {
+    const make = (): number => {
+      const sim = placed();
       for (let t = 0; t < 2000; t++) sim.step();
       return sim.stateHash();
     };
-    expect(make(true)).toBe(make(true));
-    expect(make(false)).toBe(make(false));
+    expect(make()).toBe(make());
   });
 
   it('a save taken mid run and restored continues to the same hash', () => {
-    const a = standedSim(false);
+    const a = placed();
     for (let t = 0; t < 1000; t++) a.step();
     const c = new Sim('GOLDEN-0001', OPTIONS);
     c.restore(JSON.parse(JSON.stringify(a.serialize())));
-    expect(c.business.airlines.map((x) => x.standPrefs)).toEqual(a.business.airlines.map((x) => x.standPrefs));
-    expect(Array.from(c.traffic.fRot)).toEqual(Array.from(a.traffic.fRot));
+    expect(c.business.market.series).toEqual(a.business.market.series);
     for (let t = 0; t < 1000; t++) {
       a.step();
       c.step();
@@ -538,7 +583,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(17);
+    expect(SAVE_VERSION).toBe(18);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -579,39 +624,10 @@ describe('fixture ids, spans and module data', () => {
   });
 });
 
-describe('flight offers in the business payload', () => {
-  it('lists signed flights earliest first with the stand block buffer on each', () => {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 3 });
-    closeDay(sim, 1);
-    const { offers } = sim.business.payload(sim.traffic.nowTick);
-    expect(offers.length).toBeGreaterThan(0);
-    const key = (o: { flight: number }): [number, number] => [sim.traffic.fEta[o.flight], o.flight];
-    for (let i = 1; i < offers.length; i++) {
-      const [pe, pf] = key(offers[i - 1]);
-      const [ce, cf] = key(offers[i]);
-      expect(pe < ce || (pe === ce && pf < cf)).toBe(true);
-    }
-    for (const o of offers) {
-      expect(o.endMin - o.arrMin - o.turnMin).toBe(STAND_BLOCK_BUFFER_MIN);
-      expect(AIRCRAFT[o.typeIdx].icaoType).toBe(o.type);
-    }
-    for (const r of sim.business.payload(sim.traffic.nowTick).board) expect(AIRCRAFT[r.typeIdx].icaoType).toBe(r.type);
-  });
-
-  it('a signed rotation offers one flight per rotation after the day closes', () => {
-    const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
-    closeDay(sim, 1);
-    const offers = sim.business.payload(sim.traffic.nowTick).offers.filter((o) => o.airline === 0);
-    const rotations = newestByRotation(sim, 0, 2);
-    expect(rotations.every((f) => f >= 0)).toBe(true);
-    for (const f of rotations) expect(offers.filter((o) => o.flight === f)).toHaveLength(1);
-  });
-
+describe('stand blocks in the business payload', () => {
   it('lists four numbers per flight that holds a stand, matching the traffic state', () => {
     const { sim } = airportWithTerminal();
-    run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+    run(sim, { type: 'signAirline', airlineId: 0, sign: true });
     closeDay(sim, 1);
     const { standBlocks } = sim.business.payload(sim.traffic.nowTick);
     let held = 0;
@@ -766,7 +782,7 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
       expect(fixtureAt(sim, KEY('bagDrop'), 42, 46)).toEqual([]);
       expect(fixtureAt(sim, KEY('passport'), 90, 48)).toEqual([]);
       expect(fixtureAt(sim, KEY('gateDesk'), 88, 42)).toEqual([]);
-      run(sim, { type: 'signAirline', airlineId: 0, rotations: 2 });
+      run(sim, { type: 'signAirline', airlineId: 0, sign: true });
       for (let t = 0; t < 2000; t++) sim.step();
       return sim.stateHash();
     };

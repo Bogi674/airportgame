@@ -1,8 +1,8 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
-import { maxStageKm, takeoffWeight } from '../ops/performance';
-import { BUSINESS, SURFACE_SPEC } from '@data/index';
+import { takeoffWeight } from '../ops/performance';
+import { BUSINESS, MARKET, SURFACE_SPEC } from '@data/index';
 import {
   LEDGER_CATEGORIES,
   LEDGER_DAYS,
@@ -15,7 +15,6 @@ import {
   type BusinessPayload,
   type FeeLevel,
   type LedgerCategory,
-  type OfferRow,
   FIXTURE_KEYS,
   type FixtureKey,
   type Terminal,
@@ -28,7 +27,7 @@ import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
 import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
-import { blockWindow } from '@shared/flightBlock';
+import { Market } from '../market/market';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -115,6 +114,9 @@ export class Business {
   rating = 25;
   satisfaction = 0.8;
   onTime = 0.9;
+  /** Passenger and airline experience, 0 to 1, from the last daily close. Derived, never saved. */
+  paxScore = 0;
+  airlineScore = 0;
   loan = 0;
   loanOriginal = 0;
   weather: WeatherKind = 'clear';
@@ -136,7 +138,7 @@ export class Business {
   private readonly serviceRng: Rng;
   private flightPax = new Int32Array(1024);
   private flightDockedAt = new Int32Array(1024);
-  private readonly usableScratch: number[] = [];
+  readonly market: Market;
 
   constructor(
     private readonly site: SiteSpec,
@@ -148,7 +150,12 @@ export class Business {
     this.rng = rng.fork('business');
     this.marketRng = rng.fork('market');
     this.serviceRng = rng.fork('service');
-    this.generateAirlines();
+    this.market = new Market(rng, this.marketRng, this.airlines, traffic, {
+      emit: (e) => host.emit(e),
+      stars: () => this.stars(),
+      movementBudget: () => traffic.movementBudget(),
+    });
+    this.market.generateAirlines();
     traffic.hooks = {
       docked: (f) => this.onDocked(f),
       pushback: (f) => this.onPushback(f),
@@ -158,58 +165,17 @@ export class Business {
 
   // Airlines -----------------------------------------------------------------
 
-  private generateAirlines(): void {
-    const names = BUSINESS.airlines;
-    const roles = (r: string[]): number[] => AIRCRAFT.map((a, i) => (r.includes(a.role) && a.capacity.seatsTypical >= 9 ? i : -1)).filter((i) => i >= 0);
-    const regionalPool = roles(['commuter', 'regionalTurboprop', 'regionalJet']);
-    const nationalPool = roles(['narrowbody', 'regionalJet']);
-    const widePool = roles(['widebody']);
-    const used = new Set<string>();
-    const mk = (scope: 'regional' | 'national', pool: number[], minRating: number, id: number): Airline => {
-      const list = scope === 'regional' ? names.regionalNames : names.nationalNames;
-      let name = '';
-      for (let tries = 0; tries < 20; tries++) {
-        name = `${list[this.marketRng.int(0, list.length - 1)]} ${names.suffixes[this.marketRng.int(0, names.suffixes.length - 1)]}`;
-        if (!used.has(name)) break;
-      }
-      used.add(name);
-      const fleetSize = scope === 'regional' ? this.marketRng.int(1, 2) : this.marketRng.int(1, 2);
-      const fleet: number[] = [];
-      for (let k = 0; k < fleetSize; k++) {
-        const t = pool[this.marketRng.int(0, pool.length - 1)];
-        if (!fleet.includes(t)) fleet.push(t);
-      }
-      return { id, name, scope, livery: id % 8, fleet, minRating, rotations: 0, slots: [], standPrefs: [], feeLevel: 1, flights: 0, pax: 0 };
-    };
-    this.airlines.push(mk('regional', regionalPool, 0, 0), mk('regional', regionalPool, 0, 1), mk('regional', regionalPool, 10, 2));
-    this.airlines.push(mk('national', nationalPool, 25, 3), mk('national', nationalPool, 35, 4), mk('national', nationalPool, 45, 5));
-    // One long haul operator with widebodies that only comes at a high rating.
-    const heavy = mk('national', widePool, 70, 6);
-    this.airlines.push(heavy);
-  }
-
-  signAirline(id: number, rotations: number): string | null {
-    const a = this.airlines.find((x) => x.id === id);
-    if (!a) return 'noSuchAirline';
-    const r = Math.max(0, Math.min(this.maxRotations(), Math.floor(rotations)));
-    if (r > 0 && this.rating < a.minRating) return `ratingTooLow|need=${a.minRating}`;
-    const before = a.rotations;
-    a.rotations = r;
-    a.slots = fitSlots(a.slots, r, a.id);
-    a.standPrefs = fitStandPrefs(a.standPrefs, r);
+  signAirline(id: number, on: boolean): string | null {
+    const r = this.market.sign(id, on, this.rating, this.traffic.nowTick);
     this.version++;
-    if (before === 0 && r > 0) {
-      this.host.emit(`airlineSigned|name=${a.name}`);
-      this.scheduleToday(a);
-    }
-    return null;
+    return r;
   }
 
-  /** Remembers the stand the player chose for a rotation, -1 to clear. Out of range rotations are ignored. */
-  setStandPref(airline: number, rot: number, standId: number): void {
-    const a = this.airlines[airline];
-    if (!a || rot < 0 || rot >= a.standPrefs.length) return;
-    a.standPrefs[rot] = standId;
+  /** Airport stars from the rating cuts of D27: how many cuts the rating has passed. */
+  stars(): number {
+    let n = 0;
+    for (const c of MARKET.stars.cuts) if (this.rating >= c) n++;
+    return n;
   }
 
   setFee(id: number, level: FeeLevel): void {
@@ -217,10 +183,6 @@ export class Business {
     if (!a) return;
     a.feeLevel = level;
     this.version++;
-  }
-
-  maxRotations(): number {
-    return 1 + Math.floor(this.rating / 20);
   }
 
   private loadFactor(a: Airline): number {
@@ -232,7 +194,7 @@ export class Business {
   /** Aircraft types the signed airlines fly, in index order. */
   assignedTypes(): number[] {
     const out = new Set<number>();
-    for (const a of this.airlines) if (a.rotations > 0) for (const t of a.fleet) out.add(t);
+    for (const s of this.market.series) if (this.airlines[s.airline]?.signed) out.add(s.typeIdx);
     return [...out].sort((p, q) => p - q);
   }
 
@@ -590,6 +552,7 @@ export class Business {
     if (al >= 0) {
       this.airlines[al].pax += pax;
       this.airlines[al].flights++;
+      this.market.flightDone(f);
     }
   }
 
@@ -623,49 +586,6 @@ export class Business {
     this.version++;
   }
 
-  private scheduleToday(a: Airline): void {
-    const now = this.traffic.nowTick;
-    const nowMin = minuteOfDay(now);
-    this.usableTypesFor(a);
-    if (this.usableScratch.length === 0) return;
-    if (!this.atcOk) return;
-    for (let k = 0; k < a.rotations; k++) {
-      const minute = a.slots[k] ?? SLOT_FIRST;
-      if (minute < nowMin + 45) continue;
-      const t = this.typeForRotation(a, k);
-      const f = this.traffic.scheduleArrival(t, now + (minute - nowMin) * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t), k);
-      this.applyStandPref(a, k, f);
-    }
-  }
-
-  /**
-   * The aircraft type a rotation flies. It is fixed by the rotation index, so the same rotation
-   * flies the same type every day (T41 D1). Requires `usableScratch` to be filled for the airline.
-   */
-  private typeForRotation(a: Airline, k: number): number {
-    return this.usableScratch[(a.id + k) % this.usableScratch.length];
-  }
-
-  /** Gives a new flight the stand remembered for its rotation. A refused stand is kept as a preference, not cleared. */
-  private applyStandPref(a: Airline, k: number, f: number): void {
-    if (f < 0 || a.standPrefs[k] < 0) return;
-    if (this.traffic.refuseAssign(f, a.standPrefs[k]) !== null) return;
-    this.traffic.fStand[f] = a.standPrefs[k];
-  }
-
-  /** Stage length of a rotation in km: regional flights are short, national ones longer, never beyond the type's range. */
-  private stageFor(a: Airline, type: number): number {
-    const raw = a.scope === 'regional' ? this.rng.int(250, 800) : this.rng.int(700, 2200);
-    return Math.max(100, Math.min(raw, maxStageKm(AIRCRAFT[type])));
-  }
-
-  private usableTypesFor(a: Airline): void {
-    this.usableScratch.length = 0;
-    const all: number[] = [];
-    this.traffic.usableTypesPublic(all);
-    for (const t of a.fleet) if (all.includes(t)) this.usableScratch.push(t);
-  }
-
   private dailyClose(tick: number): void {
     const d = dayIndex(tick);
     if (d === this.day && tick > 0) return;
@@ -690,27 +610,8 @@ export class Business {
     else if (r < (c.fogDays + c.rainDays) / 365 + 0.03) kind = 'wind';
     this.pendingKind = kind;
     this.weatherStart = kind === 'clear' ? 0 : tick + this.rng.int(0, 12) * 60 * TICKS_PER_MINUTE + 1;
-    // Schedule the new day's flights for signed airlines.
-    for (const a of this.airlines) {
-      if (a.rotations <= 0) continue;
-      this.usableTypesFor(a);
-      if (this.usableScratch.length === 0) {
-        this.host.emit(`airlineIdle|name=${a.name}`);
-        continue;
-      }
-      if (!this.atcOk) {
-        this.host.emit(`noAtc|name=${a.name}`);
-        continue;
-      }
-      for (let k = 0; k < a.rotations; k++) {
-        const minute = a.slots[k] ?? SLOT_FIRST;
-        const t = this.typeForRotation(a, k);
-        // Arrival times are relative to the midnight that starts this day, in ticks.
-        const midnight = tick - minuteOfDay(tick) * TICKS_PER_MINUTE;
-        const f = this.traffic.scheduleArrival(t, midnight + minute * TICKS_PER_MINUTE, a.livery, this.traffic.turnaroundTicks(t), a.id, this.stageFor(a, t), k);
-        this.applyStandPref(a, k, f);
-      }
-    }
+    // The placed series of signed airlines become the day's flights.
+    this.market.dailyClose(tick, this.atcOk);
     // Today's flights take free stands now; this runs in the business step, after the airfield copy is current.
     if (this.traffic.autoStands) this.traffic.autoAssign();
     this.version++;
@@ -752,12 +653,23 @@ export class Business {
     }
   }
 
+  /**
+   * The rating follows two experiences (user, 2026-11-17). Passengers judge toilets, shops and food,
+   * queues (the share of passengers served in time) and punctuality; airlines judge ground handling
+   * support, airside infrastructure and punctuality. Cleanliness joins both once cleaning exists (T63).
+   * Each experience is the mean of its parts, the rating target the mean of the two.
+   */
   private updateRating(): void {
     const leased = this.terminals.reduce((n, t) => n + t.leased, 0);
-    const facilities =
-      this.terminals.length === 0 ? 0 : Math.min(1, this.totals.seating / 12) * 0.4 + Math.min(1, this.totals.toilet / 4) * 0.3 + Math.min(1, leased / 4) * 0.3;
+    const hasTerminal = this.terminals.length > 0;
+    const toilets = hasTerminal ? Math.min(1, this.totals.toilet / 4) : 0;
+    const shops = hasTerminal ? Math.min(1, leased / 4) : 0;
+    const queues = hasTerminal ? this.satisfaction : 0;
+    this.paxScore = (toilets + shops + queues + this.onTime) / 4;
+    const handling = Math.max(0, Math.min(1, (1.6 - this.traffic.serviceSlowdown) / 0.6));
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
-    const target = 100 * (0.35 * this.onTime + 0.35 * this.satisfaction + 0.2 * facilities + 0.1 * infra);
+    this.airlineScore = (handling + infra + this.onTime) / 3;
+    const target = 100 * (this.paxScore + this.airlineScore) / 2;
     this.rating += (target - this.rating) * 0.15;
     this.rating = Math.max(0, Math.min(100, this.rating));
   }
@@ -858,40 +770,15 @@ export class Business {
     return out;
   }
 
-  /** Scheduled flights of signed airlines, earliest arrival then flight id, capped at the board's row count. */
-  offers(): OfferRow[] {
-    const t = this.traffic;
-    const flights: number[] = [];
-    for (let f = 0; f < 1024; f++) if (t.fState[f] === FlState.Scheduled && t.fAirline[f] >= 0) flights.push(f);
-    flights.sort((a, b) => t.fEta[a] - t.fEta[b] || a - b);
-    const rows: OfferRow[] = [];
-    for (let k = 0; k < flights.length && rows.length < SCHEDULE_ROWS; k++) {
-      const f = flights[k];
-      const spec = AIRCRAFT[t.fType[f]];
-      const arrMin = minuteOfDay(t.fEta[f]);
-      const turnMin = Math.round(t.turnaroundTicks(t.fType[f]) / TICKS_PER_MINUTE);
-      rows.push({
-        flight: f,
-        airline: t.fAirline[f],
-        type: spec.icaoType,
-        typeIdx: t.fType[f],
-        arrMin,
-        turnMin,
-        endMin: blockWindow(arrMin, turnMin).endMin,
-        startMin: t.fEta[f] / TICKS_PER_MINUTE,
-        code: spec.derivedForReading.code,
-        stageKm: t.fStage[f],
-        standId: t.fStand[f],
-      });
-    }
-    return rows;
-  }
-
   payload(tick: number): BusinessPayload {
     const stands = this.airfield.data.stands;
     return {
       board: this.board(tick),
-      offers: this.offers(),
+      series: this.market.series,
+      destinations: this.market.destinations,
+      stars: this.stars(),
+      paxScore: Math.round(this.paxScore * 100),
+      airlineScore: Math.round(this.airlineScore * 100),
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
       movementBudget: this.traffic.movementBudget(),
@@ -932,7 +819,7 @@ export class Business {
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
       flightsToday: this.flightsToday, lostToday: this.lostToday,
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
-      rng: this.rng.getState(), marketRng: this.marketRng.getState(),
+      rng: this.rng.getState(), marketRng: this.marketRng.getState(), market: this.market.saveState(),
       service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(),
     };
   }
@@ -959,7 +846,8 @@ export class Business {
     if (o.serviceRng !== undefined) this.serviceRng.setState(o.serviceRng);
     this.serviceVersion++;
     this.airlines.length = 0;
-    this.airlines.push(...o.airlines.map((a) => ({ ...a, slots: a.slots ?? fitSlots([], a.rotations, a.id), standPrefs: a.standPrefs ?? new Array<number>(a.rotations).fill(-1) })));
+    this.airlines.push(...o.airlines);
+    this.market.loadState((raw as { market: unknown }).market);
     this.rating = o.rating;
     this.satisfaction = o.satisfaction;
     this.onTime = o.onTime;
@@ -991,10 +879,8 @@ export class Business {
     acc = foldU32(acc, Math.floor(this.rating * 100));
     acc = foldU32(acc, this.loan);
     acc = foldU32(acc, this.paxToday);
-    for (const a of this.airlines) {
-      acc = foldU32(foldU32(acc, a.rotations), a.pax);
-      for (const s of a.standPrefs) acc = foldU32(acc, s);
-    }
+    for (const a of this.airlines) acc = foldU32(acc, a.pax);
+    acc = this.market.hash(acc);
     for (const g of this.grids) {
       acc = foldU32(foldU32(foldU32(foldU32(acc, g.id), cellCount(g)), g.building), g.level - TERMINAL_LEVEL_MIN);
       for (let i = 0; i < g.fixture.length; i++) {
@@ -1064,27 +950,6 @@ interface SavedGrid {
 const cellCountOf = (g: TerminalGrid): number => cellCount(g);
 /** Size of the fixed grid that saves before format 6 used. */
 const LEGACY_GRID = 160;
-
-const SLOT_FIRST = 6 * 60;
-const SLOT_LAST = 21 * 60;
-
-/** Keeps the slots the player set, drops extras and spreads new ones over the day without using random numbers. */
-function fitSlots(old: number[], rotations: number, id: number): number[] {
-  const out = old.slice(0, rotations);
-  const span = SLOT_LAST - SLOT_FIRST;
-  for (let i = out.length; i < rotations; i++) {
-    const base = SLOT_FIRST + Math.floor(((i + 0.5) * span) / Math.max(1, rotations));
-    out.push(Math.max(SLOT_FIRST, Math.min(SLOT_LAST, Math.round((base + ((id * 35) % 60) - 30) / 5) * 5)));
-  }
-  return out;
-}
-
-/** Keeps the stands the player chose per rotation, pads new rotations with -1 and drops extras from the end. */
-function fitStandPrefs(old: number[], rotations: number): number[] {
-  const out = old.slice(0, rotations);
-  while (out.length < rotations) out.push(-1);
-  return out;
-}
 
 function saveGrid(g: TerminalGrid): SavedGrid {
   return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };

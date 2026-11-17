@@ -824,6 +824,34 @@ export class Traffic {
     return null;
   }
 
+  /** Why a stand cannot take a commercial flight of this type, other flights aside (weekly planner, T61). Null when it can. */
+  refuseStandType(t: number, standId: number): StandRefusal | null {
+    const s = this.standIndexOf(standId);
+    if (s < 0) return 'standNoLink';
+    return refuseStand(this.standFactsOf(s), AIRCRAFT[t], 'commercial');
+  }
+
+  /** Stand ids a type may use, own size first, then the next larger (user, 2026-11-17), then by index. */
+  standOrder(t: number): number[] {
+    const out: { id: number; score: number }[] = [];
+    for (let s = 0; s < this.af.stands.length; s++) {
+      if (!this.standFits(t, s)) continue;
+      out.push({ id: this.af.stands[s].id, score: sizeGap(this.af.stands[s].size, AIRCRAFT[t]) * 1000 + s });
+    }
+    return out.sort((p, q) => p.score - q.score).map((x) => x.id);
+  }
+
+  /** True when some open runway lets the type take off over its full length with the fuel for the stage (section 3.2). */
+  takeoffOkFor(t: number, stageKm: number): boolean {
+    const share = takeoffWeight(AIRCRAFT[t], stageKm, 0.75).share;
+    for (let r = 0; r < this.af.runways.length; r++) {
+      if (this.runwayClosed(r)) continue;
+      const rw = this.af.runways[r];
+      for (const dir of [1, -1] as const) if (checkTakeoff(AIRCRAFT[t], rw, rw.lengthM, this.site.climate, this.lengthFactor(rw, dir), share).ok) return true;
+    }
+    return false;
+  }
+
   /** Gives every unassigned scheduled flight a stand that is free for its whole stay, earliest first. */
   autoAssign(): void {
     const order: number[] = [];
