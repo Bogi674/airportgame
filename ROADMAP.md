@@ -109,7 +109,7 @@ Goal: vehicles live in buildings, drive on roads the player draws, and service e
 | T65 | Supporting buildings: ground handling depot, fuel farm with stock and road tankers, catering unit, fire station with categories, staff center, cleaning depot, maintenance workshop (section 5) | depot part of T24 | T60 | todo |
 | T63 | Turnaround task lists per type with dependencies, docking poses per service point, delays shown with their cause and whether the airport or the airline owns it (section 4) | T22, T23 | T64, T65 | todo |
 | T43 | Working baggage system on one level: belts, makeup chutes and carousels |  | T63 | todo |
-| T66 | Stand upgrades through works (five jet bridge access types, stairs and bus bay, hydrant pit, fixed ground power) and stand assignments for gate, desk, chute and carousel (section 2.5, 2.6) | T48, T23 | T59, T43 | todo |
+| T66 | Stand upgrades through works (five jet bridge access types, stairs and bus bay, hydrant pit, fixed ground power) and stand assignments for gate, desk, chute and carousel (section 2.5, 2.6). The jet bridge painter was removed until bridges are built here; restore it from git history (`paintBridges` in `standPaint.ts`) | T48, T23 | T59, T43 | todo |
 
 Exit: a turnaround runs from depot to stand and back with no vehicle crossing an aircraft, a missing vehicle or empty fuel farm delays the flight with a visible cause, bags reach the aircraft and the carousel, and passengers board by bridge, stairs or bus.
 

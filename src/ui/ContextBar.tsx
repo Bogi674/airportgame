@@ -175,6 +175,11 @@ export function ContextBar({ send }: Props) {
         {s.tool === 'rapidExit' && (
           <Select label={t('opt.angle')} value={s.exitAngle} options={[30, 45, 90].map((a) => ({ v: a, text: `${a}°` }))} onChange={(v) => s.set({ exitAngle: v as 30 | 45 | 90 })} />
         )}
+        {s.tool === 'rapidExit' && (
+          <button style="align-self:center" data-testid="exit-flip" onClick={() => s.set({ exitFrom: s.exitFrom === 'a' ? 'b' : 'a' })}>
+            {t('opt.exitFlip')}
+          </button>
+        )}
         {apronTool && (
           <div style="display:flex;gap:4px;align-self:center" data-testid="apron-mode">
             {(['polygon', 'rect'] as const).map((m) => (

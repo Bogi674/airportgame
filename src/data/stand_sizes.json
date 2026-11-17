@@ -112,10 +112,11 @@
     }
   },
   "placement": {
-    "note": "Single stand placement (docs/DESIGN_REVISION_4.md section 2.2, D3 and D4). Meters and degrees.",
+    "note": "Single stand placement (docs/DESIGN_REVISION_4.md section 2.2, D3 and D4). Meters and degrees. neighbourSnapM is how far a stand may be from its abutting spot beside a built stand of the same heading and still snap to it, edge to edge with the service roads lined up (user, 2026-11-17).",
     "leadInReachM": 60,
     "rotateStepDeg": 15,
-    "fineStepDeg": 1
+    "fineStepDeg": 1,
+    "neighbourSnapM": 12
   },
   "markings": {
     "note": "Contact and small stand markings (docs/DESIGN_REVISION_2.md sections 3.3 to 3.5), from fig4_stand_data.py and fig5.py.",

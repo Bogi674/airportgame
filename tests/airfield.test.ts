@@ -131,6 +131,20 @@ describe('Taxiway and network', () => {
     expect(run(sim, { type: 'buildRapidExit', runwayId: id, distM: 50, side: 'left', angleDeg: 45, code: 'C', surface: 'asphalt', tier: 0 })[0]).toMatch(/^exitDistance/);
   });
 
+  it('builds a rapid exit for landings over threshold B, turning off the other way', () => {
+    const sim = ownedSim();
+    run(sim, RUNWAY);
+    const r = sim.airfield.data.runways[0];
+    expect(run(sim, { type: 'buildRapidExit', runwayId: r.id, distM: 1100, side: 'right', angleDeg: 30, code: 'C', surface: 'asphalt', tier: 0, landingEnd: 'b' })).toEqual([]);
+    const t = sim.airfield.data.taxiways[0];
+    const p0 = t.points[0];
+    const pn = t.points[t.points.length - 1];
+    // 1100 m from threshold B along the runway, and the exit runs on toward A, away from B.
+    expect(Math.hypot(p0.x - r.x2, p0.y - r.y2)).toBeCloseTo(1100, 0);
+    const back = { x: r.x1 - r.x2, y: r.y1 - r.y2 };
+    expect((pn.x - p0.x) * back.x + (pn.y - p0.y) * back.y).toBeGreaterThan(0);
+  });
+
   it('applies segment properties', () => {
     const sim = ownedSim();
     run(sim, { type: 'buildTaxiway', points: [{ x: 4000, y: 4000 }, { x: 4200, y: 4000 }], code: 'D', kind: 'taxiway', surface: 'concrete', tier: 2 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SURFACE_SPEC } from '@data/index';
 import type { AirfieldPayload } from '@shared/airfield';
 import { CHUNK_SIZE_M } from '@shared/math';
+import { BAND_RASTER_SCALE } from '@render/chunks';
 import type { Pt } from '@shared/geom';
 import { standForks } from '@shared/standFork';
 import { paintAirfield } from '@render/markings/airfieldPaint';
@@ -128,7 +129,8 @@ describe('lead in paint', () => {
     for (let cx = Math.floor(2400 / CHUNK_SIZE_M); cx <= Math.floor(4400 / CHUNK_SIZE_M); cx++) {
       for (let cy = Math.floor(4800 / CHUNK_SIZE_M); cy <= Math.floor(5400 / CHUNK_SIZE_M); cy++) {
         const { ctx, ops } = recordingContext();
-        paintAirfield(ctx, af, [], 2, cx, cy);
+        // The 4 px/m band, whose chunks are still 512 m.
+        paintAirfield(ctx, af, [], BAND_RASTER_SCALE.indexOf(4), cx, cy);
         const firstMark = ops.findIndex(isMark);
         if (firstMark < 0) continue;
         for (let i = 0; i < ops.length; i++) {

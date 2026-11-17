@@ -1,7 +1,8 @@
 import { STAND_PLACEMENT } from '@data/index';
-import { compassVector, type StandSize, type Taxiway } from './airfield';
+import { compassVector, type Stand, type StandSize, type Taxiway } from './airfield';
 import { closestOnSegment, segmentIntersection, type Pt } from './geom';
 import { standHeading } from './apronPricing';
+import { REACH_M } from './standFork';
 import { leadInTargetGapM, standSlot } from './standGeom';
 
 /**
@@ -19,6 +20,8 @@ export interface StandSnap {
   taxiwayId: number;
   /** Where the stand axis meets that taxiway's centerline, for the snap marker. */
   join: Pt;
+  /** The built stand it abuts, when it snapped beside one. */
+  neighbourId?: number;
 }
 
 /** Compass degrees of a direction in screen axes (y down), the inverse of `compassVector`. */
@@ -81,4 +84,51 @@ export function snapStand(p: Pt, size: StandSize, taxiways: readonly Taxiway[], 
   const axis = compassVector(best.heading);
   const along = leadInTargetGapM(size, best.t.code) - slot.near;
   return { x: best.hit.x + axis.x * along, y: best.hit.y + axis.y * along, headingDeg: best.heading, taxiwayId: best.t.id, join: best.hit };
+}
+
+/**
+ * Snaps a stand like `snapStand`, then beside a built stand of the same heading when the result lies
+ * within `neighbourSnapM` of the spot that abuts it: edge to edge, with the stand top (the service road
+ * edge) on the neighbour's, so a row of stands forms one straight service road (user, 2026-11-17). Only the
+ * lateral distance counts toward `neighbourSnapM`; along the axis the two must overlap as one row. The
+ * stand only ever slides away from its taxiway to line up the roads, which lengthens its lead in; when it
+ * would have to come closer than its lead in clearance, it abuts beside the neighbour at its own depth.
+ */
+export function snapStandRow(p: Pt, size: StandSize, taxiways: readonly Taxiway[], stands: readonly Stand[], headingDeg: number | null): StandSnap | null {
+  const snap = snapStand(p, size, taxiways, headingDeg);
+  const slot = standSlot(size);
+  if (!snap || !slot) return snap;
+  const axis = compassVector(snap.headingDeg);
+  const right = { x: -axis.y, y: axis.x };
+  const reach = STAND_PLACEMENT.neighbourSnapM;
+  let best: { o: Stand; shift: number; along: number; err: number } | null = null;
+  for (const o of stands) {
+    if (o.headingDeg !== snap.headingDeg) continue;
+    const os = standSlot(o.size);
+    if (!os) continue;
+    const dx = snap.x - o.x;
+    const dy = snap.y - o.y;
+    const lat = dx * right.x + dy * right.y;
+    const along = dx * axis.x + dy * axis.y;
+    const lat0 = Math.sign(lat || 1) * (os.widthM + slot.widthM) / 2;
+    // The along offset that puts both stand tops on one line.
+    const along0 = os.far - slot.far;
+    // Lateral distance from the abutting spot decides; along the axis the two only have to share a row,
+    // since the lead in snap already put the stand at its own depth.
+    const err = Math.abs(lat - lat0);
+    if (err > reach || Math.abs(along) > Math.max(os.far - os.near, slot.far - slot.near) || (best && err >= best.err)) continue;
+    best = { o, shift: lat0 - lat, along: along - along0, err };
+  }
+  if (!best) return snap;
+  // Shift sideways onto the abutting spot at the stand's own depth and find the lead in there, then slide out
+  // to the neighbour's road line when that keeps the lead in valid.
+  const side = { x: snap.x + right.x * best.shift, y: snap.y + right.y * best.shift };
+  const beside = snapStand(side, size, taxiways, snap.headingDeg);
+  if (!beside) return snap;
+  const lined = { x: side.x - axis.x * best.along, y: side.y - axis.y * best.along };
+  const out = (lined.x - beside.x) * axis.x + (lined.y - beside.y) * axis.y;
+  // The built stand finds its lead in up to REACH_M behind the stop point, so a deeper slide still connects.
+  const back = Math.hypot(lined.x - beside.join.x, lined.y - beside.join.y);
+  if (out >= -1e-6 && back <= REACH_M) return { ...beside, x: lined.x, y: lined.y, neighbourId: best.o.id };
+  return { ...beside, neighbourId: best.o.id };
 }

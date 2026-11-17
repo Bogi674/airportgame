@@ -53,7 +53,7 @@ Other budgets:
 
 ## 5. Rendering
 
-* Static layers bake into 512 m chunks per zoom band, in the bake worker when `OffscreenCanvas` is available. Re-bake only dirty chunks. Keep at most the visible chunks plus one ring in memory per band.
+* Static layers bake into chunks of at most 2048 px per zoom band (512 m up to 4 px/m, smaller above), in the bake worker when `OffscreenCanvas` is available. Re-bake only dirty chunks. Keep at most the visible chunks plus one ring in memory per band.
 * Dynamic layer: cull by viewport with the static spatial index, choose the detail tier by zoom, then draw baked sprites with `setTransform` and `drawImage`. No path drawing, no text measurement and no `shadowBlur` per frame.
 * Avoid `save` and `restore` per sprite. Set the transform directly.
 * Group draws by sprite to keep the GPU path warm.

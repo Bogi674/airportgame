@@ -462,7 +462,7 @@ export class Airfield {
     const r = this.data.runways.find((x) => x.id === cmd.runwayId);
     if (!r) return { code: 'noSuchRunway' };
     if (cmd.distM < 200 || cmd.distM > r.lengthM - 200) return { code: 'exitDistance', args: { min: 200, max: r.lengthM - 200 } };
-    const pts = rapidExitPoints(r, cmd.distM, cmd.side, cmd.angleDeg);
+    const pts = rapidExitPoints(r, cmd.distM, cmd.side, cmd.angleDeg, cmd.landingEnd ?? 'a');
     const t = this.makeTaxiway(pts, cmd.code, 'rapidExit', cmd.surface, cmd.tier, `${this.nextTaxiName()}`, ctx);
     if (!('points' in t)) {
       this.nameIndex--;

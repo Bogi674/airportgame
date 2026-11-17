@@ -546,3 +546,31 @@ describe('picking a tower in the inspector', () => {
     expect(pickObject(scene(), 1030, 1000, TOL)).toBeNull();
   });
 });
+
+describe('picking a stand in the inspector', () => {
+  const apron: Apron = {
+    id: 3,
+    cost: 0,
+    polygon: [
+      { x: 800, y: 800 },
+      { x: 1200, y: 800 },
+      { x: 1200, y: 1200 },
+      { x: 800, y: 1200 },
+    ],
+    surface: 'asphalt',
+    pcr: 0,
+    condition: 100,
+  };
+  // A large stand facing north (toward -y) with its stop point at the origin of the box.
+  const stand = { id: 9, cost: 0, number: '1', x: 1000, y: 1000, headingDeg: 0, type: 'contact' as const, size: 'large' as const, code: 'E' as const, surface: 'concrete' as const, pushback: 'auto' as const, accepts: 1 };
+  const af = (): AirfieldPayload => ({ ...EMPTY_AIRFIELD, aprons: [apron], stands: [stand] });
+
+  it('picks the stand anywhere on its box, ahead of the apron under it', () => {
+    // 30 m behind the stop point and 25 m to the side: far from the stop point, still on the stand.
+    expect(pickObject(af(), 1025, 1030, 14)).toMatchObject({ kind: 'stand', id: 9 });
+  });
+
+  it('picks the apron off the stand box', () => {
+    expect(pickObject(af(), 1100, 1150, 14)).toMatchObject({ kind: 'apron', id: 3 });
+  });
+});

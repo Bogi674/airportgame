@@ -27,7 +27,7 @@ import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@sh
 import { envelopeType, standBox, standTaxiwayClash, taxiClashes } from '@shared/clearance';
 import { standSlot } from '@shared/standGeom';
 import { standLeadTaxiways } from '@shared/standFork';
-import { snapStand } from '@shared/standSnap';
+import { snapStandRow } from '@shared/standSnap';
 import { runwayWorksDays } from '@shared/surfaceRules';
 import { padArea, padCurve, padPolygon, padValue } from '@shared/turnPad';
 import { previewPenetrations, surfaceOutlines, type Penetration } from '@shared/obstacles';
@@ -758,6 +758,12 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'rapidExit') {
+      // R flips the exit to serve landings from the other threshold.
+      st.set({ exitFrom: st.exitFrom === 'a' ? 'b' : 'a' });
+      this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
     if ((e.key === 'r' || e.key === 'R') && st.tool === 'stands') {
       // R turns the stand by the rotation step from where it faces now, Shift+R by the fine step (D4).
       const step = e.shiftKey ? STAND_PLACEMENT.fineStepDeg : STAND_PLACEMENT.rotateStepDeg;
@@ -1256,11 +1262,15 @@ export class ToolController {
     return best;
   }
 
-  private exitPlan(p: Pt): { r: Runway; dist: number; side: 'left' | 'right' } | null {
+  /** Distance and side of the exit at the pointer, counted from the threshold landings come over and along their direction. */
+  private exitPlan(p: Pt): { r: Runway; dist: number; side: 'left' | 'right'; from: 'a' | 'b' } | null {
     const r = this.nearestRunway(p);
     if (!r) return null;
+    const from = useToolStore.getState().exitFrom;
     const f = runwayFrame(r, p.x, p.y);
-    return { r, dist: Math.max(200, Math.min(r.lengthM - 200, Math.round(f.s))), side: f.lateral >= 0 ? 'left' : 'right' };
+    const s = from === 'b' ? r.lengthM - f.s : f.s;
+    const left = from === 'b' ? f.lateral < 0 : f.lateral >= 0;
+    return { r, dist: Math.max(200, Math.min(r.lengthM - 200, Math.round(s))), side: left ? 'left' : 'right', from };
   }
 
   private previewRapidExit(p: Pt): void {
@@ -1271,14 +1281,14 @@ export class ToolController {
       st.set({ hint: 'hint.needRunway', problem: null, buy: null });
       return;
     }
-    const pts = rapidExitPoints(plan.r, plan.dist, plan.side, st.exitAngle);
+    const pts = rapidExitPoints(plan.r, plan.dist, plan.side, st.exitAngle, plan.from);
     const width = AIRFIELD.codes[st.code].taxiwayWidthM;
     const problem = this.landProblem({ pts, widthM: width });
     this.show(
       {
         valid: problem === null,
         shapes: [{ k: 'strip', pts, w: width }],
-        label: { x: pts[0].x, y: pts[0].y, text: tFormat('ghost.exit', { dist: plan.dist, angle: st.exitAngle, suggest: suggestedExitDistance(plan.r.lengthM) }) },
+        label: { x: pts[0].x, y: pts[0].y, text: tFormat('ghost.exit', { rwy: plan.from === 'b' ? plan.r.nameB : plan.r.nameA, dist: plan.dist, angle: st.exitAngle, suggest: suggestedExitDistance(plan.r.lengthM) }) },
       },
       problem,
       'hint.exit',
@@ -1289,7 +1299,7 @@ export class ToolController {
     const st = useToolStore.getState();
     const plan = this.exitPlan(p);
     if (!plan) return;
-    this.deps.send({ type: 'buildRapidExit', runwayId: plan.r.id, distM: plan.dist, side: plan.side, angleDeg: st.exitAngle, code: st.code, surface: st.surface, tier: st.tier });
+    this.deps.send({ type: 'buildRapidExit', runwayId: plan.r.id, distM: plan.dist, side: plan.side, angleDeg: st.exitAngle, code: st.code, surface: st.surface, tier: st.tier, landingEnd: plan.from });
   }
 
   /** A pad previews within this reach of a runway threshold, flat in world meters (task T01 spec). */
@@ -1695,9 +1705,9 @@ export class ToolController {
     const base = { count: ga ? st.gaCount : 1, spacing: STAND_SIZES[size].widthM, size, ga, surface: pickedStandSurface(st.surface, size), type: ga ? 'remote' : st.standType };
     if (ga) return { ...base, x: q.x, y: q.y, heading: this.rowHeadingAt(p, mods), leadIn: true };
     // A single stand faces the nearest centerline and slides onto its lead in (docs/DESIGN_REVISION_4.md section 2.2).
-    // On the grid it keeps the grid heading unless the player turned it.
+    // On the grid it keeps the grid heading unless the player turned it. Beside a built stand it abuts it with the roads lined up.
     const heading = st.standHeading ?? (grid ? grid.headingDeg : null);
-    const snap = snapStand(q, size, this.af.taxiways, heading);
+    const snap = snapStandRow(q, size, this.af.taxiways, this.af.stands, heading);
     if (snap) {
       this.mark = { kind: 'leadIn', p: snap.join, label: this.af.taxiways.find((t) => t.id === snap.taxiwayId)?.name || undefined };
       return { ...base, x: snap.x, y: snap.y, heading: snap.headingDeg, leadIn: true };

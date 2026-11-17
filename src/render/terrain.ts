@@ -1,8 +1,7 @@
 import { hash2 } from '@shared/noise';
 import { CELL_M, GRID_N, LandClass } from '@shared/site';
-import { CHUNK_SIZE_M } from '@shared/math';
 import type { BakeSite } from '@shared/protocol';
-import { BAND_RASTER_SCALE, chunkPixelSize } from './chunks';
+import { BAND_RASTER_SCALE, chunkPixelSize, chunkSizeM } from './chunks';
 
 const rgb = (r: number, g: number, b: number): number => (r << 16) | (g << 8) | b;
 
@@ -70,8 +69,8 @@ export class TerrainBaker {
     const scale = BAND_RASTER_SCALE[band];
     const img = new ImageData(px, px);
     const out = new Uint32Array(img.data.buffer);
-    const x0 = cx * CHUNK_SIZE_M;
-    const y0 = cy * CHUNK_SIZE_M;
+    const x0 = cx * chunkSizeM(band);
+    const y0 = cy * chunkSizeM(band);
     const detail = scale >= 1;
     const hts = this.site.heights;
     const cls = this.site.landClass;

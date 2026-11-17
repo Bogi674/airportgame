@@ -16,7 +16,8 @@ export type Command =
   | { type: 'buyParcels'; ids: number[] }
   | { type: 'buildRunway'; x: number; y: number; headingDeg: number; lengthM: number; code: CodeLetter; approach: Approach; surface: Surface; tier: number }
   | { type: 'buildTaxiway'; points: Pt[]; code: CodeLetter; kind: 'taxiway' | 'taxilane'; surface: Surface; tier: number }
-  | { type: 'buildRapidExit'; runwayId: number; distM: number; side: 'left' | 'right'; angleDeg: 30 | 45 | 90; code: CodeLetter; surface: Surface; tier: number }
+  /** `landingEnd` is the threshold aircraft land over, A when absent; `distM` and `side` count from it along the landing direction. */
+  | { type: 'buildRapidExit'; runwayId: number; distM: number; side: 'left' | 'right'; angleDeg: 30 | 45 | 90; code: CodeLetter; surface: Surface; tier: number; landingEnd?: 'a' | 'b' }
   | { type: 'buildParallelTaxiway'; runwayId: number; side: 'left' | 'right'; offsetM: number; code: CodeLetter; connectors: number; surface: Surface; tier: number }
   | { type: 'buildApron'; polygon: Pt[]; surface: Surface; tier: number }
   /** Takes a piece out of an apron: the one given, or every apron the piece overlaps. */

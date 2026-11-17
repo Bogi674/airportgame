@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT, SPRITE_BASES } from '@data/aircraft';
 import { SPRITES } from '@data/index';
-import { LIVERY_SLOTS, SpriteCache, liveryFor, tierForZoom } from '@render/sprites/aircraftSprite';
+import { LIVERY_SLOTS, SpriteCache, aircraftTier, liveryFor, tierForZoom } from '@render/sprites/aircraftSprite';
 import { bounds, buildGeometry, extent, hw, leY, teY, windscreen } from '@render/sprites/geometry';
 
 describe('aircraft sprite calibration', () => {
@@ -53,11 +53,21 @@ describe('sprite tiers and cache', () => {
     expect(tierForZoom(0.29)).toBe(0);
     expect(tierForZoom(0.99)).toBe(1);
     expect(tierForZoom(0.3)).toBe(1);
-    expect(tierForZoom(3.9)).toBe(1);
-    expect(tierForZoom(4)).toBe(2);
-    expect(tierForZoom(15.9)).toBe(2);
-    expect(tierForZoom(16)).toBe(3);
+    expect(tierForZoom(1.49)).toBe(1);
+    expect(tierForZoom(1.5)).toBe(2);
+    expect(tierForZoom(5.9)).toBe(2);
+    expect(tierForZoom(6)).toBe(3);
     expect(tierForZoom(40)).toBe(3);
+  });
+
+  it('lets the quality governor lower detail but never turn a silhouette into the arrow', () => {
+    const z1 = SPRITES.tiers.minZoom[1];
+    // Just above the silhouette threshold a slow frame governor (level 2 and up) must keep the silhouette.
+    for (const level of [0, 1, 2, 3]) expect(aircraftTier(z1 + 0.01, level)).toBe(1);
+    expect(aircraftTier(z1 - 0.01, 0)).toBe(0);
+    expect(aircraftTier(SPRITES.tiers.minZoom[2], 2)).toBe(1);
+    expect(aircraftTier(SPRITES.tiers.minZoom[3], 3)).toBe(2);
+    expect(aircraftTier(SPRITES.tiers.minZoom[3], 1)).toBe(3);
   });
 
   it('uses the neutral livery for slots without data', () => {

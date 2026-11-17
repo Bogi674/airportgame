@@ -13,7 +13,7 @@ import { arcPoints, fillet, wrapAngle } from './pavement/fillet';
  */
 
 /** How far back from the stand the lead in looks for a taxilane centerline. */
-const REACH_M = 260;
+export const REACH_M = 260;
 /** The fork keeps this share of the stand to taxilane distance at most, so it stays between them. */
 const MAX_FORK_SHARE = 0.7;
 /** Push back continues this far along the taxilane past the arc (docs/DESIGN_REVISION_2.md section 1). */

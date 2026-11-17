@@ -4,7 +4,7 @@ import { ACCEPT_COMMERCIAL, STAND_SIZES_ORDER, type Stand, type StandSize, type 
 import { standBox, standTaxiwayClash } from '@shared/clearance';
 import { standFork } from '@shared/standFork';
 import { leadInGapM, leadInTargetGapM, standSlot } from '@shared/standGeom';
-import { snapStand } from '@shared/standSnap';
+import { snapStand, snapStandRow } from '@shared/standSnap';
 import { sizeCode } from '@shared/standSizes';
 
 /** A code C taxiway along y = 0 from x = -500 to 500. */
@@ -82,5 +82,62 @@ describe('snapStand', () => {
         expect(standTaxiwayClash(standBox(stand, slot), [t.id], [t], AIRFIELD.codes, STAND_SIZES[size].wingtipClearanceM)).toBeNull();
       }
     }
+  });
+});
+
+describe('snapStandRow', () => {
+  const built = (size: StandSize, x: number, id = 1): Stand => {
+    const s = snapStand({ x, y: 60 }, size, [taxi()], null);
+    if (!s) throw new Error('no snap');
+    return { ...asStand(size, s.x, s.y, s.headingDeg), id };
+  };
+  const top = (s: { x: number; y: number }, size: StandSize): number => {
+    const slot = standSlot(size);
+    if (!slot) throw new Error('no slot');
+    // Facing south (heading 180), the stand top is slot.far further along +y.
+    return s.y + slot.far;
+  };
+
+  it('abuts a built stand of the same size edge to edge with the roads lined up', () => {
+    const o = built('large', 0);
+    const w = STAND_SIZES.large.widthM;
+    const s = snapStandRow({ x: w + 7, y: 64 }, 'large', [taxi()], [o], null);
+    expect(s?.neighbourId).toBe(1);
+    expect(s?.x).toBeCloseTo(w, 6);
+    expect(s && top(s, 'large')).toBeCloseTo(top(o, 'large'), 6);
+  });
+
+  it('snaps on the other side too', () => {
+    const o = built('medium', 0);
+    const s = snapStandRow({ x: -STAND_SIZES.medium.widthM + 5, y: 60 }, 'medium', [taxi()], [o], null);
+    expect(s?.x).toBeCloseTo(-STAND_SIZES.medium.widthM, 6);
+  });
+
+  it('slides a smaller stand away from the taxiway so its road meets the larger neighbour road', () => {
+    const o = built('large', 0);
+    const x = (STAND_SIZES.large.widthM + STAND_SIZES.medium.widthM) / 2;
+    const s = snapStandRow({ x: x + 3, y: 60 }, 'medium', [taxi()], [o], null);
+    if (!s) throw new Error('no snap');
+    expect(s.x).toBeCloseTo(x, 6);
+    expect(top(s, 'medium')).toBeCloseTo(top(o, 'large'), 6);
+    const slot = standSlot('medium');
+    if (!slot) throw new Error('no slot');
+    expect(leadInGapM(asStand('medium', s.x, s.y, s.headingDeg), s.join, slot)).toBeGreaterThanOrEqual(leadInTargetGapM('medium', 'C') - 1e-6);
+  });
+
+  it('keeps its own lead in depth beside a smaller neighbour rather than crowd the taxiway', () => {
+    const o = built('medium', 0);
+    const x = (STAND_SIZES.large.widthM + STAND_SIZES.medium.widthM) / 2;
+    const s = snapStandRow({ x: x + 3, y: 60 }, 'large', [taxi()], [o], null);
+    const own = snapStand({ x, y: 60 }, 'large', [taxi()], null);
+    expect(s?.x).toBeCloseTo(x, 6);
+    expect(s?.y).toBeCloseTo(own?.y ?? NaN, 6);
+  });
+
+  it('ignores stands too far away or facing another way', () => {
+    const o = built('large', 0);
+    expect(snapStandRow({ x: 200, y: 60 }, 'large', [taxi()], [o], null)?.neighbourId).toBeUndefined();
+    const turned = { ...o, headingDeg: 90 };
+    expect(snapStandRow({ x: STAND_SIZES.large.widthM, y: 60 }, 'large', [taxi()], [turned], null)?.neighbourId).toBeUndefined();
   });
 });

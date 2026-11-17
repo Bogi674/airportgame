@@ -20,6 +20,16 @@ export function tierForZoom(zoom: number): number {
   return zoom >= min[3] ? 3 : zoom >= min[2] ? 2 : zoom >= min[1] ? 1 : 0;
 }
 
+/**
+ * Tier drawn at a zoom under the quality governor. From level 2 the governor lowers detail one tier, but
+ * never turns a silhouette into the arrow: the arrow follows zoom alone, so slow frames while zooming
+ * cannot flip aircraft to arrows (user, 2026-11-17).
+ */
+export function aircraftTier(zoom: number, governorLevel: number): number {
+  const t = tierForZoom(zoom);
+  return t === 0 ? 0 : Math.max(1, t - (governorLevel >= 2 ? 1 : 0));
+}
+
 export interface Sprite {
   canvas: HTMLCanvasElement;
   ppm: number;
