@@ -251,3 +251,30 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Preferred arrival windows (D12, 4 h wide) | Window start uniform over the day |
 | How stars are counted (D15) | From two experiences: passengers (toilets, shops and food, queues, cleanliness, on time) and airlines (ground handling support, airside infrastructure and facilities, timeliness, cleanliness) |
 | Airline pool at the start of a seed | Keep the seven slots and their rating gates, with generated names, hubs and fleets |
+
+## 2026-11-18 R5: decision batch for the terminal kit
+
+Context: The user asked for the terminal fixture kit (three levels of check in, security, passport control and gate desk, automated variants, every prop), a security exit, zoning like Airport CEO and the baggage network with automatic links (`docs/DESIGN_REVISION_5.md`). The art and the structure are decided. The gameplay values below are proposals written into `src/data/fixtures/catalog.json` (field `confirm`) and the three documents. Ask them in one batch when the first task of phase 3b or T43 starts.
+
+| Value | Proposed | Where |
+| --- | --- | --- |
+| Check in service time, levels 2 and 3 | 105 s, 95 s | `docs/TERMINAL_FIXTURES.md` 4.1 |
+| Security lane throughput and officers, levels 2 and 3 | 360 per hour with 5, 450 per hour with 4 plus a remote screener | 4.2 |
+| Passport control, levels 2 and 3 | 38 s, 30 s | 4.3 |
+| Gate desk time per passenger, levels 2 and 3 | 3.5 s, 3 s | 4.4 |
+| Self bag drop roaming agent | 1 per 4 units | section 5 |
+| Automated passport gate | 20 s, 1 officer per 5 gates, 8 percent referred, children under 12 referred | section 5 |
+| Security exits | Staffed 1 200 per hour with 1 officer, automated 900 per hour, revolving 1 500 per hour | `docs/TERMINAL_ZONING.md` 6 |
+| Customs channel | 8 s green, 5 percent red for 120 s, 2 officers | `docs/TERMINAL_ZONING.md` 6 |
+| Staff screening rule | A staff route from Public into Secure must pass a security lane set to staff use | `docs/TERMINAL_ZONING.md` 3 |
+| Washroom service times | Accessible toilet 150 s, urinal 45 s | catalog |
+| Decoration ambience, vending sales share, ATM fee | 1 or 2 by size, 15 percent, 2 per use | catalog |
+| Escalator, stairs, elevator, travelator | 3 000 per hour, 2 000 per hour, 13 people and 60 s round trip, 0.65 m/s | `docs/TERMINAL_FIXTURES.md` 6.9 |
+| Janitor room | Base for 2 cleaners | 6.9 |
+| Baggage values marked Confirm | As listed | `docs/BAGGAGE.md` 11 |
+| Legacy `belt` fixture | Each saved belt becomes a carousel anchor on load | `docs/BAGGAGE.md` 9 |
+| Build cost, upkeep and works time of every asset and level | To be proposed in the task | `src/data/business.json` |
+
+Options: A accept the proposals as a batch, B answer row by row.
+Recommendation: A, then tune with play tests.
+Answer: (pending)

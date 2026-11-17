@@ -307,6 +307,8 @@ Reference: `docs/art/surfaces_stands.png`, `docs/art/rev2_06_taxiway_radius_mark
 
 ## 11. Terminal interior kit
 
+Superseded for fixtures by `docs/DESIGN_REVISION_5.md` and `docs/TERMINAL_FIXTURES.md` (2026-11-18): 144 terminal assets in 13 categories, exported as data to `src/data/fixtures/`. The floors and walls below stay as they are.
+
 On the 2 m grid. Reference: `docs/art/terminal_kit.png` and `docs/art/terminal_scene.png` from the first sample set.
 
 * **Floors**: terrazzo (halls), stone (concourse), security grey, carpet (gate lounges), wood (restaurants), marble (duty free), dark tile (fashion), clinic white (pharmacy), toilet tile, office, each a 2 m repeating pattern.
@@ -348,3 +350,12 @@ Every apron scene, in game and in reference art, must pass:
 | `docs/art/terminal_scene.png` | Terminal interior example |
 | `docs/art/terminal_kit.png` | Floors, walls and fixtures |
 | `docs/art/apron_scene.png` | First airfield sample, superseded by the stand sheet for markings |
+| `docs/art/terminal_processing_kit.png` | Check in, passport control and gate desk in three levels, kiosk, self bag drop, automated passport gate, detail tiers |
+| `docs/art/terminal_security_kit.png` | Security lane in three levels |
+| `docs/art/terminal_furniture_kit.png` | Seating, lounge furniture, washrooms |
+| `docs/art/terminal_amenities_kit.png` | Decoration, vending, screens and signs, airport service items |
+| `docs/art/terminal_office_infra_kit.png` | Airline offices, escalators, stairs, elevators, travelators, janitor room |
+| `docs/art/terminal_zones_kit.png` | Zone types, transition fixtures, zoned terminal (`docs/TERMINAL_ZONING.md`) |
+| `docs/art/baggage_kit.png` | Ramp stubs, baggage nodes, link overlay, automatic chain (`docs/BAGGAGE.md`) |
+| `docs/art/terminal_scene_kit.png` | Terminal slice at 14 px per meter with stand 22, the revision 3 jet bridge and an A320neo |
+| `docs/art/fixture_catalog.png` | Every terminal asset by category, drawn from `src/data/fixtures/` |

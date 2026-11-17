@@ -1,4 +1,6 @@
-# T43. Baggage handling system (umbrella)
+# T43. Baggage network (umbrella)
+
+> **Reconciled 2026-11-18.** `docs/BAGGAGE.md` replaces the Goal and Design sections below: the player places drop points, screening machines in a screening room, bays assigned to stands and carousels; the game makes every under floor link with rules A to F. There are no player built conveyors, junctions or splitters and no makeup chutes. Port the reference logic in `docs/reference/sprite-prototypes/baggage_links.py`, draw the nodes from the kit (`src/data/fixtures/sprites/baggage.json`, sheet `docs/art/baggage_kit.png`) through the T73 baker. The confirmed decisions below (single level, automatic routing, flight serial, stand windows, batches, failure direction) still hold. Scope is the MVP 1 column of `docs/BAGGAGE.md` section 2.
 
 Milestone M5. Supersedes and extends T21. Roadmap lines: "Simple baggage network (belts with capacity and transit time) and carousels" (M5, line 107) and "Baggage sorting halls and detailed networks" (M10, line 158). This umbrella pulls the vertical, baggage only construction into MVP 1. No passenger floors are part of this task.
 
