@@ -1,9 +1,11 @@
 import { PAINT, STAND_MARKINGS, STAND_SIZES } from '@data/index';
 import { standGeometry } from '@data/aircraft';
-import type { AirfieldPayload, Stand } from '@shared/airfield';
+import { ACCEPT_GA, type AirfieldPayload, type Stand } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
+import { standBox } from '@shared/clearance';
 import { standForks, type StandFork } from '@shared/standFork';
-import { cornerPolygons, standLayout, toWorld, type StandLayout } from './standLayout';
+import { standSlot } from '@shared/standGeom';
+import { standLayout, toWorld, type FrontZones, type StandLayout } from './standLayout';
 
 /**
  * Stand markings drawn from stand data (docs/DESIGN_REVISION_2.md sections 1 and 3): the lead in fork
@@ -73,15 +75,25 @@ function yellow(ctx: Ctx, w: StandWindow, pts: readonly Pt[], concrete: boolean,
   ctx.stroke();
 }
 
-/** Text inside its own box, sized to the text, in stand local orientation at world point p. */
-function labelBox(ctx: Ctx, l: StandLayout, p: Pt, text: string, h: number, fill: string, color: string, anchorLeft: boolean): void {
-  ctx.save();
+/** Where a box sits against its anchor: centered, or reaching toward +x or -x in stand local terms. */
+type Align = 'c' | 'px' | 'nx';
+
+/** Moves the context to world point p in the text frame: text reads upright with the terminal at the bottom, as on the sheet. */
+function textFrame(ctx: Ctx, l: StandLayout, p: Pt): void {
   ctx.translate(p.x, p.y);
-  // Text reads upright with the terminal at the top: the stand's +y is up the page.
-  ctx.rotate(Math.atan2(l.right.y, l.right.x));
+  ctx.rotate(Math.atan2(-l.right.y, -l.right.x));
+}
+
+/** Left edge of a box of width w in the text frame. Stand local +x runs toward the text start. */
+const boxX = (align: Align, w: number): number => (align === 'c' ? -w / 2 : align === 'px' ? -w : 0);
+
+/** Text inside its own box, sized to the text, at world point p. */
+function labelBox(ctx: Ctx, l: StandLayout, p: Pt, text: string, h: number, fill: string, color: string, align: Align = 'c'): void {
+  ctx.save();
+  textFrame(ctx, l, p);
   ctx.font = `bold ${h * 0.72}px sans-serif`;
   const w = ctx.measureText(text).width + h * 0.6;
-  const x0 = anchorLeft ? 0 : -w / 2;
+  const x0 = boxX(align, w);
   ctx.fillStyle = fill;
   ctx.fillRect(x0, -h / 2, w, h);
   ctx.strokeStyle = C.signBlack;
@@ -91,6 +103,19 @@ function labelBox(ctx: Ctx, l: StandLayout, p: Pt, text: string, h: number, fill
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x0 + w / 2, h * 0.04);
+  ctx.restore();
+}
+
+/** Painted text with no box at world point p, squeezed to at most maxW meters. */
+function paintText(ctx: Ctx, l: StandLayout, p: Pt, text: string, h: number, color: string, align: Align, maxW: number): void {
+  ctx.save();
+  textFrame(ctx, l, p);
+  ctx.font = `bold ${h}px sans-serif`;
+  const w = Math.min(ctx.measureText(text).width, maxW);
+  ctx.fillStyle = color;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, boxX(align, w), 0, maxW);
   ctx.restore();
 }
 
@@ -162,7 +187,10 @@ export function paintStands(ctx: Ctx, af: AirfieldPayload, stands: readonly Stan
 
 function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow): void {
   const l = standLayout(s, fork);
-  if (!l || !fork) return;
+  if (!l || !fork) {
+    paintLoose(ctx, s, w);
+    return;
+  }
   const at = (x: number, y: number): Pt => toWorld(l, x, y);
   const paved = isPaved(s);
   const concrete = s.surface === 'concrete';
@@ -205,6 +233,24 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow):
       path(ctx, [at(x + dir * 2.5, y - 0.6), at(x + dir * 3.8, y), at(x + dir * 2.5, y + 0.6)], true);
       ctx.fill();
     }
+    // Zebra crossing where staff walk from the terminal to the stand, on the side away from the bridge.
+    const zx1 = hx - MK.zebraEdgeM;
+    const zx0 = zx1 - MK.zebraWidthM;
+    const span = MK.serviceRoadM - 2 * MK.roadEdgeInsetM;
+    const pitch = span / MK.zebraStripes;
+    ctx.fillStyle = C.white;
+    for (let k = 0; k < MK.zebraStripes; k++) {
+      const y0 = l.top + MK.roadEdgeInsetM + k * pitch + pitch / 4;
+      path(ctx, [at(zx0, y0), at(zx1, y0), at(zx1, y0 + pitch / 2), at(zx0, y0 + pitch / 2)], true);
+      ctx.fill();
+    }
+    // STOP box on the stand centerline at the terminal edge of the road.
+    const [bw, bh] = MK.stopBoxM;
+    const sy = l.top + MK.serviceRoadM - MK.roadEdgeInsetM - bh / 2 - MK.roadEdgeInsetM;
+    ctx.fillStyle = C.signBlack;
+    path(ctx, [at(-bw / 2, sy - bh / 2), at(bw / 2, sy - bh / 2), at(bw / 2, sy + bh / 2), at(-bw / 2, sy + bh / 2)], true);
+    ctx.fill();
+    paintText(ctx, l, at(0, sy), 'STOP', bh * 0.6, C.yellow, 'c', bw * 0.85);
   }
 
   // Lead in: fork arcs and the stand centerline from the fork to the first stop bar.
@@ -231,65 +277,183 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, w: StandWindow):
   }
 
   if (s.size === 'small') {
-    paintSmall(ctx, s, l, w, paved, red);
+    paintSmall(ctx, s, l, w, paved);
   } else if (l.funnel) {
     const f = l.funnel;
     const hx = l.W / 2;
-    // Front corners: jet bridge zone (or bus bay on a remote stand) left, equipment staging right.
-    const [left, rightCorner] = cornerPolygons(l.W, l.top, f).map((poly) => inset(poly, MK.cornerInsetM).map((p) => at(p.x, p.y)));
+    if (detail && l.zones) paintZones(ctx, l, l.zones, w, contact);
+    // Wing stop outline: the solid restraint line down both sides, angled in to the nose line and closed at the road.
+    const rx = hx - MK.restraintInsetM;
+    const ry = l.D + MK.restraintTopM;
+    const outline = [
+      { x: -f.n, y: l.top },
+      { x: -f.n, y: f.yn },
+      { x: -rx, y: f.ys },
+      { x: -rx, y: ry },
+      { x: rx, y: ry },
+      { x: rx, y: f.ys },
+      { x: f.n, y: f.yn },
+      { x: f.n, y: l.top },
+    ];
+    red([...outline, outline[0]].map((p) => at(p.x, p.y)));
     if (detail) {
-      if (contact) hatched(ctx, w, left, C.red);
-      else {
-        ctx.strokeStyle = C.white;
-        ctx.lineWidth = widthM(w, 0.2, 1.4);
-        ctx.setLineDash([2, 1.5]);
-        path(ctx, left, true);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        labelBox(ctx, l, at(-(hx + f.n) / 2, (f.yn + l.top) / 2), 'BUS', 2.4, C.signBlack, C.white, false);
-      }
-      hatched(ctx, w, rightCorner, C.white);
-    }
-    // Stand safety line, then the boundary with its funnel, continuing toward the neighbours.
-    red([at(-hx, l.D), at(hx, l.D)]);
-    for (const sx of [-1, 1]) {
-      red([at(sx * hx, l.D), at(sx * hx, f.ys), at(sx * f.n, f.yn), at(sx * f.n, l.top)]);
-      const run = MK.boundaryExtendM;
-      red([at(sx * hx, f.ys), at(sx * (hx + run), f.ys + ((f.yn - f.ys) * run) / (hx - f.n))]);
-    }
-    if (detail) {
-      paintBars(ctx, l, w, concrete);
+      // The double restraint line: dashed inside the solid line, and dashed at both stand edges.
+      red(inset(outline, MK.innerDashInsetM).slice(1, 7).map((p) => at(p.x, p.y)), MK.innerDashM);
+      const ex = hx - MK.edgeDashInsetM;
+      for (const sx of [-1, 1]) red([at(sx * ex, l.D), at(sx * ex, l.top)], MK.edgeDashM);
+      paintLadder(ctx, l, w, concrete);
+      paintPushLimit(ctx, l, w);
       if (STAND_SIZES[s.size].hydrants) paintPits(ctx, l, w);
       if (contact) paintBridges(ctx, l, w);
     }
   }
-  // Stand number box on the centerline between the arcs; unpaved stands have a signboard instead.
-  if (paved) labelBox(ctx, l, at(0, l.D * MK.numberAt), s.number, 2.6, C.yellow, C.signBlack, false);
+  // Stand number box on the centerline inside the stand; unpaved stands have a signboard instead.
+  if (paved && s.size !== 'small') labelBox(ctx, l, at(0, l.D + MK.numberBeyondDM), s.number, MK.numberHeightM, C.yellow, C.signBlack);
 }
 
-function paintBars(ctx: Ctx, l: StandLayout, w: StandWindow, concrete: boolean): void {
+/** A stand with no lead in: its box as a dashed red outline and its number, so the player sees what is unconnected. */
+function paintLoose(ctx: Ctx, s: Stand, w: StandWindow): void {
+  const slot = standSlot(s.size);
+  if (!slot) return;
+  const box = standBox(s, slot);
+  ctx.strokeStyle = C.red;
+  ctx.lineWidth = widthM(w, MK.boundaryWidthM, MK.boundaryMinPx);
+  ctx.setLineDash(MK.edgeDashM);
+  path(ctx, box, true);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // The number sits half way between the box middle and its nose edge, clear of the map badge in the middle.
+  const c = { x: (box[0].x + box[1].x + 3 * (box[2].x + box[3].x)) / 8, y: (box[0].y + box[1].y + 3 * (box[2].y + box[3].y)) / 8 };
+  // Same text frame as textFrame: along minus the stand right, the axis running from the tail edge to the nose edge.
+  const ax = box[3].x - box[0].x;
+  const ay = box[3].y - box[0].y;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(Math.atan2(-ax, ay));
+  const h = MK.numberHeightM;
+  ctx.font = `bold ${h * 0.72}px sans-serif`;
+  const tw = ctx.measureText(s.number).width + h * 0.6;
+  ctx.fillStyle = C.yellow;
+  ctx.fillRect(-tw / 2, -h / 2, tw, h);
+  ctx.fillStyle = C.signBlack;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(s.number, 0, h * 0.04);
+  ctx.restore();
+}
+
+/** One short yellow bar per type across the centerline, with the type code boxed on both sides. */
+function paintLadder(ctx: Ctx, l: StandLayout, w: StandWindow, concrete: boolean): void {
+  const h = MK.ladderBarHalfM;
   for (const b of l.bars) {
-    yellow(ctx, w, [toWorld(l, -1.5, b.y), toWorld(l, b.halfW, b.y)], concrete, widthM(w, MK.stopBarWidthM, MK.stopBarMinPx));
-    labelBox(ctx, l, toWorld(l, b.halfW + 0.6, b.y), b.label, 2, C.signBlack, C.white, true);
+    yellow(ctx, w, [toWorld(l, -h, b.y), toWorld(l, h, b.y)], concrete, widthM(w, MK.stopBarWidthM, MK.stopBarMinPx));
+    labelBox(ctx, l, toWorld(l, h + 0.1, b.y), b.label, MK.ladderBoxHeightM, C.signBlack, C.white, 'px');
+    labelBox(ctx, l, toWorld(l, -h - 0.1, b.y), b.label, MK.ladderBoxHeightM, C.signBlack, C.white, 'nx');
   }
 }
 
+/** White push limit bar across the centerline, half way from the safety line to the stop ladder. */
+function paintPushLimit(ctx: Ctx, l: StandLayout, w: StandWindow): void {
+  const last = l.bars[l.bars.length - 1].y;
+  const y = l.D + (last - l.D) * MK.pushLimitAt;
+  const h = MK.pushLimitLengthM / 2;
+  ctx.strokeStyle = C.white;
+  ctx.lineWidth = widthM(w, MK.stopBarWidthM * 0.6, 1.4);
+  path(ctx, [toWorld(l, -h, y), toWorld(l, h, y)]);
+  ctx.stroke();
+  paintText(ctx, l, toWorld(l, -h - MK.zoneTextHeightM, y), 'PUSH LIMIT', MK.zoneTextHeightM, C.white, 'nx', l.W / 2 - h - 2 * MK.zoneTextHeightM);
+}
+
+/** Red fuel pit squares at the hydrant couplings of the largest type, each with FUEL toward the road. */
 function paintPits(ctx: Ctx, l: StandLayout, w: StandWindow): void {
   const g = standGeometry(l.types[0]).fuelCouplingM;
   const h = MK.pitSizeM / 2;
-  ctx.strokeStyle = C.red;
-  ctx.lineWidth = widthM(w, 0.15, 1.4);
   for (const sx of [-1, 1]) {
     const cx = sx * g.v;
     const cy = l.nose0 - g.u;
+    ctx.fillStyle = C.red;
+    ctx.strokeStyle = C.signBlack;
+    ctx.lineWidth = widthM(w, 0.08, 0.8);
     path(ctx, [toWorld(l, cx - h, cy - h), toWorld(l, cx + h, cy - h), toWorld(l, cx + h, cy + h), toWorld(l, cx - h, cy + h)], true);
+    ctx.fill();
     ctx.stroke();
-    path(ctx, [toWorld(l, cx - h, cy - h), toWorld(l, cx + h, cy + h)]);
-    ctx.stroke();
+    const c = toWorld(l, cx, cy);
+    ctx.fillStyle = C.signBlack;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, h * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    paintText(ctx, l, toWorld(l, cx, cy + MK.fuelTextM), 'FUEL', MK.zoneTextHeightM * 0.9, C.white, 'c', MK.fuelTextM * 3);
   }
 }
 
-/** Fixed link from the service road to a rotunda in the jet bridge zone, a tunnel to the door, and the cab. */
+/** A red fire point disc with a white F. */
+function firePoint(ctx: Ctx, l: StandLayout, p: Pt): void {
+  const c = toWorld(l, p.x, p.y);
+  ctx.fillStyle = C.red;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, MK.fireRadiusM, 0, Math.PI * 2);
+  ctx.fill();
+  paintText(ctx, l, c, 'F', MK.fireRadiusM * 1.1, C.white, 'c', MK.fireRadiusM * 1.4);
+}
+
+/** Emergency triangle, bridge band or bus bay, GSE box, GPU spot and fire points (revision 3 section 3 items 5 to 7). */
+function paintZones(ctx: Ctx, l: StandLayout, z: FrontZones, w: StandWindow, contact: boolean): void {
+  const at = (p: Pt): Pt => toWorld(l, p.x, p.y);
+  const th = MK.zoneTextHeightM;
+  hatched(ctx, w, z.emergency.map(at), C.red);
+  const ex0 = Math.min(...z.emergency.map((p) => p.x));
+  const ex1 = Math.max(...z.emergency.map((p) => p.x));
+  paintText(ctx, l, at({ x: (ex0 + ex1) / 2, y: z.textY }), 'EMERGENCY EQUIPMENT ONLY', th, C.red, 'c', ex1 - ex0);
+  const bx0 = Math.min(...z.bridge.map((p) => p.x));
+  const bx1 = Math.max(...z.bridge.map((p) => p.x));
+  const by = Math.min(...z.bridge.map((p) => p.y));
+  if (contact) {
+    hatched(ctx, w, z.bridge.map(at), C.red);
+    paintText(ctx, l, at({ x: bx1, y: z.textY }), 'NO PARKING', th, C.red, 'nx', bx1 - bx0 - 3 * MK.fireRadiusM);
+    firePoint(ctx, l, z.fire[1]);
+  } else {
+    ctx.strokeStyle = C.white;
+    ctx.lineWidth = widthM(w, 0.2, 1.4);
+    ctx.setLineDash([2, 1.5]);
+    path(ctx, z.bridge.map(at), true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    labelBox(ctx, l, at({ x: (bx0 + bx1) / 2, y: (by + l.top) / 2 }), 'BUS', 2.4, C.signBlack, C.white);
+  }
+  firePoint(ctx, l, z.fire[0]);
+  // GSE parking: white outline, white hatching across its base, GSE near its top.
+  const gx0 = Math.min(...z.gse.map((p) => p.x));
+  const gx1 = Math.max(...z.gse.map((p) => p.x));
+  const gy = Math.min(...z.gse.map((p) => p.y));
+  const gb = Math.max(...z.gse.map((p) => p.y));
+  ctx.strokeStyle = C.white;
+  ctx.lineWidth = widthM(w, 0.2, 1.4);
+  path(ctx, z.gse.map(at), true);
+  ctx.stroke();
+  ctx.save();
+  path(ctx, [at({ x: gx0, y: gb - MK.gseHatchM }), at({ x: gx1, y: gb - MK.gseHatchM }), at({ x: gx1, y: gb }), at({ x: gx0, y: gb })], true);
+  ctx.clip();
+  ctx.beginPath();
+  for (let x = gx0; x < gx1 + MK.gseHatchM; x += MK.hatchSpacingM * 1.4) {
+    const p0 = at({ x, y: gb - MK.gseHatchM });
+    const p1 = at({ x: x - MK.gseHatchM, y: gb });
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+  paintText(ctx, l, at({ x: (gx0 + gx1) / 2, y: gy + th * 1.4 }), 'GSE', th, C.white, 'c', gx1 - gx0);
+  // GPU spot beside the nose, GPU written toward the road.
+  const g = MK.gpuSizeM / 2;
+  ctx.fillStyle = C.yellow;
+  ctx.strokeStyle = C.signBlack;
+  ctx.lineWidth = widthM(w, 0.08, 0.8);
+  path(ctx, [at({ x: z.gpu.x - g, y: z.gpu.y - g }), at({ x: z.gpu.x + g, y: z.gpu.y - g }), at({ x: z.gpu.x + g, y: z.gpu.y + g }), at({ x: z.gpu.x - g, y: z.gpu.y + g })], true);
+  ctx.fill();
+  ctx.stroke();
+  paintText(ctx, l, at({ x: z.gpu.x, y: z.gpu.y + g + th }), 'GPU', th * 0.9, C.yellow, 'c', th * 3);
+}
+
 function paintBridges(ctx: Ctx, l: StandLayout, w: StandWindow): void {
   const a = l.types[0];
   const doors = standGeometry(a).doorStationsM.slice(0, STAND_SIZES[l.size].jetBridges);
@@ -335,10 +499,40 @@ function paintBridges(ctx: Ctx, l: StandLayout, w: StandWindow): void {
   });
 }
 
-function paintSmall(ctx: Ctx, s: Stand, l: StandLayout, w: StandWindow, paved: boolean, red: (pts: Pt[], dash?: number[]) => void): void {
+/**
+ * General aviation stand per the sheet: on paint, a stop bar ahead of the nose, T marks at both
+ * wingtips and a dashed wingtip line to the stand edge; on gravel, white edge markers and tie down
+ * rings; on grass and dirt, rows of cones and tie down rings. A G label sits in the front corner.
+ */
+function paintSmall(ctx: Ctx, s: Stand, l: StandLayout, w: StandWindow, paved: boolean): void {
   const hx = l.W / 2;
   const a = l.types[0];
   const half = a.dimensions.wingspanM / 2;
+  const nose = l.nose0;
+  const wingY = nose - a.dimensions.lengthM * MK.gaTAtLength;
+  const detail = w.scale >= 1;
+  const label = (fill: string): void => {
+    const text = (s.accepts & ACCEPT_GA) !== 0 ? `G${s.number}` : s.number;
+    labelBox(ctx, l, toWorld(l, hx - MK.gaLabelInsetM, l.top - MK.gaLabelBackM), text, MK.gaLabelHeightM, fill, C.signBlack);
+  };
+  if (paved) {
+    const concrete = s.surface === 'concrete';
+    if (detail) {
+      const lw = widthM(w, MK.stopBarWidthM, MK.stopBarMinPx);
+      yellow(ctx, w, [toWorld(l, -MK.gaStopHalfM, l.bars[0].y), toWorld(l, MK.gaStopHalfM, l.bars[0].y)], concrete, lw);
+      for (const sx of [-1, 1]) {
+        const x = sx * half;
+        yellow(ctx, w, [toWorld(l, x - MK.gaTBarM / 2, wingY), toWorld(l, x + MK.gaTBarM / 2, wingY)], concrete);
+        yellow(ctx, w, [toWorld(l, x, wingY), toWorld(l, x, wingY + MK.gaTStemM)], concrete);
+      }
+      // Wingtip line from the T on the left wing to the stand edge.
+      ctx.setLineDash([1, 0.8]);
+      yellow(ctx, w, [toWorld(l, -half - MK.gaTBarM / 2, wingY), toWorld(l, -hx, wingY)], false);
+      ctx.setLineDash([]);
+    }
+    label(C.yellow);
+    return;
+  }
   const ring = (x: number, y: number): void => {
     const c = toWorld(l, x, y);
     ctx.strokeStyle = C.white;
@@ -347,23 +541,37 @@ function paintSmall(ctx: Ctx, s: Stand, l: StandLayout, w: StandWindow, paved: b
     ctx.arc(c.x, c.y, MK.tieRingDiameterM / 2, 0, Math.PI * 2);
     ctx.stroke();
   };
-  // Tie down rings under both wings and at the tail.
-  const wingY = l.nose0 - a.dimensions.lengthM * 0.4;
-  ring(-half * 0.65, wingY);
-  ring(half * 0.65, wingY);
-  ring(0, l.nose0 - a.dimensions.lengthM + 1);
-  if (paved) {
-    if (w.scale >= 1) yellow(ctx, w, [toWorld(l, -1.6, l.bars[0].y), toWorld(l, 1.6, l.bars[0].y)], s.surface === 'concrete', widthM(w, MK.stopBarWidthM, MK.stopBarMinPx));
-    if (w.scale >= 1) labelBox(ctx, l, toWorld(l, 2.2, l.bars[0].y), 'GA', 1.6, C.signBlack, C.white, true);
-    for (const sx of [-1, 1]) red([toWorld(l, sx * hx, l.D), toWorld(l, sx * hx, l.top)], [2, 1.5]);
+  if (detail) {
+    ring(-half * MK.gaRingSpan, wingY);
+    ring(half * MK.gaRingSpan, wingY);
+    ring(0, nose + MK.gaNoseRingM);
+  }
+  const edges = [l.D, l.top];
+  if (s.surface === 'gravel') {
+    // White edge markers along the taxilane edge and the front edge.
+    const [mw, mh] = MK.gaEdgeMarkerM;
+    const n = MK.gaMarkersPerEdge;
+    ctx.fillStyle = C.white;
+    for (const y of edges) {
+      for (let k = 0; k < n; k++) {
+        const x = -hx + mw + ((l.W - 2 * mw) * k) / (n - 1);
+        path(ctx, [toWorld(l, x - mw / 2, y - mh / 2), toWorld(l, x + mw / 2, y - mh / 2), toWorld(l, x + mw / 2, y + mh / 2), toWorld(l, x - mw / 2, y + mh / 2)], true);
+        ctx.fill();
+      }
+    }
+    label(C.yellow);
     return;
   }
-  // Unpaved: white edge markers at the corners and a signboard at the stand head.
-  ctx.fillStyle = C.white;
-  const m = Math.max(0.6, px(w, 4));
-  for (const [x, y] of [[-hx, l.D], [hx, l.D], [-hx, l.top], [hx, l.top]] as const) {
-    const c = toWorld(l, x, y);
-    ctx.fillRect(c.x - m / 2, c.y - m / 2, m, m);
+  // Grass and dirt: a row of cones along both edges.
+  const n = MK.gaConesPerEdge;
+  const r = Math.max(0.5, px(w, 3));
+  ctx.fillStyle = CONE;
+  for (const y of edges) {
+    for (let k = 0; k < n; k++) {
+      const x = -hx + r + ((l.W - 2 * r) * k) / (n - 1);
+      path(ctx, [toWorld(l, x, y - r), toWorld(l, x + r, y + r), toWorld(l, x - r, y + r)], true);
+      ctx.fill();
+    }
   }
-  labelBox(ctx, l, toWorld(l, 0, l.top + 1.5), s.number, 1.6, C.white, C.signBlack, false);
+  label(C.white);
 }

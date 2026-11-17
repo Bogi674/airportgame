@@ -211,3 +211,13 @@ Answer (owner, 2026-11-12): all 33 values accepted as recommended. D9 and D12 we
 | Rows of stands | Single stands only: one stand per click, each with its own snap and rotation |
 | Scope of T59 | Classes, pass through, accepts toggles, placement with rotation and lead in snapping, ghost fix, migration. Snap markers for all tools and taxiway sections become two new roadmap rows |
 | Interim turnaround crews from T57 (under 20 m no belt loader set, GA refueller only) | Confirmed as is until T63 |
+
+## 2026-11-17 T47 stand markings
+
+| Question | Answer (owner, 2026-11-17) |
+| --- | --- |
+| Which items of `surfaces_stands.png` T47 paints | Everything on the sheet for nose in stands, including the wing stop outline (the red funnel). The current funnel angle is too steep: follow the sheet exactly |
+| Taxi through and MARS stand markings | Painted when the stand kind exists: taxi through with T72, MARS with the MVP 2 MARS task. No marking code waits unused |
+| Bridge side before the access types of T66 | Contact stands are drawn as access type 1 (bridge zone front left, staging and GSE front right). Remote stands keep the bus bay |
+| Connection state icons on the map | The states the game can compute today: no taxiway (red) and breaks taxiway clearance (amber), shown at every zoom. A stand with no lead in draws its box outline. Further states join when their systems exist |
+| Marking dimensions missing from the docs and data | Measured from the sheet at 7.5 px per meter and stored in `stand_sizes.json`. The user may change any of them later |

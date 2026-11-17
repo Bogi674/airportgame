@@ -8,7 +8,7 @@ import { sizeCode, standRefusal } from '@shared/standSizes';
 import type { Command } from '@sim/commands';
 import { Sim } from '@sim/sim';
 import { EdgeKind, TaxiNetwork } from '@sim/airfield/network';
-import { cornerPolygons, polygonDistance, standLayout, typeOutlines } from '@render/markings/standLayout';
+import { polygonDistance, standLayout, standOutlines } from '@render/markings/standLayout';
 import { OPTIONS, ownedSim, run } from './helpers';
 
 /** A straight east west taxilane at y = 0 and a stand north of it, nose pointing north (away from it). */
@@ -52,25 +52,28 @@ describe('stand lead in fork (revision 2 section 1, test 1)', () => {
   });
 });
 
-describe('contact stand funnel (revision 2 section 3.3, test 4)', () => {
+describe('wing stop outline and front zones (revision 3 section 6 item 2, sheet geometry of 2026-11-17)', () => {
   for (const size of ['medium', 'large', 'xl'] as const) {
-    it(`${size}: both front corners keep the clearance from every assigned type`, () => {
+    it(`${size}: the funnel follows the sheet and no front zone touches an assigned type`, () => {
       const s = stand(size);
       const l = standLayout(s, standFork(s, lane));
-      expect(l?.funnel).not.toBeNull();
-      if (!l || !l.funnel) return;
-      const [left, right] = cornerPolygons(l.W, l.top, l.funnel);
-      l.types.forEach((a, k) => {
-        for (const o of typeOutlines(a, l.bars[k].y + (a.stand?.noseGearM ?? 0))) {
-          expect(polygonDistance(left, o)).toBeGreaterThanOrEqual(STAND_MARKINGS.funnelClearM - 1e-9);
-          expect(polygonDistance(right, o)).toBeGreaterThanOrEqual(STAND_MARKINGS.funnelClearM - 1e-9);
-        }
-      });
-      // The funnel starts above the safety line and below the nose point.
-      expect(l.funnel.ys).toBeGreaterThan(l.D);
-      expect(l.funnel.ys).toBeLessThan(l.funnel.yn);
+      if (!l || !l.funnel || !l.zones) throw new Error('no layout');
+      expect(l.funnel.yn).toBeCloseTo(l.top - STAND_MARKINGS.funnelNoseInsetM, 9);
+      expect(l.funnel.yn - l.funnel.ys).toBeCloseTo(STAND_MARKINGS.funnelRiseM, 9);
+      expect(l.funnel.ys).toBeGreaterThan(l.D + STAND_MARKINGS.restraintTopM);
+      const zones = [l.zones.emergency, l.zones.bridge, l.zones.gse];
+      for (const o of standOutlines(l)) for (const z of zones) expect(polygonDistance(z, o)).toBeGreaterThanOrEqual(STAND_MARKINGS.zoneClearM - 1e-9);
+      // Zones stay inside the stand, on their own sides, and apart from each other.
+      for (const z of zones) for (const p of z) expect(Math.abs(p.x)).toBeLessThanOrEqual(l.W / 2);
+      expect(Math.min(...l.zones.emergency.map((p) => p.x))).toBeGreaterThan(l.funnel.n);
+      expect(polygonDistance(l.zones.bridge, l.zones.gse)).toBeGreaterThan(0);
     });
   }
+
+  it('the layout is the same every time for the same stand', () => {
+    const s = stand('large');
+    expect(standLayout(s, standFork(s, lane))).toEqual(standLayout(s, standFork(s, lane)));
+  });
 });
 
 describe('stand sizes and surfaces (revision 2 section 3, test 5)', () => {

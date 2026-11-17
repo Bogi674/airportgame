@@ -5,6 +5,12 @@ import type { SitePayload } from '@shared/site';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
 import { AIRFIELD, GSE, PAINT } from '@data/index';
 import { paintGhostObjects } from './markings/airfieldPaint';
+import { standStates, type StandState } from './standStates';
+
+/** Radius of a stand connection badge in CSS pixels, and its colors (the flag colors of drawFlags). */
+const STAND_BADGE_PX = 9;
+const BADGE_RED = '#ff3b30';
+const BADGE_AMBER = '#ffb020';
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { TERMINAL_CELL_M, type TerminalGrid } from '@shared/business';
 import type { ConstructionGrid } from '@shared/constructionGrid';
@@ -203,8 +209,12 @@ export class Renderer {
   /** New airfield geometry: send it to the baker and re-bake visible chunks. */
   private af: AirfieldPayload = EMPTY_AIRFIELD;
 
+  /** Connection state badges, refreshed with the airfield. */
+  private standStates: StandState[] = [];
+
   setAirfield(airfield: AirfieldPayload): void {
     this.af = airfield;
+    this.standStates = standStates(airfield);
     this.baker.setAirfield(airfield);
     this.chunks.markAllDirty();
   }
@@ -426,6 +436,31 @@ export class Renderer {
     if (curr) this.drawVehicles(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
+    if (this.standStates.length > 0) this.drawStandStates(z * c, z * s, -z * s, z * c, e, f);
+  }
+
+  /** Stand connection badges at a fixed screen size, so they show at every zoom: red no taxiway, amber clearance. */
+  private drawStandStates(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const r = STAND_BADGE_PX * this.dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = `bold ${Math.round(r * 1.4)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(1, this.dpr * 1.5);
+    for (const st of this.standStates) {
+      const x = a * st.x + cc * st.y + e;
+      const y = b * st.x + d * st.y + f;
+      if (x < -r || y < -r || x > this.canvas.width + r || y > this.canvas.height + r) continue;
+      ctx.fillStyle = st.kind === 'noTaxiway' ? BADGE_RED : BADGE_AMBER;
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = st.kind === 'noTaxiway' ? '#ffffff' : '#1b1b1b';
+      ctx.fillText('!', x, y + r * 0.08);
+    }
   }
 
   /**
