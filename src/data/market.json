@@ -1,0 +1,61 @@
+{
+  "destinations": {
+    "count": 80,
+    "minKm": 150,
+    "maxKm": 4000,
+    "minSize": 1,
+    "maxSize": 5,
+    "regions": ["north", "northEast", "southEast", "south", "southWest", "northWest"],
+    "syllables": {
+      "start": ["Bel", "Cor", "Dun", "Esk", "Far", "Gal", "Hal", "Ist", "Kar", "Lin", "Mor", "Nar", "Ost", "Pel", "Quen", "Ros", "Sal", "Tor", "Val", "Wen", "Ard", "Bran", "Cal", "Del"],
+      "middle": ["a", "e", "i", "o", "an", "er", "or", "il", "", ""],
+      "end": ["burg", "dale", "ford", "haven", "mont", "port", "stad", "ton", "vik", "wick", "field", "mouth", "by", "holm", "gate", "bridge"]
+    }
+  },
+  "series": {
+    "contractWeeks": 26,
+    "renewalWeeks": 2,
+    "onSigning": { "regional": 3, "national": 5, "international": 6 },
+    "perStar": 2,
+    "largeTypesStars": 3,
+    "largeTypeCodes": ["D", "E", "F"],
+    "windowMin": 240,
+    "windowStartFirstMin": 300,
+    "windowStartLastMin": 1200,
+    "slotStepMin": 5,
+    "patterns": [
+      { "id": "daily", "weight": 1 },
+      { "id": "weekdays", "weight": 1 },
+      { "id": "alternate", "weight": 1 },
+      { "id": "twiceWeekly", "weight": 1 },
+      { "id": "weekend", "weight": 1 }
+    ],
+    "stageKm": {
+      "regional": [250, 800],
+      "national": [700, 2200],
+      "international": [2000, 4000]
+    }
+  },
+  "satisfaction": {
+    "start": 60,
+    "min": 0,
+    "max": 100,
+    "unplacedFlight": -2,
+    "delayedFlight": -1,
+    "onTimeFlight": 0.5,
+    "outsideWindowFlight": -1,
+    "weeklyDrift": 2,
+    "onTimeMin": 15,
+    "cancelBelow": 30,
+    "cancelWeeks": 4,
+    "endBelow": 15,
+    "endWeeks": 8
+  },
+  "approach": {
+    "everyDays": 30,
+    "chancePerStar": 0.2
+  },
+  "stars": {
+    "cuts": [20, 40, 60, 80]
+  }
+}
