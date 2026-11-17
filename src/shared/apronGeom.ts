@@ -87,9 +87,34 @@ export function uncoveredArea(piece: readonly Pt[], aprons: readonly Pick<Apron,
 /** Overlap below this many square metres is a shared edge, not a clash. */
 const OVERLAP_EPS_M2 = 0.01;
 
-/** True when two polygons overlap by more than a hundredth of a square metre. */
+/**
+ * True when two polygons overlap by more than a hundredth of a square metre. Both areas come from the
+ * clipper: it snaps coordinates, so a rotated box measured by the shoelace formula differed from its
+ * clipped area by a few hundredths of a square metre and read as an overlap anywhere on the map.
+ */
 export function overlaps(a: readonly Pt[], b: readonly Pt[]): boolean {
-  return ringArea(a) - uncoveredArea(a, [{ polygon: [...b] }]) > OVERLAP_EPS_M2;
+  if (!boundsMeet(a, b)) return false;
+  return uncoveredArea(a, []) - uncoveredArea(a, [{ polygon: [...b] }]) > OVERLAP_EPS_M2;
+}
+
+/** True when the bounding boxes of two polygons touch or overlap. */
+function boundsMeet(a: readonly Pt[], b: readonly Pt[]): boolean {
+  let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
+  for (const p of a) {
+    ax0 = Math.min(ax0, p.x);
+    ay0 = Math.min(ay0, p.y);
+    ax1 = Math.max(ax1, p.x);
+    ay1 = Math.max(ay1, p.y);
+  }
+  for (const p of b) if (p.x >= ax0 && p.x <= ax1 && p.y >= ay0 && p.y <= ay1) return true;
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const p of b) {
+    bx0 = Math.min(bx0, p.x);
+    by0 = Math.min(by0, p.y);
+    bx1 = Math.max(bx1, p.x);
+    by1 = Math.max(by1, p.y);
+  }
+  return ax0 <= bx1 && bx0 <= ax1 && ay0 <= by1 && by0 <= ay1;
 }
 
 /** The union of a clipped region with existing shapes. */
