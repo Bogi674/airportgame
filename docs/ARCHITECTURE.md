@@ -152,7 +152,7 @@ Struct of arrays with capacity 200 000: `flightId`, `size`, `profile`, `stage`, 
 
 Journey stages advance by timers and node transitions. Cohorts split for shops and merge at the next common node. Flights generate cohorts from arrival time distributions by profile and access mode.
 
-The store lives in `src/sim/cohorts/cohorts.ts`. Each cohort carries a `building` (terminal grid index). Slots come from a free list, and waiting cohorts sit in a timer wheel of 4 096 buckets of 5 ticks. The journey runs in the `cohorts` subsystem slot after `business`. The snapshot carries a sample of up to 3 000 cohort positions for the renderer.
+The store lives in `src/sim/cohorts/cohorts.ts`. Each cohort carries a `building` (terminal grid index). Slots come from a free list, and waiting cohorts sit in a timer wheel of 4 096 buckets of 5 ticks. The journey runs in the `cohorts` subsystem slot after `business`. The snapshot carries a sample of up to 3 000 cohort positions for the renderer. Each cohort also records the walk it is on (`walkFromX`, `walkFromY`, `walkToX`, `walkToY` in logical cells and `walkStart`, the tick it set off or -1), saved and hashed. The sample places walkers along that route in lanes with a spacing gap, spreads dwellers over free cells in a spiral around their goal and keeps queued cohorts on their queue slots. Each entry carries a stable id and a mode (queued, walking, dwelling) so the renderer can interpolate by id.
 
 ## 9. Rendering pipeline
 
@@ -468,6 +468,11 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-18 T43: arrival bags are claimed as they reach the carousel until arrival passengers exist (T20); claim wait is recorded but not rated yet.
 * 2026-11-18 T66: turnaround vehicle kinds are resolved per aircraft from its stand's upgrades instead of a fixed table per type, so plain stands keep their exact timings.
 * 2026-11-18 T66: far stand distance is the straight line from the gate desk to the stand center, since no walking graph exists outside the terminal. Buses do not dock; a far bus bay stand boards once the airport owns a bus.
+* 2026-11-18 T54: a cohort stores the logical cells of the walk nodes it left and heads for, not node ids, because node ids change on every walk graph rebuild while cells survive edits and saves.
+* 2026-11-18 T54: a walker's position is found by greedy descent on the cached distance row of its target, so no per cohort search runs and the route matches walkDistance exactly.
+* 2026-11-18 T54: the people sample keeps its own distance row cache beside the sim cache, so drawing the sample never evicts rows the journey needs and never touches hashed state.
+* 2026-11-18 T54: each sampled walker keeps the last hop and distance reached between snapshots, so a snapshot resumes the same float sums and stays bit identical to a fresh computation.
+* 2026-11-18 T54: snapshot layout 7 adds a stable people id and mode per entry, so the renderer interpolates each person between snapshots by id instead of by slot.
 
 ## 13. Known limits
 
