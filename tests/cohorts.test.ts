@@ -3,6 +3,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS, PROFILES } from '@data/index';
 import { Sim } from '@sim/sim';
 import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
+import { memberSeedOf } from '@sim/cohorts/traits';
 import type { ServiceNodes } from '@sim/terminal/serviceNodes';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
@@ -226,12 +227,12 @@ describe('cohort journey from curb to boarded', () => {
     const b = new Sim(a.seed, OPTIONS);
     b.restore(data);
     expect(b.stateHash()).toBe(a.stateHash());
-    for (let t = 0; t < 750; t++) {
+    for (let t = 0; t < 1000; t++) {
       a.step();
       b.step();
     }
     expect(b.stateHash()).toBe(a.stateHash());
-    for (let t = 0; t < 750; t++) {
+    for (let t = 0; t < 1000; t++) {
       a.step();
       b.step();
     }
@@ -343,7 +344,7 @@ const SMALL = AIRCRAFT.findIndex((a) => a.id === 'atr72_600');
 /** Turnaround that lets every passenger of a small aircraft board. */
 const FULL_TURN_TICKS = 50000;
 /** Turnaround that ends while some passengers are at the gate desks, so the push back holds. */
-const HOLD_TURN_TICKS = 3800;
+const HOLD_TURN_TICKS = 3000;
 const ARRIVE_TICKS = 4000;
 const DEPART_TICKS = 100000;
 const PASSENGERS = LEDGER_CATEGORIES.indexOf('passengers');
@@ -858,5 +859,67 @@ describe('snapshot sample of cohort positions', () => {
     const before = sim.stateHash();
     sim.writeSnapshot(createSnapshotViews(createSnapshotBuffer()));
     expect(sim.stateHash()).toBe(before);
+  });
+});
+
+describe('cohort members', () => {
+  it('group sizes follow the profile weights and members are seeded from the recipe seed', () => {
+    const sim = terminalSim();
+    for (let i = 0; i < 6; i++) scheduleLong(sim);
+    const co = sim.cohorts;
+    expect(co.hi).toBeGreaterThan(20);
+    const M = PROFILES.maxGroup;
+    for (let c = 0; c < co.hi; c++) {
+      const key = PROFILE_KEYS[co.profile[c]!]!;
+      const weights = PROFILES.profiles[key].groupSize;
+      expect(co.size[c]).toBeLessThanOrEqual(M);
+      const cap = weights.reduce((last, w, k) => (w > 0 ? k + 1 : last), 1);
+      expect(co.size[c]).toBeLessThanOrEqual(cap);
+      expect(co.satisfaction[c]).toBe(100);
+      for (let i = 0; i < co.size[c]!; i++) {
+        expect(co.memberSeed[c * M + i]).toBe(memberSeedOf(co.recipeSeed[c]!, i));
+        expect(co.memberSat[c * M + i]).toBe(100);
+      }
+    }
+  });
+
+  it('is deterministic over 2000 ticks with cohorts past the curb', () => {
+    const make = (): Sim => {
+      const sim = terminalSim('MEMBERS');
+      scheduleLong(sim);
+      for (let i = 0; i < 2000; i++) sim.step();
+      return sim;
+    };
+    const a = make();
+    const b = make();
+    let beyondCurb = 0;
+    for (let c = 0; c < a.cohorts.hi; c++) if (a.cohorts.stage[c]! > Stage.Curb) beyondCurb++;
+    expect(beyondCurb).toBeGreaterThan(0);
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
+});
+
+describe('cohort save of members', () => {
+  it('a version 27 style save without the new arrays loads and runs', () => {
+    const a = terminalSim('V27');
+    scheduleLong(a);
+    for (let t = 0; t < 1500; t++) a.step();
+    const data = JSON.parse(JSON.stringify(a.serialize())) as {
+      version: number;
+      cohorts: { arrays: Record<string, string> };
+    };
+    for (const k of ['needTick', 'parent', 'waitStart', 'target', 'visitNeed', 'memberSeed', 'memberNeed', 'memberSat']) delete data.cohorts.arrays[k];
+    data.version = 27;
+    const b = new Sim(a.seed, OPTIONS);
+    b.restore(data);
+    expect(b.cohorts.hi).toBe(a.cohorts.hi);
+    for (let c = 0; c < b.cohorts.hi; c++) {
+      if (b.cohorts.stage[c] === Stage.Free) continue;
+      for (let i = 0; i < b.cohorts.size[c]!; i++) {
+        expect(b.cohorts.memberSeed[c * PROFILES.maxGroup + i]).toBe(memberSeedOf(b.cohorts.recipeSeed[c]!, i));
+      }
+    }
+    for (let t = 0; t < 2000; t++) b.step();
+    expect(b.cohorts.generated).toBe(a.cohorts.generated);
   });
 });

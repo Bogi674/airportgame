@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { AIRCRAFT } from '@data/aircraft';
 import { Sim } from '@sim/sim';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
+import { packTyped, unpackTyped } from '@sim/save/pack';
+import { FLAG_SLOW } from '@sim/cohorts/cohorts';
+import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '@sim/cohorts/traits';
 import { terminalIssues } from '@shared/terminalRooms';
 import { gridOnLevel, newGrid } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
@@ -113,6 +117,61 @@ describe('saves', () => {
     expect(() => c.restore(data)).not.toThrow();
     expect(c.business.serviceNodes.length).toBe(sim.business.serviceNodes.length);
     expect(c.business.serviceNodes.every((sn) => sn.active === 0)).toBe(true);
+  });
+
+  it('a version 27 save with cohorts migrates to 28 with seeded members', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2 })).toEqual([]);
+    sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 6000, -1);
+    for (let t = 0; t < 400; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      cohorts: { hi: number; arrays: Record<string, string> };
+    };
+    data.version = 27;
+    for (const k of ['needTick', 'parent', 'waitStart', 'target', 'visitNeed', 'memberSeed', 'memberNeed', 'memberSat']) delete data.cohorts.arrays[k];
+    const out = migrate(data) as unknown as { version: number; cohorts: { hi: number; arrays: Record<string, string> } };
+    expect(out.version).toBe(SAVE_VERSION);
+    expect(out.cohorts.hi).toBeGreaterThan(0);
+    const seeds = unpackTyped(out.cohorts.arrays.memberSeed!, Uint32Array);
+    const sat = unpackTyped(out.cohorts.arrays.memberSat!, Uint8Array);
+    const recipe = unpackTyped(out.cohorts.arrays.recipeSeed!, Uint32Array);
+    const parent = unpackTyped(out.cohorts.arrays.parent!, Int32Array);
+    expect(seeds[0]).toBe(memberSeedOf(recipe[0]!, 0));
+    expect(sat[0]).toBe(100);
+    expect(parent[0]).toBe(-1);
+  });
+
+  it('a version 27 save with a slow member gets the slow flag on migration', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2 })).toEqual([]);
+    sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 6000, -1);
+    for (let t = 0; t < 400; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      cohorts: { hi: number; arrays: Record<string, string> };
+    };
+    data.version = 27;
+    const traits = new Float64Array(TRAIT_COUNT);
+    let slowRecipe = 0;
+    while (true) {
+      writeTraits(memberSeedOf(slowRecipe, 0), 0, traits);
+      if (traits[TRAIT.Slow] === 1) break;
+      slowRecipe++;
+    }
+    const recipe = unpackTyped(data.cohorts.arrays.recipeSeed!, Uint32Array);
+    const size = unpackTyped(data.cohorts.arrays.size!, Uint8Array);
+    const flags = unpackTyped(data.cohorts.arrays.flags!, Uint8Array);
+    recipe[0] = slowRecipe;
+    size[0] = 1;
+    flags[0] = 0;
+    data.cohorts.arrays.recipeSeed = packTyped(recipe);
+    data.cohorts.arrays.size = packTyped(size);
+    data.cohorts.arrays.flags = packTyped(flags);
+    const out = migrate(data) as unknown as { cohorts: { arrays: Record<string, string> } };
+    expect(unpackTyped(out.cohorts.arrays.flags!, Uint8Array)[0]! & FLAG_SLOW).toBe(FLAG_SLOW);
   });
 
   it('gridOnLevel finds the floor of a building or returns undefined', () => {

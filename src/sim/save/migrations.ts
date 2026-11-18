@@ -2,10 +2,13 @@ import type { GameOptions } from '@shared/protocol';
 import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
-import { GROUND } from '@data/index';
+import { GROUND, NEEDS, PROFILES } from '@data/index';
+import { NEED_COUNT } from '@data/schemas/needs';
+import { FLAG_SLOW } from '../cohorts/cohorts';
+import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 27;
+export const SAVE_VERSION = 28;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -209,6 +212,44 @@ export function migrate(raw: unknown): SaveData {
     const co = (save as { cohorts?: { hi?: number; arrays?: Record<string, string> } }).cohorts;
     if (co?.arrays && typeof co.hi === 'number') co.arrays.walkStart = packTyped(new Int32Array(co.hi).fill(-1));
     save.version = 27;
+  }
+  // Version 27 to 28: cohort members with traits seeds, needs and satisfaction, and the visit state of sub cohorts (T67). Older cohorts get seeded members, full satisfaction and no visit.
+  if (save.version < 28) {
+    const co = (save as { cohorts?: { hi?: number; arrays?: Record<string, string> } }).cohorts;
+    const arrays = co?.arrays;
+    if (arrays && typeof co.hi === 'number' && arrays.recipeSeed && arrays.size) {
+      const hi = co.hi;
+      const m = PROFILES.maxGroup;
+      const recipe = unpackTyped(arrays.recipeSeed, Uint32Array);
+      const size = unpackTyped(arrays.size, Uint8Array);
+      const profile = arrays.profile ? unpackTyped(arrays.profile, Uint8Array) : new Uint8Array(hi);
+      const memberSeed = new Uint32Array(hi * m);
+      const memberSat = new Uint8Array(hi * m);
+      const memberNeed = new Uint16Array(hi * m * NEED_COUNT);
+      const traits = new Float64Array(TRAIT_COUNT);
+      const flags = arrays.flags ? unpackTyped(arrays.flags, Uint8Array) : new Uint8Array(hi);
+      for (let c = 0; c < hi; c++) {
+        for (let i = 0; i < size[c]!; i++) {
+          const seed = memberSeedOf(recipe[c]!, i);
+          writeTraits(seed, profile[c]!, traits);
+          const b = c * m + i;
+          memberSeed[b] = seed;
+          memberSat[b] = NEEDS.satisfaction.start;
+          memberNeed[b * NEED_COUNT + NEED_COUNT - 1] = Math.floor(traits[TRAIT.Desire]! * 1000);
+          if (traits[TRAIT.Slow] === 1) flags[c] = flags[c]! | FLAG_SLOW;
+        }
+      }
+      arrays.flags = packTyped(flags);
+      arrays.memberSeed = packTyped(memberSeed);
+      arrays.memberSat = packTyped(memberSat);
+      arrays.memberNeed = packTyped(memberNeed);
+      arrays.needTick = packTyped(new Int32Array(hi).fill((save as { tick?: number }).tick ?? 0));
+      arrays.parent = packTyped(new Int32Array(hi).fill(-1));
+      arrays.waitStart = packTyped(new Int32Array(hi).fill(-1));
+      arrays.target = packTyped(new Int32Array(hi).fill(-1));
+      arrays.visitNeed = packTyped(new Uint8Array(hi));
+    }
+    save.version = 28;
   }
   return save as SaveData;
 }

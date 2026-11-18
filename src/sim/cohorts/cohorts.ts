@@ -1,4 +1,5 @@
-import { PROFILES } from '@data/index';
+import { NEEDS, PROFILES } from '@data/index';
+import { NEED_COUNT } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
 import { CLOCK_SCALE } from '@shared/time';
@@ -12,6 +13,7 @@ import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
 import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
+import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from './traits';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 
@@ -90,6 +92,29 @@ const LAST_MIXED = (() => {
   return last;
 })();
 
+/** Member slots per cohort block. */
+const M = PROFILES.maxGroup;
+/** Cohort flag bit: a group with a reduced mobility member. */
+export const FLAG_SLOW = 2;
+const SLOW = NEEDS.mobility.slowFactor;
+/** Cumulative group size weights per profile, normalised to 1. Index 0 is size 1. */
+const GROUP_CUM = PROFILE_ROWS.map((r) => {
+  const total = r.groupSize.reduce((a, w) => a + w, 0);
+  const out = new Float64Array(r.groupSize.length);
+  let acc = 0;
+  for (let k = 0; k < out.length; k++) {
+    acc += r.groupSize[k]! / total;
+    out[k] = acc;
+  }
+  return out;
+});
+/** Largest group size with a positive weight per profile, the fallback when rounding leaves the uniform above the total. */
+const LAST_SIZE = PROFILE_ROWS.map((r) => {
+  let last = 1;
+  for (let k = 0; k < r.groupSize.length; k++) if (r.groupSize[k]! > 0) last = k + 1;
+  return last;
+});
+
 /** Room id of the walk node nearest to an array cell, -1 when there is none. */
 function nearestNodeRoom(wg: WalkGraph, cell: number): number {
   const node = nearestNode(wg, cell);
@@ -139,6 +164,20 @@ export class Cohorts {
   walkToY = new Int16Array(this.cap);
   /** Tick the current walk began, -1 for none. */
   walkStart = new Int32Array(this.cap).fill(-1);
+  /** Tick the need levels of the cohort's members were last brought up to date. */
+  needTick = new Int32Array(this.cap);
+  /** Main cohort slot a sub cohort came from, -1 for a main cohort. */
+  parent = new Int32Array(this.cap).fill(-1);
+  /** Tick the cohort joined its current queue, -1 when it is not waiting. */
+  waitStart = new Int32Array(this.cap).fill(-1);
+  /** Anchor cell of the visit point a sub cohort heads for, -1 for none. */
+  target = new Int32Array(this.cap).fill(-1);
+  /** Need id of the visit in progress. */
+  visitNeed = new Uint8Array(this.cap);
+  /** Per member, block of M per cohort slot: seed (identity, saved), the NEED_COUNT need levels (1 000 is the threshold) and satisfaction 0 to 100. */
+  memberSeed = new Uint32Array(this.cap * M);
+  memberNeed = new Uint16Array(this.cap * M * NEED_COUNT);
+  memberSat = new Uint8Array(this.cap * M);
   /** Free list link and wheel link. */
   next = new Int32Array(this.cap);
   /** One past the highest slot ever used. */
@@ -168,6 +207,8 @@ export class Cohorts {
   private sampleCaches: WalkCache[] = [];
   private sampleCacheVersion = -1;
   private readonly route = new Float64Array(ROUTE_OUT);
+  /** Scratch trait vector of one member. */
+  private readonly traits = new Float64Array(TRAIT_COUNT);
   /** Per slot: last route node a walker was resumed from and the length walked up to it. Derived, never saved or hashed. */
   private trailNode = new Int32Array(this.cap).fill(-1);
   private trailAt = new Float64Array(this.cap);
@@ -225,7 +266,7 @@ export class Cohorts {
       if (c < 0) break;
       const p = this.pickProfile(this.rng.next());
       const row = PROFILE_ROWS[p];
-      const size = Math.min(remaining, this.rng.int(1, PROFILES.maxGroup));
+      const size = Math.min(remaining, this.pickSize(p, this.rng.next()));
       const lead = row.leadMin * TICKS_PER_MINUTE;
       const u = this.rng.next();
       const curb = dep - Math.round(lead * (1 + PROFILES.arrivalSpread * (2 * u - 1)));
@@ -240,6 +281,11 @@ export class Cohorts {
       this.flags[c] = 0;
       this.node[c] = -1;
       this.walkStart[c] = -1;
+      this.parent[c] = -1;
+      this.waitStart[c] = -1;
+      this.target[c] = -1;
+      this.visitNeed[c] = 0;
+      this.initMembers(c, curb);
       this.stage[c] = Stage.Curb;
       this.schedule(c, curb);
       this.generated += size;
@@ -247,6 +293,57 @@ export class Cohorts {
       this.flActive[f] += size;
       remaining -= size;
     }
+  }
+
+  /** Group size for a uniform float: the first size whose cumulative weight exceeds it. */
+  private pickSize(p: number, u: number): number {
+    const cum = GROUP_CUM[p]!;
+    for (let k = 0; k < cum.length; k++) if (u < cum[k]!) return k + 1;
+    return LAST_SIZE[p]!;
+  }
+
+  /** Seeds the members of cohort `c` from its recipe seed, with full satisfaction, empty needs and the shopping want. Also the entry for arrival cohorts. */
+  initMembers(c: number, tick: number): void {
+    const b = c * M;
+    const profile = this.profile[c]!;
+    for (let i = 0; i < this.size[c]!; i++) {
+      const seed = memberSeedOf(this.recipeSeed[c]!, i);
+      writeTraits(seed, profile, this.traits);
+      this.memberSeed[b + i] = seed;
+      this.memberSat[b + i] = NEEDS.satisfaction.start;
+      const n = (b + i) * NEED_COUNT;
+      for (let k = 0; k < NEED_COUNT - 1; k++) this.memberNeed[n + k] = 0;
+      this.memberNeed[n + NEED_COUNT - 1] = Math.floor(this.traits[TRAIT.Desire]! * 1000);
+    }
+    this.needTick[c] = tick;
+    this.syncFlags(c);
+    this.syncSat(c);
+  }
+
+  /** Sets the SLOW bit when any live member has reduced mobility. Keeps the other bits. */
+  private syncFlags(c: number): void {
+    const b = c * M;
+    const profile = this.profile[c]!;
+    let slow = false;
+    for (let i = 0; i < this.size[c]! && !slow; i++) {
+      writeTraits(this.memberSeed[b + i]!, profile, this.traits);
+      slow = this.traits[TRAIT.Slow] === 1;
+    }
+    this.flags[c] = slow ? this.flags[c]! | FLAG_SLOW : this.flags[c]! & ~FLAG_SLOW;
+  }
+
+  /** Cohort satisfaction is the rounded mean of its live members. */
+  private syncSat(c: number): void {
+    const n = this.size[c]!;
+    if (n === 0) return;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += this.memberSat[c * M + i]!;
+    this.satisfaction[c] = Math.round(sum / n);
+  }
+
+  /** Walk speed in metres per second: the profile speed, slowed when a member has reduced mobility. */
+  private speed(c: number): number {
+    return WALK_SPEED[this.profile[c]!]! * (this.flags[c]! & FLAG_SLOW ? SLOW : 1);
   }
 
   /** The flight leaves the stand: the passengers still in the terminal miss it. Those in a queue wait for their done event. */
@@ -426,7 +523,7 @@ export class Cohorts {
         const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
         const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
         if (from < 0 || to < 0) continue;
-        const s = Math.max(0, ((tick - this.walkStart[c]!) * WALK_SPEED[this.profile[c]!]!) / TICKS_PER_SECOND);
+        const s = Math.max(0, ((tick - this.walkStart[c]!) * this.speed(c)) / TICKS_PER_SECOND);
         const resume = this.trailNode[c]! >= 0 && this.trailAt[c]! <= s;
         const r = resume
           ? routePoint(wg, cache, this.trailNode[c]!, this.trailAt[c]!, to, s, this.route)
@@ -466,7 +563,7 @@ export class Cohorts {
           const base = distanceRowIn(wg, cache, to);
           if (base < 0) continue;
           const total = cache.rows[base + from]!;
-          const s = Math.max(0, ((tick - this.walkStart[c]!) * WALK_SPEED[this.profile[c]!]!) / TICKS_PER_SECOND);
+          const s = Math.max(0, ((tick - this.walkStart[c]!) * this.speed(c)) / TICKS_PER_SECOND);
           if (!Number.isFinite(total) || s < total) continue;
         }
         const ax = this.walkToX[c]!;
@@ -702,7 +799,7 @@ export class Cohorts {
     const t = this.table(g);
     if (!t) return -1;
     const id = this.gridId(g);
-    const speed = WALK_SPEED[this.profile[c]];
+    const speed = this.speed(c);
     let best = -1;
     let bestCost = Infinity;
     // Ascending scan with a strict comparison, so ties go to the lowest index and an infinite cost never wins.
@@ -727,7 +824,7 @@ export class Cohorts {
     const to = t ? t.walkNode[node] : -1;
     this.setRoute(g, c, from, to);
     const dist = this.business.walkDistance(this.gridId(g), from, to);
-    this.schedule(c, this.tick + Math.max(STEP, Math.ceil((dist / WALK_SPEED[this.profile[c]]) * TICKS_PER_SECOND)));
+    this.schedule(c, this.tick + Math.max(STEP, Math.ceil((dist / this.speed(c)) * TICKS_PER_SECOND)));
   }
 
   /** Records the walk between two nodes of the grid, or no walk when either id is not a node. */
@@ -794,6 +891,17 @@ export class Cohorts {
       bags: this.bags, spendBudget: this.spendBudget, satisfaction: this.satisfaction, recipeSeed: this.recipeSeed,
       flags: this.flags, building: this.building, next: this.next,
       walkFromX: this.walkFromX, walkFromY: this.walkFromY, walkToX: this.walkToX, walkToY: this.walkToY, walkStart: this.walkStart,
+      needTick: this.needTick, parent: this.parent, waitStart: this.waitStart, target: this.target, visitNeed: this.visitNeed,
+    };
+  }
+
+  /** Member arrays packed up to `hi` blocks. */
+  private memberArrays(): Record<string, SlotArray> {
+    const n = this.hi * M;
+    return {
+      memberSeed: this.memberSeed.subarray(0, n),
+      memberSat: this.memberSat.subarray(0, n),
+      memberNeed: this.memberNeed.subarray(0, n * NEED_COUNT),
     };
   }
 
@@ -801,6 +909,8 @@ export class Cohorts {
     const arrays: Record<string, string> = {};
     const slots = this.slotArrays();
     for (const k of Object.keys(slots)) arrays[k] = packTyped(slots[k].subarray(0, this.hi));
+    const members = this.memberArrays();
+    for (const k of Object.keys(members)) arrays[k] = packTyped(members[k]);
     arrays.wheelHead = packTyped(this.wheelHead);
     arrays.flBoarded = packTyped(this.flBoarded);
     arrays.flGate = packTyped(this.flGate);
@@ -843,6 +953,11 @@ export class Cohorts {
       const a = slots[k];
       if (s.arrays[k] !== undefined) unpackInto(s.arrays[k], a, a.constructor as SlotCtor);
     }
+    const members = this.memberArrays();
+    for (const k of Object.keys(members)) {
+      const a = members[k];
+      if (s.arrays[k] !== undefined) unpackInto(s.arrays[k], a, a.constructor as SlotCtor);
+    }
     unpackInto(s.arrays.wheelHead, this.wheelHead, Int32Array);
     unpackInto(s.arrays.flBoarded, this.flBoarded, Int32Array);
     unpackInto(s.arrays.flGate, this.flGate, Int32Array);
@@ -871,6 +986,20 @@ export class Cohorts {
       acc = foldU32(acc, this.walkToX[c]);
       acc = foldU32(acc, this.walkToY[c]);
       acc = foldU32(acc, this.walkStart[c]);
+      acc = foldU32(acc, this.flags[c]);
+      acc = foldU32(acc, this.needTick[c]);
+      acc = foldU32(acc, this.parent[c]);
+      acc = foldU32(acc, this.waitStart[c]);
+      acc = foldU32(acc, this.target[c]);
+      acc = foldU32(acc, this.visitNeed[c]);
+      acc = foldU32(acc, this.satisfaction[c]);
+      if (this.stage[c] === Stage.Free) continue;
+      const b = c * M;
+      for (let i = 0; i < this.size[c]; i++) {
+        acc = foldU32(acc, this.memberSeed[b + i]);
+        for (let k = 0; k < NEED_COUNT; k++) acc = foldU32(acc, this.memberNeed[(b + i) * NEED_COUNT + k]);
+        acc = foldU32(acc, this.memberSat[b + i]);
+      }
     }
     return acc;
   }
