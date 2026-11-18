@@ -106,6 +106,13 @@ export const peopleSchema = z
     version: z.literal(1),
     note: z.string(),
     cellM: z.number().positive(),
+    motion: z.strictObject({
+      note: z.string(),
+      strideM: z.number().positive(),
+      interpMaxJumpM: z.number().positive(),
+      memberMarginM: z.number().nonnegative(),
+      cellHalfM: z.number().positive(),
+    }),
     tiers: z.array(tierSchema).min(1),
     skin: z.array(hex).length(SKIN_COUNT),
     hair: z.record(z.string().min(1), hex),

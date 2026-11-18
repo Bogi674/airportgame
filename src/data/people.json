@@ -2,6 +2,7 @@
   "version": 1,
   "note": "Passenger figure recipes from docs/ART_AND_ASSETS.md section 6.2, drawn by people2.py layers. Weights are per profile in profiles order. Tier ppm and detail feed the people bake.",
   "cellM": 1.6,
+  "motion": { "note": "strideM: step length for the gait frames, m. interpMaxJumpM: largest move per axis between snapshots that is interpolated, m. memberMarginM and cellHalfM: group packing clearance and half cell, m.", "strideM": 0.7, "interpMaxJumpM": 6, "memberMarginM": 0.05, "cellHalfM": 0.95 },
   "tiers": [
     { "minZoom": 4, "ppm": 8, "detail": 0 },
     { "minZoom": 8, "ppm": 24, "detail": 1 },

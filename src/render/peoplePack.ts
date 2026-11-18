@@ -3,9 +3,9 @@ import { pickRecipe, RECIPE_COUNT } from './sprites/peopleRecipes';
 import { opsBounds, personOps, type ShapeOp } from './sprites/peopleShapes';
 
 /** Clearance in meters kept around each figure's footprint when a group is packed. */
-export const PACK_MARGIN_M = 0.05;
+export const PACK_MARGIN_M = PEOPLE.motion.memberMarginM;
 /** Half the side in meters of a queue cell, which is 2 m, so a packed group stays inside its cell. */
-export const CELL_HALF_M = 0.95;
+export const CELL_HALF_M = PEOPLE.motion.cellHalfM;
 /** Atlas column of the figure drawn for a group. Frame 1 is the standing pose. */
 export const FIGURE_FRAME = 1;
 const FOOTPRINT_DETAIL = 2;

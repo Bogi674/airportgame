@@ -7,6 +7,9 @@ import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/people
 import { peopleTierForZoom } from '../src/render/sprites/peopleAtlas';
 import { PeopleSelection } from '../src/render/peopleSelect';
 import { PACK_MARGIN_M, packGroup, recipeFootprint } from '../src/render/peoplePack';
+import { PeopleMotion } from '../src/render/peopleMotion';
+import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, type SnapshotViews } from '../src/shared/snapshot';
+import { FIGURE_FRAME } from '../src/render/peoplePack';
 
 const SEED_COUNT = 6000;
 /** Float32 storage of the packed origins and footprints rounds a little, so touching boxes may overlap by this much. */
@@ -223,5 +226,93 @@ describe('PeopleSelection', () => {
     const second = sel.select(x, y, size, n, 0, 0, 4);
     expect(a).toEqual([1, 3]);
     expect(Array.from(sel.order.subarray(0, second))).toEqual(a);
+  });
+});
+
+function makeSnapshot(tick: number, samples: { id: number; x: number; y: number }[]): SnapshotViews {
+  const views = createSnapshotViews(createSnapshotBuffer());
+  views.header[SnapHeader.Tick] = tick;
+  views.header[SnapHeader.PeopleCount] = samples.length;
+  samples.forEach((s, i) => {
+    views.peopleId[i] = s.id;
+    views.peopleX[i] = s.x;
+    views.peopleY[i] = s.y;
+  });
+  return views;
+}
+
+describe('people motion', () => {
+  it('blends a matched sample by alpha', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 7, x: 1, y: 2 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.25, out);
+    expect(out[0]).toBeCloseTo(0.25, 6);
+    expect(out[1]).toBeCloseTo(0.5, 6);
+  });
+
+  it('returns the current position for an unmatched id', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 8, x: 1, y: 2 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.25, out);
+    expect(out[0]).toBe(1);
+    expect(out[1]).toBe(2);
+  });
+
+  it('returns the current position for a 7 m jump', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 7, x: 7, y: 0 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.25, out);
+    expect(out[0]).toBe(7);
+    expect(out[1]).toBe(0);
+  });
+
+  it('returns the current position when no previous snapshot is indexed', () => {
+    const curr = makeSnapshot(11, [{ id: 7, x: 3, y: 4 }]);
+    const motion = new PeopleMotion();
+    motion.index(null);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.5, out);
+    expect(out[0]).toBe(3);
+    expect(out[1]).toBe(4);
+  });
+
+  it('keeps the match after the same snapshot is indexed again', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 7, x: 2, y: 0 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.5, out);
+    expect(out[0]).toBeCloseTo(1, 6);
+  });
+});
+
+describe('people walk frame', () => {
+  it('holds the figure frame for a non walking mode', () => {
+    const motion = new PeopleMotion();
+    expect(motion.walkFrame(PEOPLE_MODE.Queued, 12.3, 0, 5, 2)).toBe(FIGURE_FRAME);
+    expect(motion.walkFrame(PEOPLE_MODE.Dwelling, 12.3, 0, 5, 2)).toBe(FIGURE_FRAME);
+  });
+
+  it('steps through frames 0 to 3 while walking', () => {
+    const motion = new PeopleMotion();
+    const frames = new Set<number>();
+    for (let t = 0; t < 40; t++) frames.add(motion.walkFrame(PEOPLE_MODE.Walking, t * 0.1, 1, 0, 0));
+    expect([...frames].sort()).toEqual([0, 1, 2, 3]);
+  });
+
+  it('uses only seed and member for a profile out of range', () => {
+    const motion = new PeopleMotion();
+    expect(motion.walkFrame(PEOPLE_MODE.Walking, 50, 99, 4, 1)).toBe((1 + 0) & 3);
   });
 });
