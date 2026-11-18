@@ -1,4 +1,4 @@
-import type { Approach, BuildingKind, CodeLetter, PadSide, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
+import type { Approach, BuildingKind, CodeLetter, PadSide, PushbackDir, StandSize, StandUpgrade, StandType, Surface } from '@shared/airfield';
 import type { FeeLevel } from '@shared/business';
 import type { TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -52,6 +52,8 @@ export type Command =
   | { type: 'moveHolding'; runwayId: number; taxiwayId: number; side: 1 | -1; distM: number }
   | { type: 'buyGse'; kind: string; count: number }
   | { type: 'setStandProps'; id: number; closed?: boolean; accepts?: number; pushback?: PushbackDir }
+  /** Builds a stand upgrade (T66): pays its cost and closes the stand until the works finish. */
+  | { type: 'startStandUpgrade'; id: number; upgrade: StandUpgrade }
   | { type: 'assignStand'; flight: number; standId: number }
   | { type: 'cancelFlight'; flight: number }
   | { type: 'setAutoStands'; on: boolean }

@@ -188,7 +188,7 @@ export class Sim {
         this.gameSeconds += TICK_SECONDS;
         break;
       case 2:
-        this.airfield.update(this.tick);
+        if (this.airfield.update(this.tick)) this.standsDirty = true;
         this.updateObstacles();
         this.syncAirfield();
         break;
@@ -408,7 +408,7 @@ export class Sim {
         } else {
           if (r.cashDelta !== 0) this.book('construction', r.cashDelta);
           // Stands moved or removed: the automatic assigner runs in the airfield sync, once the copy is current.
-          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
+          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || cmd.type === 'startStandUpgrade' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
         }
         // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
         if (this.airfield.towersVersion !== towersBefore) {

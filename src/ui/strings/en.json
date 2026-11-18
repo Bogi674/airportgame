@@ -716,6 +716,7 @@
   "notice.wallStraight": "Walls run along a single grid line, horizontal or vertical.",
   "notice.surfaceCode": "Code {code} needs an asphalt or concrete surface.",
   "notice.worksRunning": "Surface works are already under way here.",
+  "notice.upgradeBuilt": "This upgrade is already built.",
   "notice.padExists": "There is already a turn pad at this end on this side. Remove it first.",
   "notice.surfaceExcludesType": "This surface would shut out the {type}, which an airline flies here.",
   "inspector.surfaceCurrent": "Current: {surface}",

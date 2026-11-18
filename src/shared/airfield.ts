@@ -134,7 +134,17 @@ export interface Stand {
   closed?: boolean;
   /** Flight categories the stand takes, as `ACCEPT_*` bits in any mix, never zero (user, 2026-11-17). */
   accepts: number;
+  /** Built upgrades as `STAND_UPGRADE` bits; absent means none (T66). */
+  upgrades?: number;
+  /** Upgrade works under way. The stand takes no aircraft until they finish. */
+  upgradeWorks?: { upgrade: StandUpgrade; doneTick: number };
+  /** The gate desk that boards the stand, by building id and world position; absent means the nearest desk. */
+  gate?: { building: number; x: number; y: number };
 }
+
+/** Upgrades a stand can be given, as bits of `Stand.upgrades` (T66). Append only, the bits are saved. */
+export const STAND_UPGRADE = { busBay: 1, hydrantPit: 2, fixedPower: 4 } as const;
+export type StandUpgrade = keyof typeof STAND_UPGRADE;
 
 /** Flight categories a stand can be set to take (user, 2026-11-17). Cargo is stored only until cargo flights exist. */
 export type FlightCategory = 'ga' | 'commercial' | 'cargo';
