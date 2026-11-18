@@ -11,6 +11,7 @@ import {
   TERMINAL_MARGIN,
   WALL,
   FIXTURE_ZONES,
+  ZONES,
   isShopFixture,
   isBaggageFixture,
   fixtureKey,
@@ -203,7 +204,7 @@ export function cellCount(g: TerminalGrid): number {
 export function summarize(g: TerminalGrid): Terminal {
   const counts = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
   let leased = 0;
-  const zones = [0, 0, 0, 0, 0];
+  const zones: number[] = new Array(ZONES.length).fill(0);
   for (let i = 0; i < g.zone.length; i++) if (g.floor[i] > 0) zones[g.zone[i]]++;
   for (let i = 0; i < g.fixture.length; i++) {
     const f = g.fixture[i];
@@ -415,7 +416,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
     }
     if (blocked && writes.length === 0) return none(blocked);
     if (e.op === 'fixture' && (e.variant < 1 || e.variant > FIXTURE_COUNT)) return none({ code: 'nothingThere' });
-    if (e.op === 'zone' && (e.variant < 0 || e.variant > 4)) return none({ code: 'nothingThere' });
+    if (e.op === 'zone' && (e.variant < 0 || e.variant > ZONES.length - 1)) return none({ code: 'nothingThere' });
     if (e.op === 'floor' && e.variant !== FLOOR.Concrete && e.variant !== FLOOR.Tile && e.variant !== FLOOR.Carpet) return none({ code: 'nothingThere' });
     if (writes.length === 0) return none({ code: e.op === 'fixture' || e.op === 'floor' || e.op === 'zone' ? 'terminalNeedsFoundation' : 'nothingThere' });
     const plan: Plan = {

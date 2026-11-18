@@ -35,7 +35,7 @@ const spec = (kind: BagNodeSpec['kind'], rot: BagNodeSpec['rot'] = 0, widthCells
 
 describe('baggage fixture keys', () => {
   it('appends the three keys with ids 17 to 19', () => {
-    expect(FIXTURE_KEYS.slice(16)).toEqual(['screeningMachine', 'baggageBay', 'carousel']);
+    expect(FIXTURE_KEYS.slice(16, 19)).toEqual(['screeningMachine', 'baggageBay', 'carousel']);
     expect([16, 17, 18, 19, 20].map(isBaggageFixture)).toEqual([false, true, true, true, false]);
     expect([bagKey('machine'), bagKey('bay'), bagKey('carousel')]).toEqual(['screeningMachine', 'baggageBay', 'carousel']);
   });

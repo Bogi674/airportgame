@@ -607,9 +607,9 @@ describe('fixture ids, spans and module data', () => {
     expect(FIXTURE_KEYS.indexOf('gateDesk') + 1).toBe(16);
   });
 
-  it('gives two cell spans to bag drop and gate desk only', () => {
+  it('gives two cell spans to bag drop, gate desk, security exit and customs', () => {
     const twoCell = FIXTURE_KEYS.filter((k) => FIXTURE_SPAN[k] === 2);
-    expect(twoCell).toEqual(['bagDrop', 'gateDesk']);
+    expect(twoCell).toEqual(['bagDrop', 'gateDesk', 'securityExit', 'customs']);
     expect(FIXTURE_KEYS.every((k) => FIXTURE_SPAN[k] === 1 || FIXTURE_SPAN[k] === 2)).toBe(true);
   });
 

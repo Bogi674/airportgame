@@ -21,7 +21,7 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
@@ -36,30 +36,33 @@ export type ShopKind = FixtureKey;
 
 export const FLOOR = { None: 0, Concrete: 1, Tile: 2, Carpet: 3 } as const;
 /** Zones a player paints on terminal floor. 0 is unzoned. */
-export const ZONES = ['none', 'public', 'commercial', 'secure', 'staff'] as const;
+export const ZONES = ['none', 'public', 'commercial', 'secure', 'staff', 'international'] as const;
 export type ZoneKey = (typeof ZONES)[number];
-export const ZONE = { None: 0, Public: 1, Commercial: 2, Secure: 3, Staff: 4 } as const;
+export const ZONE = { None: 0, Public: 1, Commercial: 2, Secure: 3, Staff: 4, International: 5 } as const;
 /** Zones each fixture may sit in, the first is what an unzoned cell becomes when the fixture is placed. */
 export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   checkIn: [1],
   security: [1, 3],
   belt: [1, 4],
-  seating: [3, 1],
-  toilet: [3, 1, 4],
-  convenience: [2, 3],
-  quickFood: [2, 3],
-  cafe: [2, 3],
-  dutyFree: [2, 3],
-  booksGifts: [2, 3],
-  pharmacy: [2, 3],
+  seating: [3, 1, 5],
+  toilet: [3, 1, 4, 5],
+  convenience: [2, 3, 5],
+  quickFood: [2, 3, 5],
+  cafe: [2, 3, 5],
+  dutyFree: [2, 3, 5],
+  booksGifts: [2, 3, 5],
+  pharmacy: [2, 3, 5],
   atc: [4],
   kiosk: [1],
   bagDrop: [1],
-  passport: [3],
-  gateDesk: [3],
+  passport: [3, 5, 1],
+  gateDesk: [3, 5],
   screeningMachine: [4],
   baggageBay: [4, 3],
   carousel: [1],
+  securityExit: [3, 1],
+  eGate: [3, 5, 1],
+  customs: [1],
 };
 /** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
@@ -82,9 +85,46 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   screeningMachine: 1,
   baggageBay: 1,
   carousel: 1,
+  securityExit: 2,
+  eGate: 1,
+  customs: 2,
 };
+/**
+ * Footprint per level as [along, across] cells. Along follows the fixture direction, across is the
+ * perpendicular. A fixture without levels has one entry; a level past the last entry uses the last one.
+ */
+export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, number])[]> = {
+  checkIn: [[1, 1]],
+  security: [[1, 1]],
+  belt: [[1, 1]],
+  seating: [[1, 1]],
+  toilet: [[1, 1]],
+  convenience: [[1, 1]],
+  quickFood: [[1, 1]],
+  cafe: [[1, 1]],
+  dutyFree: [[1, 1]],
+  booksGifts: [[1, 1]],
+  pharmacy: [[1, 1]],
+  atc: [[1, 1]],
+  kiosk: [[1, 1]],
+  bagDrop: [[2, 1]],
+  passport: [[1, 1]],
+  gateDesk: [[2, 1]],
+  screeningMachine: [[1, 1]],
+  baggageBay: [[1, 1]],
+  carousel: [[1, 1]],
+  securityExit: [[2, 2], [1, 3], [2, 2]],
+  eGate: [[1, 1]],
+  customs: [[2, 2]],
+};
+/** Fixtures that move people from one zone to another. */
+export const TRANSITION_KEYS: readonly FixtureKey[] = ['security', 'securityExit', 'passport', 'eGate'];
+export function footprintOf(key: FixtureKey, level: number): readonly [number, number] {
+  const table = FIXTURE_FOOTPRINT[key];
+  return table[Math.min(Math.max(level, 1), table.length) - 1];
+}
 
-export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
+export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3, StaffDoor: 4 } as const;
 
 /** Terminal cells are 2 m in the local frame of a building. */
 export const TERMINAL_CELL_M = 2;
