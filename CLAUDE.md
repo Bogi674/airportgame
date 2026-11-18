@@ -13,6 +13,7 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 | Doc | Read when |
 | --- | --- |
 | `ROADMAP.md` (repo root) | Always. What is built, the MVP 1 phases, task status and exit criteria. Work on one task at a time |
+| `docs/DESIGN_REVISION_5.md` | First, for any terminal fixture, prop, furniture, zone, security exit, baggage node or circulation work. It points to `docs/TERMINAL_FIXTURES.md`, `docs/TERMINAL_ZONING.md` and `docs/BAGGAGE.md` and overrides older docs on those subjects |
 | `docs/DESIGN_REVISION_4.md` | First, for any stand, flight planning, airline, ground handling, supporting building, passenger, staff, tenant or event work. It overrides the revisions and docs below where they disagree |
 | `docs/DESIGN_REVISION_3.md` | First, for any aircraft sprite, calibration, stand marking or jet bridge work. It overrides revision 2 and the older docs where they disagree |
 | `docs/DESIGN_REVISION_2.md` | First, for any taxiway, stand, apron or terminal work. It overrides the older docs where they disagree. Its reference images are `docs/art/rev2_*.png` and its normative geometry is `docs/reference/geometry/` |
@@ -43,7 +44,7 @@ Working files live in `handoff/`:
 
 `AGENTS.md` only points here.
 
-Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`) and `src/data/gse.json` (ground vehicle catalog).
+Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`), `src/data/gse.json` (ground vehicle catalog) and `src/data/fixtures/` (the terminal asset kit: catalog plus vector sprites of 144 fixtures and props, `docs/TERMINAL_FIXTURES.md` section 11). Regenerate the kit with `python3 docs/reference/sprite-prototypes/export_fixtures.py`; never edit its JSON by hand.
 
 ## Crew and terse mode
 
@@ -53,7 +54,7 @@ Terse mode is always on for code work: no narration between tool calls, no recap
 
 ## Precedence
 
-When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
+When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_5.md` for its subjects (terminal assets, zoning, baggage), then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
 
 ## Hard rules
 

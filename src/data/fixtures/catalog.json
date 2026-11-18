@@ -1,0 +1,4249 @@
+{
+ "version": 1,
+ "note": "Terminal asset kit (docs/TERMINAL_FIXTURES.md). Sizes in meters, local frame top left at 0,0 with the side people use at the bottom edge. Sprites are in sprites/<category>.json as vector draw ops. Values listed in confirm are proposals waiting for the owner.",
+ "categories": [
+  {
+   "id": "processing",
+   "name": "Processing",
+   "note": "Check in, security, passport control and boarding, three levels and automated"
+  },
+  {
+   "id": "zoning",
+   "name": "Zone transitions",
+   "note": "Security exits, staff door and customs"
+  },
+  {
+   "id": "baggage",
+   "name": "Baggage",
+   "note": "Ramps, screening, bays and carousels of docs/BAGGAGE.md"
+  },
+  {
+   "id": "seating",
+   "name": "Waiting seating",
+   "note": "Benches and seat rows"
+  },
+  {
+   "id": "lounge",
+   "name": "Lounge",
+   "note": "Sofas, tables, lamps, bar, buffet"
+  },
+  {
+   "id": "washroom",
+   "name": "Washrooms",
+   "note": "Stalls, urinals, basins and accessories"
+  },
+  {
+   "id": "decoration",
+   "name": "Decoration",
+   "note": "Plants, water, art and floor inlays"
+  },
+  {
+   "id": "vending",
+   "name": "Vending and service machines",
+   "note": "Vending, water, charging, ATM"
+  },
+  {
+   "id": "screens",
+   "name": "Screens and signs",
+   "note": "Flight boards, displays and wayfinding"
+  },
+  {
+   "id": "service",
+   "name": "Airport service items",
+   "note": "Trolleys, desks, queues, prayer, family, safety"
+  },
+  {
+   "id": "office",
+   "name": "Airline offices",
+   "note": "Computers, desks, meeting, pantry and executive"
+  },
+  {
+   "id": "circulation",
+   "name": "Circulation",
+   "note": "Escalators, stairs, elevators and travelators"
+  },
+  {
+   "id": "backOfHouse",
+   "name": "Back of house",
+   "note": "Janitor room and cleaning kit"
+  }
+ ],
+ "assets": [
+  {
+   "id": "checkIn.l1",
+   "name": "Check in desk, level 1",
+   "category": "processing",
+   "family": "checkIn",
+   "level": 1,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": "checkIn",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 120,
+    "servers": 1,
+    "staff": 1,
+    "acceptsBags": true,
+    "premiumClasses": false
+   },
+   "confirm": [],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      -1
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.checkin"
+  },
+  {
+   "id": "checkIn.l2",
+   "name": "Check in desk, level 2",
+   "category": "processing",
+   "family": "checkIn",
+   "level": 2,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": "checkIn",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 105,
+    "servers": 1,
+    "staff": 1,
+    "acceptsBags": true,
+    "premiumClasses": false
+   },
+   "confirm": [
+    "serviceTimeS"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      -1
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.checkin"
+  },
+  {
+   "id": "checkIn.l3",
+   "name": "Check in desk, level 3",
+   "category": "processing",
+   "family": "checkIn",
+   "level": 3,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": "checkIn",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 95,
+    "servers": 1,
+    "staff": 1,
+    "acceptsBags": true,
+    "premiumClasses": true
+   },
+   "confirm": [
+    "serviceTimeS"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      -1
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.checkin"
+  },
+  {
+   "id": "kiosk",
+   "name": "Self check in kiosk",
+   "category": "processing",
+   "family": "kiosk",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": "kiosk",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 75,
+    "servers": 1,
+    "staff": 0
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.kiosk_checkin"
+  },
+  {
+   "id": "bagDrop",
+   "name": "Self bag drop",
+   "category": "processing",
+   "family": "bagDrop",
+   "level": null,
+   "size": [
+    4,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": "bagDrop",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 40,
+    "servers": 1,
+    "staffPerUnits": 0.25
+   },
+   "confirm": [
+    "staffPerUnits"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      -1
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.bagdrop_self"
+  },
+  {
+   "id": "security.l1",
+   "name": "Security lane, level 1",
+   "category": "processing",
+   "family": "security",
+   "level": 1,
+   "size": [
+    16,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "secure"
+   ],
+   "gameKey": "security",
+   "newKey": null,
+   "stats": {
+    "throughputPerHour": 300,
+    "serviceTimeS": 12.0,
+    "staff": 4,
+    "remoteScreener": false,
+    "transition": [
+     "public",
+     "secure"
+    ]
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_security_kit.png",
+   "generator": "fixtures_processing.security"
+  },
+  {
+   "id": "security.l2",
+   "name": "Security lane, level 2",
+   "category": "processing",
+   "family": "security",
+   "level": 2,
+   "size": [
+    16,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "secure"
+   ],
+   "gameKey": "security",
+   "newKey": null,
+   "stats": {
+    "throughputPerHour": 360,
+    "serviceTimeS": 10.0,
+    "staff": 5,
+    "remoteScreener": false,
+    "transition": [
+     "public",
+     "secure"
+    ]
+   },
+   "confirm": [
+    "throughputPerHour",
+    "staff"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_security_kit.png",
+   "generator": "fixtures_processing.security"
+  },
+  {
+   "id": "security.l3",
+   "name": "Security lane, level 3",
+   "category": "processing",
+   "family": "security",
+   "level": 3,
+   "size": [
+    16,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "secure"
+   ],
+   "gameKey": "security",
+   "newKey": null,
+   "stats": {
+    "throughputPerHour": 450,
+    "serviceTimeS": 8.0,
+    "staff": 4,
+    "remoteScreener": true,
+    "transition": [
+     "public",
+     "secure"
+    ]
+   },
+   "confirm": [
+    "throughputPerHour",
+    "staff"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_security_kit.png",
+   "generator": "fixtures_processing.security"
+  },
+  {
+   "id": "passport.l1",
+   "name": "Passport control, level 1",
+   "category": "processing",
+   "family": "passport",
+   "level": 1,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international",
+    "public"
+   ],
+   "gameKey": "passport",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 45,
+    "servers": 1,
+    "staff": 1,
+    "modes": [
+     "departure",
+     "arrival"
+    ]
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.passport"
+  },
+  {
+   "id": "passport.l2",
+   "name": "Passport control, level 2",
+   "category": "processing",
+   "family": "passport",
+   "level": 2,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international",
+    "public"
+   ],
+   "gameKey": "passport",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 38,
+    "servers": 1,
+    "staff": 1,
+    "modes": [
+     "departure",
+     "arrival"
+    ]
+   },
+   "confirm": [
+    "serviceTimeS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.passport"
+  },
+  {
+   "id": "passport.l3",
+   "name": "Passport control, level 3",
+   "category": "processing",
+   "family": "passport",
+   "level": 3,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international",
+    "public"
+   ],
+   "gameKey": "passport",
+   "newKey": null,
+   "stats": {
+    "serviceTimeS": 30,
+    "servers": 1,
+    "staff": 1,
+    "modes": [
+     "departure",
+     "arrival"
+    ]
+   },
+   "confirm": [
+    "serviceTimeS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.passport"
+  },
+  {
+   "id": "eGate",
+   "name": "Automated passport gate",
+   "category": "processing",
+   "family": "eGate",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international",
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "eGate",
+   "stats": {
+    "serviceTimeS": 20,
+    "officersPerGates": 0.2,
+    "referralShare": 0.08,
+    "childrenUnder": 12,
+    "modes": [
+     "departure",
+     "arrival"
+    ]
+   },
+   "confirm": [
+    "serviceTimeS",
+    "officersPerGates",
+    "referralShare"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.egate"
+  },
+  {
+   "id": "gateDesk.l1",
+   "name": "Boarding gate desk, level 1",
+   "category": "processing",
+   "family": "gateDesk",
+   "level": 1,
+   "size": [
+    4,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": "gateDesk",
+   "newKey": null,
+   "stats": {
+    "secondsPerPassenger": 5,
+    "agents": 1,
+    "priorityLane": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.gatedesk"
+  },
+  {
+   "id": "gateDesk.l2",
+   "name": "Boarding gate desk, level 2",
+   "category": "processing",
+   "family": "gateDesk",
+   "level": 2,
+   "size": [
+    4,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": "gateDesk",
+   "newKey": null,
+   "stats": {
+    "secondsPerPassenger": 3.5,
+    "agents": 2,
+    "priorityLane": false
+   },
+   "confirm": [
+    "secondsPerPassenger"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.gatedesk"
+  },
+  {
+   "id": "gateDesk.l3",
+   "name": "Boarding gate desk, level 3",
+   "category": "processing",
+   "family": "gateDesk",
+   "level": 3,
+   "size": [
+    4,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": "gateDesk",
+   "newKey": null,
+   "stats": {
+    "secondsPerPassenger": 3,
+    "agents": 2,
+    "priorityLane": true
+   },
+   "confirm": [
+    "secondsPerPassenger"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_processing_kit.png",
+   "generator": "fixtures_processing.gatedesk"
+  },
+  {
+   "id": "securityExit.staffed",
+   "name": "Security exit, staffed",
+   "category": "zoning",
+   "family": "securityExit",
+   "level": 1,
+   "size": [
+    4,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "securityExit",
+   "stats": {
+    "throughputPerHour": 1200,
+    "staff": 1,
+    "transition": [
+     "secure",
+     "public"
+    ]
+   },
+   "confirm": [
+    "throughputPerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_zones_kit.png",
+   "generator": "fixtures_zoning.security_exit_staffed"
+  },
+  {
+   "id": "securityExit.auto",
+   "name": "Automated exit lane",
+   "category": "zoning",
+   "family": "securityExit",
+   "level": 2,
+   "size": [
+    2,
+    6
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "securityExit",
+   "stats": {
+    "throughputPerHour": 900,
+    "staff": 0,
+    "transition": [
+     "secure",
+     "public"
+    ]
+   },
+   "confirm": [
+    "throughputPerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_zones_kit.png",
+   "generator": "fixtures_zoning.security_exit_auto"
+  },
+  {
+   "id": "securityExit.revolving",
+   "name": "Revolving exit door",
+   "category": "zoning",
+   "family": "securityExit",
+   "level": 3,
+   "size": [
+    2.6,
+    2.6
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "securityExit",
+   "stats": {
+    "throughputPerHour": 1500,
+    "staff": 0,
+    "transition": [
+     "secure",
+     "public"
+    ]
+   },
+   "confirm": [
+    "throughputPerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_zones_kit.png",
+   "generator": "fixtures_zoning.exit_revolving"
+  },
+  {
+   "id": "staffDoor",
+   "name": "Staff door with card reader",
+   "category": "zoning",
+   "family": "staffDoor",
+   "level": null,
+   "size": [
+    2,
+    1.2
+   ],
+   "grid": "cell",
+   "mount": "edge",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "staffDoor",
+   "stats": {
+    "wallType": "staffDoor",
+    "staffOnly": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_zones_kit.png",
+   "generator": "fixtures_zoning.staff_door"
+  },
+  {
+   "id": "customs",
+   "name": "Customs channel",
+   "category": "zoning",
+   "family": "customs",
+   "level": null,
+   "size": [
+    4,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "customs",
+   "stats": {
+    "serviceTimeS": 8,
+    "redChannelShare": 0.05,
+    "redServiceTimeS": 120,
+    "staff": 2
+   },
+   "confirm": [
+    "serviceTimeS",
+    "redChannelShare",
+    "redServiceTimeS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_zones_kit.png",
+   "generator": "fixtures_zoning.customs_channel"
+  },
+  {
+   "id": "ramp.out",
+   "name": "Ramp stub, out",
+   "category": "baggage",
+   "family": "ramp",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {
+    "state": "out"
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.ramp"
+  },
+  {
+   "id": "ramp.in",
+   "name": "Ramp stub, in",
+   "category": "baggage",
+   "family": "ramp",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {
+    "state": "in"
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.ramp"
+  },
+  {
+   "id": "ramp.outArr",
+   "name": "Ramp stub, outArr",
+   "category": "baggage",
+   "family": "ramp",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {
+    "state": "outArr"
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.ramp"
+  },
+  {
+   "id": "ramp.inArr",
+   "name": "Ramp stub, inArr",
+   "category": "baggage",
+   "family": "ramp",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {
+    "state": "inArr"
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.ramp"
+  },
+  {
+   "id": "ramp.unconnected",
+   "name": "Ramp stub, unconnected",
+   "category": "baggage",
+   "family": "ramp",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {
+    "state": "unconnected"
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.ramp"
+  },
+  {
+   "id": "screeningMachine",
+   "name": "Baggage screening machine",
+   "category": "baggage",
+   "family": "screeningMachine",
+   "level": null,
+   "size": [
+    8,
+    2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "screeningMachine",
+   "stats": {
+    "secondsPerBag": 10,
+    "bufferBags": 20,
+    "officers": 1,
+    "room": "baggage_screening"
+   },
+   "confirm": [
+    "bufferBags"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      0
+     ],
+     "dir": "in"
+    },
+    {
+     "cell": [
+      3,
+      0
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.screening_machine"
+  },
+  {
+   "id": "screeningConsole",
+   "name": "Screening console",
+   "category": "baggage",
+   "family": "screeningConsole",
+   "level": null,
+   "size": [
+    0.8,
+    1.2
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.screening_console"
+  },
+  {
+   "id": "baggageBay.w2",
+   "name": "Baggage bay, 4 m",
+   "category": "baggage",
+   "family": "baggageBay",
+   "level": null,
+   "size": [
+    4.0,
+    8
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "staff",
+    "secure"
+   ],
+   "gameKey": null,
+   "newKey": "baggageBay",
+   "stats": {
+    "slots": 1,
+    "bufferBags": 200,
+    "loadSecondsPerBag": 6,
+    "stagingLaneM": 16
+   },
+   "confirm": [
+    "bufferBags",
+    "loadSecondsPerBag"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      0
+     ],
+     "dir": "in"
+    },
+    {
+     "cell": [
+      1,
+      0
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.baggage_bay"
+  },
+  {
+   "id": "baggageBay.w4",
+   "name": "Baggage bay, 8 m",
+   "category": "baggage",
+   "family": "baggageBay",
+   "level": null,
+   "size": [
+    8.0,
+    8
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "staff",
+    "secure"
+   ],
+   "gameKey": null,
+   "newKey": "baggageBay",
+   "stats": {
+    "slots": 2,
+    "bufferBags": 200,
+    "loadSecondsPerBag": 6,
+    "stagingLaneM": 16
+   },
+   "confirm": [
+    "bufferBags",
+    "loadSecondsPerBag"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      0
+     ],
+     "dir": "in"
+    },
+    {
+     "cell": [
+      3,
+      0
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.baggage_bay"
+  },
+  {
+   "id": "baggageBay.w6",
+   "name": "Baggage bay, 12 m",
+   "category": "baggage",
+   "family": "baggageBay",
+   "level": null,
+   "size": [
+    12.0,
+    8
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "staff",
+    "secure"
+   ],
+   "gameKey": null,
+   "newKey": "baggageBay",
+   "stats": {
+    "slots": 3,
+    "bufferBags": 200,
+    "loadSecondsPerBag": 6,
+    "stagingLaneM": 16
+   },
+   "confirm": [
+    "bufferBags",
+    "loadSecondsPerBag"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      0
+     ],
+     "dir": "in"
+    },
+    {
+     "cell": [
+      5,
+      0
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.baggage_bay"
+  },
+  {
+   "id": "baggageBay.w8",
+   "name": "Baggage bay, 16 m",
+   "category": "baggage",
+   "family": "baggageBay",
+   "level": null,
+   "size": [
+    16.0,
+    8
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "staff",
+    "secure"
+   ],
+   "gameKey": null,
+   "newKey": "baggageBay",
+   "stats": {
+    "slots": 4,
+    "bufferBags": 200,
+    "loadSecondsPerBag": 6,
+    "stagingLaneM": 16
+   },
+   "confirm": [
+    "bufferBags",
+    "loadSecondsPerBag"
+   ],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      0
+     ],
+     "dir": "in"
+    },
+    {
+     "cell": [
+      7,
+      0
+     ],
+     "dir": "out"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.baggage_bay"
+  },
+  {
+   "id": "stagingLane",
+   "name": "Bay staging lane",
+   "category": "baggage",
+   "family": "stagingLane",
+   "level": null,
+   "size": [
+    4,
+    16
+   ],
+   "grid": "cell",
+   "mount": "floorLayer",
+   "zones": [
+    "apron"
+   ],
+   "gameKey": null,
+   "newKey": null,
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.staging_lane"
+  },
+  {
+   "id": "carousel",
+   "name": "Baggage carousel",
+   "category": "baggage",
+   "family": "carousel",
+   "level": null,
+   "size": [
+    22,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "carousel",
+   "stats": {
+    "capacityBags": 60
+   },
+   "confirm": [],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      1
+     ],
+     "dir": "in"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.carousel_with_ramp"
+  },
+  {
+   "id": "bench.beam3",
+   "name": "Beam seat, 3",
+   "category": "seating",
+   "family": "bench.beam3",
+   "level": null,
+   "size": [
+    1.93,
+    0.68
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 3,
+    "comfort": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bench_beam"
+  },
+  {
+   "id": "bench.beam5",
+   "name": "Beam seat, 5",
+   "category": "seating",
+   "family": "bench.beam5",
+   "level": null,
+   "size": [
+    3.19,
+    0.68
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 5,
+    "comfort": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bench_beam"
+  },
+  {
+   "id": "bench.b2b6",
+   "name": "Back to back, 6",
+   "category": "seating",
+   "family": "bench.b2b6",
+   "level": null,
+   "size": [
+    1.93,
+    1.36
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 6,
+    "comfort": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bench_b2b"
+  },
+  {
+   "id": "bench.charge4",
+   "name": "Beam seat with charging",
+   "category": "seating",
+   "family": "bench.charge4",
+   "level": null,
+   "size": [
+    3.14,
+    0.68
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 4,
+    "comfort": 1,
+    "charging": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bench_charge"
+  },
+  {
+   "id": "bench.padded3",
+   "name": "Padded row, 3",
+   "category": "seating",
+   "family": "bench.padded3",
+   "level": null,
+   "size": [
+    2.11,
+    0.72
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 3,
+    "comfort": 2
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bench_padded"
+  },
+  {
+   "id": "bench.slat",
+   "name": "Slat bench",
+   "category": "seating",
+   "family": "bench.slat",
+   "level": null,
+   "size": [
+    1.9,
+    0.48
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 3,
+    "comfort": 0
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bench_wood"
+  },
+  {
+   "id": "recliner",
+   "name": "Recliner",
+   "category": "seating",
+   "family": "recliner",
+   "level": null,
+   "size": [
+    0.8,
+    1.86
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "seat",
+   "stats": {
+    "seats": 1,
+    "comfort": 3,
+    "rest": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.recliner"
+  },
+  {
+   "id": "lounge.sofa3",
+   "name": "Sofa, 3 seat",
+   "category": "lounge",
+   "family": "lounge.sofa3",
+   "level": null,
+   "size": [
+    2.2,
+    0.92
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.sofa"
+  },
+  {
+   "id": "lounge.sofa2",
+   "name": "Sofa, 2 seat",
+   "category": "lounge",
+   "family": "lounge.sofa2",
+   "level": null,
+   "size": [
+    1.6,
+    0.92
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.sofa"
+  },
+  {
+   "id": "lounge.armchair",
+   "name": "Armchair",
+   "category": "lounge",
+   "family": "lounge.armchair",
+   "level": null,
+   "size": [
+    0.9,
+    0.9
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.armchair"
+  },
+  {
+   "id": "lounge.coffeeTable",
+   "name": "Coffee table",
+   "category": "lounge",
+   "family": "lounge.coffeeTable",
+   "level": null,
+   "size": [
+    1.2,
+    0.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.coffee_table"
+  },
+  {
+   "id": "lounge.endTableLamp",
+   "name": "End table and lamp",
+   "category": "lounge",
+   "family": "lounge.endTableLamp",
+   "level": null,
+   "size": [
+    0.5,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.end_table_lamp"
+  },
+  {
+   "id": "lounge.floorLamp",
+   "name": "Floor lamp",
+   "category": "lounge",
+   "family": "lounge.floorLamp",
+   "level": null,
+   "size": [
+    0.84,
+    0.75
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.floor_lamp"
+  },
+  {
+   "id": "lounge.dining4",
+   "name": "Dining set, 4",
+   "category": "lounge",
+   "family": "lounge.dining4",
+   "level": null,
+   "size": [
+    2,
+    2
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.dining_set"
+  },
+  {
+   "id": "lounge.barStools",
+   "name": "Bar with stools",
+   "category": "lounge",
+   "family": "lounge.barStools",
+   "level": null,
+   "size": [
+    3.0,
+    1.52
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bar_counter"
+  },
+  {
+   "id": "lounge.tvCredenza",
+   "name": "TV on credenza",
+   "category": "lounge",
+   "family": "lounge.tvCredenza",
+   "level": null,
+   "size": [
+    2.0,
+    0.55
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.tv_credenza"
+  },
+  {
+   "id": "lounge.cupboard",
+   "name": "Cupboard",
+   "category": "lounge",
+   "family": "lounge.cupboard",
+   "level": null,
+   "size": [
+    1.6,
+    0.55
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.cupboard"
+  },
+  {
+   "id": "lounge.magazineShelf",
+   "name": "Magazine shelf",
+   "category": "lounge",
+   "family": "lounge.magazineShelf",
+   "level": null,
+   "size": [
+    1.2,
+    0.35
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.bookshelf"
+  },
+  {
+   "id": "lounge.workDesk",
+   "name": "Work desk",
+   "category": "lounge",
+   "family": "lounge.workDesk",
+   "level": null,
+   "size": [
+    1.4,
+    1.2
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.work_desk"
+  },
+  {
+   "id": "lounge.buffet",
+   "name": "Buffet counter",
+   "category": "lounge",
+   "family": "lounge.buffet",
+   "level": null,
+   "size": [
+    2.4,
+    0.8
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.buffet"
+  },
+  {
+   "id": "lounge.coffeeStation",
+   "name": "Coffee station",
+   "category": "lounge",
+   "family": "lounge.coffeeStation",
+   "level": null,
+   "size": [
+    1.6,
+    0.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.coffee_station"
+  },
+  {
+   "id": "lounge.rug",
+   "name": "Rug",
+   "category": "lounge",
+   "family": "lounge.rug",
+   "level": null,
+   "size": [
+    2.4,
+    1.7
+   ],
+   "grid": "sub",
+   "mount": "floorLayer",
+   "zones": [
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "loungeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.rug"
+  },
+  {
+   "id": "washroom.wcStall",
+   "name": "Toilet stall",
+   "category": "washroom",
+   "family": "washroom.wcStall",
+   "level": null,
+   "size": [
+    1.0,
+    1.6
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {
+    "capacity": 1,
+    "serviceTimeS": 90
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.wc_stall"
+  },
+  {
+   "id": "washroom.wcAccessible",
+   "name": "Accessible toilet",
+   "category": "washroom",
+   "family": "washroom.wcAccessible",
+   "level": null,
+   "size": [
+    2.2,
+    2.2
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {
+    "capacity": 1,
+    "serviceTimeS": 150,
+    "accessible": true
+   },
+   "confirm": [
+    "serviceTimeS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.wc_accessible"
+  },
+  {
+   "id": "washroom.urinals3",
+   "name": "Urinals, 3",
+   "category": "washroom",
+   "family": "washroom.urinals3",
+   "level": null,
+   "size": [
+    2.4,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {
+    "capacity": 3,
+    "serviceTimeS": 45
+   },
+   "confirm": [
+    "serviceTimeS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.urinals"
+  },
+  {
+   "id": "washroom.vanity3",
+   "name": "Vanity, 3 basins",
+   "category": "washroom",
+   "family": "washroom.vanity3",
+   "level": null,
+   "size": [
+    2.4,
+    0.6
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {
+    "capacity": 3
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.vanity"
+  },
+  {
+   "id": "washroom.vanity2",
+   "name": "Vanity, 2 basins",
+   "category": "washroom",
+   "family": "washroom.vanity2",
+   "level": null,
+   "size": [
+    1.6,
+    0.6
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {
+    "capacity": 2
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.vanity"
+  },
+  {
+   "id": "washroom.sink",
+   "name": "Sink",
+   "category": "washroom",
+   "family": "washroom.sink",
+   "level": null,
+   "size": [
+    0.6,
+    0.48
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {
+    "capacity": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.sink_single"
+  },
+  {
+   "id": "washroom.handDryer",
+   "name": "Hand dryer",
+   "category": "washroom",
+   "family": "washroom.handDryer",
+   "level": null,
+   "size": [
+    0.32,
+    0.22
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.hand_dryer"
+  },
+  {
+   "id": "washroom.towels",
+   "name": "Towels and bin",
+   "category": "washroom",
+   "family": "washroom.towels",
+   "level": null,
+   "size": [
+    0.38,
+    0.62
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.towel_dispenser"
+  },
+  {
+   "id": "washroom.trash",
+   "name": "Trash can",
+   "category": "washroom",
+   "family": "washroom.trash",
+   "level": null,
+   "size": [
+    0.42,
+    0.42
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.trash_round"
+  },
+  {
+   "id": "washroom.recycle",
+   "name": "Recycling bins",
+   "category": "washroom",
+   "family": "washroom.recycle",
+   "level": null,
+   "size": [
+    1.2,
+    0.44
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.trash_recycle"
+  },
+  {
+   "id": "washroom.babyChange",
+   "name": "Baby changing",
+   "category": "washroom",
+   "family": "washroom.babyChange",
+   "level": null,
+   "size": [
+    0.9,
+    0.56
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.baby_change"
+  },
+  {
+   "id": "washroom.janitorCart",
+   "name": "Janitor cart",
+   "category": "washroom",
+   "family": "washroom.janitorCart",
+   "level": null,
+   "size": [
+    0.95,
+    0.55
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "washroomProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_furniture_kit.png",
+   "generator": "fixtures_general.janitor_cart"
+  },
+  {
+   "id": "decor.planterSmall",
+   "name": "Planter, small",
+   "category": "decoration",
+   "family": "decor.planterSmall",
+   "level": null,
+   "size": [
+    0.7,
+    0.7
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 1,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.planter_small"
+  },
+  {
+   "id": "decor.planterLarge",
+   "name": "Planter, large",
+   "category": "decoration",
+   "family": "decor.planterLarge",
+   "level": null,
+   "size": [
+    1.6,
+    1.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.planter_large"
+  },
+  {
+   "id": "decor.trough",
+   "name": "Planter trough",
+   "category": "decoration",
+   "family": "decor.trough",
+   "level": null,
+   "size": [
+    2.0,
+    0.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 1,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.planter_trough"
+  },
+  {
+   "id": "decor.bamboo",
+   "name": "Bamboo trough",
+   "category": "decoration",
+   "family": "decor.bamboo",
+   "level": null,
+   "size": [
+    2.4,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 1,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.bamboo"
+  },
+  {
+   "id": "decor.palm",
+   "name": "Potted palm",
+   "category": "decoration",
+   "family": "decor.palm",
+   "level": null,
+   "size": [
+    2.0,
+    2.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.palm"
+  },
+  {
+   "id": "decor.treeBench",
+   "name": "Tree with ring bench",
+   "category": "decoration",
+   "family": "decor.treeBench",
+   "level": null,
+   "size": [
+    3.6,
+    3.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 16
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.tree_bench"
+  },
+  {
+   "id": "decor.fountain",
+   "name": "Fountain",
+   "category": "decoration",
+   "family": "decor.fountain",
+   "level": null,
+   "size": [
+    2.4,
+    2.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.fountain"
+  },
+  {
+   "id": "decor.sculpture",
+   "name": "Sculpture on plinth",
+   "category": "decoration",
+   "family": "decor.sculpture",
+   "level": null,
+   "size": [
+    1.6,
+    1.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.sculpture"
+  },
+  {
+   "id": "decor.medallion",
+   "name": "Floor medallion",
+   "category": "decoration",
+   "family": "decor.medallion",
+   "level": null,
+   "size": [
+    3.0,
+    3.0
+   ],
+   "grid": "sub",
+   "mount": "floorLayer",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.medallion"
+  },
+  {
+   "id": "decor.modelCase",
+   "name": "Aircraft model case",
+   "category": "decoration",
+   "family": "decor.modelCase",
+   "level": null,
+   "size": [
+    2.0,
+    1.3
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "decor",
+   "stats": {
+    "ambience": 2,
+    "seats": 0
+   },
+   "confirm": [
+    "ambience"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.model_case"
+  },
+  {
+   "id": "vending.snack",
+   "name": "Snack vending",
+   "category": "vending",
+   "family": "vending.snack",
+   "level": null,
+   "size": [
+    1.0,
+    0.86
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "salesShare": 0.15,
+    "restockStaff": "retail"
+   },
+   "confirm": [
+    "salesShare"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.vending"
+  },
+  {
+   "id": "vending.drink",
+   "name": "Drink vending",
+   "category": "vending",
+   "family": "vending.drink",
+   "level": null,
+   "size": [
+    1.0,
+    0.86
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "salesShare": 0.15,
+    "restockStaff": "retail"
+   },
+   "confirm": [
+    "salesShare"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.vending"
+  },
+  {
+   "id": "vending.coffee",
+   "name": "Coffee vending",
+   "category": "vending",
+   "family": "vending.coffee",
+   "level": null,
+   "size": [
+    1.0,
+    0.86
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "salesShare": 0.15,
+    "restockStaff": "retail"
+   },
+   "confirm": [
+    "salesShare"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.vending"
+  },
+  {
+   "id": "vending.fresh",
+   "name": "Fresh food vending",
+   "category": "vending",
+   "family": "vending.fresh",
+   "level": null,
+   "size": [
+    1.0,
+    0.86
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "salesShare": 0.15,
+    "restockStaff": "retail"
+   },
+   "confirm": [
+    "salesShare"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.vending"
+  },
+  {
+   "id": "vending.travel",
+   "name": "Travel essentials",
+   "category": "vending",
+   "family": "vending.travel",
+   "level": null,
+   "size": [
+    1.0,
+    0.86
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "salesShare": 0.15,
+    "restockStaff": "retail"
+   },
+   "confirm": [
+    "salesShare"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.vending"
+  },
+  {
+   "id": "vending.waterFiller",
+   "name": "Water bottle filler",
+   "category": "vending",
+   "family": "vending.waterFiller",
+   "level": null,
+   "size": [
+    0.5,
+    0.34
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "thirst": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.water_filler"
+  },
+  {
+   "id": "vending.chargeTower",
+   "name": "Charging tower",
+   "category": "vending",
+   "family": "vending.chargeTower",
+   "level": null,
+   "size": [
+    0.62,
+    0.62
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "charging": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.charge_tower"
+  },
+  {
+   "id": "vending.atmPair",
+   "name": "ATM pair",
+   "category": "vending",
+   "family": "vending.atmPair",
+   "level": null,
+   "size": [
+    1.9,
+    0.82
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "vending",
+   "stats": {
+    "feePerUse": 2
+   },
+   "confirm": [
+    "feePerUse"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.atm_pair"
+  },
+  {
+   "id": "screen.fids3",
+   "name": "Flight board, 3 screens",
+   "category": "screens",
+   "family": "screen.fids3",
+   "level": null,
+   "size": [
+    2.6,
+    0.32
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": true,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.fids_bank"
+  },
+  {
+   "id": "screen.fids5",
+   "name": "Flight board, 5 screens",
+   "category": "screens",
+   "family": "screen.fids5",
+   "level": null,
+   "size": [
+    4.2,
+    0.32
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": true,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.fids_bank"
+  },
+  {
+   "id": "screen.infoTotem",
+   "name": "Info totem",
+   "category": "screens",
+   "family": "screen.infoTotem",
+   "level": null,
+   "size": [
+    0.6,
+    0.36
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": true,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.info_totem"
+  },
+  {
+   "id": "screen.wallTv",
+   "name": "Wall TV",
+   "category": "screens",
+   "family": "screen.wallTv",
+   "level": null,
+   "size": [
+    1.4,
+    0.1
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": false,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.wall_tv"
+  },
+  {
+   "id": "screen.gateDisplay",
+   "name": "Gate display",
+   "category": "screens",
+   "family": "screen.gateDisplay",
+   "level": null,
+   "size": [
+    1.2,
+    0.32
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": true,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.gate_display"
+  },
+  {
+   "id": "screen.adTotem",
+   "name": "Digital ad totem",
+   "category": "screens",
+   "family": "screen.adTotem",
+   "level": null,
+   "size": [
+    0.8,
+    0.42
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": false,
+    "advertising": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.ad_totem"
+  },
+  {
+   "id": "screen.ledWall",
+   "name": "LED video wall",
+   "category": "screens",
+   "family": "screen.ledWall",
+   "level": null,
+   "size": [
+    6.0,
+    0.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": false,
+    "advertising": true
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.led_wall"
+  },
+  {
+   "id": "screen.ceilingFids",
+   "name": "Ceiling flight board",
+   "category": "screens",
+   "family": "screen.ceilingFids",
+   "level": null,
+   "size": [
+    3.0,
+    0.3
+   ],
+   "grid": "sub",
+   "mount": "overhead",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": true,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.ceiling_fids"
+  },
+  {
+   "id": "screen.overheadSign",
+   "name": "Overhead wayfinding",
+   "category": "screens",
+   "family": "screen.overheadSign",
+   "level": null,
+   "size": [
+    3.0,
+    0.32
+   ],
+   "grid": "sub",
+   "mount": "overhead",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "screen",
+   "stats": {
+    "wayfinding": true,
+    "advertising": false
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.overhead_sign"
+  },
+  {
+   "id": "service.trolley",
+   "name": "Luggage trolley",
+   "category": "service",
+   "family": "service.trolley",
+   "level": null,
+   "size": [
+    1.1,
+    0.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.trolley"
+  },
+  {
+   "id": "service.trolleyBay",
+   "name": "Trolley bay",
+   "category": "service",
+   "family": "service.trolleyBay",
+   "level": null,
+   "size": [
+    3.4,
+    1.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.trolley_bay"
+  },
+  {
+   "id": "service.infoDesk",
+   "name": "Information desk",
+   "category": "service",
+   "family": "service.infoDesk",
+   "level": null,
+   "size": [
+    3.0,
+    2.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.info_desk"
+  },
+  {
+   "id": "service.queueKit",
+   "name": "Queue belts",
+   "category": "service",
+   "family": "service.queueKit",
+   "level": null,
+   "size": [
+    3.9,
+    2.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.queue_kit"
+  },
+  {
+   "id": "service.ropePosts",
+   "name": "Rope posts",
+   "category": "service",
+   "family": "service.ropePosts",
+   "level": null,
+   "size": [
+    3.1,
+    0.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.rope_posts"
+  },
+  {
+   "id": "service.wrapStation",
+   "name": "Bag wrap station",
+   "category": "service",
+   "family": "service.wrapStation",
+   "level": null,
+   "size": [
+    2.0,
+    2.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.wrap_station"
+  },
+  {
+   "id": "service.prayerMats",
+   "name": "Prayer room set",
+   "category": "service",
+   "family": "service.prayerMats",
+   "level": null,
+   "size": [
+    3.5,
+    2.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.prayer_mats"
+  },
+  {
+   "id": "service.wheelchairs",
+   "name": "Wheelchair station",
+   "category": "service",
+   "family": "service.wheelchairs",
+   "level": null,
+   "size": [
+    1.9,
+    0.9
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.wheelchair_park"
+  },
+  {
+   "id": "service.kidsPlay",
+   "name": "Kids play area",
+   "category": "service",
+   "family": "service.kidsPlay",
+   "level": null,
+   "size": [
+    3.0,
+    3.0
+   ],
+   "grid": "sub",
+   "mount": "floorLayer",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.kids_play"
+  },
+  {
+   "id": "service.smokingPoint",
+   "name": "Smoking point",
+   "category": "service",
+   "family": "service.smokingPoint",
+   "level": null,
+   "size": [
+    1.6,
+    1.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.ashtray_stand"
+  },
+  {
+   "id": "service.safetyWall",
+   "name": "Fire cabinet and AED",
+   "category": "service",
+   "family": "service.safetyWall",
+   "level": null,
+   "size": [
+    1.42,
+    0.26
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.safety_wall"
+  },
+  {
+   "id": "service.helpPoint",
+   "name": "Help point",
+   "category": "service",
+   "family": "service.helpPoint",
+   "level": null,
+   "size": [
+    0.4,
+    0.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.help_point"
+  },
+  {
+   "id": "service.columnRound",
+   "name": "Round column",
+   "category": "service",
+   "family": "service.columnRound",
+   "level": null,
+   "size": [
+    0.9,
+    0.9
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.column_round"
+  },
+  {
+   "id": "service.columnAd",
+   "name": "Ad column",
+   "category": "service",
+   "family": "service.columnAd",
+   "level": null,
+   "size": [
+    0.9,
+    0.9
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "serviceProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_amenities_kit.png",
+   "generator": "fixtures_general.column_round"
+  },
+  {
+   "id": "office.computerDual",
+   "name": "Computer, dual screen",
+   "category": "office",
+   "family": "office.computerDual",
+   "level": null,
+   "size": [
+    1.2,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "desktop",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.computer"
+  },
+  {
+   "id": "office.computerSingle",
+   "name": "Computer, single",
+   "category": "office",
+   "family": "office.computerSingle",
+   "level": null,
+   "size": [
+    1.2,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "desktop",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.computer"
+  },
+  {
+   "id": "office.workDesk",
+   "name": "Work desk and chair",
+   "category": "office",
+   "family": "office.workDesk",
+   "level": null,
+   "size": [
+    1.6,
+    1.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "workplaces": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.work_desk_pc"
+  },
+  {
+   "id": "office.lDesk",
+   "name": "L desk",
+   "category": "office",
+   "family": "office.lDesk",
+   "level": null,
+   "size": [
+    1.8,
+    1.6
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "workplaces": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.l_desk"
+  },
+  {
+   "id": "office.deskPod4",
+   "name": "Desk pod for 4",
+   "category": "office",
+   "family": "office.deskPod4",
+   "level": null,
+   "size": [
+    3.2,
+    2.8
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "workplaces": 4
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.desk_pod"
+  },
+  {
+   "id": "office.reception",
+   "name": "Reception desk",
+   "category": "office",
+   "family": "office.reception",
+   "level": null,
+   "size": [
+    3.0,
+    1.9
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "workplaces": 2
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.reception_desk"
+  },
+  {
+   "id": "office.sofa",
+   "name": "Office sofa",
+   "category": "office",
+   "family": "office.sofa",
+   "level": null,
+   "size": [
+    1.6,
+    0.92
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_general.sofa"
+  },
+  {
+   "id": "office.cornerSofa",
+   "name": "Corner sofa",
+   "category": "office",
+   "family": "office.cornerSofa",
+   "level": null,
+   "size": [
+    2.4,
+    2.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.office_sofa_l"
+  },
+  {
+   "id": "office.meetingTable6",
+   "name": "Meeting table for 6",
+   "category": "office",
+   "family": "office.meetingTable6",
+   "level": null,
+   "size": [
+    2.8,
+    2.4
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.meeting_table"
+  },
+  {
+   "id": "office.roundTable4",
+   "name": "Round table for 4",
+   "category": "office",
+   "family": "office.roundTable4",
+   "level": null,
+   "size": [
+    2.0,
+    2.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.round_table4"
+  },
+  {
+   "id": "office.copier",
+   "name": "Copier",
+   "category": "office",
+   "family": "office.copier",
+   "level": null,
+   "size": [
+    1.2,
+    0.7
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.copier"
+  },
+  {
+   "id": "office.filing",
+   "name": "Filing cabinets",
+   "category": "office",
+   "family": "office.filing",
+   "level": null,
+   "size": [
+    1.46,
+    0.62
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.filing"
+  },
+  {
+   "id": "office.whiteboard",
+   "name": "Whiteboard",
+   "category": "office",
+   "family": "office.whiteboard",
+   "level": null,
+   "size": [
+    1.8,
+    0.12
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.whiteboard"
+  },
+  {
+   "id": "office.pantryCounter",
+   "name": "Pantry counter",
+   "category": "office",
+   "family": "office.pantryCounter",
+   "level": null,
+   "size": [
+    2.4,
+    0.65
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "staffNeeds": [
+     "hunger",
+     "thirst"
+    ]
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.pantry_counter"
+  },
+  {
+   "id": "office.fridge",
+   "name": "Fridge",
+   "category": "office",
+   "family": "office.fridge",
+   "level": null,
+   "size": [
+    0.72,
+    0.7
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "staffNeeds": [
+     "hunger",
+     "thirst"
+    ]
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.fridge"
+  },
+  {
+   "id": "office.waterCooler",
+   "name": "Water cooler",
+   "category": "office",
+   "family": "office.waterCooler",
+   "level": null,
+   "size": [
+    0.36,
+    0.36
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "staffNeeds": [
+     "hunger",
+     "thirst"
+    ]
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.water_cooler"
+  },
+  {
+   "id": "office.highTable",
+   "name": "Pantry high table",
+   "category": "office",
+   "family": "office.highTable",
+   "level": null,
+   "size": [
+    1.6,
+    1.5
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "staffNeeds": [
+     "hunger",
+     "thirst"
+    ]
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.high_table"
+  },
+  {
+   "id": "office.execDesk",
+   "name": "Executive desk",
+   "category": "office",
+   "family": "office.execDesk",
+   "level": null,
+   "size": [
+    2.0,
+    2.44
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {
+    "workplaces": 1
+   },
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.exec_desk"
+  },
+  {
+   "id": "office.credenza",
+   "name": "Executive credenza",
+   "category": "office",
+   "family": "office.credenza",
+   "level": null,
+   "size": [
+    2.0,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.credenza"
+  },
+  {
+   "id": "office.modelStand",
+   "name": "Desk model aircraft",
+   "category": "office",
+   "family": "office.modelStand",
+   "level": null,
+   "size": [
+    0.6,
+    0.5
+   ],
+   "grid": "sub",
+   "mount": "desktop",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "officeProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.model_stand"
+  },
+  {
+   "id": "circulation.escalator",
+   "name": "Escalator",
+   "category": "circulation",
+   "family": "circulation.escalator",
+   "level": null,
+   "size": [
+    1.65,
+    13.2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "escalator",
+   "stats": {
+    "risesM": 5,
+    "peoplePerHour": 3000,
+    "links": "floor"
+   },
+   "confirm": [
+    "peoplePerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.escalator"
+  },
+  {
+   "id": "circulation.escalatorPair",
+   "name": "Escalator pair",
+   "category": "circulation",
+   "family": "circulation.escalatorPair",
+   "level": null,
+   "size": [
+    3.6,
+    13.2
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "escalatorPair",
+   "stats": {
+    "risesM": 5,
+    "peoplePerHour": 6000,
+    "links": "floor"
+   },
+   "confirm": [
+    "peoplePerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.escalator_pair"
+  },
+  {
+   "id": "circulation.stairsStraight",
+   "name": "Stairs, straight",
+   "category": "circulation",
+   "family": "circulation.stairsStraight",
+   "level": null,
+   "size": [
+    1.8,
+    10.4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "stairsStraight",
+   "stats": {
+    "risesM": 5,
+    "peoplePerHour": 2000,
+    "links": "floor"
+   },
+   "confirm": [
+    "peoplePerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.stairs_straight"
+  },
+  {
+   "id": "circulation.stairsSwitchback",
+   "name": "Stairs, switchback",
+   "category": "circulation",
+   "family": "circulation.stairsSwitchback",
+   "level": null,
+   "size": [
+    3.9,
+    6.4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "stairsSwitchback",
+   "stats": {
+    "risesM": 5,
+    "peoplePerHour": 2000,
+    "links": "floor"
+   },
+   "confirm": [
+    "peoplePerHour"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.stairs_switchback"
+  },
+  {
+   "id": "circulation.elevator",
+   "name": "Elevator",
+   "category": "circulation",
+   "family": "circulation.elevator",
+   "level": null,
+   "size": [
+    2.6,
+    2.94
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "elevator",
+   "stats": {
+    "carPeople": 13,
+    "roundTripS": 60,
+    "accessible": true,
+    "links": "floor"
+   },
+   "confirm": [
+    "roundTripS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.elevator"
+  },
+  {
+   "id": "circulation.elevatorGlass",
+   "name": "Glass elevator",
+   "category": "circulation",
+   "family": "circulation.elevatorGlass",
+   "level": null,
+   "size": [
+    2.6,
+    2.94
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "elevatorGlass",
+   "stats": {
+    "carPeople": 13,
+    "roundTripS": 60,
+    "accessible": true,
+    "links": "floor"
+   },
+   "confirm": [
+    "roundTripS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.elevator"
+  },
+  {
+   "id": "circulation.elevatorBank",
+   "name": "Elevator bank",
+   "category": "circulation",
+   "family": "circulation.elevatorBank",
+   "level": null,
+   "size": [
+    5.4,
+    2.94
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "elevatorBank",
+   "stats": {
+    "carPeople": 13,
+    "cars": 2,
+    "roundTripS": 60,
+    "accessible": true,
+    "links": "floor"
+   },
+   "confirm": [
+    "roundTripS"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.elevator_bank"
+  },
+  {
+   "id": "circulation.travelator8",
+   "name": "Travelator pair, 8 m",
+   "category": "circulation",
+   "family": "circulation.travelator8",
+   "level": null,
+   "size": [
+    3.6,
+    8.0
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "travelator",
+   "stats": {
+    "speedMps": 0.65
+   },
+   "confirm": [
+    "speedMps"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.travelator_pair"
+  },
+  {
+   "id": "circulation.travelator16",
+   "name": "Travelator pair, 16 m",
+   "category": "circulation",
+   "family": "circulation.travelator16",
+   "level": null,
+   "size": [
+    3.6,
+    16.0
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "travelator",
+   "stats": {
+    "speedMps": 0.65
+   },
+   "confirm": [
+    "speedMps"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.travelator_pair"
+  },
+  {
+   "id": "circulation.travelator24",
+   "name": "Travelator pair, 24 m",
+   "category": "circulation",
+   "family": "circulation.travelator24",
+   "level": null,
+   "size": [
+    3.6,
+    24.0
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public",
+    "commercial",
+    "secure",
+    "international",
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "travelator",
+   "stats": {
+    "speedMps": 0.65
+   },
+   "confirm": [
+    "speedMps"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.travelator_pair"
+  },
+  {
+   "id": "boh.janitorRoom",
+   "name": "Janitor room set",
+   "category": "backOfHouse",
+   "family": "boh.janitorRoom",
+   "level": null,
+   "size": [
+    4.0,
+    3.0
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "bohProp",
+   "stats": {
+    "cleanerBase": 2
+   },
+   "confirm": [
+    "cleanerBase"
+   ],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.janitor_room"
+  },
+  {
+   "id": "boh.mopSink",
+   "name": "Mop sink",
+   "category": "backOfHouse",
+   "family": "boh.mopSink",
+   "level": null,
+   "size": [
+    0.7,
+    0.7
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "bohProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.mop_sink"
+  },
+  {
+   "id": "boh.supplyShelf",
+   "name": "Supply shelf",
+   "category": "backOfHouse",
+   "family": "boh.supplyShelf",
+   "level": null,
+   "size": [
+    1.2,
+    0.45
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "bohProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.supply_shelf"
+  },
+  {
+   "id": "boh.floorScrubber",
+   "name": "Floor scrubber",
+   "category": "backOfHouse",
+   "family": "boh.floorScrubber",
+   "level": null,
+   "size": [
+    1.14,
+    0.82
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "bohProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.floor_scrubber"
+  },
+  {
+   "id": "boh.mopRack",
+   "name": "Mop rack",
+   "category": "backOfHouse",
+   "family": "boh.mopRack",
+   "level": null,
+   "size": [
+    1.0,
+    0.45
+   ],
+   "grid": "sub",
+   "mount": "wall",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "bohProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.mop_rack"
+  },
+  {
+   "id": "boh.wetFloorSign",
+   "name": "Wet floor sign",
+   "category": "backOfHouse",
+   "family": "boh.wetFloorSign",
+   "level": null,
+   "size": [
+    0.5,
+    0.42
+   ],
+   "grid": "sub",
+   "mount": "floor",
+   "zones": [
+    "staff"
+   ],
+   "gameKey": null,
+   "newKey": "bohProp",
+   "stats": {},
+   "confirm": [],
+   "ramps": [],
+   "sheet": "docs/art/terminal_office_infra_kit.png",
+   "generator": "fixtures_building.wet_floor_sign"
+  }
+ ]
+}

@@ -309,6 +309,8 @@ A building has no fixed size (`docs/DESIGN_REVISION_2.md` section 5). Its footpr
 
 ### Fixtures and starting parameters
 
+Revision 5 (2026-11-18) extends this table: levels 1 to 3 for check in, security, passport control and gate desk, automated variants, security exits, customs, baggage nodes and every prop are in `docs/TERMINAL_FIXTURES.md` and `src/data/fixtures/catalog.json`. Zones and transitions are in `docs/TERMINAL_ZONING.md`, baggage in `docs/BAGGAGE.md`. The rows below are the level 1 values.
+
 | Fixture | Footprint | Servers | Service time | Notes |
 | --- | --- | --- | --- | --- |
 | Check in desk | 2 by 2 m (1 cell) | 1 | 120 s | Airline assigned or common use |

@@ -11,6 +11,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
+5a. Phase 3b, the terminal kit (T73 to T77, `docs/DESIGN_REVISION_5.md`), depends only on finished work and may also run in a second session. Its assets are already in `src/data/fixtures/` with reference sheets in `docs/art/`. Start with T73.
 6. Known leftovers are in `handoff/BACKLOG.md`, known limits in `docs/ARCHITECTURE.md` section 13.
 7. Browser tests in the cloud session run with `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test --project=chromium --trace off`.
 
@@ -64,10 +65,11 @@ MVP 1 ends with the acceptance task T38.
 | 1 | Stands and flight planning | T59, T47, T61, T62, T72, T70, T71 | done |
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66 | todo |
 | 3 | People | T54, T67, T20, T68 | todo |
+| 3b | Terminal kit | T73, T74, T75, T76, T77 | todo |
 | 4 | Tenants and events | T32, T50 | todo |
 | 5 | Shell and release | T35, T36, T45, T37, T38 | todo |
 
-Phase 3 depends only on finished work until T20, so T54 and T67 may run in a second session beside phase 1 or 2. Every other phase waits for the one before it.
+Phase 3 depends only on finished work until T20, so T54 and T67 may run in a second session beside phase 1 or 2. Phase 3b depends only on finished work and may run beside phase 2 or 3. Every other phase waits for the one before it.
 
 ### Phase 0. Repair
 
@@ -108,7 +110,7 @@ Goal: vehicles live in buildings, drive on roads the player draws, and service e
 | T64 | Footprints, keep out zones, the collision test over every stand class and type, draw order. T57 delivers the hard footprint, this task finishes the port of `gse.py` | T26, T27 | T60 | todo |
 | T65 | Supporting buildings: ground handling depot, fuel farm with stock and road tankers, catering unit, fire station with categories, staff center, cleaning depot, maintenance workshop (section 5) | depot part of T24 | T60 | todo |
 | T63 | Turnaround task lists per type with dependencies, docking poses per service point, delays shown with their cause and whether the airport or the airline owns it (section 4) | T22, T23 | T64, T65 | todo |
-| T43 | Working baggage system on one level: belts, makeup chutes and carousels |  | T63 | todo |
+| T43 | Baggage network per `docs/BAGGAGE.md`: drop points, screening machines in a screening room, bays assigned to stands, carousels, automatic under floor links (rules A to F, reference `baggage_links.py`), ramp stubs, connections tab read only, kit sprites from `baggage_kit.png` |  | T63, T73 | todo |
 | T66 | Stand upgrades through works (five jet bridge access types, stairs and bus bay, hydrant pit, fixed ground power) and stand assignments for gate, desk, chute and carousel (section 2.5, 2.6) | T48, T23 | T59, T43 | todo |
 
 Exit: a turnaround runs from depot to stand and back with no vehicle crossing an aircraft, a missing vehicle or empty fuel farm delays the flight with a visible cause, bags reach the aircraft and the carousel, and passengers board by bridge, stairs or bus.
@@ -121,10 +123,24 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 | --- | --- | --- | --- | --- |
 | T54 | People walk and dwell along routes with spacing (needs a from node in the cohort store and a save migration) |  |  | todo |
 | T67 | Individuals inside cohorts: traits, needs evaluated at decision points, sub cohorts, satisfaction per member rolled up to the airport rating, the stress scenario with 20 000 cohorts and 40 000 people under the 4 ms medium budget (section 6.1 to 6.3) | T17, T18 | T54 | todo |
-| T20 | Arrival journey with immigration, baggage claim and customs |  | T67, T43 | todo |
+| T20 | Arrival journey with immigration (passport control or automated gate in arrival mode), baggage claim and the customs channel (`docs/TERMINAL_ZONING.md` section 3) |  | T67, T43, T75 | todo |
 | T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | todo |
 
 Exit: a passenger who gets hungry leaves the group, visits a shop and rejoins at the gate, arriving passengers collect bags and leave, staff change shifts at the staff center, and the rating reacts to all of it.
+
+### Phase 3b. Terminal kit
+
+Goal: the terminal looks and plays like the kit sheets: every fixture and prop drawn from `src/data/fixtures/`, fixtures in three levels, zones with real transitions, furniture with effects. Design: `docs/DESIGN_REVISION_5.md`, `docs/TERMINAL_FIXTURES.md`, `docs/TERMINAL_ZONING.md`. Draft specs in `handoff/tasks/T73-fixture-baker.md` to `T77-circulation.md`.
+
+| Id | Task | Replaces | Depends | Status |
+| --- | --- | --- | --- | --- |
+| T73 | Fixture sprite baker: port `fixture_ops.py` to `src/render/sprites/fixtureSprite.ts`, lazy loaded sprite packs, tiers, shadows per rotation, airline livery, chunk cache; today's check in, kiosk, bag drop, security, passport, gate desk, seating and toilet fixtures drawn from the kit |  |  | todo |
+| T74 | Fixture levels 1 to 3 for check in, security, passport control and gate desk: level per fixture in the grid and saves, in place upgrade through works, inspector upgrade button, values from the catalog | T44 fixture part | T73 | todo |
+| T75 | Zoning revision: international zone, transition fixtures with direction, security exit in three levels, automated passport gate, customs channel, staff door wall type, breach validation in the walking graph, zones overlay with badges |  | T73 | todo |
+| T76 | Props on a 0.5 m sub grid: seating, lounge, washroom, decoration, vending, screens, service, office and back of house items from the catalog, with comfort, ambience, wayfinding, charging, washroom capacity and staff room effects |  | T73 | todo |
+| T77 | Circulation and back of house: escalators, stairs, elevators and travelators placed and drawn, travelators speed walking on one floor, janitor room as the cleaners' base; vertical links wait for T51 |  | T76 | todo |
+
+Exit: the dev build shows a terminal that matches `docs/art/terminal_scene_kit.png` at 14 px per meter, an upgrade turns a level 1 desk into level 3 in place, a passenger can leave the secure zone only through a security exit, and a breach is reported and blocks walking.
 
 ### Phase 4. Tenants and events
 
@@ -156,7 +172,7 @@ Exit: T38 passes.
 Moved to MVP 2:
 
 * Multi floor terminal designer (T51), baggage levels, transfers and bridges (T46), hangars (T52), cargo (T53).
-* Fixture and architecture variants (T44).
+* Architecture variants (T44). Fixture variants are covered by the levels of T74.
 * Preconditioned air and docking guidance as stand upgrades, duty free as a tenant category, de-icing pad, car rental, bus station.
 * The remaining 32 Phase 1 aircraft, MARS and cargo stands, international scope airlines.
 * Loans beyond one term loan, credit rating, fuel forward contracts, full reports.
