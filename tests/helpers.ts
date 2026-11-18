@@ -78,6 +78,10 @@ export function buildTestGround(sim: Sim): string[] {
   // One road through every connection point, laid in pieces of at most 60 points that join end to end.
   const line = [{ x: x + GROUND.depot.depthM / 2 + GROUND.depot.exitGapM, y }, ...conns];
   for (let i = 0; i + 1 < line.length; i += 59) problems.push(...run(sim, { type: 'buildRoad', points: line.slice(i, i + 60) }));
+  // A fire station with three vehicles beside the depot, category 10, so airline flights never meet the fire rule (T65).
+  problems.push(...run(sim, { type: 'buildBuilding', kind: 'fire', x, y: y + GROUND.depot.widthM / 2 + GROUND.buildings.fire.widthM / 2 + 5, headingDeg: 90 }));
+  const station = sim.airfield.data.buildings?.find((b) => b.kind === 'fire');
+  if (station) for (let k = 0; k < GROUND.fire.maxVehicles; k++) problems.push(...run(sim, { type: 'buyFireVehicle', id: station.id }));
   // Top the fleet up to the kit the tests used before depots, so turnaround timing stays as it was.
   for (const [kind, count] of [['beltloader', 1], ['refueller', 1], ['gpu', 1]] as const) problems.push(...run(sim, { type: 'buyGse', kind, count }));
   return problems;

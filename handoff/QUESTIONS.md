@@ -302,3 +302,12 @@ Answer: (pending)
 | Vehicles in saves and the hash | Approved: vehicles, roads and depot fleets are saved with a migration. Old saves load with no roads and an empty fleet |
 | Baggage carts per tractor | By aircraft size: small 1, medium 2, large 3, extra large 4 |
 | How the fleet is bought | Per kind in the depot inspector at the catalog price, up to the depot capacity of 24. A new depot comes with 2 tugs, 2 tractors, 4 carts, 2 belt loaders, 2 GPUs, 1 refueller, 1 stairs and 1 catering truck |
+
+## 2026-11-18 T65 supporting buildings
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| Fire category rule (D21) | Commercial flights a type's category needs are refused, GA exempt, after 7 game days of grace with a warning; a new game and an old save each start with the grace. A station covers a runway when both ends lie within 180 s at 60 km/h |
+| Fuel taken per turnaround | A fixed number of liters per aircraft type, in data |
+| Road tankers and refuellers | Automatic orders below 25 percent stock, a 36 m3 tanker arriving 2 game hours later; refuellers draw from stock at the aircraft. A stock out delays the flight, which is grounded after 60 minutes (D19) |
+| Staff center, cleaning depot, maintenance workshop, catering unit | Placeable now with D20 and D22 prices and an upkeep of 0.05 percent of cost per day; the catering unit sends its own trucks by road; other effects come with T63, T68 and T50 |

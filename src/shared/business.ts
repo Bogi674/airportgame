@@ -15,7 +15,7 @@ export const START_MINUTE = 6 * 60;
 export const dayIndex = (tick: number): number => Math.floor((tick + START_MINUTE * TICKS_PER_MINUTE) / TICKS_PER_DAY);
 export const minuteOfDay = (tick: number): number => Math.floor(((tick + START_MINUTE * TICKS_PER_MINUTE) % TICKS_PER_DAY) / TICKS_PER_MINUTE);
 
-export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan'] as const;
+export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan', 'fuel'] as const;
 export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
@@ -261,6 +261,13 @@ export interface BusinessPayload {
   atcQueue: number;
   /** Vehicles owned by catalog index of the ground vehicle list. */
   fleet: number[];
+  /** Fuel in the farms, what they hold and what tankers bring, in liters (T65). */
+  fuelStockL: number;
+  fuelCapacityL: number;
+  fuelInboundL: number;
+  /** The airport's fire category and the game days of grace left before a shortfall refuses flights (T65). */
+  fireCategory: number;
+  fireGraceDays: number;
   /** 1 when ground handling keeps up, up to 1.6 when it is short of vehicles. */
   serviceSlowdown: number;
   arrCapacity: number;

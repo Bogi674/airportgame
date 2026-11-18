@@ -21,8 +21,10 @@ import {
   type Tower,
   type ServiceRoad,
   type Depot,
+  type Building,
+  BUILDING_KINDS,
 } from '@shared/airfield';
-import { depotRect, roadSnapPoints, segmentRect } from '@shared/roadGraph';
+import { buildingRect, depotRect, roadSnapPoints, segmentRect } from '@shared/roadGraph';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { padArea, padPolygon, padValue } from '@shared/turnPad';
 import { levelForRunways, runwayCapOf, towerBuildCost, towerLevelOf } from '@shared/towerBudget';
@@ -54,10 +56,10 @@ import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
 import { assignRunwayNames, assignTaxiNames, deriveNetwork } from './geometry';
 
-type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower' | 'road' | 'depot';
+type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower' | 'road' | 'depot' | 'building';
 interface Item {
   type: ObjType;
-  obj: Runway | Taxiway | Apron | Stand | Tower | ServiceRoad | Depot;
+  obj: Runway | Taxiway | Apron | Stand | Tower | ServiceRoad | Depot | Building;
 }
 interface Op {
   items: Item[];
@@ -190,6 +192,8 @@ export class Airfield {
         return this.roadList;
       case 'depot':
         return this.depotList;
+      case 'building':
+        return this.buildingList;
       default:
         return this.data.stands;
     }
@@ -205,6 +209,10 @@ export class Airfield {
 
   private get depotList(): Depot[] {
     return (this.data.depots ??= []);
+  }
+
+  private get buildingList(): Building[] {
+    return (this.data.buildings ??= []);
   }
 
   private nextTaxiName(): string {
@@ -225,7 +233,7 @@ export class Airfield {
   /** Rebuilds the taxi network, unless the items are towers only, which never touch it. */
   private refreshFor(items: Item[]): void {
     if (items.length > 0 && items.every((it) => it.type === 'tower')) this.towersVersion++;
-    else if (items.length > 0 && items.every((it) => it.type === 'road' || it.type === 'depot')) this.groundVersion++;
+    else if (items.length > 0 && items.every((it) => it.type === 'road' || it.type === 'depot' || it.type === 'building')) this.groundVersion++;
     else this.refresh();
   }
 
@@ -294,6 +302,10 @@ export class Airfield {
         return this.buildRoad(cmd.points, ctx, cash, env);
       case 'buildDepot':
         return this.buildDepot(cmd, ctx, cash, env);
+      case 'buildBuilding':
+        return this.buildBuilding(cmd, ctx, cash, env);
+      case 'buyFireVehicle':
+        return this.buyFireVehicle(cmd.id, cash);
       case 'setTaxiwayProps':
         return this.setTaxiwayProps(cmd);
       case 'resurface':
@@ -685,6 +697,7 @@ export class Airfield {
     const side = BUSINESS.tower.footprintM;
     if (this.towerList.some((t) => overlaps(poly, towerRect(t.x, t.y, side)))) return { code: 'onTower' };
     if (this.depotList.some((d) => overlaps(poly, depotRect(d)))) return { code: 'onDepot' };
+    if (this.buildingList.some((b) => overlaps(poly, buildingRect(b)))) return { code: 'onBuilding' };
     if (env.terminals && terminalOverlaps(env.terminals, poly)) return { code: 'onTerminal' };
     return null;
   }
@@ -950,9 +963,41 @@ export class Airfield {
     if (towerBlocked(this.data, poly)) return { code: 'depotOnPavement' };
     if (this.towerList.some((t) => towersOverlap(poly, towerRect(t.x, t.y, BUSINESS.tower.footprintM)))) return { code: 'onTower' };
     if (this.depotList.some((o) => towersOverlap(poly, depotRect(o)))) return { code: 'onDepot' };
+    if (this.buildingList.some((o) => overlaps(poly, buildingRect(o)))) return { code: 'onBuilding' };
     if (env.terminals && terminalOverlaps(env.terminals, poly)) return { code: 'onTerminal' };
     d.id = this.nextId++;
     return this.place([{ type: 'depot', obj: d }], cash);
+  }
+
+  /** Builds a supporting building of T65 with its door side facing the heading, a multiple of 90, under the depot's placement rules. */
+  private buildBuilding(cmd: Extract<Command, { type: 'buildBuilding' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
+    if (!BUILDING_KINDS.includes(cmd.kind)) return { code: 'nothingThere' };
+    const headingDeg = ((Math.round(cmd.headingDeg / 90) * 90) % 360 + 360) % 360;
+    const b: Building = { id: 0, cost: GROUND.buildings[cmd.kind].cost, kind: cmd.kind, x: round05(cmd.x), y: round05(cmd.y), headingDeg };
+    if (cmd.kind === 'fire') b.fireVehicles = 0;
+    const poly = buildingRect(b);
+    const land = checkPolygon(ctx, poly);
+    if (land) return land;
+    if (towerBlocked(this.data, poly)) return { code: 'depotOnPavement' };
+    if (this.towerList.some((t) => overlaps(poly, towerRect(t.x, t.y, BUSINESS.tower.footprintM)))) return { code: 'onTower' };
+    if (this.depotList.some((o) => overlaps(poly, depotRect(o)))) return { code: 'onDepot' };
+    if (this.buildingList.some((o) => overlaps(poly, buildingRect(o)))) return { code: 'onBuilding' };
+    if (env.terminals && terminalOverlaps(env.terminals, poly)) return { code: 'onTerminal' };
+    b.id = this.nextId++;
+    return this.place([{ type: 'building', obj: b }], cash);
+  }
+
+  /** One fire vehicle for a fire station, up to the data maximum. Bought like ground vehicles, so undo leaves it. */
+  private buyFireVehicle(id: number, cash: number): BuildResult {
+    const b = this.buildingList.find((x) => x.id === id && x.kind === 'fire');
+    if (!b) return { code: 'nothingThere' };
+    if ((b.fireVehicles ?? 0) >= GROUND.fire.maxVehicles) return { code: 'fireFull', args: { max: GROUND.fire.maxVehicles } };
+    const price = GROUND.fire.vehicleCost;
+    if (price > cash) return { code: 'insufficientFunds', args: { cost: price } };
+    b.fireVehicles = (b.fireVehicles ?? 0) + 1;
+    b.cost += price;
+    this.groundVersion++;
+    return { cashDelta: -price };
   }
 
   /** Removes a tower and refunds a share of everything the player spent on it, as the other demolitions do. */
@@ -1434,7 +1479,7 @@ export class Airfield {
   /** Everything needed to rebuild the airfield. Undo history is not saved. */
   saveState(): unknown {
     const d = this.data;
-    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, towers: this.towerList, roads: this.roadList, depots: this.depotList, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
+    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, towers: this.towerList, roads: this.roadList, depots: this.depotList, buildings: this.buildingList, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
   }
 
   loadState(raw: unknown): void {
@@ -1445,7 +1490,8 @@ export class Airfield {
     d.aprons = o.aprons;
     d.stands = o.stands;
     this.towerList.splice(0, this.towerList.length, ...(o.towers ?? []));
-    const g = raw as { roads?: ServiceRoad[]; depots?: Depot[] };
+    const g = raw as { roads?: ServiceRoad[]; depots?: Depot[]; buildings?: Building[] };
+    this.buildingList.splice(0, this.buildingList.length, ...(g.buildings ?? []));
     this.roadList.splice(0, this.roadList.length, ...(g.roads ?? []));
     this.depotList.splice(0, this.depotList.length, ...(g.depots ?? []));
     this.nextId = o.nextId;
@@ -1485,6 +1531,7 @@ export class Airfield {
       for (const p of x.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
     }
     for (const x of this.depotList) acc = foldU32(foldU32(foldU32(acc, x.id), r(x.x) * 64 + r(x.y)), x.headingDeg);
+    for (const x of this.buildingList) acc = foldU32(foldU32(foldU32(foldU32(acc, x.id), r(x.x) * 64 + r(x.y)), x.headingDeg), BUILDING_KINDS.indexOf(x.kind) * 8 + (x.fireVehicles ?? 0));
     return acc;
   }
 }

@@ -1,4 +1,4 @@
-import type { Approach, CodeLetter, PadSide, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
+import type { Approach, BuildingKind, CodeLetter, PadSide, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
 import type { FeeLevel } from '@shared/business';
 import type { TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -30,7 +30,7 @@ export type Command =
   | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; size: StandSize; surface?: Surface }
   /** surface is optional: without it a GA block takes the apron under its stands, else asphalt. */
   | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number; surface?: Surface }
-  | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'road' | 'depot'; id: number }
+  | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'road' | 'depot' | 'building'; id: number }
   /** Builds an ATC tower centred on the point, at the given level from 1 to 5, paying the build cost plus each upgrade. */
   | { type: 'buildTower'; x: number; y: number; level: number }
   /** Raises a tower by one level. */
@@ -41,6 +41,10 @@ export type Command =
   | { type: 'buildRoad'; points: Pt[] }
   /** Builds a ground handling depot centred on the point, door side facing the heading (rounded to 90 degrees). */
   | { type: 'buildDepot'; x: number; y: number; headingDeg: number }
+  /** Builds a supporting building (T65) centred on the point, door side facing the heading (rounded to 90 degrees). */
+  | { type: 'buildBuilding'; kind: BuildingKind; x: number; y: number; headingDeg: number }
+  /** Buys one fire vehicle for a fire station. */
+  | { type: 'buyFireVehicle'; id: number }
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
   | { type: 'reclassTaxiway'; id: number; code: CodeLetter; surface: Surface; tier: number }
   | { type: 'reverseTaxiway'; id: number }

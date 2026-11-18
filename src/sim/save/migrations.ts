@@ -2,9 +2,10 @@ import type { GameOptions } from '@shared/protocol';
 import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
+import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 19;
+export const SAVE_VERSION = 20;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -176,6 +177,13 @@ export function migrate(raw: unknown): SaveData {
     const b = (save as { business?: { fleet?: number[] } }).business;
     if (b?.fleet) b.fleet = b.fleet.map(() => 0);
     save.version = 19;
+  }
+  // Version 19 to 20: supporting buildings, fuel stock and orders, fire grace, and fuel owed per aircraft (T65).
+  // Older saves have none of them and start their 7 days of fire grace on the day they load (user, 2026-11-18).
+  if (save.version < 20) {
+    const b = (save as { business?: { day?: number; fireGraceUntil?: number } }).business;
+    if (b) b.fireGraceUntil = (b.day ?? 0) + GROUND.fire.graceDays;
+    save.version = 20;
   }
   return save as SaveData;
 }

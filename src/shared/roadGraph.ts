@@ -1,5 +1,5 @@
 import { GROUND, STAND_MARKINGS, STAND_SIZES } from '@data/index';
-import type { AirfieldPayload, Depot, Stand } from './airfield';
+import type { AirfieldPayload, Building, Depot, Stand } from './airfield';
 import { closestOnSegment, segmentIntersection, type Pt } from './geom';
 import { standSlot } from './standGeom';
 import { cosLut, PI, sinLut } from './trig';
@@ -27,10 +27,28 @@ export function headingVec(deg: number): Pt {
 
 /** The four corners of a depot footprint. */
 export function depotRect(d: Pick<Depot, 'x' | 'y' | 'headingDeg'>): Pt[] {
+  return footprintRect(d, GROUND.depot.widthM, GROUND.depot.depthM);
+}
+
+/** The four corners of a supporting building (T65). */
+export function buildingRect(b: Pick<Building, 'x' | 'y' | 'headingDeg' | 'kind'>): Pt[] {
+  const spec = GROUND.buildings[b.kind];
+  return footprintRect(b, spec.widthM, spec.depthM);
+}
+
+/** Where vehicles leave and enter a supporting building: in front of the middle of its door side. */
+export function buildingDoor(b: Pick<Building, 'x' | 'y' | 'headingDeg' | 'kind'>): Pt {
+  const f = headingVec(b.headingDeg);
+  const k = GROUND.buildings[b.kind].depthM / 2 + GROUND.depot.exitGapM;
+  return { x: b.x + f.x * k, y: b.y + f.y * k };
+}
+
+/** A footprint of the given width across its door side and depth along its heading, centred on the point. */
+export function footprintRect(d: Pick<Depot, 'x' | 'y' | 'headingDeg'>, widthM: number, depthM: number): Pt[] {
   const f = headingVec(d.headingDeg);
   const r = { x: -f.y, y: f.x };
-  const hd = GROUND.depot.depthM / 2;
-  const hw = GROUND.depot.widthM / 2;
+  const hd = depthM / 2;
+  const hw = widthM / 2;
   return [
     { x: d.x + f.x * hd - r.x * hw, y: d.y + f.y * hd - r.y * hw },
     { x: d.x + f.x * hd + r.x * hw, y: d.y + f.y * hd + r.y * hw },
@@ -84,6 +102,7 @@ export function standRoadAnchors(s: Stand): StandRoadAnchors | null {
 export function roadSnapPoints(af: AirfieldPayload): Pt[] {
   const out: Pt[] = [];
   for (const d of af.depots ?? []) out.push(depotExit(d));
+  for (const b of af.buildings ?? []) out.push(buildingDoor(b));
   for (const s of af.stands) {
     const a = standRoadAnchors(s);
     if (!a) continue;
@@ -111,6 +130,8 @@ export interface RoadGraph {
   standConn: number[];
   /** Exit node per depot, same order as `af.depots`. */
   depotNode: number[];
+  /** Door node per supporting building, same order as `af.buildings`. */
+  buildingNode: number[];
 }
 
 interface Seg {
@@ -121,7 +142,7 @@ interface Seg {
 
 /** Builds the road graph of an airfield. Deterministic: every list is walked in its stored order. */
 export function buildRoadGraph(af: AirfieldPayload): RoadGraph {
-  const g: RoadGraph = { nodeX: [], nodeY: [], nodeCross: [], nodeDegree: [], edgeA: [], edgeB: [], edgeLen: [], edgeKind: [], adj: [], standConn: [], depotNode: [] };
+  const g: RoadGraph = { nodeX: [], nodeY: [], nodeCross: [], nodeDegree: [], edgeA: [], edgeB: [], edgeLen: [], edgeKind: [], adj: [], standConn: [], depotNode: [], buildingNode: [] };
   const nodeAt = (p: Pt): number => {
     for (let i = 0; i < g.nodeX.length; i++) {
       const dx = g.nodeX[i] - p.x;
@@ -136,6 +157,7 @@ export function buildRoadGraph(af: AirfieldPayload): RoadGraph {
     return g.nodeX.length - 1;
   };
   for (const d of af.depots ?? []) g.depotNode.push(nodeAt(depotExit(d)));
+  for (const b of af.buildings ?? []) g.buildingNode.push(nodeAt(buildingDoor(b)));
   const segs: Seg[] = [];
   for (const s of af.stands) {
     const a = standRoadAnchors(s);
@@ -249,13 +271,18 @@ export interface RoadRoutes {
  * quadratic selection is fine and nothing runs in the tick loop (hard rule 7).
  */
 export function routeFromDepots(g: RoadGraph): RoadRoutes {
+  return routeFrom(g, g.depotNode);
+}
+
+/** Fastest paths from a set of source nodes, as `routeFromDepots`; `depot` then holds the index in `sources`. */
+export function routeFrom(g: RoadGraph, sources: readonly number[]): RoadRoutes {
   const n = g.nodeX.length;
   const time = new Array<number>(n).fill(Infinity);
   const viaEdge = new Array<number>(n).fill(-1);
   const viaNode = new Array<number>(n).fill(-1);
   const depot = new Array<number>(n).fill(-1);
   const done = new Array<boolean>(n).fill(false);
-  g.depotNode.forEach((d, k) => {
+  sources.forEach((d, k) => {
     if (time[d] === 0) return;
     time[d] = 0;
     depot[d] = k;

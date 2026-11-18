@@ -39,5 +39,41 @@
  },
  "vehicleGapM": 2,
  "crewClearLeadS": 600,
- "trainLateralExtraM": 1.5
+ "trainLateralExtraM": 1.5,
+ "buildingUpkeepShare": 0.0005,
+ "buildings": {
+  "fuelFarm": { "widthM": 50, "depthM": 50, "cost": 400000 },
+  "catering": { "widthM": 40, "depthM": 30, "cost": 220000 },
+  "fire": { "widthM": 40, "depthM": 30, "cost": 300000 },
+  "staff": { "widthM": 30, "depthM": 20, "cost": 90000 },
+  "cleaning": { "widthM": 25, "depthM": 20, "cost": 60000 },
+  "workshop": { "widthM": 40, "depthM": 30, "cost": 150000 }
+ },
+ "fire": {
+  "vehicleCost": 350000,
+  "maxVehicles": 3,
+  "responseS": 180,
+  "speedKmh": 60,
+  "graceDays": 7,
+  "categories": [
+   { "category": 5, "maxLengthM": 28, "vehicles": 1 },
+   { "category": 6, "maxLengthM": 39, "vehicles": 1 },
+   { "category": 7, "maxLengthM": 49, "vehicles": 2 },
+   { "category": 8, "maxLengthM": 61, "vehicles": 3 },
+   { "category": 9, "maxLengthM": 76, "vehicles": 3 },
+   { "category": 10, "maxLengthM": 90, "vehicles": 3 }
+  ]
+ },
+ "fuel": {
+  "tankCount": 4,
+  "tankM3": 500,
+  "tankerM3": 36,
+  "orderBelowShare": 0.25,
+  "leadHours": 2,
+  "buyPerL": 0.8,
+  "sellPerL": 1.0,
+  "groundAfterMin": 60,
+  "upliftL": { "b737_800": 6000, "a320neo": 5500, "b777_300er": 40000, "b787_9": 30000, "atr72_600": 1500, "crj900": 3500, "dash8_q400": 2000, "c172s": 120, "c208b": 500, "kingair_360": 900 }
+ },
+ "catering": { "trucks": 6 }
 }

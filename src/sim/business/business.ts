@@ -2,7 +2,8 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BUSINESS, MARKET, SURFACE_SPEC } from '@data/index';
+import { BUSINESS, GROUND, MARKET, SURFACE_SPEC } from '@data/index';
+import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
   LEDGER_CATEGORIES,
   LEDGER_DAYS,
@@ -75,6 +76,69 @@ export class Business {
   fleet: number[] = GSE.map(() => 0);
   /** Vehicles the depots can hold, set by the sim from the depot count (D18). */
   depotCapacity = 0;
+  /** Fuel in the farms in liters, and tankers on the way as due tick and liters pairs (T65, D19). */
+  fuelStockL = 0;
+  fuelOrders: number[] = [];
+  /** Game day from which a fire category below a type's need refuses its flights (T65, user 2026-11-18). */
+  fireGraceUntil: number = GROUND.fire.graceDays;
+
+  /** Liters all fuel farms hold. */
+  fuelCapacityL(): number {
+    const farms = (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'fuelFarm').length;
+    return farms * GROUND.fuel.tankCount * GROUND.fuel.tankM3 * 1000;
+  }
+
+  /**
+   * Hourly fuel check: deliveries that are due fill the tanks, and below the order share tankers are ordered
+   * to bring the stock with what is on the way back to full, paid at the buy price when ordered (D19).
+   */
+  private updateFuel(tick: number): void {
+    const cap = this.fuelCapacityL();
+    if (this.fuelStockL > cap) this.fuelStockL = cap;
+    let inbound = 0;
+    const keep: number[] = [];
+    for (let i = 0; i < this.fuelOrders.length; i += 2) {
+      if (this.fuelOrders[i] <= tick) this.fuelStockL = Math.min(cap, this.fuelStockL + this.fuelOrders[i + 1]);
+      else {
+        keep.push(this.fuelOrders[i], this.fuelOrders[i + 1]);
+        inbound += this.fuelOrders[i + 1];
+      }
+    }
+    if (keep.length !== this.fuelOrders.length) this.version++;
+    this.fuelOrders = keep;
+    if (cap === 0 || this.fuelStockL + inbound >= cap * GROUND.fuel.orderBelowShare) return;
+    const tankerL = GROUND.fuel.tankerM3 * 1000;
+    const n = Math.ceil((cap - this.fuelStockL - inbound) / tankerL);
+    const due = tick + GROUND.fuel.leadHours * 60 * TICKS_PER_MINUTE;
+    for (let k = 0; k < n; k++) this.fuelOrders.push(due, tankerL);
+    this.host.book('fuel', -Math.round(n * tankerL * GROUND.fuel.buyPerL));
+    this.host.emit(`fuelOrdered|n=${n}`);
+    this.version++;
+  }
+
+  /** Takes up to the liters asked from the farms and sells them at the sell price. Returns the liters taken. */
+  drawFuel(liters: number): number {
+    const got = Math.min(liters, Math.floor(this.fuelStockL));
+    if (got <= 0) return 0;
+    this.fuelStockL -= got;
+    this.host.book('fuel', Math.round(got * GROUND.fuel.sellPerL));
+    return got;
+  }
+
+  /** Tells traffic the fire category and whether the grace is over. Derived, so the sim also calls it after edits and restores. */
+  refreshFire(): void {
+    this.traffic.fireCategory = airportFireCategory(this.airfield.data);
+    this.traffic.fireEnforced = this.day >= this.fireGraceUntil;
+  }
+
+  /** The daily fire check, with a warning while the grace runs and the category falls short of a signed fleet. */
+  private updateFire(day: number): void {
+    this.refreshFire();
+    const cat = this.traffic.fireCategory;
+    let needed = 0;
+    for (const a of this.airlines) if (a.signed) for (const t of a.fleet) needed = Math.max(needed, neededCategory(AIRCRAFT[t].dimensions.lengthM));
+    if (needed > cat && day < this.fireGraceUntil) this.host.emit(`fireGrace|needed=${needed}|available=${cat}|days=${this.fireGraceUntil - day}`);
+  }
 
   /**
    * Depots were built or removed: each new depot brings the starter set (the `start` counts of the gse
@@ -583,6 +647,7 @@ export class Business {
   /** Called every tick, cheap. Does its work only on day and hour boundaries. */
   update(tick: number): void {
     if (tick % 100 === 0) this.updateServiceLevel();
+    if (tick % (60 * TICKS_PER_MINUTE) === 0) this.updateFuel(tick);
     if (tick % 10 === 0) for (let i = 0; i < this.serviceNodes.length; i++) serviceUpdate(this.serviceNodes[i]!, tick, this.serviceRng);
     if (tick % TICKS_PER_DAY === dayStartOffset()) this.dailyClose(tick);
     if (this.weather !== 'clear' && tick >= this.weatherEnd) this.setWeather('clear', tick);
@@ -616,6 +681,7 @@ export class Business {
       this.updateRating();
     }
     this.day = d;
+    this.updateFire(d);
     this.paxToday = 0;
     this.flightsToday = 0;
     this.lostToday = 0;
@@ -647,6 +713,7 @@ export class Business {
     for (const a of af.aprons) upkeep += (a.cost * SURFACE_SPEC[a.surface].upkeepPct) / 100 / 365;
     for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
     for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
+    for (const b of af.buildings ?? []) upkeep += b.cost * GROUND.buildingUpkeepShare;
     this.host.book('upkeep', -Math.round(upkeep));
     // Shop tenants and rent, one lease per shop fixture.
     let rent = 0;
@@ -816,6 +883,11 @@ export class Business {
       readiness: this.readiness(),
       autoStands: this.traffic.autoStands,
       fleet: this.fleet,
+      fuelStockL: Math.round(this.fuelStockL),
+      fuelCapacityL: this.fuelCapacityL(),
+      fuelInboundL: this.fuelOrders.reduce((sum, v, i) => (i % 2 === 1 ? sum + v : sum), 0),
+      fireCategory: this.traffic.fireCategory,
+      fireGraceDays: Math.max(0, this.fireGraceUntil - this.day),
       serviceSlowdown: this.traffic.serviceSlowdown,
       arrCapacity: this.arrCapacity(),
       intlCapacity: this.intlCapacity(),
@@ -831,7 +903,7 @@ export class Business {
 
   saveState(): unknown {
     return {
-      fleet: this.fleet, version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
+      fleet: this.fleet, fuelStockL: this.fuelStockL, fuelOrders: this.fuelOrders, fireGraceUntil: this.fireGraceUntil, version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
       onTime: this.onTime, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
       weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
@@ -852,6 +924,10 @@ export class Business {
     };
     const fl = (raw as { fleet?: number[] }).fleet;
     if (fl && fl.length === this.fleet.length) this.fleet = fl.slice();
+    const fu = raw as { fuelStockL?: number; fuelOrders?: number[]; fireGraceUntil?: number };
+    this.fuelStockL = fu.fuelStockL ?? 0;
+    this.fuelOrders = (fu.fuelOrders ?? []).slice();
+    this.fireGraceUntil = fu.fireGraceUntil ?? GROUND.fire.graceDays;
     this.grids.length = 0;
     for (const sg of o.grids) this.grids.push(loadGrid(sg));
     this.walkGraphs.length = 0;
@@ -878,9 +954,14 @@ export class Business {
     this.pendingKind = o.pendingKind;
     this.nextTerminalId = o.nextTerminalId;
     this.day = o.day;
-    this.today.set(o.today);
+    this.today.set(o.today.slice(0, this.today.length));
     this.history.length = 0;
-    for (const h of o.history) this.history.push(Float64Array.from(h));
+    // Older ledgers have fewer categories; the missing ones count zero.
+    for (const h of o.history) {
+      const row = new Float64Array(this.today.length);
+      row.set(h.slice(0, row.length));
+      this.history.push(row);
+    }
     this.paxToday = o.paxToday;
     this.flightsToday = o.flightsToday;
     this.lostToday = o.lostToday;

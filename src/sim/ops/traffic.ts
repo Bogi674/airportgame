@@ -13,7 +13,8 @@ import { PUSHBACK_EXTENSION_M } from '@shared/standFork';
 import { sizeGap } from '@shared/standSizes';
 import { parkedOffsetM } from '@shared/standGeom';
 import type { RunwayObstacles } from '@shared/obstacles';
-import { AIRFIELD, BUSINESS, PROFILES } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, PROFILES } from '@data/index';
+import { neededCategory } from '@shared/fireCover';
 import { movementsPerHour } from '@shared/towerBudget';
 import { padSize } from '@shared/turnPad';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
@@ -68,6 +69,8 @@ export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround
 export const FlState = { Free: 0, Scheduled: 1, Inbound: 2, OnGround: 3, Departing: 4, Done: 5 } as const;
 /** Airline id of a general aviation flight. It has no airline, so every `>= 0` airline check skips it. */
 export const GA_AIRLINE = -2;
+/** Ticks a flight waits for fuel before it is reported grounded (D19). */
+const FUEL_GROUND_TICKS = GROUND.fuel.groundAfterMin * TICKS_PER_MINUTE;
 /** GA arrivals come in the daytime span only, from 06:00 to 20:00 game time. */
 const GA_DAY_START_MIN = 6 * 60;
 const GA_DAY_END_MIN = 20 * 60;
@@ -245,7 +248,7 @@ export class Traffic {
   /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
   /** Usable approach type per runway direction, set by the sim from the obstacle surfaces. */
   obstacles: RunwayObstacles[] = [];
-  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean } | null = null;
+  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean; fuelReady?(i: number): boolean } | null = null;
   private reachStand = 0;
   /** Stand blocks gathered by one autoAssign pass: stand index and start and end tick. Reused, never reallocated. */
   private readonly occStand = new Int32Array(MAX_FLIGHTS);
@@ -543,6 +546,13 @@ export class Traffic {
     }
     return false;
   }
+
+  /** The airport's fire category and whether its grace is over, set by the business each game day (T65). Derived, never saved. */
+  fireCategory = 0;
+  fireEnforced = false;
+  /** Liters of fuel still owed to each parked aircraft, and the ticks it has waited for them (T65). */
+  readonly fuelOwed = new Int32Array(MAX_AIRCRAFT);
+  readonly fuelWait = new Int32Array(MAX_AIRCRAFT);
 
   /** Turnaround factor per stand index for commercial flights with no road from a depot (T60): 1 or the soft penalty. Set by the sim. */
   standRoadFactor = new Float64Array(0);
@@ -935,6 +945,16 @@ export class Traffic {
     const t = this.fType[f];
     const a = AIRCRAFT[t];
     const af = this.af;
+    // Below the fire category the type needs, airline flights are refused once the grace has run out (T65). GA never is.
+    if (this.fireEnforced && this.fAirline[f] !== GA_AIRLINE) {
+      const needed = neededCategory(a.dimensions.lengthM);
+      if (needed > this.fireCategory) {
+        this.refuse(f, 'fireCategory', `|needed=${needed}|available=${this.fireCategory}`);
+        this.fState[f] = FlState.Done;
+        this.divertedFlights++;
+        return;
+      }
+    }
     // Runway ends the type can land on, best headwind first. A later end is taken when no exit of a
     // better one leads to a free stand, for example behind a one way taxiway.
     const cands: { r: number; dir: 1 | -1; hw: number }[] = [];
@@ -1471,6 +1491,8 @@ export class Traffic {
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
       this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown * this.roadFactor(i, f)) : 45 * TICKS_PER_MINUTE;
+      this.fuelOwed[i] = 0;
+      this.fuelWait[i] = 0;
       this.boardHold[i] = 0;
       if (f >= 0) {
         this.fState[f] = FlState.OnGround;
@@ -1861,6 +1883,14 @@ export class Traffic {
       this.timer[i]--;
       return;
     }
+    // A flight short of fuel waits for the farm; after the grounding limit it is reported grounded once (D19).
+    if (this.fuelOwed[i] > 0) {
+      if (this.hooks?.fuelReady && !this.hooks.fuelReady(i)) {
+        this.fuelWait[i]++;
+        if (this.fuelWait[i] === FUEL_GROUND_TICKS) this.emit(`flightGrounded|type=${AIRCRAFT[this.type[i]].id}|reason=fuel`);
+        return;
+      }
+    }
     if (this.boardHold[i] < BOARD_HOLD_TICKS && this.hooks?.boardingReady && !this.hooks.boardingReady(this.flight[i])) {
       this.boardHold[i]++;
       return;
@@ -2248,7 +2278,7 @@ export class Traffic {
       nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
       movStart: this.movStart, movHead: this.movHead, movCount: this.movCount, depWait: this.depWait, depRetryAt: this.depRetryAt,
-      boardHold: this.boardHold,
+      boardHold: this.boardHold, fuelOwed: this.fuelOwed, fuelWait: this.fuelWait,
     };
   }
 
@@ -2328,6 +2358,8 @@ export class Traffic {
     acc = foldInts(acc, this.depWait, MAX_AIRCRAFT);
     acc = foldInts(acc, this.depRetryAt, MAX_AIRCRAFT);
     acc = foldInts(acc, this.boardHold, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.fuelOwed, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.fuelWait, MAX_AIRCRAFT);
     acc = foldInts(acc, this.movHead, this.movHead.length);
     acc = foldInts(acc, this.movCount, this.movCount.length);
     acc = foldInts(acc, this.movStart, this.movStart.length);

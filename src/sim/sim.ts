@@ -114,6 +114,12 @@ export class Sim {
       docked: (f) => {
         businessDocked?.(f);
         this.warnNoRoad(f);
+        this.fuelAtDock(f);
+      },
+      fuelReady: (i) => {
+        // Fuel delivered since the aircraft docked is pumped as soon as it is in the tanks.
+        this.traffic.fuelOwed[i] -= this.business.drawFuel(this.traffic.fuelOwed[i]);
+        return this.traffic.fuelOwed[i] <= 0;
       },
       contactOk: (x, y) => this.business.hasTerminalNear(x, y),
       scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
@@ -238,6 +244,21 @@ export class Sim {
     if (!restoring && depots !== this.depotsSeen) this.business.depotsChanged(depots - this.depotsSeen);
     this.depotsSeen = depots;
     this.business.depotCapacity = depots * GROUND.depot.capacity;
+    this.business.refreshFire();
+  }
+
+  /**
+   * An airline flight that docks takes its type's fuel from the farms (T65, D19, user: fixed liters per type).
+   * Without a farm fuel stays outside the game, as before; with one, what the stock cannot give is owed and holds the flight.
+   */
+  private fuelAtDock(f: number): void {
+    if (this.traffic.fAirline[f] === GA_AIRLINE || this.business.fuelCapacityL() === 0) return;
+    const a = this.traffic.fAc[f];
+    if (a < 0) return;
+    const need = GROUND.fuel.upliftL[AIRCRAFT[this.traffic.fType[f]].id] ?? 0;
+    const owed = need - this.business.drawFuel(need);
+    this.traffic.fuelOwed[a] = owed;
+    if (owed > 0) this.eventQueue.push(`fuelShort|type=${AIRCRAFT[this.traffic.fType[f]].id}`);
   }
 
   /** Day each stand last warned that it has no service road, so the alert asks once a day per stand. */

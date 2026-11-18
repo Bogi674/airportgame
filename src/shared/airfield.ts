@@ -207,6 +207,23 @@ export interface Depot {
   headingDeg: number;
 }
 
+/** Supporting buildings of T65 (docs/DESIGN_REVISION_4.md section 5). */
+export type BuildingKind = 'fuelFarm' | 'catering' | 'fire' | 'staff' | 'cleaning' | 'workshop';
+export const BUILDING_KINDS: readonly BuildingKind[] = ['fuelFarm', 'catering', 'fire', 'staff', 'cleaning', 'workshop'];
+
+/** A supporting building. Its door side faces the compass heading, a multiple of 90. */
+export interface Building {
+  id: number;
+  /** What it cost to build, fire vehicles included, used for demolition refunds. */
+  cost: number;
+  kind: BuildingKind;
+  x: number;
+  y: number;
+  headingDeg: number;
+  /** Fire vehicles of a fire station, 0 to the data maximum. */
+  fireVehicles?: number;
+}
+
 /** The axis aligned square a tower covers, as four corners. */
 export function towerRect(x: number, y: number, sideM: number): Pt[] {
   const h = sideM / 2;
@@ -232,6 +249,8 @@ export interface AirfieldPayload {
   /** Service roads and ground handling depots (T60). Missing means none. */
   roads?: ServiceRoad[];
   depots?: Depot[];
+  /** Supporting buildings (T65). Missing means none. */
+  buildings?: Building[];
   /** Obstacle surface results per runway, derived from the terrain, land and buildings. */
   obstacles?: RunwayObstacles[];
   /** Stands whose parked box breaks a taxiway clearance, ascending by id. Derived from the layout, never saved. Missing means none. */
