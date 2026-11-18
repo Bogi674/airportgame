@@ -1,7 +1,9 @@
 import { BUSINESS } from '@data/index';
 import { apronContains } from '@shared/apronGeom';
 import { compassVector, towerRect, type AirfieldPayload, type Runway } from './airfield';
-import { closestOnSegment, distToSegment, type Pt } from './geom';
+import { standBox } from './clearance';
+import { closestOnSegment, distToSegment, pointInPolygon, type Pt } from './geom';
+import { standSlot } from './standGeom';
 import { cosLut, sinLut } from './trig';
 
 const round05 = (v: number): number => Math.round(v * 2) / 2;
@@ -9,16 +11,19 @@ const round05 = (v: number): number => Math.round(v * 2) / 2;
 export const RAPID_EXIT_RADIUS_M: Record<30 | 45 | 90, number> = { 30: 450, 45: 200, 90: 70 };
 export const RAPID_EXIT_STRAIGHT_M: Record<30 | 45 | 90, number> = { 30: 120, 45: 120, 90: 60 };
 
-/** Centerline of a rapid exit leaving the runway centerline at `distM` from threshold A. */
-export function rapidExitPoints(r: Runway, distM: number, side: 'left' | 'right', angleDeg: 30 | 45 | 90): Pt[] {
-  const d = compassVector(r.headingDeg);
+/** Centerline of a rapid exit leaving the runway centerline at `distM` from the landing threshold (A unless `landingEnd` is b), on `side` of the landing direction. */
+export function rapidExitPoints(r: Runway, distM: number, side: 'left' | 'right', angleDeg: 30 | 45 | 90, landingEnd: 'a' | 'b' = 'a'): Pt[] {
+  // Landing over threshold B runs from B toward A, so the exit is measured from B and turns off the other way.
+  const fromB = landingEnd === 'b';
+  const d = compassVector(fromB ? (r.headingDeg + 180) % 360 : r.headingDeg);
+  const t0 = fromB ? { x: r.x2, y: r.y2 } : { x: r.x1, y: r.y1 };
   const sign = side === 'left' ? 1 : -1;
   const n = { x: d.y * sign, y: -d.x * sign };
   const radius = RAPID_EXIT_RADIUS_M[angleDeg];
   const straight = RAPID_EXIT_STRAIGHT_M[angleDeg];
   const theta = (angleDeg * Math.PI) / 180;
   const steps = Math.max(4, Math.ceil(angleDeg / 6));
-  const p0 = { x: r.x1 + d.x * distM, y: r.y1 + d.y * distM };
+  const p0 = { x: t0.x + d.x * distM, y: t0.y + d.y * distM };
   const pts: Pt[] = [];
   for (let k = 0; k <= steps; k++) {
     const phi = (theta * k) / steps;
@@ -60,7 +65,7 @@ export interface Pick {
   dist: number;
 }
 
-/** Nearest airfield object to a world point within `tol` meters, towers first, then stands, runways, taxiways, aprons. */
+/** Nearest airfield object to a world point within `tol` meters, towers first, then stands (their whole box), runways, taxiways, aprons. */
 export function pickObject(af: AirfieldPayload, x: number, y: number, tol: number): Pick | null {
   let best: Pick | null = null;
   const consider = (kind: PickKind, id: number, dist: number, bias: number): void => {
@@ -75,7 +80,12 @@ export function pickObject(af: AirfieldPayload, x: number, y: number, tol: numbe
     const inside = x >= corners[0].x && x <= corners[1].x && y >= corners[0].y && y <= corners[2].y;
     if (inside) consider('tower', tw.id, 0, -1200);
   }
-  for (const s of af.stands) consider('stand', s.id, Math.hypot(s.x - x, s.y - y), -1000);
+  for (const s of af.stands) {
+    // Anywhere on the stand box picks the stand, so it wins over the apron it sits on; else the stop point within tol.
+    const slot = standSlot(s.size);
+    const inside = slot !== null && pointInPolygon(x, y, standBox(s, slot));
+    consider('stand', s.id, inside ? 0 : Math.hypot(s.x - x, s.y - y), -1000);
+  }
   for (const r of af.runways) {
     const d = distToSegment(x, y, r.x1, r.y1, r.x2, r.y2);
     consider('runway', r.id, Math.max(0, d - r.widthM / 2 - r.shoulderM), -500);

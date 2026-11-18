@@ -11,7 +11,7 @@ import { standLayout, toWorld, type FrontZones, type StandLayout, type ThroughMa
  * Stand markings drawn from stand data (docs/DESIGN_REVISION_2.md sections 1 and 3): the lead in fork
  * and stand number on every stand; for Medium, Large and Extra large the stand safety line, the stand
  * boundary with its funnel, the jet bridge zone and staging area, stop bars per type group, hydrant pits,
- * and on contact stands the service road and jet bridges; for Small stands the GA stop mark, wingtip
+ * and on contact stands the service road; for Small stands the GA stop mark, wingtip
  * lines and tie down rings, or cones and a signboard when unpaved.
  */
 
@@ -30,9 +30,6 @@ const MK = STAND_MARKINGS;
 const C = PAINT.colors;
 const TW = PAINT.taxiway;
 const ROAD_FILL = '#3f4046';
-const BRIDGE_FILL = '#cfd4da';
-const BRIDGE_EDGE = '#2a2f37';
-const ROTUNDA_FILL = '#9aa3ae';
 const CONE = '#f07a1a';
 
 const px = (w: StandWindow, n: number): number => n / w.scale;
@@ -213,7 +210,7 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, out: StandFork |
   };
   const contact = s.type === 'contact' && s.size !== 'small';
 
-  // Service road and jet bridges above the stand top, under everything else.
+  // Service road above the stand top, under everything else. Jet bridges are a stand upgrade of T66 and are not drawn before it.
   if (contact && detail) {
     const hx = l.W / 2;
     const road = [at(-hx, l.top), at(hx, l.top), at(hx, l.top + MK.serviceRoadM), at(-hx, l.top + MK.serviceRoadM)];
@@ -316,7 +313,6 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, out: StandFork |
       // An aircraft leaving forward is never pushed, so its stand has no push limit.
       if (!out) paintPushLimit(ctx, l, w);
       if (STAND_SIZES[s.size].hydrants) paintPits(ctx, l, w);
-      if (contact) paintBridges(ctx, l, w);
       if (l.through) paintThrough(ctx, l, l.through, w, !STAND_SIZES[s.size].hydrants);
     }
   }
@@ -536,51 +532,6 @@ function paintZones(ctx: Ctx, l: StandLayout, z: FrontZones, w: StandWindow, acc
   ctx.fill();
   ctx.stroke();
   paintText(ctx, l, at({ x: z.gpu.x, y: z.gpu.y + g + th }), 'GPU', th * 0.9, C.yellow, 'c', th * 3);
-}
-
-function paintBridges(ctx: Ctx, l: StandLayout, w: StandWindow): void {
-  const a = l.types[0];
-  const doors = standGeometry(a).doorStationsM.slice(0, STAND_SIZES[l.size].jetBridges);
-  const f = l.funnel;
-  if (!f) return;
-  const fw = a.dimensions.fuselageWidthM;
-  const band = (p0: Pt, p1: Pt, width: number): Pt[] => {
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = (-dy / len) * (width / 2);
-    const ny = (dx / len) * (width / 2);
-    return [
-      { x: p0.x + nx, y: p0.y + ny },
-      { x: p1.x + nx, y: p1.y + ny },
-      { x: p1.x - nx, y: p1.y - ny },
-      { x: p0.x - nx, y: p0.y - ny },
-    ].map((p) => toWorld(l, p.x, p.y));
-  };
-  doors.forEach((dl, k) => {
-    const door = { x: -fw / 2 - 0.5, y: l.nose0 - dl };
-    const rot = { x: -f.n - MK.rotundaOffsetM - k * MK.rotundaStepM[0], y: l.top - 4 - k * MK.rotundaStepM[1] };
-    const cabEnd = { x: door.x - MK.cabLengthM, y: door.y };
-    const shapes = [
-      band({ x: rot.x, y: l.top + MK.serviceRoadM }, rot, MK.linkWidthM),
-      band(rot, cabEnd, MK.tunnelWidthM),
-      band(cabEnd, door, MK.cabWidthM),
-    ];
-    ctx.fillStyle = BRIDGE_FILL;
-    ctx.strokeStyle = BRIDGE_EDGE;
-    ctx.lineWidth = widthM(w, 0.12, 1);
-    for (const sh of shapes) {
-      path(ctx, sh, true);
-      ctx.fill();
-      ctx.stroke();
-    }
-    const c = toWorld(l, rot.x, rot.y);
-    ctx.fillStyle = ROTUNDA_FILL;
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, MK.rotundaRadiusM, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  });
 }
 
 /**

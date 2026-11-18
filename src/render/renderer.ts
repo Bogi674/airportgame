@@ -20,11 +20,11 @@ import { cornerWorld } from '@shared/terminalOps';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
-import { SpriteCache, tierForZoom } from './sprites/aircraftSprite';
+import { aircraftTier, SpriteCache } from './sprites/aircraftSprite';
 import { People } from './people';
 import { QualityGovernor, type QualityPreset } from './quality';
 import { vehicleSprite } from './sprites/vehicleSprite';
-import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, BAND_RASTER_SCALE, CHUNKS_PER_SIDE } from './chunks';
+import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, chunkSizeM, chunksPerSide, BAND_RASTER_SCALE, CHUNKS_PER_SIDE, type ChunkEntry } from './chunks';
 import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
 
 const MAX_BACKING = 4096;
@@ -172,6 +172,8 @@ export class Renderer {
 
   /** True once every chunk in view has been baked, for screenshots and tests. */
   chunksReady = false;
+  /** Reused list of other band chunks drawn under a band that is still baking. */
+  private readonly fallbackChunks: ChunkEntry[] = [];
 
   setQualityPreset(p: QualityPreset): void {
     this.governor.setPreset(p);
@@ -1024,33 +1026,42 @@ export class Renderer {
 
   private drawChunks(a: number, b: number, cc: number, d: number, e: number, f: number): void {
     const cam = this.camera;
-    const band = bandForZoom(cam.zoom);
+    // The band follows device pixels per meter, so a high pixel ratio screen gets the finer band it needs.
+    const band = bandForZoom(cam.zoom * this.dpr);
+    const size = chunkSizeM(band);
     cam.visibleBounds(this.bounds);
-    const minCx = Math.floor(this.bounds[0] / CHUNK_SIZE_M);
-    const minCy = Math.floor(this.bounds[1] / CHUNK_SIZE_M);
-    const maxCx = Math.floor(this.bounds[2] / CHUNK_SIZE_M);
-    const maxCy = Math.floor(this.bounds[3] / CHUNK_SIZE_M);
+    const minCx = Math.floor(this.bounds[0] / size);
+    const minCy = Math.floor(this.bounds[1] / size);
+    const maxCx = Math.floor(this.bounds[2] / size);
+    const maxCy = Math.floor(this.bounds[3] / size);
     this.chunksReady = this.chunks.update(band, minCx, minCy, maxCx, maxCy);
 
-    const ctx = this.ctx;
-    const px = chunkPixelSize(band);
-    const inv = 1 / BAND_RASTER_SCALE[band];
-    for (let cy = Math.max(0, minCy); cy <= Math.min(CHUNKS_PER_SIDE - 1, maxCy); cy++) {
-      for (let cx = Math.max(0, minCx); cx <= Math.min(CHUNKS_PER_SIDE - 1, maxCx); cx++) {
-        const entry = this.chunks.get(chunkKey(band, cx, cy));
-        if (!entry || !entry.image) continue;
-        // One transform per chunk: world meters, chunk origin, raster scale folded in.
-        ctx.setTransform(
-          a * inv,
-          b * inv,
-          cc * inv,
-          d * inv,
-          a * cx * CHUNK_SIZE_M + cc * cy * CHUNK_SIZE_M + e,
-          b * cx * CHUNK_SIZE_M + d * cy * CHUNK_SIZE_M + f,
-        );
-        ctx.drawImage(entry.image, 0, 0, px, px);
+    // While the new band bakes, the chunks of other bands still cached draw underneath, so zooming never shows bare ground.
+    if (!this.chunksReady) {
+      const bo = this.bounds;
+      for (const entry of this.chunks.fallbacks(band, this.fallbackChunks)) {
+        const s = chunkSizeM(entry.band);
+        if (entry.cx * s > bo[2] || (entry.cx + 1) * s < bo[0] || entry.cy * s > bo[3] || (entry.cy + 1) * s < bo[1]) continue;
+        this.drawChunk(entry, a, b, cc, d, e, f);
       }
     }
+    const side = chunksPerSide(band);
+    for (let cy = Math.max(0, minCy); cy <= Math.min(side - 1, maxCy); cy++) {
+      for (let cx = Math.max(0, minCx); cx <= Math.min(side - 1, maxCx); cx++) {
+        const entry = this.chunks.get(chunkKey(band, cx, cy));
+        if (entry) this.drawChunk(entry, a, b, cc, d, e, f);
+      }
+    }
+  }
+
+  /** Draws one baked chunk with one transform: world meters, chunk origin and raster scale folded in. */
+  private drawChunk(entry: ChunkEntry, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    if (!entry.image) return;
+    const size = chunkSizeM(entry.band);
+    const inv = 1 / BAND_RASTER_SCALE[entry.band];
+    const px = chunkPixelSize(entry.band);
+    this.ctx.setTransform(a * inv, b * inv, cc * inv, d * inv, a * entry.cx * size + cc * entry.cy * size + e, b * entry.cx * size + d * entry.cy * size + f);
+    this.ctx.drawImage(entry.image, 0, 0, px, px);
   }
 
   private drawAircraft(
@@ -1067,7 +1078,7 @@ export class Renderer {
     const ctx = this.ctx;
     const n = curr.header[SnapHeader.AircraftCount];
     const pn = prev ? prev.header[SnapHeader.AircraftCount] : 0;
-    const tier = Math.max(0, tierForZoom(this.camera.zoom) - (this.governor.level >= 2 ? 1 : 0));
+    const tier = aircraftTier(this.camera.zoom, this.governor.level);
     let pi = 0;
     for (let i = 0; i < n; i++) {
       const sprite = this.sprites.get(curr.aircraftType[i], curr.aircraftLivery[i], tier);

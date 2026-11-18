@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bandForZoom, ChunkCache, chunkKey, CHUNKS_PER_SIDE } from '@render/chunks';
+import { BAND_COUNT, BAND_RASTER_SCALE, bandForZoom, ChunkCache, chunkKey, chunkPixelSize, chunksPerSide, chunkSizeM, CHUNKS_PER_SIDE, MAX_CHUNK_PX } from '@render/chunks';
+import { SITE_SIZE_M } from '@shared/math';
 
 function setup() {
   const requests: number[] = [];
@@ -9,10 +10,32 @@ function setup() {
 const img = {} as CanvasImageSource;
 
 describe('bandForZoom', () => {
-  it('maps the zoom range onto three bands', () => {
+  it('maps the zoom range onto the bands, coarse to fine', () => {
     expect(bandForZoom(0.05)).toBe(0);
-    expect(bandForZoom(1)).toBe(1);
-    expect(bandForZoom(40)).toBe(2);
+    expect(bandForZoom(80)).toBe(BAND_COUNT - 1);
+  });
+
+  it('never magnifies a chunk more than 1.25 times below the finest band', () => {
+    for (let z = 0.3; z < BAND_RASTER_SCALE[BAND_COUNT - 1]; z *= 1.07) {
+      expect(z / BAND_RASTER_SCALE[bandForZoom(z)]).toBeLessThanOrEqual(1.25 + 1e-9);
+    }
+  });
+
+  it('keeps every chunk at most 2048 px, tiling the site with whole base chunks', () => {
+    for (let b = 0; b < BAND_COUNT; b++) {
+      expect(chunkPixelSize(b)).toBeLessThanOrEqual(MAX_CHUNK_PX);
+      expect(512 % chunkSizeM(b)).toBe(0);
+      expect(chunksPerSide(b) * chunkSizeM(b)).toBeGreaterThanOrEqual(SITE_SIZE_M);
+    }
+  });
+
+  it('gives every chunk of every band its own key', () => {
+    const seen = new Set<number>();
+    for (let b = 0; b < BAND_COUNT; b++) {
+      const n = chunksPerSide(b);
+      for (const [x, y] of [[0, 0], [n - 1, 0], [0, n - 1], [n - 1, n - 1]]) seen.add(chunkKey(b, x, y));
+    }
+    expect(seen.size).toBe(BAND_COUNT * 4);
   });
 });
 
@@ -71,5 +94,20 @@ describe('ChunkCache', () => {
     cache.markDirty(4, 3);
     cache.update(1, 3, 3, 4, 3);
     expect(requests).toEqual([chunkKey(1, 4, 3)]);
+  });
+});
+
+describe('ChunkCache fine bands', () => {
+  it('marks every fine chunk under a dirty base chunk', () => {
+    const { cache, requests } = setup();
+    const fine = BAND_COUNT - 1;
+    const k = 512 / chunkSizeM(fine);
+    // The last fine chunk inside base chunk (1, 1).
+    const x = 2 * k - 1;
+    cache.update(fine, x, x, x, x);
+    cache.deliver(chunkKey(fine, x, x), img);
+    cache.markDirty(1, 1);
+    cache.update(fine, x, x, x, x);
+    expect(requests).toHaveLength(2);
   });
 });

@@ -278,3 +278,15 @@ Context: The user asked for the terminal fixture kit (three levels of check in, 
 Options: A accept the proposals as a batch, B answer row by row.
 Recommendation: A, then tune with play tests.
 Answer: (pending)
+
+## 2026-11-17 user reports after phase 1: stand row, service road, aircraft tiers
+
+| Question | Answer (owner, 2026-11-17) |
+| --- | --- |
+| How a stand snaps beside a built stand | Abut edge to edge with the stand tops lined up, so the service roads join into one straight road; mixed sizes align on the road edge |
+| Service road scope now | Visual join now; T60 next makes the joined strips real service road graph edges |
+| Aircraft turning into arrows while zooming | The quality governor never drops a silhouette to the arrow; the arrow follows zoom alone |
+| Selecting a stand on an apron | Clicking anywhere on the stand box selects the stand |
+| Jet bridges | Not drawn before they are built as an upgrade |
+| Blurry map at apron zoom and missing liveries | Map chunks must stay sharp at every working zoom; liveries show at apron working zoom |
+| Rapid exit direction | The player can flip a rapid exit to serve the other landing direction |

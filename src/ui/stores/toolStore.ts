@@ -49,6 +49,8 @@ interface ToolState {
   /** Heading the player gave the next stand with R, or null while it faces the nearest centerline on its own. */
   standHeading: number | null;
   exitAngle: 30 | 45 | 90;
+  /** Threshold the rapid exit serves landings over: A, or B for landings the other way. R flips it. */
+  exitFrom: 'a' | 'b';
   connectors: number;
   gaCount: number;
   /** ATC tower tool: the level to build, from 1 to the top of the tower ladder. */
@@ -97,6 +99,7 @@ export const useToolStore = create<ToolState>((set) => ({
   apronMode: 'polygon',
   standHeading: null,
   exitAngle: 30,
+  exitFrom: 'a',
   connectors: 3,
   gaCount: 6,
   towerLevel: 1,

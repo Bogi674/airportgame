@@ -138,6 +138,7 @@ export const standSizesSchema = z
       leadInReachM: z.number().positive(),
       rotateStepDeg: z.number().positive(),
       fineStepDeg: z.number().positive(),
+      neighbourSnapM: z.number().positive(),
     }),
     markings: z.strictObject({
       note: z.string(),

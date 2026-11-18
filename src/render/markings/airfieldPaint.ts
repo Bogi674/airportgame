@@ -5,8 +5,7 @@ import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
 import { FLOOR, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
 import { cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
-import { CHUNK_SIZE_M } from '@shared/math';
-import { BAND_RASTER_SCALE } from '../chunks';
+import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
 import { paintStands } from './standPaint';
 import { paintTowers } from './towerPaint';
@@ -42,10 +41,11 @@ const lineM = (w: Window, meters: number, minPx = 0.9): number => Math.max(meter
 export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly TerminalGrid[], band: number, cx: number, cy: number): void {
   if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0 && (af.towers?.length ?? 0) === 0 && terminals.length === 0) return;
   const scale = BAND_RASTER_SCALE[band];
-  const ox = cx * CHUNK_SIZE_M;
-  const oy = cy * CHUNK_SIZE_M;
+  const size = chunkSizeM(band);
+  const ox = cx * size;
+  const oy = cy * size;
   const pad = 120;
-  const win: Window = { minX: ox - pad, minY: oy - pad, maxX: ox + CHUNK_SIZE_M + pad, maxY: oy + CHUNK_SIZE_M + pad, scale };
+  const win: Window = { minX: ox - pad, minY: oy - pad, maxX: ox + size + pad, maxY: oy + size + pad, scale };
   ctx.setTransform(scale, 0, 0, scale, -ox * scale, -oy * scale);
 
   paintGroundContact(ctx, af, terminals, win);

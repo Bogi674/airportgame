@@ -418,6 +418,14 @@ Record every architectural choice with a date and one line of reason.
   * A push back that has not left its stand waits while a taxiing aircraft's route passes its junction within 250 m, unless that aircraft waits for it or heads for the stand it leaves.
   * The aircraft silhouette tier starts at 0.3 px per metre, and the tier 0 arrow, a marker rather than a true scale asset, grows to at least 24 px on screen (`arrowMinPx`).
 
+* 2026-11-17 user reports after phase 1:
+  * A stand placed within 12 m (`neighbourSnapM`) of the spot abutting a built stand of the same heading snaps to it edge to edge, its top (the service road edge) on the neighbour's, so a row forms one straight service road. It only slides away from its taxiway to line up, which lengthens its lead in; a larger stand beside a smaller one keeps its own depth. The roads only join visually until T60 makes them graph edges.
+  * Clicking anywhere on a stand box selects the stand, not the apron under it.
+  * The quality governor may lower aircraft detail one tier but never turns a silhouette into the arrow, so slow frames while zooming cannot flip aircraft to arrows. The reference style with livery starts at 1.5 px/m and the close up at 6 px/m.
+  * Jet bridges are not drawn on contact stands until T66 builds them as an upgrade; the bridge zone marking stays.
+  * Chunk bands double from 0.25 to 32 px/m and are picked by device pixels per meter (zoom times pixel ratio), so a chunk is never magnified more than 1.25 times below 32 px/m. Bands above 4 px/m use smaller chunks (256, 128 and 64 m) so no chunk exceeds 2048 px. While a band bakes, the cached chunks of other bands draw under it.
+  * A rapid exit serves landings over either threshold: R or the Flip direction button swaps it, and the command carries an optional `landingEnd` (A when absent, so old command logs replay unchanged).
+
 ## 13. Known limits
 
 Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.
