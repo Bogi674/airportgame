@@ -9,7 +9,7 @@ import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
 import type { TerminalGrid } from '@shared/business';
-import { nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
+import { distanceRowIn, nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
 import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
@@ -54,6 +54,21 @@ const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 const LANE = PROFILES.walkSample.laneOffsetCells;
 const MIN_GAP2 = PROFILES.walkSample.minGapM ** 2;
 const LANES = Int8Array.of(0, 1, -1);
+
+/** Offsets (dx, dy) of the cells around a dwell anchor, nearest first, as flat pairs. Built once. */
+const SPIRAL = (() => {
+  const r = PROFILES.walkSample.dwellRingCells;
+  const cells: [number, number][] = [];
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) cells.push([dx, dy]);
+  cells.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]) || a[1] - b[1] || a[0] - b[0]);
+  const out = new Int8Array(cells.length * 2);
+  cells.forEach((c, i) => {
+    out[2 * i] = c[0];
+    out[2 * i + 1] = c[1];
+  });
+  return out;
+})();
+const DWELL_TRIES = Math.min(PROFILES.walkSample.dwellTries, SPIRAL.length / 2);
 
 const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
 /** Walk speed in metres per second, by profile id. */
@@ -350,11 +365,13 @@ export class Cohorts {
   }
 
   /**
-   * Writes the people for the renderer in two passes per grid. Queued cohorts stand in the queue cell of their rank
-   * at their node and face the cell they were reached from, the node cell for the first ring. Walking cohorts are
-   * placed on their route, by the time walked, on the first of three lanes that is clear. A cell already held by a
-   * figure in this sample is skipped, so no two figures share a spot, and walkers keep a least gap to other groups.
-   * Reads only, the sim state does not change, and only the derived row caches are written.
+   * Writes the people for the renderer in three passes per grid: queued, walking and dwelling. Queued cohorts stand
+   * in the queue cell of their rank at their node and face the cell they were reached from, the node cell for the
+   * first ring. Walking cohorts are placed on their route, by the time walked, on the first of three lanes that is
+   * clear. Dwelling cohorts (airside, or arrived and waiting for their wake) stand on the nearest clear cell of a
+   * spiral around the node they walked to. A cell already held by a figure in this sample is skipped, so no two
+   * figures share a spot, and walkers and dwellers keep a least gap to other groups. Reads only, the sim state does
+   * not change, and only the derived caches are written.
    */
   writeSample(views: SnapshotViews, tick: number): void {
     this.ensureSampleCaches();
@@ -423,6 +440,39 @@ export class Cohorts {
           const cellIdx = cellAt(wg, Math.floor(qx), Math.floor(qy));
           if (!this.clear(views, grid, wg, cellIdx, airside, room)) continue;
           this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, cellIdx);
+          n++;
+          break;
+        }
+      }
+      for (let c = 0; c < this.hi && n < cap; c++) {
+        const st = this.stage[c]!;
+        if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
+        const airside = st === Stage.Airside || st === Stage.ToGate;
+        if (st !== Stage.Airside) {
+          if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate) continue;
+          const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
+          const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
+          if (from < 0 || to < 0) continue;
+          const base = distanceRowIn(wg, cache, to);
+          if (base < 0) continue;
+          const total = cache.rows[base + from]!;
+          const s = Math.max(0, ((tick - this.walkStart[c]!) * WALK_SPEED[this.profile[c]!]!) / TICKS_PER_SECOND);
+          if (!Number.isFinite(total) || s < total) continue;
+        }
+        const ax = this.walkToX[c]!;
+        const ay = this.walkToY[c]!;
+        const anchor = nearestNode(wg, cellAt(wg, ax, ay));
+        if (anchor < 0) continue;
+        const room = wg.nodeRoom[anchor]!;
+        for (let i = 0; i < DWELL_TRIES; i++) {
+          const dx = SPIRAL[2 * i]!;
+          const dy = SPIRAL[2 * i + 1]!;
+          this.toWorld(grid, ax + dx + 0.5, ay + dy + 0.5);
+          const cellIdx = cellAt(wg, ax + dx, ay + dy);
+          if (!this.clear(views, grid, wg, cellIdx, airside, room)) continue;
+          const fx = i === 0 ? 0 : st === Stage.Airside ? dx : -dx;
+          const fy = i === 0 ? -1 : st === Stage.Airside ? dy : -dy;
+          this.put(views, n, c, fx, fy, PEOPLE_MODE.Dwelling, cellIdx);
           n++;
           break;
         }

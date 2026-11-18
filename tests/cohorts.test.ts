@@ -717,6 +717,31 @@ describe('snapshot sample of cohort positions', () => {
     expect(d1).toBeLessThan(d0);
   });
 
+  it('an airside cohort is sampled standing near the node it walked to, ids unique', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    const reach = (PROFILES.walkSample.dwellRingCells + 1) * 2 * Math.SQRT2;
+    let checked = 0;
+    for (let t = 0; t < RUN_TICKS && checked === 0; t++) {
+      sim.step();
+      if (sim.tick % 10 !== 0) continue;
+      sim.writeSnapshot(views);
+      const ids = new Set<number>();
+      for (let i = 0; i < views.header[SnapHeader.PeopleCount]!; i++) {
+        const c = views.peopleId[i]!;
+        expect(ids.has(c)).toBe(false);
+        ids.add(c);
+        if (sim.cohorts.stage[c] !== Stage.Airside || views.peopleMode[i] !== 2) continue;
+        const g = sim.business.grids[sim.cohorts.building[c]!]!;
+        const to = cornerWorld(g, sim.cohorts.walkToX[c]! + 0.5, sim.cohorts.walkToY[c]! + 0.5);
+        expect(Math.hypot(views.peopleX[i]! - to.x, views.peopleY[i]! - to.y)).toBeLessThanOrEqual(reach);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('a save without cohort state still samples shared queues 1.9 m apart', () => {
     const built = terminalSim();
     const data = JSON.parse(JSON.stringify(built.serialize())) as Record<string, unknown>;
