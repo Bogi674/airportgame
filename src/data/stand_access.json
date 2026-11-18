@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "note": "Stand upgrades, D6 of the 2026-11-12 T58 batch and the 2026-11-18 T66 answers.",
+  "upgrades": {
+    "busBay": { "cost": 20000, "days": 1 },
+    "hydrantPit": { "cost": 45000, "days": 2 },
+    "fixedPower": { "cost": 30000, "days": 1 }
+  },
+  "stairsWalkLimitM": 150,
+  "farBoardingSlowdown": 0.25
+}

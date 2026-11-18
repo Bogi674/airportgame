@@ -9,3 +9,4 @@ export * from './fixtures';
 export * from './ground';
 export * from './turnarounds';
 export * from './baggage';
+export * from './standAccess';

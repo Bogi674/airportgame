@@ -9,6 +9,7 @@ import peopleJson from './people.json';
 import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
 import standSizesJson from './stand_sizes.json';
+import standAccessJson from './stand_access.json';
 import surfacesJson from './surfaces.json';
 import turnaroundsJson from './turnarounds.json';
 import {
@@ -22,6 +23,7 @@ import {
   peopleSchema,
   profilesSchema,
   spritesSchema,
+  standAccessSchema,
   standSizesSchema,
   surfacesSchema,
   turnaroundsSchema,
@@ -35,6 +37,7 @@ import {
   type PeopleData,
   type ProfilesData,
   type SpritesData,
+  type StandAccessData,
   type StandSizesData,
   type SurfacesData,
   type TurnaroundsData,
@@ -64,6 +67,9 @@ export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
 export const STAND_PLACEMENT: StandSizesData['placement'] = STAND_DATA.placement;
 /** Stand marking dimensions. */
 export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
+
+/** Stand upgrade costs and days, and the far stand boarding rule (T66). */
+export const STAND_ACCESS: StandAccessData = standAccessSchema.parse(standAccessJson);
 
 /** Turnaround task list of airline flights (T63). */
 export const TURNAROUNDS: TurnaroundsData = turnaroundsSchema.parse(turnaroundsJson);

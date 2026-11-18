@@ -1,4 +1,5 @@
-import { AIRFIELD, BUSINESS, GROUND, SURFACE_SPEC } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, GSE_INDEX, STAND_ACCESS, SURFACE_SPEC } from '@data/index';
+import { deskOptions, standWarnings } from './standInspector';
 import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
@@ -7,7 +8,7 @@ import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
 import { apronArea } from '@shared/apronGeom';
-import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, APPROACHES, CODES, STAND_UPGRADE, SURFACES, type StandUpgrade, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
 import { standRefusal } from '@shared/standSizes';
 import { standFork, standLeadOut } from '@shared/standFork';
@@ -237,6 +238,78 @@ function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
         {road ? t('inspector.stand.road') : t('inspector.stand.noRoad')}
       </div>
       {stand.type === 'through' && <div data-testid="stand-lead-out">{out ? tFormat('inspector.stand.leadOut', { name: af.taxiways[out.lane].name }) : t('inspector.stand.noLeadOut')}</div>}
+    </div>
+  );
+}
+
+/** Stand upgrades with cost and state, the gate desk choice and the warnings that follow from them (T66). */
+function StandAccess({ stand, index, send }: { stand: Stand; index: number; send(cmd: Command): void }) {
+  const biz = useGameStore((s) => s.business);
+  const cash = useGameStore((s) => s.cash);
+  const desks = deskOptions(biz?.gateDesks ?? []);
+  const nowIndex = biz?.standGate[index] ?? -1;
+  const now = desks.find((d) => d.index === nowIndex);
+  const built = stand.upgrades ?? 0;
+  const warnings = standWarnings({
+    commercial: (stand.accepts & ACCEPT_COMMERCIAL) !== 0,
+    gateDeskCount: desks.length,
+    far: biz?.standFar[index] === 1,
+    busBay: (built & STAND_UPGRADE.busBay) !== 0,
+    busOwned: (biz?.fleet[GSE_INDEX.bus] ?? 0) > 0,
+  });
+  const assigned = stand.gate ? desks.find((d) => d.building === stand.gate?.building && d.x === stand.gate.x && d.y === stand.gate.y) : undefined;
+  const pick = (value: string): void => {
+    const d = desks.find((o) => `${o.building}:${o.x}:${o.y}` === value);
+    send({ type: 'setStandGate', id: stand.id, building: d ? d.building : -1, x: d ? d.x : 0, y: d ? d.y : 0 });
+  };
+  return (
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:4px" data-testid="stand-access">
+      <div class="section" style="margin:0 0 2px">{t('inspector.stand.upgrades')}</div>
+      {(Object.keys(STAND_UPGRADE) as StandUpgrade[]).map((u) => {
+        const spec = STAND_ACCESS.upgrades[u];
+        const isBuilt = (built & STAND_UPGRADE[u]) !== 0;
+        const running = stand.upgradeWorks;
+        const inWorks = running?.upgrade === u;
+        const reason = running ? t('inspector.stand.upgradeBusy') : cash < spec.cost ? t('inspector.stand.upgradeNoCash') : undefined;
+        return (
+          <div key={u} data-testid={`stand-upgrade-${u}`} style="display:flex;justify-content:space-between;gap:6px;align-items:center">
+            <span>
+              {t(`inspector.stand.upgrade.${u}`)}
+              <span style="color:var(--muted);font-size:11px;display:block">{tFormat('inspector.stand.upgradeCost', { cost: formatMoney(spec.cost), days: spec.days })}</span>
+            </span>
+            {isBuilt ? (
+              <span>{t('inspector.stand.upgradeBuilt')}</span>
+            ) : inWorks && running ? (
+              <span>{tFormat('inspector.stand.upgradeWorks', { day: Math.floor(running.doneTick / TICKS_PER_DAY) })}</span>
+            ) : (
+              <button data-testid={`stand-build-${u}`} disabled={reason !== undefined} title={reason} onClick={() => send({ type: 'startStandUpgrade', id: stand.id, upgrade: u })}>
+                {t('inspector.stand.upgradeBuild')}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
+        {t('inspector.stand.gate')}
+        <select data-testid="stand-gate" value={assigned ? `${assigned.building}:${assigned.x}:${assigned.y}` : ''} onChange={(e) => pick((e.target as HTMLSelectElement).value)}>
+          <option value="">{t('inspector.stand.gateAuto')}</option>
+          {desks.map((d) => (
+            <option key={`${d.building}:${d.x}:${d.y}`} value={`${d.building}:${d.x}:${d.y}`}>
+              {tFormat('inspector.stand.gateDesk', { building: d.building, n: d.number })}
+            </option>
+          ))}
+        </select>
+      </label>
+      {now && (
+        <div style="color:var(--muted);font-size:11px" data-testid="stand-gate-now">
+          {tFormat('inspector.stand.gateNow', { building: now.building, n: now.number })}
+        </div>
+      )}
+      {warnings.map((w) => (
+        <div key={w} style="color:var(--warn)" data-testid={`stand-warn-${w}`}>
+          {t(`inspector.stand.warn.${w}`)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -536,6 +609,7 @@ export function ObjectPanel({ send }: Props) {
             </select>
           </label>
         )}
+        <StandAccess stand={x} index={af.stands.indexOf(x)} send={send} />
         {x.type === 'contact' && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
       </>
     );

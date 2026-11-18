@@ -488,13 +488,31 @@ export class Cohorts {
   private toGate(g: number, c: number): void {
     const f = this.flight[c];
     const from = this.originWalk(g, c);
-    const n = this.traffic.fState[f] === FlState.OnGround ? this.pickNode(g, GATE_DESK, GATE_DESK, from, c) : -1;
+    let n = -1;
+    if (this.traffic.fState[f] === FlState.OnGround) {
+      n = this.assignedDeskNode(g, this.traffic.fStand[f]);
+      if (n < 0) n = this.pickNode(g, GATE_DESK, GATE_DESK, from, c);
+    }
     if (n < 0) {
       this.schedule(c, this.tick + RETRY_TICKS);
       return;
     }
     this.flGate[f] += this.size[c];
     this.walk(g, c, n, from, Stage.ToGate);
+  }
+
+  /**
+   * Service node of the gate desk a stand is assigned to, found again by its cell (node ids go stale after edits).
+   * -1 when the stand has no valid assignment, the desk is in another grid or it has no queue room.
+   */
+  private assignedDeskNode(g: number, standId: number): number {
+    const desk = this.business.assignedGate(standId);
+    const t = this.table(g);
+    if (!desk || !t || desk.building !== this.gridId(g)) return -1;
+    for (let n = 0; n < t.count; n++) {
+      if (t.kind[n] === GATE_DESK && t.lx[n] === desk.x && t.ly[n] === desk.y) return t.queueCap[n] > 0 ? n : -1;
+    }
+    return -1;
   }
 
   /** Walk node a cohort leaves from: its service node when it has one, otherwise the curb. */

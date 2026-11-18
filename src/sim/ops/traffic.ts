@@ -760,7 +760,7 @@ export class Traffic {
   private standFactsOf(s: number): StandFacts {
     const st = this.af.stands[s];
     const f = this.standScratch;
-    f.closed = st.closed === true;
+    f.closed = st.closed === true || st.upgradeWorks !== undefined;
     f.accepts = st.accepts;
     f.size = st.size;
     f.surface = st.surface;
@@ -786,7 +786,7 @@ export class Traffic {
   /** True when a stand is open and takes the category of flight f (user, 2026-11-17). Without a flight the type decides. */
   private standAllows(t: number, s: number, f = -1): boolean {
     const st = this.af.stands[s];
-    return st.closed !== true && refuseUsage(st.accepts, this.categoryOf(f, t)) === null;
+    return st.closed !== true && st.upgradeWorks === undefined && refuseUsage(st.accepts, this.categoryOf(f, t)) === null;
   }
 
   /** True when a stand with a taxi node takes general aviation. */

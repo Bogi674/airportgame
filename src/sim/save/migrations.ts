@@ -5,7 +5,7 @@ import { packTyped, unpackTyped } from './pack';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 25;
+export const SAVE_VERSION = 26;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -202,5 +202,7 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 24) save.version = 24;
   // Version 24 to 25: arrival bag batches and the daily claim wait counters are saved in the baggage flow (T43). Older saves load them as zero.
   if (save.version < 25) save.version = 25;
+  // Version 25 to 26: stands gained upgrades, upgrade works and a gate desk (T66). Older stands load with no upgrades, no works and the nearest gate desk.
+  if (save.version < 26) save.version = 26;
   return save as SaveData;
 }
