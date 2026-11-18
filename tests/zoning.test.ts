@@ -227,7 +227,7 @@ describe('zone breaches and issues', () => {
     put(g, 'securityExit', 5, 4, 3);
     const badges = transitionBadges(g);
     expect(badges.length).toBe(2);
-    expect(badges[0]).toEqual({ x: 12, y: 5, to: 3 });
+    expect(badges[0]).toEqual({ x: 12, y: 5, to: 3, dx: 1, dy: 0 });
     expect(badges[1].to).toBe(1);
   });
 

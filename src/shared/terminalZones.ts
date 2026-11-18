@@ -217,6 +217,9 @@ export interface TransitionBadge {
   x: number;
   y: number;
   to: number;
+  /** Flow step of the fixture in cells, the direction the badge arrow points. */
+  dx: number;
+  dy: number;
 }
 
 /** One badge per transition fixture, in cell index order of the anchors. */
@@ -247,7 +250,7 @@ export function transitionBadges(g: TerminalGrid): TransitionBadge[] {
       }
     }
     if (count === 0) continue;
-    out.push({ x: (sumX / count + fx * 0.5) * TERMINAL_CELL_M, y: (sumY / count + fy * 0.5) * TERMINAL_CELL_M, to: t.to });
+    out.push({ x: (sumX / count + fx * 0.5) * TERMINAL_CELL_M, y: (sumY / count + fy * 0.5) * TERMINAL_CELL_M, to: t.to, dx: fx, dy: fy });
   }
   return out;
 }

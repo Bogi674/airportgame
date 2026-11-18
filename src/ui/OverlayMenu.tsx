@@ -7,6 +7,7 @@ const ROWS: { kind: OverlayKind; key: StringKey }[] = [
   { kind: 'density', key: 'hud.overlay.density' },
   { kind: 'queue', key: 'hud.overlay.queue' },
   { kind: 'walk', key: 'hud.overlay.walk' },
+  { kind: 'zones', key: 'hud.overlay.zones' },
 ];
 
 /** Compact list of the terminal overlays, one at a time. Anchored under the top bar overlay button by its parent. */
