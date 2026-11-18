@@ -48,6 +48,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `paint.json` | marking colors and taxiway paint dimensions |
 | `business.json` | terminal modules, shops, airlines, fees, loans |
 | `gse.json` | ground vehicles at true size |
+| `ground.json` | service roads, apron lanes, the depot, cart trains, the no road penalty (T60) |
 | `people.json` | recipe weights per passenger profile, integers 0 to 1000 |
 | `wake.json` | wake separation and runway occupancy |
 | `schemas/*.ts`, `index.ts` | strict zod schemas; `index.ts` exports parsed constants (`AIRFIELD`, `SURFACE_SPEC`, `STAND_SIZES`, `PAINT`, `BUSINESS`, `GSE`) |
@@ -68,6 +69,8 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `terminalOps.ts`, `terminalRooms.ts` | terminal grid edits and room validation |
 | `validate.ts` | land checks, grading cost estimate, parcel lookups |
 | `trig.ts` | deterministic `sinLut`, `cosLut`, `atan2Det` |
+| `roadGraph.ts` | service road graph, depot footprint and exit, stand road anchors, depot routes and lane polylines (T60) |
+| `trailer.ts` | towed cart kinematics and off tracking |
 | `ghost.ts` | preview shapes the controller hands the renderer |
 | `site.ts`, `snapshot.ts`, `protocol.ts` | site payload, snapshot layout, worker messages |
 
@@ -83,7 +86,8 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `ops/traffic.ts` | `Traffic`: flights and aircraft as typed arrays, runway reservations, states (`AcState`), push back, backtrack |
 | `ops/performance.ts` | takeoff and landing distance, payload and range checks |
 | `business/business.ts` | `Business`: terminals, airlines, contracts, ledger, rating, weather |
-| `vehicles/gse.ts` | ground vehicles placed around a docked aircraft |
+| `vehicles/gse.ts` | ground vehicles: depot to stand along the road net, stand paths to docks, cart trains |
+| `vehicles/roads.ts` | `RoadNet`: per stand lane routes from the depot, junction and crossing holds, derived and never saved |
 | `world/*` | site generation: terrain, corridor, parcels, wind, climate |
 | `save/migrations.ts`, `save/pack.ts` | save versions and typed array packing |
 
@@ -96,6 +100,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `markings/taxiPlan.ts` | builds the marking plan from the airfield payload |
 | `markings/airfieldPaint.ts` | paints runways, taxiways, aprons, terminals from the plan |
 | `markings/standLayout.ts`, `standPaint.ts` | stand markings from data |
+| `markings/roadPaint.ts` | service roads, crossing hold lines and depots |
 | `sprites/*` | aircraft and vehicle sprites from geometry |
 | `people.ts` | the render sample of people, drawn from the atlas |
 | `peopleSelect.ts` | nearest to camera first selection of sample groups under the cap |

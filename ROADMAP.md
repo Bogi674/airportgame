@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. Phase 1 is done (2026-11-17). The next task is **T60** (service roads and apron lanes). Run the `grill-me` skill and write the spec first.
+2. Phase 1 is done (2026-11-17). T60 is done (2026-11-18, the ground handling depot came with it). The next task is **T64** (footprints, keep out zones, collision test). Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
@@ -35,9 +35,9 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 * The "Replaces" column names older task ids whose content the task absorbs. Their old specs can be read with `git show 16e5468:handoff/tasks/<file>`. The old milestone checklist is `git show 16e5468:docs/ROADMAP.md`.
 * Bugs passed with notice or skipped as minor are logged in `handoff/BACKLOG.md`, per the bug triage rule in `CLAUDE.md`.
 
-## 3. What is built (2026-11-17)
+## 3. What is built (2026-11-18)
 
-A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 18.
+A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 19.
 
 | Area | Built |
 | --- | --- |
@@ -49,11 +49,11 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model |
 | Passengers | Departing cohorts by profile, walking graph, service nodes and queues, journey from curb to boarding, people atlas with 30 recipes, density, queue and walking distance overlays |
 | Flights | A destination network of 80 generated airports per seed, airlines that sign with flight series on fixed weekdays, a weekly planner with day tabs where one drop places a series on all its days, an auto planner, airline satisfaction with cancellations, renewals and new airlines approaching as stars grow, flights board, general aviation arriving on its own |
-| Ground handling | Eight vehicle types that spawn near the stand, approach on paths that never cross the aircraft and dock at door positions from data, with ground shadows. Aircraft stop with the nose gear on their stop line. A fixed turnaround time per role |
+| Ground handling | A ground handling depot that stores the fleet (24 vehicles each, a starter set on build) and service roads the player draws, joined to the road strips of contact stands, with hold lines where they cross a taxiway. Vehicles leave the depot, drive the road keeping right and giving way at junctions and to aircraft at crossings, take stand paths that never cross the aircraft to door positions from data, and drive home. Tractors tow 1 to 4 carts by stand size. A commercial stand with no road from a depot turns around 25 percent slower and shows an amber badge. Aircraft stop with the nose gear on their stop line. A fixed turnaround time per role |
 | Business | Seven generated airline slots with rating gates, contracts and fees, stars from passenger and airline experience, daily ledger, one term loan, shop rent, ratings, weather events (rain, fog, strong wind) |
 | UI | Main menu, new game, top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
 
-Simplified today and replaced by the phases below: vehicles without roads or depots, rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
+Simplified today and replaced by the phases below: vehicles that never change turnaround timing, rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
 
 ## 4. MVP 1 phases
 
@@ -108,7 +108,7 @@ Goal: vehicles live in buildings, drive on roads the player draws, and service e
 | --- | --- | --- | --- | --- |
 | T60 | Service roads and apron lanes as a graph with reservations, one connection point per stand, trailer kinematics with an off tracking test (section 4) | T24, T25 | T59 | todo |
 | T64 | Footprints, keep out zones, the collision test over every stand class and type, draw order. T57 delivers the hard footprint, this task finishes the port of `gse.py` | T26, T27 | T60 | todo |
-| T65 | Supporting buildings: ground handling depot, fuel farm with stock and road tankers, catering unit, fire station with categories, staff center, cleaning depot, maintenance workshop (section 5) | depot part of T24 | T60 | todo |
+| T65 | Supporting buildings (the ground handling depot was built in T60): fuel farm with stock and road tankers, catering unit, fire station with categories, staff center, cleaning depot, maintenance workshop (section 5) | depot part of T24 | T60 | todo |
 | T63 | Turnaround task lists per type with dependencies, docking poses per service point, delays shown with their cause and whether the airport or the airline owns it (section 4) | T22, T23 | T64, T65 | todo |
 | T43 | Baggage network per `docs/BAGGAGE.md`: drop points, screening machines in a screening room, bays assigned to stands, carousels, automatic under floor links (rules A to F, reference `baggage_links.py`), ramp stubs, connections tab read only, kit sprites from `baggage_kit.png` |  | T63, T73 | todo |
 | T66 | Stand upgrades through works (five jet bridge access types, stairs and bus bay, hydrant pit, fixed ground power) and stand assignments for gate, desk, chute and carousel (section 2.5, 2.6). The jet bridge painter was removed until bridges are built here; restore it from git history (`paintBridges` in `standPaint.ts`) | T48, T23 | T59, T43 | todo |

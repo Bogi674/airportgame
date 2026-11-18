@@ -461,7 +461,11 @@ export class Renderer {
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = st.kind === 'noTaxiway' ? '#ffffff' : '#1b1b1b';
-      ctx.fillText('!', x, y + r * 0.08);
+      if (st.kind === 'noRoad') {
+        // Two lane lines: the stand needs a service road.
+        ctx.fillRect(x - r * 0.45, y - r * 0.55, r * 0.22, r * 1.1);
+        ctx.fillRect(x + r * 0.23, y - r * 0.55, r * 0.22, r * 1.1);
+      } else ctx.fillText('!', x, y + r * 0.08);
     }
   }
 

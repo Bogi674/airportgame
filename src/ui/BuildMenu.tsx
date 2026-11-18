@@ -1,4 +1,4 @@
-import { BUSINESS, GSE } from '@data/index';
+import { BUSINESS, GROUND, GSE } from '@data/index';
 import { FIXTURE_KEYS } from '@shared/business';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
@@ -166,6 +166,13 @@ export const CATEGORIES: Category[] = [
     testId: 'tool-handling',
     tool: null,
     tabs: [
+      {
+        id: 'depot',
+        items: [
+          { id: 'depot', thumb: 'depot', icon: 'handling', price: GROUND.depot.cost, run: (s) => s.set({ tool: 'depot' }), active: (s) => s.tool === 'depot' },
+          { id: 'road', thumb: 'road', icon: 'taxiway', run: (s) => s.set({ tool: 'road' }), active: (s) => s.tool === 'road' },
+        ],
+      },
       { id: 'baggage', items: [gse('tractor'), gse('cart'), gse('beltloader')] },
       { id: 'fuel', items: [gse('refueller'), gse('dispenser')] },
       { id: 'catering', items: [gse('catering')] },

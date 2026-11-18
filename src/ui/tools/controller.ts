@@ -1,6 +1,7 @@
 import { apronContains, touches } from '@shared/apronGeom';
 import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standHeading, standRowPricing, type RemovePlan } from '@shared/apronPricing';
-import { AIRFIELD, BUSINESS, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { depotRect, roadSnapPoints } from '@shared/roadGraph';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { ACCEPT_GA, codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
 import {
@@ -16,7 +17,7 @@ import {
   suggestedExitDistance,
 } from '@shared/airfieldGeom';
 import type { Ghost, GhostShape } from '@shared/ghost';
-import { closestOnSegment, distToSegment, type Pt } from '@shared/geom';
+import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
 import { WALL, type TerminalGrid } from '@shared/business';
 import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
@@ -159,6 +160,14 @@ export class ToolController {
     if (kind === 'tower') {
       const tw = af.towers?.find((x) => x.id === id);
       return tw ? [{ k: 'poly', pts: towerRect(tw.x, tw.y, BUSINESS.tower.footprintM) }] : [];
+    }
+    if (kind === 'depot') {
+      const d = af.depots?.find((x) => x.id === id);
+      return d ? [{ k: 'poly', pts: depotRect(d) }] : [];
+    }
+    if (kind === 'road') {
+      const r = af.roads?.find((x) => x.id === id);
+      return r ? [{ k: 'strip', pts: r.points, w: GROUND.road.widthM }] : [];
     }
     return [];
   }
@@ -606,6 +615,12 @@ export class ToolController {
       case 'tower':
         this.previewTower(p, mods);
         break;
+      case 'road':
+        this.previewRoad(p, mods);
+        break;
+      case 'depot':
+        this.previewDepot(p, mods);
+        break;
       case 'terminal':
         this.previewTerminal(p, mods);
         break;
@@ -681,6 +696,16 @@ export class ToolController {
       case 'tower':
         this.commitTower(p, mods);
         break;
+      case 'road': {
+        const prev = this.pts.length > 0 ? this.pts[this.pts.length - 1] : null;
+        const q = this.roadPoint(p, mods);
+        if (!prev || Math.hypot(q.x - prev.x, q.y - prev.y) >= GROUND.road.minSegmentM) this.pts.push(q);
+        this.previewRoad(p, mods);
+        break;
+      }
+      case 'depot':
+        this.commitDepot(p, mods);
+        break;
       case 'terminal':
         this.finishTerminal(p);
         break;
@@ -708,7 +733,7 @@ export class ToolController {
       this.up(this.cursor, { shift: false, alt: false });
       return;
     }
-    if (tool === 'taxiway' || tool === 'taxilane' || isApronTool(tool)) this.finish();
+    if (tool === 'taxiway' || tool === 'taxilane' || tool === 'road' || isApronTool(tool)) this.finish();
   }
 
   /** Drops the gesture in progress and keeps the tool. */
@@ -721,6 +746,7 @@ export class ToolController {
   finish(): void {
     const tool = useToolStore.getState().tool;
     if (tool === 'taxiway' || tool === 'taxilane') this.commitTaxiway(tool === 'taxilane');
+    else if (tool === 'road') this.commitRoad();
     else if (isApronTool(tool)) this.commitApron();
   }
 
@@ -751,6 +777,11 @@ export class ToolController {
     if ((e.key === 'a' || e.key === 'A') && isApronTool(st.tool) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       this.cancel();
       st.set({ apronMode: st.apronMode === 'rect' ? 'polygon' : 'rect' });
+      return true;
+    }
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'depot' && !e.ctrlKey && !e.metaKey) {
+      st.set({ depotHeading: (st.depotHeading + 90) % 360 });
+      this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
     if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && isTwoCell(st.fixtureId)) {
@@ -1823,6 +1854,65 @@ export class ToolController {
     this.deps.send({ type: 'buildTower', x: q.x, y: q.y, level: useToolStore.getState().towerLevel });
   }
 
+  // Service roads and depots (T60) ------------------------------------------
+
+  /** A road point: the nearest depot exit, stand connection point, strip end or road end within reach, else the grid or the pointer. */
+  private roadPoint(p: Pt, mods: Mods): Pt {
+    const reach = Math.max(GROUND.road.snapM, 16 / this.deps.zoom());
+    let best: Pt | null = null;
+    let bestD = reach;
+    for (const q of roadSnapPoints(this.af)) {
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bestD) {
+        bestD = d;
+        best = q;
+      }
+    }
+    return best ? { x: best.x, y: best.y } : this.placeAt(p, mods);
+  }
+
+  /** Ghost of the road being drawn: the road as it will look, a marker on every point it can join, and its cost. */
+  private previewRoad(p: Pt, mods: Mods): void {
+    const q = this.roadPoint(p, mods);
+    const pts = [...this.pts, q];
+    const shapes: GhostShape[] = roadSnapPoints(this.af).map((s) => ({ k: 'marker', x: s.x, y: s.y, shape: 'dot' }));
+    let problem: Problem | null = null;
+    let label: Ghost['label'];
+    if (pts.length >= 2) {
+      problem = this.landProblem({ pts, widthM: GROUND.road.widthM });
+      const len = polylineLength(pts);
+      label = { x: q.x, y: q.y, text: tFormat('ghost.road', { len: Math.round(len), cost: formatMoney(Math.round(len * GROUND.road.widthM * SURFACE_SPEC[GROUND.road.surface].costPerM2)) }) };
+    }
+    this.show({ valid: problem === null, shapes, preview: pts.length >= 2 ? { roads: [{ id: -1, cost: 0, points: pts }] } : undefined, label }, problem, 'hint.road');
+  }
+
+  private commitRoad(): void {
+    if (this.pts.length >= 2) this.deps.send({ type: 'buildRoad', points: this.pts });
+    this.pts = [];
+    this.move(this.cursor, { shift: false, alt: false });
+  }
+
+  /** Ghost of a depot: its footprint, the shed as it will look with its doors on the heading side, and the cost. */
+  private previewDepot(p: Pt, mods: Mods): void {
+    const q = this.placeAt(p, mods);
+    const d = { id: -1, cost: GROUND.depot.cost, x: q.x, y: q.y, headingDeg: useToolStore.getState().depotHeading };
+    const rect = depotRect(d);
+    let problem = this.landProblem({ polygon: rect });
+    if (!problem && towerBlocked(this.af, rect)) problem = { code: 'depotOnPavement' };
+    if (!problem && (this.af.depots ?? []).some((o) => towersOverlap(rect, depotRect(o)))) problem = { code: 'onDepot' };
+    if (!problem && (this.af.towers ?? []).some((t) => towersOverlap(rect, towerRect(t.x, t.y, BUSINESS.tower.footprintM)))) problem = { code: 'onTower' };
+    this.show(
+      { valid: problem === null, shapes: [{ k: 'poly', pts: rect }], preview: { depots: [d] }, label: { x: q.x, y: q.y, text: tFormat('ghost.depot', { cost: formatMoney(GROUND.depot.cost) }) } },
+      problem,
+      'hint.depot',
+    );
+  }
+
+  private commitDepot(p: Pt, mods: Mods): void {
+    const q = this.placeAt(p, mods);
+    this.deps.send({ type: 'buildDepot', x: q.x, y: q.y, headingDeg: useToolStore.getState().depotHeading });
+  }
+
   // Terminal ---------------------------------------------------------------
 
   private tStart: { cx: number; cy: number } | null = null;
@@ -2020,8 +2110,8 @@ export class ToolController {
     } else if (hit.kind === 'apron') {
       const a = af.aprons.find((x) => x.id === hit.id);
       if (a) shapes.push({ k: 'poly', pts: a.polygon });
-    } else if (hit.kind === 'tower') {
-      shapes.push(...this.shapesFor('tower', hit.id));
+    } else if (hit.kind === 'tower' || hit.kind === 'road' || hit.kind === 'depot') {
+      shapes.push(...this.shapesFor(hit.kind, hit.id));
     } else {
       const s = af.stands.find((x) => x.id === hit.id);
       if (s) shapes.push({ k: 'ring', x: s.x, y: s.y, r: 8 });

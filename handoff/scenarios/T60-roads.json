@@ -1,0 +1,30 @@
+{
+  "buy": [[2880, 4880, 6400, 6000]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 2 },
+    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 190, "code": "C", "connectors": 4, "surface": "asphalt", "tier": 2 },
+    { "type": "buildApron", "polygon": [{ "x": 3800, "y": 5260 }, { "x": 4200, "y": 5260 }, { "x": 4200, "y": 5400 }, { "x": 3800, "y": 5400 }], "surface": "concrete", "tier": 2 },
+    { "type": "buildStands", "x": 4100, "y": 5330, "headingDeg": 180, "count": 3, "spacingM": 45, "standType": "remote", "size": "medium" },
+    { "type": "buildTower", "x": 2700, "y": 4800, "level": 5 },
+    { "type": "buildDepot", "x": 3775, "y": 5343.9, "headingDeg": 90 },
+    { "type": "buildRoad", "points": [{ "x": 3799, "y": 5343.9 }, { "x": 4010, "y": 5343.9 }, { "x": 4055, "y": 5343.9 }, { "x": 4100, "y": 5343.9 }, { "x": 4230, "y": 5343.9 }, { "x": 4230, "y": 5120 }] },
+    { "type": "testDockAt", "standId": 12, "typeIdx": 1, "turnTicks": 10000000 },
+    { "type": "testDockAt", "standId": 13, "typeIdx": 1, "turnTicks": 10000000 }
+  ],
+  "camera": { "x": 4020, "y": 5320, "zoom": 2 },
+  "hideUi": true,
+  "actions": [
+    { "expect": { "path": "airfield.depots.length", "equals": 1 } },
+    { "expect": { "path": "airfield.roads.length", "equals": 1 } },
+    { "tool": "speed-8" },
+    { "wait": 25000 },
+    { "shot": "overview", "clip": { "w": 1200, "h": 700 } },
+    { "camera": { "x": 4060, "y": 5330, "zoom": 6 } },
+    { "shot": "stands", "clip": { "w": 1200, "h": 700 } },
+    { "camera": { "x": 4230, "y": 5190, "zoom": 6 } },
+    { "shot": "crossing", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 3780, "y": 5344, "zoom": 6 } },
+    { "shot": "depot", "clip": { "w": 900, "h": 600 } }
+  ],
+  "report": ["airfield.depots.length", "airfield.roads.length", "tick", "cash"]
+}

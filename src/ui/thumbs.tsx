@@ -129,6 +129,22 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
           {[18, 48, 78].map((x) => <g key={x}><rect x={x - 9} y="14" width="18" height="30" fill="none" stroke="#e6e8ea" stroke-width="0.8" />{plane(x, 30, 90, 0.55)}</g>)}
         </Scene>
       );
+    case 'depot':
+      return (
+        <Scene bg="#6f7f55">
+          <rect x="14" y="10" width="68" height="30" fill="#7b8794" stroke="#1b1b1b" stroke-width="0.8" />
+          <rect x="14" y="40" width="68" height="8" fill="#8e8b84" />
+          {[22, 38, 54, 70].map((x) => <rect key={x} x={x - 5} y="37" width="10" height="3" fill="#c9a64a" />)}
+          <rect x="44" y="48" width="8" height="12" fill="#3f4046" />
+        </Scene>
+      );
+    case 'road':
+      return (
+        <Scene bg="#6f7f55">
+          <path d="M-2 42 C30 42 40 18 98 18" stroke="#3f4046" stroke-width="14" fill="none" />
+          <path d="M-2 42 C30 42 40 18 98 18" stroke="#e6e8ea" stroke-width="1" stroke-dasharray="4 4" fill="none" />
+        </Scene>
+      );
     case 'tower':
       return (
         <Scene bg="#8a8f97">

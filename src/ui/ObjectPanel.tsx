@@ -1,4 +1,6 @@
-import { AIRFIELD, BUSINESS, SURFACE_SPEC } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, SURFACE_SPEC } from '@data/index';
+import { standsReached } from '@shared/roadGraph';
+import { polylineLength } from '@shared/geom';
 import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
@@ -226,9 +228,13 @@ function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
       </div>
     );
   }
+  const road = standsReached(af)[af.stands.indexOf(stand)] === true;
   return (
     <div style="color:var(--muted)" data-testid="stand-link">
       {fork ? tFormat('inspector.stand.leadIn', { name: af.taxiways[fork.lane].name }) : t('inspector.stand.linked')}
+      <div data-testid="stand-road" style={road ? undefined : 'color:var(--warn)'}>
+        {road ? t('inspector.stand.road') : t('inspector.stand.noRoad')}
+      </div>
       {stand.type === 'through' && <div data-testid="stand-lead-out">{out ? tFormat('inspector.stand.leadOut', { name: af.taxiways[out.lane].name }) : t('inspector.stand.noLeadOut')}</div>}
     </div>
   );
@@ -265,6 +271,34 @@ export function ObjectPanel({ send }: Props) {
           style="margin-top:8px"
           onClick={() => {
             send({ type: 'demolishTerminal', id });
+            useToolStore.getState().set({ selection: null });
+          }}
+        >
+          {t('inspector.demolish')}
+        </button>
+      </div>
+    );
+  }
+  if (kind === 'road' || kind === 'depot') {
+    const road = kind === 'road' ? af.roads?.find((x) => x.id === id) : undefined;
+    const depot = kind === 'depot' ? af.depots?.find((x) => x.id === id) : undefined;
+    if (!road && !depot) return null;
+    const owned = (biz?.fleet ?? []).reduce((a, b) => a + b, 0);
+    const reached = standsReached(af).filter((r) => r).length;
+    return (
+      <div
+        data-testid="object-panel"
+        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+      >
+        <div style="font-weight:600">{t(road ? 'inspector.road' : 'inspector.depot')}</div>
+        {road && <div data-testid="road-length">{tFormat('inspector.roadLength', { len: Math.round(polylineLength(road.points)) })}</div>}
+        {depot && <div data-testid="depot-fleet">{tFormat('inspector.depotFleet', { owned, capacity: (af.depots?.length ?? 0) * GROUND.depot.capacity })}</div>}
+        <div data-testid="road-stands">{tFormat('inspector.depotStands', { n: reached, total: af.stands.length })}</div>
+        <button
+          data-testid="demolish"
+          style="margin-top:6px"
+          onClick={() => {
+            send({ type: 'demolish', kind, id });
             useToolStore.getState().set({ selection: null });
           }}
         >

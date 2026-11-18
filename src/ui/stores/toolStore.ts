@@ -3,7 +3,7 @@ import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@share
 import type { Problem } from '@shared/validate';
 import type { FixtureRot } from '../tools/fixtureRot';
 
-export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'demolish';
+export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'demolish';
 
 export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
@@ -14,7 +14,7 @@ export type SnapMode = 'grid' | 'free';
  * The tools that place on the construction grid (task T42, R3). The runway
  * and taxiway tools use it as their lowest priority snap, after their own node, end and segment snaps.
  */
-export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'apronRemove', 'apronExtend', 'stands', 'gaBlock', 'terminal', 'tower'];
+export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'apronRemove', 'apronExtend', 'stands', 'gaBlock', 'terminal', 'tower', 'road', 'depot'];
 
 /** Snap mode of one tool: grid unless the player switched that tool to free. */
 export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): SnapMode {
@@ -22,7 +22,7 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
 }
 
 export interface Selection {
-  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower';
+  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower' | 'road' | 'depot';
   id: number;
 }
 
@@ -55,6 +55,8 @@ interface ToolState {
   gaCount: number;
   /** ATC tower tool: the level to build, from 1 to the top of the tower ladder. */
   towerLevel: number;
+  /** Depot tool: compass heading of the door side, a multiple of 90, turned with R. */
+  depotHeading: number;
   /** Rotation of stand rows, GA blocks and new terminals in degrees, relative to the nearest runway (or the site axis). */
   rowHeading: number;
   /** Where the confirm or cancel popup is shown on screen, or null. */
@@ -103,6 +105,7 @@ export const useToolStore = create<ToolState>((set) => ({
   connectors: 3,
   gaCount: 6,
   towerLevel: 1,
+  depotHeading: 0,
   rowHeading: 0,
   confirmAt: null,
   tSub: 'foundation',

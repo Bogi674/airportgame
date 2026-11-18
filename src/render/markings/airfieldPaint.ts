@@ -9,6 +9,7 @@ import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
 import { paintStands } from './standPaint';
 import { paintTowers } from './towerPaint';
+import { paintDepots, paintRoadLines, paintRoadSurface } from './roadPaint';
 import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -39,7 +40,7 @@ const lineM = (w: Window, meters: number, minPx = 0.9): number => Math.max(meter
 
 /** Paints the airfield pavement and markings of one chunk into its canvas context. */
 export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly TerminalGrid[], band: number, cx: number, cy: number): void {
-  if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0 && (af.towers?.length ?? 0) === 0 && terminals.length === 0) return;
+  if (af.runways.length === 0 && af.taxiways.length === 0 && af.aprons.length === 0 && af.stands.length === 0 && (af.towers?.length ?? 0) === 0 && (af.roads?.length ?? 0) === 0 && (af.depots?.length ?? 0) === 0 && terminals.length === 0) return;
   const scale = BAND_RASTER_SCALE[band];
   const size = chunkSizeM(band);
   const ox = cx * size;
@@ -98,6 +99,9 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     }
   }
 
+  // Service roads go under the taxiway pavement they cross, so the taxiway stays continuous (T60).
+  paintRoadSurface(ctx, af.roads ?? [], win);
+  paintRoadLines(ctx, af, win);
   paintAreas(ctx, plan.areas, win);
   for (const r of af.runways) paintRunwayPavement(ctx, r, win);
   // Turn pad pavement joins the runway end fill in the same surface color, and the yellow turn curve
@@ -123,6 +127,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
   for (const g of terminals) paintTerminal(ctx, g, win);
   paintStands(ctx, af, af.stands, win);
   paintTowers(ctx, af.towers ?? [], win);
+  paintDepots(ctx, af.depots ?? [], win);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
@@ -562,6 +567,11 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
   }
   if (preview.stands) paintStands(ctx, af, preview.stands, win);
   if (preview.towers) paintTowers(ctx, preview.towers, win);
+  if (preview.roads) {
+    paintRoadSurface(ctx, preview.roads, win);
+    paintRoadLines(ctx, { ...af, roads: preview.roads }, win);
+  }
+  if (preview.depots) paintDepots(ctx, preview.depots, win);
 }
 
 const FLOOR_COLOR = ['', '#a9aeb3', '#d3dadd', '#7f90a8'];
