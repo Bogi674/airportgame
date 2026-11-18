@@ -1,5 +1,6 @@
 /** Business state shared with the UI: terminals, airlines, the ledger, the loan and the rating. */
 
+import type { BagDrawNode } from './baggageNodes';
 import { TICKS_PER_GAME_MINUTE } from './time';
 
 /** Calendar ticks, derived from CLOCK_SCALE in time.ts: 50 ticks per game minute, 72000 per game day. */
@@ -131,6 +132,8 @@ export interface TerminalGrid {
   leased: Uint8Array;
   /** Money spent on this building, for demolition refunds. */
   cost: number;
+  /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
+  bagNodes?: BagDrawNode[];
 }
 
 /** A building in the business payload: counts only, the grids travel separately. */

@@ -79,6 +79,58 @@ export function truckEdge(spec: BagNodeSpec): { cells: Cell[]; out: Cell } {
   return { cells, out: AXES[spec.rot].b };
 }
 
+/** One baggage node as the painter draws it. Drops sit on their anchor cell, the others on their footprint origin. */
+export interface BagDrawNode {
+  building: number;
+  kind: 'drop' | 'machine' | 'bay' | 'carousel';
+  cx: number;
+  cy: number;
+  rot: 0 | 1 | 2 | 3;
+  widthCells: number;
+  /** For a drop: true when a screening machine is linked to it. Always false for the other kinds. */
+  linked: boolean;
+}
+
+/** Footprint size in cells along u and v, null for a drop (it has no footprint of its own) or an unlisted bay width. */
+export function drawFootprint(n: BagDrawNode): { w: number; d: number } | null {
+  if (n.kind === 'drop') return null;
+  return nodeSize({ kind: n.kind, cx: n.cx, cy: n.cy, rot: n.rot, widthCells: n.widthCells });
+}
+
+/**
+ * Logical position in cells (fractions allowed) of the point at local cell edge coordinates (u, v), where
+ * (0, 0) is the outer corner of the origin cell in the node's own frame.
+ */
+export function drawPoint(n: BagDrawNode, u: number, v: number): Cell {
+  const { a, b } = AXES[n.rot];
+  const du = u - 0.5;
+  const dv = v - 0.5;
+  return [n.cx + 0.5 + du * a[0] + dv * b[0], n.cy + 0.5 + du * a[1] + dv * b[1]];
+}
+
+/** Center of the footprint in logical cells, or null for a drop or an unlisted width. */
+export function drawCenter(n: BagDrawNode): Cell | null {
+  const size = drawFootprint(n);
+  return size ? drawPoint(n, size.w / 2, size.d / 2) : null;
+}
+
+/** Center in logical cells of the out ramp cell of a drop. */
+export function dropRampCenter(n: BagDrawNode): Cell {
+  const [x, y] = dropOutCell(n.cx, n.cy, n.rot);
+  return [x + 0.5, y + 0.5];
+}
+
+/** Centers in logical cells of the staging lanes of a bay, one per truck slot, outside the truck edge (docs/BAGGAGE.md 3.4). */
+export function stagingLaneCenters(n: BagDrawNode): Cell[] {
+  const size = drawFootprint(n);
+  if (n.kind !== 'bay' || !size) return [];
+  const slotCells = BAGGAGE.bay.slotWidthM / TERMINAL_CELL_M;
+  const laneCells = BAGGAGE.bay.stagingLaneM / TERMINAL_CELL_M;
+  const out: Cell[] = [];
+  for (let k = 0; k < Math.floor(size.w / slotCells); k++) out.push(drawPoint(n, slotCells * k + slotCells / 2, size.d + laneCells / 2));
+  return out;
+}
+
 /** Wall value on the edge between two orthogonally adjacent logical cells, or -1 outside the edge arrays. */
 function edgeBetween(g: TerminalGrid, x: number, y: number, dx: number, dy: number): number {
   if (dx !== 0) {

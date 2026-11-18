@@ -56,6 +56,7 @@ export class Sim {
   private depotsSeen = 0;
   private businessSent = -1;
   private gridsSent = -1;
+  private bagDrawSent = -1;
   private businessSentTick = -1000000;
   /** Airfield version of the last business payload, whose stand link and contact facts follow the airfield. */
   private businessAirfield = -1;
@@ -515,10 +516,13 @@ export class Sim {
 
   /** Copies of the terminal grids when they changed since the last call, otherwise null. */
   takeTerminalGrids(): TerminalGrid[] | null {
-    if (this.business.terminalVersion === this.gridsSent) return null;
+    const bagVersion = this.baggage.drawVersion();
+    if (this.business.terminalVersion === this.gridsSent && bagVersion === this.bagDrawSent) return null;
     this.gridsSent = this.business.terminalVersion;
+    this.bagDrawSent = bagVersion;
     return this.business.grids.map((g) => ({
       ...g,
+      bagNodes: this.baggage.drawList(g.id),
       floor: g.floor.slice(),
       zone: g.zone.slice(),
       fixture: g.fixture.slice(),
@@ -662,6 +666,7 @@ export class Sim {
     this.updateObstacles();
     this.businessSent = -1;
     this.gridsSent = -1;
+    this.bagDrawSent = -1;
     this.pending.length = 0;
   }
 

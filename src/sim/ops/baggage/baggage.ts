@@ -1,7 +1,7 @@
 import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, FIXTURE_ZONES, TICKS_PER_MINUTE, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, dropOutCell, nodeCells, rampCell, screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { bagKey, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
@@ -175,6 +175,8 @@ export class Baggage {
   private states: NodeState[] = [];
   /** Bumped whenever a record is added or dropped, so the state table and the orphan sweep know to run. */
   private layoutStamp = 0;
+  /** Bumped with every layout or link change for drawVersion. */
+  private drawStamp = 0;
   private statesStamp = -1;
   private sweptStamp = -1;
   private anyBlocked = false;
@@ -341,6 +343,28 @@ export class Baggage {
     return this.recs.filter((r) => r.building === building);
   }
 
+  /** Changes whenever a node, a drop link or a grid sync may have changed what drawList returns. Not saved. */
+  drawVersion(): number {
+    return this.drawStamp;
+  }
+
+  /** Every node of one building in id order, as the painter needs it. Drops with a machine link are marked linked. */
+  drawList(building: number): BagDrawNode[] {
+    const g = this.business.grids.find((x) => x.id === building);
+    const net = this.netOf(building);
+    const out: BagDrawNode[] = [];
+    for (const rec of this.nodesOf(building).sort((a, b) => a.id - b.id)) {
+      if (rec.spec === null) {
+        const anchor = g ? this.anchorsOf(g).find((a) => a.x === rec.cell[0] && a.y === rec.cell[1]) : undefined;
+        out.push({ building, kind: 'drop', cx: rec.cell[0], cy: rec.cell[1], rot: anchor ? anchor.rot : 0, widthCells: 1, linked: net !== null && net.machineOf(rec.id) !== null });
+        continue;
+      }
+      const w = rec.kind === 'bay' ? rec.spec.widthCells : (nodeSize(rec.spec)?.w ?? 1);
+      out.push({ building, kind: rec.kind, cx: rec.spec.cx, cy: rec.spec.cy, rot: rec.spec.rot, widthCells: w, linked: false });
+    }
+    return out;
+  }
+
   warnings(): BagWarning[] {
     const out: BagWarning[] = [];
     for (const n of this.nets) out.push(...n.net.warnings());
@@ -391,6 +415,7 @@ export class Baggage {
     const rec: BagNodeRec = { id: this.nextId++, kind: spec.kind, building: g.id, spec, cell: [spec.cx, spec.cy] };
     this.recs.push(rec);
     this.layoutStamp++;
+    this.drawStamp++;
     this.ensureNet(g.id).add(this.netNode(rec, g));
     this.syncBuilding(g.id);
     return null;
@@ -429,6 +454,7 @@ export class Baggage {
     const net = rec ? this.netOf(rec.building) : null;
     if (!rec || !net) return 'nothingThere';
     net.fix(id);
+    this.drawStamp++;
     this.business.version++;
     return null;
   }
@@ -445,6 +471,7 @@ export class Baggage {
   syncBuilding(building: number): void {
     const g = this.business.grids.find((x) => x.id === building);
     this.layoutStamp++;
+    this.drawStamp++;
     if (!g) {
       this.recs = this.recs.filter((r) => r.building !== building);
       this.nets = this.nets.filter((n) => n.building !== building);
@@ -543,6 +570,7 @@ export class Baggage {
       if (net) for (const [src, dst, mode] of group.links) net.link(src, dst, mode);
     }
     this.layoutStamp++;
+    this.drawStamp++;
     this.syncStates();
     if (raw.flow !== undefined) this.loadFlow(raw.flow);
     this.refreshBlocked();
@@ -947,6 +975,7 @@ export class Baggage {
   /** Removes the record and its network node with its links (rule F). */
   private dropRec(rec: BagNodeRec): void {
     this.layoutStamp++;
+    this.drawStamp++;
     this.netOf(rec.building)?.remove(rec.id);
     this.recs = this.recs.filter((r) => r !== rec);
   }
