@@ -9,6 +9,7 @@ import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
+import { buildVisitPoints, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
@@ -206,6 +207,8 @@ export class Cohorts {
   /** Sample caches of the walk rows, one per grid. Derived, never saved or hashed. */
   private sampleCaches: WalkCache[] = [];
   private sampleCacheVersion = -1;
+  /** Visit points per grid. Derived from the grids, never saved or hashed. */
+  private visitTables: VisitPoints[] = [];
   private readonly route = new Float64Array(ROUTE_OUT);
   /** Scratch trait vector of one member. */
   private readonly traits = new Float64Array(TRAIT_COUNT);
@@ -620,7 +623,23 @@ export class Cohorts {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate) this.node[c] = -1;
     }
+    this.rebuildVisitTables();
     this.seenVersion = this.business.serviceVersion;
+  }
+
+  /** Builds the visit points of every grid from the current grids and walk graphs. */
+  private rebuildVisitTables(): void {
+    const grids = this.business.grids;
+    this.visitTables = [];
+    for (let g = 0; g < grids.length; g++) {
+      const wg = this.business.walkGraphs[g];
+      if (wg) this.visitTables.push(buildVisitPoints(grids[g]!, wg));
+    }
+  }
+
+  /** Visit points of a grid index, null when there is none. Public for tests only. */
+  visitTable(g: number): VisitPoints | null {
+    return this.visitTables[g] ?? null;
   }
 
   /** Cohorts evicted from a removed queue node go back to the step they queued from. */
@@ -938,6 +957,7 @@ export class Cohorts {
       this.flBoarded.fill(0);
       this.flGate.fill(0);
       this.flActive.fill(0);
+      this.rebuildVisitTables();
       this.seenVersion = this.business.serviceVersion;
       return;
     }
@@ -962,6 +982,7 @@ export class Cohorts {
     unpackInto(s.arrays.flBoarded, this.flBoarded, Int32Array);
     unpackInto(s.arrays.flGate, this.flGate, Int32Array);
     unpackInto(s.arrays.flActive, this.flActive, Int32Array);
+    this.rebuildVisitTables();
     this.seenVersion = this.business.serviceVersion;
   }
 
