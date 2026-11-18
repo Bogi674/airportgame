@@ -1,5 +1,6 @@
 import { AIRCRAFT, SPRITE_BASES, standGeometry } from '@data/aircraft';
 import { GROUND, GSE, GSE_INDEX, type GseSpec } from '@data/index';
+import { STAND_UPGRADE } from '@shared/airfield';
 import { aircraftBoundary, footprintClash, footprintSpecSchema, type AircraftBoundary, type Poly } from '@shared/aircraftFootprint';
 import type { Pt } from '@shared/geom';
 import { followHitch, type TowPose } from '@shared/trailer';
@@ -62,6 +63,7 @@ const EXIT_CLEAR_M = 12;
 const TUG = GSE_INDEX.tug;
 const GPU = GSE_INDEX.gpu;
 const REFUELLER = GSE_INDEX.refueller;
+const DISPENSER = GSE_INDEX.dispenser;
 const BELT = GSE_INDEX.beltloader;
 const TRACTOR = GSE_INDEX.tractor;
 const CART = GSE_INDEX.cart;
@@ -74,8 +76,9 @@ const CART_ARM = GROUND.train.hitchGapM + GSE[CART].lengthM / 2;
  * A dock that would overlap an earlier one on its side is pushed outboard of it, so a straight drive in
  * never passes a parked vehicle. The kind index is the saved fleet index, so gse.json order cannot carry this.
  * Carts claim their place but never drive alone: they come towed behind the tractor (T60).
+ * The dispenser takes the refueller's place: an aircraft gets one or the other, by its stand's hydrant pit (T66).
  */
-const DOCK_ORDER = [BELT, TRACTOR, CART, CATERING, GPU, STAIRS, REFUELLER];
+const DOCK_ORDER = [BELT, TRACTOR, CART, CATERING, GPU, STAIRS, REFUELLER, DISPENSER];
 
 const TYPES = AIRCRAFT.length;
 const KINDS = GSE.length;
@@ -114,6 +117,8 @@ export interface GseHost {
   owned(kind: number): number;
   /** Catering trucks the catering units hold. */
   cateringTrucks(): number;
+  /** `STAND_UPGRADE` bits of the stand the aircraft is parked on, 0 when none. */
+  upgradesOf(a: number): number;
 }
 
 /**
@@ -227,6 +232,21 @@ export class Gse {
   /** True when the type's crew has a vehicle of the kind with a drive path to its dock. */
   crewHas(type: number, kind: number): boolean {
     return (crewMask[type] & (1 << kind)) !== 0 && pathN[type * KINDS + kind] >= 2;
+  }
+
+  /** `STAND_UPGRADE` bits of the aircraft's stand, 0 without a host. */
+  upgradesOf(a: number): number {
+    return this.host ? this.host.upgradesOf(a) : 0;
+  }
+
+  /** Crew kinds of an aircraft at its stand: the dispenser replaces the refueller at a hydrant pit, fixed power drops the GPU. */
+  private crewAt(a: number): number {
+    const upgrades = this.upgradesOf(a);
+    let crew = crewMask[this.traffic.type[a]];
+    if ((upgrades & STAND_UPGRADE.hydrantPit) !== 0) crew &= ~(1 << REFUELLER);
+    else crew &= ~(1 << DISPENSER);
+    if ((upgrades & STAND_UPGRADE.fixedPower) !== 0) crew &= ~(1 << GPU);
+    return crew;
   }
 
   /** True when no crew vehicle of the aircraft is left on its stand: every one is gone or on the road home. */
@@ -914,7 +934,7 @@ export class Gse {
 
   /** Queues the crew of a turnaround and sends in the first vehicle on each side. Carts come with the tractor. */
   private spawnCrew(a: number): void {
-    this.pending[a] = crewMask[this.traffic.type[a]] & ~(1 << CART);
+    this.pending[a] = this.crewAt(a) & ~(1 << CART);
     this.last[a * 2 + SIDE_R] = -1;
     this.last[a * 2 + SIDE_L] = -1;
     this.advance(a, SIDE_R);
@@ -1014,7 +1034,7 @@ function kitBit(kind: number, lengthM: number): number {
 function crewOf(type: number): number {
   const spec = AIRCRAFT[type];
   const lengthM = spec.dimensions.lengthM;
-  let crew = 1 << REFUELLER;
+  let crew = (1 << REFUELLER) | (1 << DISPENSER);
   if (spec.role === 'ga') return crew;
   const seats = spec.capacity.seatsTypical;
   crew |= (1 << GPU) | kitBit(BELT, lengthM) | kitBit(TRACTOR, lengthM) | kitBit(CART, lengthM);
@@ -1048,12 +1068,18 @@ function buildPaths(type: number): void {
   // footprint claims the centreline first on both sides and no dock parks against it.
   const tug = GSE[TUG];
   for (const side of [1, -1]) placed.push({ side, m: 0, y: -TUG_AHEAD_M, across: tug.widthM / 2, reach: tug.lengthM / 2 });
+  let refuellerPlace: (typeof placed)[number] | null = null;
   const docks: { k: number; sign: number; m: number; y: number; perp: boolean; g: GseSpec }[] = [];
   for (const k of DOCK_ORDER) {
     const g = GSE[k];
     // Only the crew of this type claims a place, so a kit it never gets cannot push another dock outboard.
     if (!g.dock || (crewMask[type] & (1 << k)) === 0) continue;
     const d = g.dock;
+    // The dispenser never shares an aircraft with the refueller, so it claims the refueller's place.
+    if (k === DISPENSER) {
+      const at = placed.findIndex((q) => q === refuellerPlace);
+      if (at >= 0) placed.splice(at, 1);
+    }
     const sign = d.side === 'R' ? 1 : -1;
     const perp = d.orient === 'perp';
     const across = perp ? g.lengthM / 2 : g.widthM / 2;
@@ -1099,6 +1125,7 @@ function buildPaths(type: number): void {
     // The train's claim runs aft of the tractor only, where its carts trail.
     if (k === TRACTOR) placed.push({ side: sign, m, y: y + TRAIN_MAX_M / 2, across, reach: reach + TRAIN_MAX_M / 2 });
     else placed.push({ side: sign, m, y, across, reach });
+    if (k === REFUELLER) refuellerPlace = placed[placed.length - 1];
     docks.push({ k, sign, m, y, perp, g });
   }
   // A drive that would clash with the aircraft comes in by the clear station ahead of the nose or behind the tail.

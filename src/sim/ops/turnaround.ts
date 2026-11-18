@@ -1,4 +1,5 @@
 import { GSE_INDEX, TURNAROUNDS } from '@data/index';
+import { STAND_UPGRADE } from '@shared/airfield';
 import { VEHICLE_CAUSE } from '@shared/turnaround';
 import { foldInts } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -10,6 +11,16 @@ const N = TASKS.length;
 const KIND = TASKS.map((t) => (t.kind === null ? -1 : (GSE_INDEX[t.kind] ?? -1)));
 const AFTER = TASKS.map((t) => t.after.map((id) => TASKS.findIndex((o) => o.id === id)));
 const CLEAN = TASKS.findIndex((t) => t.id === 'clean');
+const FUEL = TASKS.findIndex((t) => t.id === 'fuel');
+const POWER = TASKS.findIndex((t) => t.id === 'power');
+const DISPENSER = GSE_INDEX.dispenser;
+
+/** Vehicle kind of a task at a stand with the given upgrades, -1 for none: a hydrant pit fuels by dispenser, fixed power needs no GPU. */
+function kindFor(k: number, upgrades: number): number {
+  if (k === FUEL && (upgrades & STAND_UPGRADE.hydrantPit) !== 0) return DISPENSER;
+  if (k === POWER && (upgrades & STAND_UPGRADE.fixedPower) !== 0) return -1;
+  return KIND[k];
+}
 
 /** The turnaround engine runs every this many ticks (docs/ARCHITECTURE.md section 2 cadences). */
 export const TURN_STEP = 10;
@@ -25,6 +36,8 @@ export interface TurnVehicles {
   readonly dockedMask: Uint32Array;
   /** True when the type's crew has a vehicle of the kind at all. */
   crewHas(type: number, kind: number): boolean;
+  /** `STAND_UPGRADE` bits of the stand the aircraft occupies, 0 when none. */
+  upgradesOf(a: number): number;
 }
 
 /**
@@ -84,19 +97,21 @@ export class Turnarounds {
   private step(i: number): void {
     const type = this.traffic.type[i];
     const docked = this.vehicles.dockedMask[i];
+    const upgrades = this.vehicles.upgradesOf(i);
     let allDone = 1;
     let vehDone = 1;
     for (let k = 0; k < N; k++) {
       const p = i * N + k;
+      const kind = kindFor(k, upgrades);
       let ph = this.phase[p];
       if (ph === Waiting) {
         let ready = true;
         for (const d of AFTER[k]) if (this.phase[i * N + d] !== Done) ready = false;
-        if (ready) ph = KIND[k] >= 0 && this.vehicles.crewHas(type, KIND[k]) ? NeedsVehicle : Running;
+        if (ready) ph = kind >= 0 && this.vehicles.crewHas(type, kind) ? NeedsVehicle : Running;
       }
       if (ph === NeedsVehicle) {
-        if ((docked & (1 << KIND[k])) !== 0) ph = Running;
-        else this.lastBlock[i] = VEHICLE_CAUSE + KIND[k];
+        if ((docked & (1 << kind)) !== 0) ph = Running;
+        else this.lastBlock[i] = VEHICLE_CAUSE + kind;
       }
       if (ph === Running) {
         this.left[p] -= TURN_STEP;
@@ -108,7 +123,7 @@ export class Turnarounds {
       this.phase[p] = ph;
       if (ph !== Done) {
         allDone = 0;
-        if (KIND[k] >= 0) vehDone = 0;
+        if (kind >= 0) vehDone = 0;
       }
     }
     this.vehDone[i] = vehDone;
@@ -117,7 +132,8 @@ export class Turnarounds {
 
   /** The cause of a vehicle task waiting now, else the last one waited on, else 0. */
   blocker(i: number): number {
-    for (let k = 0; k < N; k++) if (this.phase[i * N + k] === NeedsVehicle) return VEHICLE_CAUSE + KIND[k];
+    const upgrades = this.vehicles.upgradesOf(i);
+    for (let k = 0; k < N; k++) if (this.phase[i * N + k] === NeedsVehicle) return VEHICLE_CAUSE + kindFor(k, upgrades);
     return this.lastBlock[i];
   }
 

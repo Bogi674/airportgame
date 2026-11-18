@@ -106,6 +106,7 @@ export class Sim {
         const st = this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a]);
         return GROUND.cartsPerTrain[st ? st.size : sizeForCode(AIRCRAFT[this.traffic.type[a]].derivedForReading.code)];
       },
+      upgradesOf: (a) => this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a])?.upgrades ?? 0,
       owned: (k) => this.business.fleet[k] ?? 0,
       cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
     });
