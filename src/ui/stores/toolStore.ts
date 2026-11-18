@@ -74,7 +74,15 @@ interface ToolState {
   fixtureId: number;
   /** Rotation of the two cell fixture about to be placed. R cycles it. */
   fixtureRot: FixtureRot;
-  zoneType: 1 | 2 | 3 | 4;
+  zoneType: 1 | 2 | 3 | 4 | 5;
+  /** Zone tool: paint a rectangle by drag (false) or a brush over every cell the pointer enters (true). */
+  zoneBrush: boolean;
+  /** Door tool: a plain door (3) or a staff door (4), see WALL in business.ts. */
+  doorType: 3 | 4;
+  /** Fixture tool: the security exit level (1 staffed lane, 2 automated exit lane, 3 revolving exit door). */
+  fixtureLevel: 1 | 2 | 3;
+  /** Fixture tool: the mode of passport and eGate (0 departure, 1 arrival) or the use of a security lane (0 passengers, 1 staff). */
+  fixtureMode: 0 | 1;
   /** Baggage node tool: the kind, its rotation turned with R, the bay width in cells, and whether a machine stands outside a valid screening room. */
   bagKind: BagKind;
   bagRot: BagRot;
@@ -126,6 +134,10 @@ export const useToolStore = create<ToolState>((set) => ({
   fixtureId: 1,
   fixtureRot: 0,
   zoneType: 1,
+  zoneBrush: false,
+  doorType: 3,
+  fixtureLevel: 1,
+  fixtureMode: 0,
   bagKind: 'machine',
   bagRot: 0,
   bagWidth: BAGGAGE.footprints.bay.widths[0],

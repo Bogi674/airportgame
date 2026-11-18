@@ -19,7 +19,7 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import { WALL, type TerminalGrid } from '@shared/business';
+import type { TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { bagNodeAt } from '../standInspector';
@@ -43,7 +43,7 @@ import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
-import { fixtureEdit, footprintRect, isTwoCell, nextFixtureRot } from './fixtureRot';
+import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
 import { markShape, markTip, type SnapMark } from './snapMark';
 
 export interface Mods {
@@ -814,7 +814,7 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
-    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && isTwoCell(st.fixtureId)) {
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && hasRotation(st.fixtureId, st.fixtureLevel)) {
       st.set({ fixtureRot: nextFixtureRot(st.fixtureRot) });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
@@ -1969,6 +1969,9 @@ export class ToolController {
 
   private tStart: { cx: number; cy: number } | null = null;
   private tGrid: TerminalGrid | null = null;
+  /** Cells a zone brush has painted in the current drag, as "x,y", and the last cell the pointer was on. */
+  private brushSeen = new Set<string>();
+  private brushLast: { cx: number; cy: number } | null = null;
   private tTemp: TerminalGrid | null = null;
   private readonly bboxCache = new WeakMap<TerminalGrid, { x0: number; y0: number; x1: number; y1: number } | null>();
 
@@ -2048,7 +2051,7 @@ export class ToolController {
       let y1 = Math.round(b.cy);
       if (sub === 'door') {
         const e = this.nearestEdge(a);
-        return { op: 'wall', x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, variant: WALL.Door };
+        return doorEdit(e.x0, e.y0, e.x1, e.y1, st.doorType);
       }
       if (Math.abs(x1 - x0) >= Math.abs(y1 - y0)) y1 = y0;
       else x1 = x0;
@@ -2069,8 +2072,8 @@ export class ToolController {
     if (sub === 'foundation') return { op: 'foundation', x0, y0, x1, y1, variant: 0 };
     if (sub === 'floor') return { op: 'floor', x0, y0, x1, y1, variant: st.floorType };
     if (sub === 'erase') return { op: 'erase', x0, y0, x1, y1, variant: 0 };
-    if (sub === 'zone') return { op: 'zone', x0, y0, x1, y1, variant: st.zoneType };
-    return fixtureEdit(x0, y0, x1, y1, st.fixtureId, st.fixtureRot);
+    if (sub === 'zone') return zoneEdit(x0, y0, x1, y1, st.zoneType);
+    return fixtureEdit(x0, y0, x1, y1, st.fixtureId, st.fixtureRot, st.fixtureLevel, st.fixtureMode);
   }
 
   /** The grid edge closest to a fractional cell position. */
@@ -2089,6 +2092,12 @@ export class ToolController {
     const c = worldToCell(g, p.x, p.y);
     this.tStart = { cx: c.cx, cy: c.cy };
     this.dragging = true;
+    const st = useToolStore.getState();
+    if (st.tSub === 'zone' && st.zoneBrush) {
+      this.brushSeen.clear();
+      this.brushLast = null;
+      this.paintBrushLine(g, { cx: Math.floor(c.cx), cy: Math.floor(c.cy) });
+    }
   }
 
   /** The baggage node under the cursor on an existing building, or null off every building. */
@@ -2131,6 +2140,25 @@ export class ToolController {
     this.deps.send({ type: 'placeBaggageNode', building: g.id, kind: spec.kind, cx: spec.cx, cy: spec.cy, rot: spec.rot, widthCells: spec.widthCells });
   }
 
+  /**
+   * Zone brush: sends one 1 by 1 zone edit for each cell from the last pointer cell to this one that the drag has not
+   * painted yet. The first call of a drag passes the start cell, so a click paints it.
+   */
+  private paintBrushLine(g: TerminalGrid, to: { cx: number; cy: number }): void {
+    const env = this.env();
+    const from = this.brushLast ?? to;
+    this.brushLast = to;
+    if (!env) return;
+    const zone = useToolStore.getState().zoneType;
+    for (const [cx, cy] of cellLine(from.cx, from.cy, to.cx, to.cy)) {
+      if (!enterBrushCell(this.brushSeen, cx, cy)) continue;
+      const edit = brushCellEdit(cx, cy, zone);
+      const plan = planEdit(g, edit, env);
+      if (plan.problem || plan.changes === 0) continue;
+      this.deps.send({ type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit });
+    }
+  }
+
   private previewTerminal(p: Pt, mods: Mods): void {
     if (useToolStore.getState().tSub === 'bagNode') {
       this.previewBagNode(p);
@@ -2141,14 +2169,17 @@ export class ToolController {
     const hint = `hint.terminal.${st.tSub}`;
     const g = this.dragging && this.tGrid ? this.tGrid : this.gridFor(p, mods);
     const c = worldToCell(g, p.x, p.y);
+    const brush = st.tSub === 'zone' && st.zoneBrush;
     const a = this.dragging && this.tStart ? this.tStart : c;
-    const edit = this.terminalEdit(g, a, c);
+    // A zone brush shows only the cell under the cursor, the same cell it paints.
+    const edit = brush ? brushCellEdit(Math.floor(c.cx), Math.floor(c.cy), st.zoneType) : this.terminalEdit(g, a, c);
     const env = this.env();
     if (!edit || !env) {
       this.deps.setGhost(null);
       return;
     }
     const plan = planEdit(g, edit, env);
+    if (this.dragging && brush) this.paintBrushLine(g, { cx: Math.floor(c.cx), cy: Math.floor(c.cy) });
     const isWall = edit.op === 'wall';
     const shapes: GhostShape[] = [];
     let label: string;
@@ -2166,6 +2197,8 @@ export class ToolController {
     const idle = !this.dragging && plan.changes === 0;
     let problem: Problem | null = idle ? null : plan.problem;
     if (!problem && !idle && plan.changes === 0) problem = { code: 'terminalNeedsFoundation' };
+    // A wrong way round transition fixture is a warning: the ghost stays valid and the reason shows.
+    const warning: Problem | null = !problem && !idle && transitionOrientationBreaks(g, edit, env) ? { code: 'transitionOrientation' } : null;
     if (problem && problem.code === 'notOwned' && edit.op === 'foundation') {
       const ids = unownedParcelsUnder(env.ctx, { polygon: rectWorld(g, edit.x0, edit.y0, edit.x1, edit.y1) });
       const site = this.site();
@@ -2175,7 +2208,7 @@ export class ToolController {
     } else {
       useToolStore.getState().set({ buy: null });
     }
-    this.show({ valid: problem === null && !idle, shapes, label: { x: p.x, y: p.y, text: label } }, problem, hint);
+    this.show({ valid: problem === null && !idle, shapes, label: { x: p.x, y: p.y, text: label } }, problem ?? warning, hint);
   }
 
   private finishTerminal(p: Pt): void {
@@ -2189,6 +2222,13 @@ export class ToolController {
     this.tStart = null;
     this.tGrid = null;
     if (!g || !a) return;
+    const st = useToolStore.getState();
+    // A zone brush already painted while the pointer moved, so the release sends nothing.
+    if (st.tSub === 'zone' && st.zoneBrush) {
+      this.brushLast = null;
+      this.deps.setGhost(null);
+      return;
+    }
     const c = worldToCell(g, p.x, p.y);
     const edit = this.terminalEdit(g, a, c);
     const env = this.env();
