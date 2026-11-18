@@ -1,4 +1,4 @@
-import { GSE_INDEX, TURNAROUNDS } from '@data/index';
+import { GSE_INDEX, STAND_ACCESS, TURNAROUNDS } from '@data/index';
 import { STAND_UPGRADE } from '@shared/airfield';
 import { VEHICLE_CAUSE } from '@shared/turnaround';
 import { foldInts } from '../hash';
@@ -14,6 +14,12 @@ const CLEAN = TASKS.findIndex((t) => t.id === 'clean');
 const FUEL = TASKS.findIndex((t) => t.id === 'fuel');
 const POWER = TASKS.findIndex((t) => t.id === 'power');
 const DISPENSER = GSE_INDEX.dispenser;
+
+const BOARD = TASKS.findIndex((t) => t.id === 'board');
+const BUS = GSE_INDEX.bus;
+
+/** How an aircraft's stand boards: on foot, by bus from a far stand with a bus bay, or on foot but slowly from a far stand without one. */
+export const BOARDING = { near: 0, bus: 1, farSlow: 2 } as const;
 
 /** Vehicle kind of a task at a stand with the given upgrades, -1 for none: a hydrant pit fuels by dispenser, fixed power needs no GPU. */
 function kindFor(k: number, upgrades: number): number {
@@ -38,6 +44,10 @@ export interface TurnVehicles {
   crewHas(type: number, kind: number): boolean;
   /** `STAND_UPGRADE` bits of the stand the aircraft occupies, 0 when none. */
   upgradesOf(a: number): number;
+  /** `BOARDING` mode of the stand the aircraft occupies. */
+  boardingOf(a: number): number;
+  /** Vehicles of a kind the airport owns. */
+  owned(kind: number): number;
 }
 
 /**
@@ -92,26 +102,30 @@ export class Turnarounds {
       this.phase[i * N + k] = Waiting;
       this.left[i * N + k] = Math.round(TASKS[k].share * plan);
     }
+    if (this.vehicles.boardingOf(i) === BOARDING.farSlow) this.left[i * N + BOARD] = Math.round(TASKS[BOARD].share * (1 + STAND_ACCESS.farBoardingSlowdown) * plan);
   }
 
   private step(i: number): void {
     const type = this.traffic.type[i];
     const docked = this.vehicles.dockedMask[i];
     const upgrades = this.vehicles.upgradesOf(i);
+    const bus = this.phase[i * N + BOARD] < Running && this.vehicles.boardingOf(i) === BOARDING.bus;
     let allDone = 1;
     let vehDone = 1;
     for (let k = 0; k < N; k++) {
       const p = i * N + k;
       const kind = kindFor(k, upgrades);
+      // Boarding by bus needs a bus the airport owns, but the bus never docks and does not hold the crew.
+      const busTask = bus && k === BOARD;
       let ph = this.phase[p];
       if (ph === Waiting) {
         let ready = true;
         for (const d of AFTER[k]) if (this.phase[i * N + d] !== Done) ready = false;
-        if (ready) ph = kind >= 0 && this.vehicles.crewHas(type, kind) ? NeedsVehicle : Running;
+        if (ready) ph = busTask || (kind >= 0 && this.vehicles.crewHas(type, kind)) ? NeedsVehicle : Running;
       }
       if (ph === NeedsVehicle) {
-        if ((docked & (1 << kind)) !== 0) ph = Running;
-        else this.lastBlock[i] = VEHICLE_CAUSE + kind;
+        if (busTask ? this.vehicles.owned(BUS) > 0 : kind < 0 || (docked & (1 << kind)) !== 0) ph = Running;
+        else this.lastBlock[i] = VEHICLE_CAUSE + (busTask ? BUS : kind);
       }
       if (ph === Running) {
         this.left[p] -= TURN_STEP;
@@ -133,7 +147,10 @@ export class Turnarounds {
   /** The cause of a vehicle task waiting now, else the last one waited on, else 0. */
   blocker(i: number): number {
     const upgrades = this.vehicles.upgradesOf(i);
-    for (let k = 0; k < N; k++) if (this.phase[i * N + k] === NeedsVehicle) return VEHICLE_CAUSE + kindFor(k, upgrades);
+    for (let k = 0; k < N; k++) {
+      if (this.phase[i * N + k] !== NeedsVehicle) continue;
+      return VEHICLE_CAUSE + (k === BOARD ? BUS : kindFor(k, upgrades));
+    }
     return this.lastBlock[i];
   }
 

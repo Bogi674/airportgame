@@ -50,8 +50,8 @@ import {
   standHeading,
   type PricedBox,
 } from '@shared/apronPricing';
-import { terminalOverlaps } from '@shared/terminalOps';
-import type { TerminalGrid } from '@shared/business';
+import { cellIndex, terminalOverlaps } from '@shared/terminalOps';
+import { fixtureKey, type TerminalGrid } from '@shared/business';
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
@@ -329,6 +329,21 @@ export class Airfield {
         if (cmd.closed !== undefined) s.closed = cmd.closed;
         if (cmd.accepts !== undefined) s.accepts = cmd.accepts;
         if (cmd.pushback !== undefined) s.pushback = cmd.pushback;
+        this.refresh();
+        return { cashDelta: 0 };
+      }
+      case 'setStandGate': {
+        const s = this.data.stands.find((x) => x.id === cmd.id);
+        if (!s) return { code: 'nothingThere' };
+        if (cmd.building === -1) {
+          delete s.gate;
+        } else {
+          const grid = env.terminals?.find((g) => g.id === cmd.building);
+          const at = grid ? cellIndex(grid, cmd.x, cmd.y) : -1;
+          // An anchor has fixtureRot below 5, 5 and up is the tail of a two cell fixture.
+          if (!grid || at < 0 || grid.fixture[at] === 0 || fixtureKey(grid.fixture[at]) !== 'gateDesk' || grid.fixtureRot[at] >= 5) return { code: 'notGateDesk' };
+          s.gate = { building: cmd.building, x: cmd.x, y: cmd.y };
+        }
         this.refresh();
         return { cashDelta: 0 };
       }
@@ -1550,6 +1565,7 @@ export class Airfield {
     for (const s of this.data.stands) {
       acc = foldU32(foldU32(foldU32(acc, s.id), r(s.x)), r(s.y));
       acc = foldU32(foldU32(acc, s.upgrades ?? 0), s.upgradeWorks ? s.upgradeWorks.doneTick % 0xffffffff : 0);
+      acc = s.gate ? foldU32(foldU32(foldU32(acc, s.gate.building), s.gate.x), s.gate.y) : foldU32(acc, 0xffffffff);
     }
     for (const t of this.towerList) acc = foldU32(foldU32(foldU32(foldU32(acc, t.id), t.level), t.cost), r(t.x) * 64 + r(t.y));
     for (const x of this.roadList) {

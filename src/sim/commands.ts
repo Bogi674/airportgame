@@ -54,6 +54,8 @@ export type Command =
   | { type: 'setStandProps'; id: number; closed?: boolean; accepts?: number; pushback?: PushbackDir }
   /** Builds a stand upgrade (T66): pays its cost and closes the stand until the works finish. */
   | { type: 'startStandUpgrade'; id: number; upgrade: StandUpgrade }
+  /** Picks the gate desk (logical cell of a grid) that boards a stand; building -1 clears it (T66). */
+  | { type: 'setStandGate'; id: number; building: number; x: number; y: number }
   | { type: 'assignStand'; flight: number; standId: number }
   | { type: 'cancelFlight'; flight: number }
   | { type: 'setAutoStands'; on: boolean }

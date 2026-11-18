@@ -119,6 +119,8 @@ export interface GseHost {
   cateringTrucks(): number;
   /** `STAND_UPGRADE` bits of the stand the aircraft is parked on, 0 when none. */
   upgradesOf(a: number): number;
+  /** Boarding mode of the aircraft's stand, see `BOARDING` in the turnaround engine. */
+  boardingOf(a: number): number;
 }
 
 /**
@@ -237,6 +239,16 @@ export class Gse {
   /** `STAND_UPGRADE` bits of the aircraft's stand, 0 without a host. */
   upgradesOf(a: number): number {
     return this.host ? this.host.upgradesOf(a) : 0;
+  }
+
+  /** Boarding mode of the aircraft's stand, 0 without a host. */
+  boardingOf(a: number): number {
+    return this.host ? this.host.boardingOf(a) : 0;
+  }
+
+  /** Vehicles of a kind the airport owns, 0 without a host. */
+  owned(kind: number): number {
+    return this.host ? this.host.owned(kind) : 0;
   }
 
   /** Crew kinds of an aircraft at its stand: the dispenser replaces the refueller at a hydrant pit, fixed power drops the GPU. */

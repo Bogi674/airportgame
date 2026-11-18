@@ -1,5 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
-import { GROUND, GSE } from '@data/index';
+import { GROUND, GSE, STAND_ACCESS } from '@data/index';
+import { STAND_UPGRADE, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
@@ -14,7 +15,7 @@ import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
-import { Turnarounds, TURN_STEP } from './ops/turnaround';
+import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
@@ -107,6 +108,10 @@ export class Sim {
         return GROUND.cartsPerTrain[st ? st.size : sizeForCode(AIRCRAFT[this.traffic.type[a]].derivedForReading.code)];
       },
       upgradesOf: (a) => this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a])?.upgrades ?? 0,
+      boardingOf: (a) => {
+        const st = this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a]);
+        return st ? this.boardingMode(st, this.traffic.flight[a]) : BOARDING.near;
+      },
       owned: (k) => this.business.fleet[k] ?? 0,
       cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
     });
@@ -123,6 +128,7 @@ export class Sim {
       docked: (f) => {
         businessDocked?.(f);
         this.warnNoRoad(f);
+        this.warnFarStand(f);
         this.fuelAtDock(f);
       },
       fuelReady: (i) => {
@@ -291,6 +297,29 @@ export class Sim {
     this.eventQueue.push(`noServiceRoad|stand=${this.airfield.data.stands[s].number}`);
   }
 
+  private farStandWarned = new Map<number, number>();
+
+  /**
+   * How a flight at a stand boards (T66): a stand farther than the stairs walk limit from its gate desk needs a bus
+   * from a bus bay, or boards slower without one. General aviation, stands with no gate desk and near stands board as before.
+   */
+  private boardingMode(stand: Stand, f: number): number {
+    if (f < 0 || this.traffic.fAirline[f] === GA_AIRLINE) return BOARDING.near;
+    const desk = this.business.gateFor(stand);
+    if (!desk || Math.hypot(desk.wx - stand.x, desk.wy - stand.y) <= STAND_ACCESS.stairsWalkLimitM) return BOARDING.near;
+    return ((stand.upgrades ?? 0) & STAND_UPGRADE.busBay) !== 0 ? BOARDING.bus : BOARDING.farSlow;
+  }
+
+  /** A flight docks at a far stand with no bus bay: boarding runs slower and an alert asks for a bus bay, once a game day per stand. */
+  private warnFarStand(f: number): void {
+    const stand = this.airfield.data.stands.find((x) => x.id === this.traffic.fStand[f]);
+    if (!stand || this.boardingMode(stand, f) !== BOARDING.farSlow) return;
+    const day = Math.floor(this.tick / TICKS_PER_DAY);
+    if (this.farStandWarned.get(stand.id) === day) return;
+    this.farStandWarned.set(stand.id, day);
+    this.eventQueue.push(`standNeedsBusBay|stand=${stand.number}`);
+  }
+
   /** Tells the player once a game day per kind when an airline flight waits for a vehicle kind the airport owns none of (T63). */
   private warnNoVehicle(cause: number): void {
     if (!isVehicleCause(cause)) return;
@@ -409,7 +438,7 @@ export class Sim {
         } else {
           if (r.cashDelta !== 0) this.book('construction', r.cashDelta);
           // Stands moved or removed: the automatic assigner runs in the airfield sync, once the copy is current.
-          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || cmd.type === 'startStandUpgrade' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
+          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || cmd.type === 'setStandGate' || cmd.type === 'startStandUpgrade' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
         }
         // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
         if (this.airfield.towersVersion !== towersBefore) {

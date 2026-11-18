@@ -138,7 +138,7 @@ export interface Stand {
   upgrades?: number;
   /** Upgrade works under way. The stand takes no aircraft until they finish. */
   upgradeWorks?: { upgrade: StandUpgrade; doneTick: number };
-  /** The gate desk that boards the stand, by building id and world position; absent means the nearest desk. */
+  /** The gate desk that boards the stand, by building id and logical terminal cell; absent means the nearest desk. */
   gate?: { building: number; x: number; y: number };
 }
 

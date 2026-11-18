@@ -23,6 +23,7 @@ import {
   type TerminalGrid,
   type WeatherKind,
 } from '@shared/business';
+import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -54,6 +55,15 @@ export interface BusinessHost {
   getCash(): number;
   book(category: LedgerCategory, amount: number): void;
   emit(code: string): void;
+}
+
+/** A gate desk anchor: its grid id, logical cell and world center in meters. */
+export interface GateDesk {
+  building: number;
+  x: number;
+  y: number;
+  wx: number;
+  wy: number;
 }
 
 /** Terminals, airlines, flights revenue, daily close, rating, loan and weather. Everything is aggregated. */
@@ -439,6 +449,60 @@ export class Business {
   serviceTable(grid: number): ServiceNodes | null {
     const i = this.gridIndex(grid);
     return i < 0 ? null : this.serviceNodes[i]!;
+  }
+
+  /** Gate desk anchors of every grid in grid then cell order, with their world centers. Rebuilt when serviceVersion changes. */
+  private gateDesks: GateDesk[] = [];
+  private gateDesksAt = -1;
+
+  private deskList(): GateDesk[] {
+    if (this.gateDesksAt === this.serviceVersion) return this.gateDesks;
+    this.gateDesksAt = this.serviceVersion;
+    this.gateDesks = [];
+    for (let i = 0; i < this.grids.length; i++) {
+      const g = this.grids[i]!;
+      const sn = this.serviceNodes[i]!;
+      for (let n = 0; n < sn.count; n++) {
+        if (fixtureKey(sn.kind[n]!) !== 'gateDesk') continue;
+        const w = cornerWorld(g, sn.lx[n]! + 0.5, sn.ly[n]! + 0.5);
+        this.gateDesks.push({ building: g.id, x: sn.lx[n]!, y: sn.ly[n]!, wx: w.x, wy: w.y });
+      }
+    }
+    return this.gateDesks;
+  }
+
+  /** True when the logical cell (x, y) of the grid with this id holds the anchor of a gate desk. */
+  isGateDesk(building: number, x: number, y: number): boolean {
+    return this.deskList().some((d) => d.building === building && d.x === x && d.y === y);
+  }
+
+  /** The desk a stand is assigned to while that desk still exists, null when the stand is unknown, has no assignment or the desk is gone. */
+  assignedGate(standId: number): GateDesk | null {
+    const stand = this.airfield.data.stands.find((s) => s.id === standId);
+    const want = stand?.gate;
+    if (!want) return null;
+    return this.deskList().find((d) => d.building === want.building && d.x === want.x && d.y === want.y) ?? null;
+  }
+
+  /**
+   * The gate desk that boards a stand: its assigned desk while that still exists, else the desk nearest the stand
+   * center by straight line (ties to the lowest grid, then the lowest cell). Null when the airport has no gate desk.
+   * The returned object is shared, never change it.
+   */
+  gateFor(stand: Pick<Stand, 'x' | 'y' | 'gate'>): GateDesk | null {
+    const desks = this.deskList();
+    const want = stand.gate;
+    if (want) for (const d of desks) if (d.building === want.building && d.x === want.x && d.y === want.y) return d;
+    let best: GateDesk | null = null;
+    let bestD = Infinity;
+    for (const d of desks) {
+      const dist = Math.hypot(d.wx - stand.x, d.wy - stand.y);
+      if (dist < bestD) {
+        bestD = dist;
+        best = d;
+      }
+    }
+    return best;
   }
 
   /**
