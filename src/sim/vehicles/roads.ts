@@ -1,6 +1,6 @@
 import { GROUND, STAND_MARKINGS } from '@data/index';
 import type { AirfieldPayload } from '@shared/airfield';
-import { buildRoadGraph, edgeBetween, hasRoadStrip, routeFrom, edgeSpeedMps, lanePolyline, pathTo, routeFromDepots, type RoadGraph } from '@shared/roadGraph';
+import { buildRoadGraph, crossingHoldM, edgeBetween, hasRoadStrip, routeFrom, edgeSpeedMps, lanePolyline, pathTo, routeFromDepots, type RoadGraph } from '@shared/roadGraph';
 import type { TaxiNetwork } from '../airfield/network';
 
 /** Distance before a plain junction where a vehicle must hold the node, in meters. */
@@ -101,8 +101,8 @@ export class RoadNet {
       const tw = g.nodeCross[n];
       if (tw >= 0) {
         const t = af.taxiways.find((x) => x.id === tw);
-        // The painted hold line: the crossed taxiway's half width plus the hold back, as roadPaint draws it.
-        this.nodeHoldM[n] = (t ? t.widthM / 2 : 0) + GROUND.crossing.holdBackM;
+        // The painted hold line, clear of the taxiway and its shoulders, as roadPaint draws it.
+        this.nodeHoldM[n] = crossingHoldM(t);
         const mark = new Uint8Array(net.edgeCount);
         for (let e = 0; e < net.edgeCount; e++) if (net.edgeSource[e] === tw) mark[e] = 1;
         this.nodeCrossSlot[n] = this.crossMark.length;

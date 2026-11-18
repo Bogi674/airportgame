@@ -9,7 +9,7 @@ import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
 import { paintStands } from './standPaint';
 import { paintTowers } from './towerPaint';
-import { paintBuildings, paintDepots, paintRoadLines, paintRoadSurface } from './roadPaint';
+import { paintBuildings, paintDepots, paintRoadCrossings, paintRoadLines, paintRoadSurface } from './roadPaint';
 import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -99,9 +99,23 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     }
   }
 
-  // Service roads go under the taxiway pavement they cross, so the taxiway stays continuous (T60).
+  // Service roads go under the taxiway pavement they cross, so the taxiway stays continuous (T60). They are
+  // clipped off the shoulders too; paintRoadCrossings carries them on faintly over both.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(win.minX, win.minY, win.maxX - win.minX, win.maxY - win.minY);
+  for (const a of plan.shoulders) {
+    if (!overlaps(win, a.minX, a.minY, a.maxX, a.maxY)) continue;
+    for (const r of a.rings) {
+      ctx.moveTo(r[0].x, r[0].y);
+      for (let i = 1; i < r.length; i++) ctx.lineTo(r[i].x, r[i].y);
+      ctx.closePath();
+    }
+  }
+  ctx.clip('evenodd');
   paintRoadSurface(ctx, af.roads ?? [], win);
   paintRoadLines(ctx, af, win);
+  ctx.restore();
   paintAreas(ctx, plan.areas, win);
   for (const r of af.runways) paintRunwayPavement(ctx, r, win);
   // Turn pad pavement joins the runway end fill in the same surface color, and the yellow turn curve
@@ -309,6 +323,7 @@ function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): 
     ctx.closePath();
     ctx.fill();
   }
+  paintRoadCrossings(ctx, af, win);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'butt';
   // Taxiway centerline and edge lines (docs/DESIGN_REVISION_2.md section 2.4).

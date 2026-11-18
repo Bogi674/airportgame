@@ -62,7 +62,9 @@
     "lineMinPx": 1.3,
     "dashM": 3,
     "holdWidthM": 0.6,
-    "minScale": 0.4
+    "minScale": 0.4,
+    "crossingSurfaceAlpha": 0.35,
+    "crossingLineAlpha": 0.45
   },
   "depot": {
     "colors": { "apron": "#8e8b84", "wall": "#d4d0c6", "roof": "#7b8794", "ridge": "#66717d", "door": "#c9a64a", "outline": "#1b1b1b", "shadow": "rgba(0,0,0,0.24)" },

@@ -1,7 +1,7 @@
 import { GROUND, PAINT } from '@data/index';
 import type { AirfieldPayload, Building, Depot, ServiceRoad } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
-import { buildRoadGraph, depotExit, headingVec } from '@shared/roadGraph';
+import { buildRoadGraph, crossingHoldM, depotExit, headingVec, type RoadGraph } from '@shared/roadGraph';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
@@ -71,30 +71,83 @@ export function paintRoadLines(ctx: Ctx, af: AirfieldPayload, w: RoadWindow): vo
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  // Hold lines: where the graph puts a crossing node, at the hold distance along each road edge leaving it.
-  const g = buildRoadGraph(af);
+  // Hold lines: where the graph puts a crossing node, at the hold distance along each road leg leaving it.
   ctx.lineWidth = RP.holdWidthM;
+  const e = HALF - RP.edgeInsetM;
+  forEachCrossingLeg(af, (cx, cy, ux, uy, hold) => {
+    const hx = cx + ux * hold;
+    const hy = cy + uy * hold;
+    ctx.beginPath();
+    ctx.moveTo(hx - uy * e, hy + ux * e);
+    ctx.lineTo(hx + uy * e, hy - ux * e);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+const graphs = new WeakMap<AirfieldPayload, RoadGraph>();
+
+/** Calls `fn` for each road leg leaving a taxiway crossing node: the node, the unit direction and the hold distance. */
+function forEachCrossingLeg(af: AirfieldPayload, fn: (cx: number, cy: number, ux: number, uy: number, hold: number) => void): void {
+  let g = graphs.get(af);
+  if (!g) {
+    g = buildRoadGraph(af);
+    graphs.set(af, g);
+  }
   for (let n = 0; n < g.nodeX.length; n++) {
     const tw = g.nodeCross[n];
     if (tw < 0) continue;
-    const t = af.taxiways.find((x) => x.id === tw);
-    const hold = (t ? t.widthM / 2 : 0) + GROUND.crossing.holdBackM;
+    const hold = crossingHoldM(af.taxiways.find((x) => x.id === tw));
     for (const e of g.adj[n]) {
       const o = g.edgeA[e] === n ? g.edgeB[e] : g.edgeA[e];
       const dx = g.nodeX[o] - g.nodeX[n];
       const dy = g.nodeY[o] - g.nodeY[n];
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len <= hold) continue;
-      const ux = dx / len;
-      const uy = dy / len;
-      const cx = g.nodeX[n] + ux * hold;
-      const cy = g.nodeY[n] + uy * hold;
-      ctx.beginPath();
-      ctx.moveTo(cx - uy * (HALF - RP.edgeInsetM), cy + ux * (HALF - RP.edgeInsetM));
-      ctx.lineTo(cx + uy * (HALF - RP.edgeInsetM), cy - ux * (HALF - RP.edgeInsetM));
-      ctx.stroke();
+      fn(g.nodeX[n], g.nodeY[n], dx / len, dy / len, hold);
     }
   }
+}
+
+/**
+ * Where a service road crosses a taxiway, the road's tinted surface, edge lines and dashed center line carry
+ * on faintly across the taxiway pavement between the two hold lines, so the road reads as continuous.
+ * Painted on the taxiway pavement and under its yellow lines.
+ */
+export function paintRoadCrossings(ctx: Ctx, af: AirfieldPayload, w: RoadWindow): void {
+  if ((af.roads ?? []).length === 0 || w.scale < RP.minScale) return;
+  ctx.save();
+  ctx.lineCap = 'butt';
+  const e = HALF - RP.edgeInsetM;
+  forEachCrossingLeg(af, (cx, cy, ux, uy, hold) => {
+    if (!nearWindow([{ x: cx, y: cy }], w, hold + HALF)) return;
+    const hx = cx + ux * hold;
+    const hy = cy + uy * hold;
+    ctx.globalAlpha = RP.crossingSurfaceAlpha;
+    ctx.strokeStyle = RP.fill;
+    ctx.lineWidth = GROUND.road.widthM;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.globalAlpha = RP.crossingLineAlpha;
+    ctx.strokeStyle = PAINT.colors.white;
+    ctx.lineWidth = lineM(w, RP.lineWidthM, RP.lineMinPx);
+    ctx.beginPath();
+    for (const side of [1, -1]) {
+      ctx.moveTo(cx - uy * e * side, cy + ux * e * side);
+      ctx.lineTo(hx - uy * e * side, hy + ux * e * side);
+    }
+    ctx.stroke();
+    ctx.setLineDash([RP.dashM, RP.dashM]);
+    // Half a dash each way from the node, so the two legs meet as one dash on the taxiway centerline.
+    ctx.lineDashOffset = RP.dashM / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
   ctx.restore();
 }
 

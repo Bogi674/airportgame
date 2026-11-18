@@ -1,7 +1,8 @@
-import { GROUND, STAND_MARKINGS, STAND_SIZES } from '@data/index';
-import type { AirfieldPayload, Building, Depot, Stand } from './airfield';
+import { AIRFIELD, GROUND, STAND_MARKINGS, STAND_SIZES } from '@data/index';
+import type { AirfieldPayload, Building, Depot, Stand, Taxiway } from './airfield';
 import { closestOnSegment, segmentIntersection, type Pt } from './geom';
 import { standSlot } from './standGeom';
+import { isPaved } from './surfaceRules';
 import { cosLut, PI, sinLut } from './trig';
 
 /**
@@ -140,6 +141,17 @@ interface Seg {
   kind: number;
 }
 
+
+/**
+ * Distance from a crossing node along the road to the hold line: the crossed taxiway's half width, its paved
+ * shoulder and the hold back, so vehicles wait clear of all taxiway pavement. The sim holds there and the
+ * road paint draws the line there.
+ */
+export function crossingHoldM(t: Pick<Taxiway, 'widthM' | 'code' | 'surface'> | undefined): number {
+  if (!t) return GROUND.crossing.holdBackM;
+  const shoulder = isPaved(t.surface) ? AIRFIELD.codes[t.code].taxiwayShoulderM : 0;
+  return t.widthM / 2 + shoulder + GROUND.crossing.holdBackM;
+}
 /** Builds the road graph of an airfield. Deterministic: every list is walked in its stored order. */
 export function buildRoadGraph(af: AirfieldPayload): RoadGraph {
   const g: RoadGraph = { nodeX: [], nodeY: [], nodeCross: [], nodeDegree: [], edgeA: [], edgeB: [], edgeLen: [], edgeKind: [], adj: [], standConn: [], depotNode: [], buildingNode: [] };

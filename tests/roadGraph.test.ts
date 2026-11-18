@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { GROUND, STAND_SIZES } from '@data/index';
+import { AIRFIELD, GROUND, STAND_SIZES } from '@data/index';
 import { ACCEPT_COMMERCIAL, type AirfieldPayload, type Stand, type Taxiway } from '@shared/airfield';
-import { buildRoadGraph, depotExit, lanePolyline, pathTo, routeFromDepots, standRoadAnchors, EDGE_LANE } from '@shared/roadGraph';
+import { buildRoadGraph, crossingHoldM, depotExit, lanePolyline, pathTo, routeFromDepots, standRoadAnchors, EDGE_LANE } from '@shared/roadGraph';
 
 function payload(p: Partial<AirfieldPayload>): AirfieldPayload {
   return { version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [], ...p };
@@ -52,6 +52,13 @@ describe('road graph', () => {
     expect(k).toBeGreaterThanOrEqual(0);
     expect(g.nodeY[k]).toBeCloseTo(50, 6);
     expect(g.edgeA.length).toBe(2);
+  });
+
+  it('holds vehicles clear of the crossed taxiway and its paved shoulders', () => {
+    const c = AIRFIELD.codes.C;
+    const paved = { widthM: c.taxiwayWidthM, code: 'C', surface: 'asphalt' } as const;
+    expect(crossingHoldM(paved)).toBeCloseTo(c.taxiwayWidthM / 2 + c.taxiwayShoulderM + GROUND.crossing.holdBackM, 9);
+    expect(crossingHoldM({ ...paved, surface: 'grass' })).toBeCloseTo(c.taxiwayWidthM / 2 + GROUND.crossing.holdBackM, 9);
   });
 
   it('splits a road where another road ends on it', () => {

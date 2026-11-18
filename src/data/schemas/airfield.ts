@@ -322,6 +322,8 @@ export const paintSchema = z.strictObject({
     dashM: positive,
     holdWidthM: positive,
     minScale: positive,
+    crossingSurfaceAlpha: z.number().min(0).max(1),
+    crossingLineAlpha: z.number().min(0).max(1),
   }),
   /** Supporting building look (T65): roof color per kind, fuel tanks, doors. */
   building: z.strictObject({
