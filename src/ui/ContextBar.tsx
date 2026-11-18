@@ -3,7 +3,7 @@ import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type Airfi
 import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
-import { FIXTURE_KEYS } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS } from '@shared/business';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useGameStore } from './stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
@@ -227,7 +227,7 @@ export function ContextBar({ send }: Props) {
                 label={t('opt.fixture')}
                 value={s.fixtureId}
                 testId="opt-fixture"
-                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc').map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
+                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
                 onChange={(v) => s.set({ fixtureId: v })}
               />
             )}

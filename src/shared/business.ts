@@ -20,7 +20,7 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
@@ -28,6 +28,9 @@ export const isShopFixture = (id: number): boolean => id >= 6 && id <= 11;
 /** Cells of control room a tower needs before it counts (a 2 by 2 cab). */
 export const ATC_MIN_CELLS = 4;
 export const fixtureKey = (id: number): FixtureKey => FIXTURE_KEYS[id - 1];
+/** Baggage network nodes. The player places them with the baggage tool, never with the fixture tool. */
+export const BAGGAGE_FIXTURE_KEYS: readonly FixtureKey[] = ['screeningMachine', 'baggageBay', 'carousel'];
+export const isBaggageFixture = (id: number): boolean => id >= 17 && id <= 19;
 export type ShopKind = FixtureKey;
 
 export const FLOOR = { None: 0, Concrete: 1, Tile: 2, Carpet: 3 } as const;
@@ -53,6 +56,9 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   bagDrop: [1],
   passport: [3],
   gateDesk: [3],
+  screeningMachine: [4],
+  baggageBay: [4, 3],
+  carousel: [1],
 };
 /** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
@@ -72,6 +78,9 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   bagDrop: 2,
   passport: 1,
   gateDesk: 2,
+  screeningMachine: 1,
+  baggageBay: 1,
+  carousel: 1,
 };
 
 export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;

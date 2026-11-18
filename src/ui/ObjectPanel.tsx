@@ -2,7 +2,7 @@ import { AIRFIELD, BUSINESS, GROUND, SURFACE_SPEC } from '@data/index';
 import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
-import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
@@ -251,7 +251,7 @@ export function ObjectPanel({ send }: Props) {
   if (kind === 'terminal') {
     const term = biz?.terminals.find((x) => x.id === id);
     if (!biz || !term) return null;
-    const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k }));
+    const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k })).filter((r) => !BAGGAGE_FIXTURE_KEYS.includes(r.key));
     return (
       <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
