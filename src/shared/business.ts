@@ -237,6 +237,12 @@ export interface BusinessPayload {
   standLinked: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a contact stand has a terminal in reach, others are 1. */
   standContact: number[];
+  /** Gate desks of every terminal in terminal then node order, by building id and logical cell (T66). */
+  gateDesks: { building: number; x: number; y: number }[];
+  /** Per stand, indexed like airfield.data.stands: the index in `gateDesks` that boards it (assigned or nearest), -1 when there is no desk. */
+  standGate: number[];
+  /** 1 or 0 per stand, indexed like airfield.data.stands: farther from its gate desk than the stairs walk limit (T66). */
+  standFar: number[];
   /** Landings plus takeoffs the tower allows per rolling hour across every runway, 0 without a tower. */
   movementBudget: number;
   /** Four numbers per flight that holds a stand (Scheduled, Inbound or OnGround): stand id, flight, start and end in absolute game minutes. Uncapped, the numbers the stand rule compares. */

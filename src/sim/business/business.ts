@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BUSINESS, GROUND, MARKET, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
+import { BUSINESS, GROUND, MARKET, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
 import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
 import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
@@ -946,6 +946,15 @@ export class Business {
       airlineScore: Math.round(this.airlineScore * 100),
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
+      gateDesks: this.deskList().map((d) => ({ building: d.building, x: d.x, y: d.y })),
+      standGate: stands.map((st) => {
+        const d = this.gateFor(st);
+        return d ? this.deskList().indexOf(d) : -1;
+      }),
+      standFar: stands.map((st) => {
+        const d = this.gateFor(st);
+        return d && Math.hypot(d.wx - st.x, d.wy - st.y) > STAND_ACCESS.stairsWalkLimitM ? 1 : 0;
+      }),
       movementBudget: this.traffic.movementBudget(),
       standBlocks: this.standBlocks(),
       version: this.version,
