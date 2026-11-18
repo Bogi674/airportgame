@@ -1,5 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
-import { BUSINESS } from '@data/index';
+import { BUSINESS, GSE } from '@data/index';
+import { causeOwner, isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { LEDGER_CATEGORIES } from '@shared/business';
 import type { Command } from '@sim/commands';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -513,6 +514,7 @@ function FlightsSheet() {
               <th>{t('flights.stage')}</th>
               <th>{t('flights.eta')}</th>
               <th>{t('flights.offBlock')}</th>
+              <th>{t('flights.delay')}</th>
             </tr>
           </thead>
           <tbody>
@@ -528,6 +530,7 @@ function FlightsSheet() {
                   {r.delayMin > 0 ? ` (+${r.delayMin})` : ''}
                 </td>
                 <td>{eta(r.offBlockMin)}</td>
+                <td data-testid="flight-delay">{delayText(r.cause)}</td>
               </tr>
             ))}
           </tbody>
@@ -535,6 +538,14 @@ function FlightsSheet() {
       )}
     </Sheet>
   );
+}
+
+/** The delay cause of a flight with its owner, such as "Waiting for the belt loader (airport)", or nothing (T63). */
+export function delayText(cause: number): string {
+  const owner = causeOwner(cause);
+  if (owner === null) return '';
+  const what = isVehicleCause(cause) ? tFormat('delay.vehicle', { vehicle: (GSE[cause - VEHICLE_CAUSE]?.name ?? '').toLowerCase() }) : tDynamic(`delay.${cause}`);
+  return tFormat('delay.withOwner', { what, owner: t(owner === 'airline' ? 'delay.owner.airline' : 'delay.owner.airport') });
 }
 
 function SiteSheet() {

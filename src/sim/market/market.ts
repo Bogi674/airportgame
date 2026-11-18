@@ -333,14 +333,15 @@ export class Market {
     if (f >= 0 && this.traffic.refuseAssign(f, s.standId) === null) this.traffic.fStand[f] = s.standId;
   }
 
-  /** A series flight pushed back: on time within D13 of its scheduled off block, else delayed (D14). */
+  /** A series flight pushed back: on time within D13 of its scheduled off block, else delayed (D14), less the airline's own hold. */
   flightDone(f: number): void {
     const t = this.traffic;
     const al = t.fAirline[f];
     if (al < 0 || t.fRot[f] < 0) return;
     const a = this.airlines[al];
     if (!a?.signed) return;
-    const late = (t.nowTick - (t.fEta[f] + t.fTurn[f])) / TICKS_PER_MINUTE;
+    // Time the airline itself owns, such as passengers late to the gate, is not held against the airport (T63).
+    const late = (t.nowTick - (t.fEta[f] + t.fTurn[f]) - t.fAirlineHold[f]) / TICKS_PER_MINUTE;
     this.happy(a, late <= H.onTimeMin ? H.onTimeFlight : H.delayedFlight);
   }
 

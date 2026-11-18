@@ -17,6 +17,7 @@ import { AIRFIELD, BUSINESS, GROUND, PROFILES } from '@data/index';
 import { neededCategory } from '@shared/fireCover';
 import { movementsPerHour } from '@shared/towerBudget';
 import { padSize } from '@shared/turnPad';
+import { CAUSE_ATC, CAUSE_BOARDING, CAUSE_CREW_LEAVING, CAUSE_FUEL } from '@shared/turnaround';
 import { EdgeKind, TaxiNetwork } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
 
@@ -175,6 +176,8 @@ export class Traffic {
   readonly depRetryAt = new Int32Array(MAX_AIRCRAFT);
   /** Ticks a turnaround has held past its timer for boarding. */
   readonly boardHold = new Int32Array(MAX_AIRCRAFT);
+  /** 1 when the turnaround runs the task list with vehicles (T63): an airline flight. GA and test traffic keep the timer. */
+  readonly tasked = new Uint8Array(MAX_AIRCRAFT);
   readonly goalX = new Float64Array(MAX_AIRCRAFT);
   readonly goalY = new Float64Array(MAX_AIRCRAFT);
   count = 0;
@@ -200,6 +203,10 @@ export class Traffic {
   readonly fStand = new Int32Array(MAX_FLIGHTS).fill(-1);
   /** Ticks a scheduled arrival has waited for an ATC movement, 0 when it is not waiting for the budget. */
   readonly fMovWait = new Int32Array(MAX_FLIGHTS);
+  /** Latest reason the flight's turnaround ran past its plan, a code of `src/shared/turnaround.ts`, 0 for none. */
+  readonly fCause = new Uint8Array(MAX_FLIGHTS);
+  /** Ticks the flight was held past its plan for reasons the airline owns. */
+  readonly fAirlineHold = new Int32Array(MAX_FLIGHTS);
   /** When false only flights with an assigned stand are accepted. */
   autoStands = true;
   /** Multiplier on new turnaround times from the ground handling fleet, set by the business. */
@@ -248,7 +255,7 @@ export class Traffic {
   /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
   /** Usable approach type per runway direction, set by the sim from the obstacle surfaces. */
   obstacles: RunwayObstacles[] = [];
-  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean; fuelReady?(i: number): boolean } | null = null;
+  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean; fuelReady?(i: number): boolean; turnDone?(i: number): boolean; crewGone?(i: number): boolean; blocker?(i: number): number; delayCause?(f: number, cause: number): void } | null = null;
   private reachStand = 0;
   /** Stand blocks gathered by one autoAssign pass: stand index and start and end tick. Reused, never reallocated. */
   private readonly occStand = new Int32Array(MAX_FLIGHTS);
@@ -526,6 +533,8 @@ export class Traffic {
     this.fLate[f] = 0;
     this.fStage[f] = stageKm;
     this.fStand[f] = -1;
+    this.fCause[f] = 0;
+    this.fAirlineHold[f] = 0;
     this.hooks?.scheduled?.(f);
     return f;
   }
@@ -1490,7 +1499,10 @@ export class Traffic {
       this.releaseAll(i);
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
-      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown * this.roadFactor(i, f)) : 45 * TICKS_PER_MINUTE;
+      // An airline flight runs its task list with real vehicles, so the abstract fleet slowdown no longer applies to it (T63).
+      this.tasked[i] = f >= 0 && this.fAirline[f] >= 0 ? 1 : 0;
+      const slow = this.tasked[i] === 1 ? 1 : this.serviceSlowdown;
+      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * slow * this.roadFactor(i, f)) : 45 * TICKS_PER_MINUTE;
       this.fuelOwed[i] = 0;
       this.fuelWait[i] = 0;
       this.boardHold[i] = 0;
@@ -1879,24 +1891,52 @@ export class Traffic {
   // Turnaround and departure -----------------------------------------------
 
   private updateTurnaround(i: number): void {
+    const f = this.flight[i];
+    // The timer counts down the planned turnaround. A tasked flight ends when its task list does (T63), else when the timer does.
     if (this.timer[i] > 0) {
       this.timer[i]--;
+      if (this.tasked[i] === 0) return;
+    }
+    const late = this.timer[i] === 0 && f >= 0;
+    if (this.tasked[i] === 1 && this.hooks?.turnDone && !this.hooks.turnDone(i)) {
+      if (late && this.hooks.blocker) {
+        const c = this.hooks.blocker(i);
+        if (c !== 0 && c !== this.fCause[f]) {
+          this.fCause[f] = c;
+          this.hooks.delayCause?.(f, c);
+        }
+      }
       return;
     }
+    if (this.timer[i] > 0) return;
     // A flight short of fuel waits for the farm; after the grounding limit it is reported grounded once (D19).
     if (this.fuelOwed[i] > 0) {
       if (this.hooks?.fuelReady && !this.hooks.fuelReady(i)) {
         this.fuelWait[i]++;
+        if (late) this.fCause[f] = CAUSE_FUEL;
         if (this.fuelWait[i] === FUEL_GROUND_TICKS) this.emit(`flightGrounded|type=${AIRCRAFT[this.type[i]].id}|reason=fuel`);
         return;
       }
     }
-    if (this.boardHold[i] < BOARD_HOLD_TICKS && this.hooks?.boardingReady && !this.hooks.boardingReady(this.flight[i])) {
+    if (this.boardHold[i] < BOARD_HOLD_TICKS && this.hooks?.boardingReady && !this.hooks.boardingReady(f)) {
       this.boardHold[i]++;
+      // Passengers late to the gate are the airline's delay (user, 2026-11-18).
+      if (late) {
+        this.fCause[f] = CAUSE_BOARDING;
+        this.fAirlineHold[f]++;
+      }
+      return;
+    }
+    // The aircraft pushes back only once its crew has left the stand.
+    if (this.tasked[i] === 1 && this.hooks?.crewGone && !this.hooks.crewGone(i)) {
+      if (late) this.fCause[f] = CAUSE_CREW_LEAVING;
       return;
     }
     // A departure that lost the movement budget waits a retry step before it asks again (T40 R4).
-    if (this.tick < this.depRetryAt[i]) return;
+    if (this.tick < this.depRetryAt[i]) {
+      if (late) this.fCause[f] = CAUSE_ATC;
+      return;
+    }
     if (this.tick % 20 !== i % 20) return;
     this.planDeparture(i);
   }
@@ -2279,6 +2319,7 @@ export class Traffic {
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
       movStart: this.movStart, movHead: this.movHead, movCount: this.movCount, depWait: this.depWait, depRetryAt: this.depRetryAt,
       boardHold: this.boardHold, fuelOwed: this.fuelOwed, fuelWait: this.fuelWait,
+      tasked: this.tasked, fCause: this.fCause, fAirlineHold: this.fAirlineHold,
     };
   }
 
@@ -2360,6 +2401,9 @@ export class Traffic {
     acc = foldInts(acc, this.boardHold, MAX_AIRCRAFT);
     acc = foldInts(acc, this.fuelOwed, MAX_AIRCRAFT);
     acc = foldInts(acc, this.fuelWait, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.tasked, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.fCause, MAX_FLIGHTS);
+    acc = foldInts(acc, this.fAirlineHold, MAX_FLIGHTS);
     acc = foldInts(acc, this.movHead, this.movHead.length);
     acc = foldInts(acc, this.movCount, this.movCount.length);
     acc = foldInts(acc, this.movStart, this.movStart.length);

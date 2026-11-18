@@ -311,3 +311,13 @@ Answer: (pending)
 | Fuel taken per turnaround | A fixed number of liters per aircraft type, in data |
 | Road tankers and refuellers | Automatic orders below 25 percent stock, a 36 m3 tanker arriving 2 game hours later; refuellers draw from stock at the aircraft. A stock out delays the flight, which is grounded after 60 minutes (D19) |
 | Staff center, cleaning depot, maintenance workshop, catering unit | Placeable now with D20 and D22 prices and an upkeep of 0.05 percent of cost per day; the catering unit sends its own trucks by road; other effects come with T63, T68 and T50 |
+
+## 2026-11-18 T63 turnaround task lists
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| How long the tasks take | Shares of today's role turnaround, with the longest chain summing to it, so plans stay valid. A vehicle task counts down only while its vehicle is docked |
+| A task whose vehicle kind has no free unit | Always wait for an owned vehicle, also without a depot or road |
+| Old saves and games with no depot | Accept stuck airline flights until the player builds a depot and buys vehicles. GA needs no vehicles |
+| Delay owners | The airline owns the boarding hold for passengers late to the gate, in full; the airport owns vehicles, crew, fuel and ATC |
+| Cleaning, water and waste | Timed tasks with no vehicle. Cleaning counts only with a cleaning depot, and cleanliness joins the rating. Staff does not gate tasks until T68 |
