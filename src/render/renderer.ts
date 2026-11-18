@@ -437,7 +437,7 @@ export class Renderer {
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
-    this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
+    this.drawPeople(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     if (this.standStates.length > 0) this.drawStandStates(z * c, z * s, -z * s, z * c, e, f);
   }
 
@@ -1121,12 +1121,12 @@ export class Renderer {
     }
   }
 
-  private drawPeople(curr: SnapshotViews | null, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+  private drawPeople(prev: SnapshotViews | null, curr: SnapshotViews | null, alpha: number, a: number, b: number, cc: number, d: number, e: number, f: number): void {
     if (!curr) return;
     this.camera.visibleBounds(this.bounds);
     this.ctx.setTransform(a, b, cc, d, e, f);
     const bo = this.bounds;
-    this.people.draw(this.ctx, curr, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3]);
+    this.people.draw(this.ctx, prev, curr, alpha, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3]);
   }
 
   /**
