@@ -83,8 +83,7 @@ function siftDown(cache: WalkCache, i: number, size: number): void {
 }
 
 /** Fills row from the Dijkstra distances out of source, over the walk graph edges. */
-function fillRow(wg: WalkGraph, source: number, row: number): void {
-  const cache = wg.cache;
+function fillRow(wg: WalkGraph, cache: WalkCache, source: number, row: number): void {
   const n = wg.nodeCount;
   const dist = cache.dist;
   const pos = cache.heapPos;
@@ -123,8 +122,7 @@ function fillRow(wg: WalkGraph, source: number, row: number): void {
 }
 
 /** The row that holds the distances from source, filling it first when it is not cached. */
-function rowFor(wg: WalkGraph, source: number): number {
-  const cache = wg.cache;
+function rowFor(wg: WalkGraph, cache: WalkCache, source: number): number {
   let row = cache.sourceRow[source]!;
   if (row < 0) {
     row = cache.rowSource.indexOf(-1);
@@ -137,10 +135,39 @@ function rowFor(wg: WalkGraph, source: number): number {
     }
     cache.rowSource[row] = source;
     cache.sourceRow[source] = row;
-    fillRow(wg, source, row);
+    fillRow(wg, cache, source, row);
   }
   cache.rowStamp[row] = ++cache.clock;
   return row;
+}
+
+/**
+ * Offset into cache.rows of the row that holds every node's distance to target, filling it when needed.
+ * -1 unless target is an integer node id. rows[base + v] is the distance from v to target.
+ */
+export function distanceRowIn(wg: WalkGraph, cache: WalkCache, target: number): number {
+  if (!Number.isInteger(target) || target < 0 || target >= wg.nodeCount) return -1;
+  return rowFor(wg, cache, target) * wg.nodeCount;
+}
+
+/**
+ * The edge out of node u that descends the distance row at base the most: the lowest edge length plus
+ * remaining distance among edges that lead closer to the target. -1 when no edge does.
+ */
+export function nextEdge(wg: WalkGraph, rows: Float32Array, base: number, u: number): number {
+  const du = rows[base + u]!;
+  let best = -1;
+  let bestCost = Infinity;
+  for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
+    const dv = rows[base + wg.edgeTo[e]!]!;
+    if (!(dv < du)) continue;
+    const cost = wg.edgeLen[e]! + dv;
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = e;
+    }
+  }
+  return best;
 }
 
 /**
@@ -153,7 +180,7 @@ export function walkDistance(wg: WalkGraph, from: number, to: number): number {
   if (from === to) return 0;
   const lo = Math.min(from, to);
   const hi = Math.max(from, to);
-  const row = rowFor(wg, lo);
+  const row = rowFor(wg, wg.cache, lo);
   return wg.cache.rows[row * n + hi]!;
 }
 
