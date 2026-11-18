@@ -222,9 +222,14 @@ export class BaggageNetwork {
     for (let i = 0; i < this.links.length; i++) if (this.links[i].src === src && this.links[i].dst === dst) return this.links[i].lengthM;
     return -1;
   }
+
   carouselOf(bayId: number): number | null {
-    const l = this.links.find((x) => x.src === bayId && this.findNode(x.dst)?.kind === 'carousel');
-    return l ? l.dst : null;
+    for (let i = 0; i < this.links.length; i++) {
+      const l = this.links[i];
+      if (l.src !== bayId) continue;
+      for (let k = 0; k < this.nodes.length; k++) if (this.nodes[k].id === l.dst && this.nodes[k].kind === 'carousel') return l.dst;
+    }
+    return null;
   }
 
   /** Routing of a departing bag from a drop point to the bay of the flight's stand. */

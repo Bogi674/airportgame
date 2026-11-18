@@ -133,6 +133,7 @@ export class Sim {
     this.cohorts.onCheckIn = (gridId, cell, serial, bags) => this.baggage.checkIn(gridId, cell, serial, bags);
     this.turns.bagsReady = (f) => this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
     this.turns.loaded = (f) => this.baggage.freeFlight(this.traffic.serialOf(f));
+    this.turns.unloaded = (f) => this.baggage.unloaded(this.traffic.serialOf(f), this.business.flightPaxOf(f), this.tick);
     const businessPushback = this.traffic.hooks?.pushback;
     const businessDocked = this.traffic.hooks?.docked;
     this.traffic.hooks = {

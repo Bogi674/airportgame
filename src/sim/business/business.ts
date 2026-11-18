@@ -357,7 +357,7 @@ export class Business {
       if (this.secureSeating === 0) out.push('noSeating');
       if (this.anyGateDesk && this.gatelessHall) out.push('noGateDesk');
       for (const k of this.roomIssues) out.push(k);
-      if (this.totals.belt === 0) out.push('noBelt');
+      if (this.totals.belt + this.carouselCount() === 0) out.push('noBelt');
     }
     if (!this.atcOk) out.push('noAtc');
     return out;
@@ -512,8 +512,20 @@ export class Business {
     return null;
   }
 
+  /** Placed carousels. A carousel fixture fills every cell of its footprint, so the cell count is divided by the footprint size. */
+  private carouselCount(): number {
+    const F = BAGGAGE.footprints.carousel;
+    return Math.floor(this.totals.carousel / (F.w * F.d));
+  }
+
+  /** Each belt and each carousel adds the belt module capacity. */
   arrCapacity(): number {
-    return this.totals.belt * BUSINESS.modules.belt.capacityPerHour;
+    return (this.totals.belt + this.carouselCount()) * BUSINESS.modules.belt.capacityPerHour;
+  }
+
+  /** Passengers a flight was served with at docking, 0 for GA and for flights lost to a missing terminal. */
+  flightPaxOf(f: number): number {
+    return f < 0 ? 0 : this.flightPax[f];
   }
 
   intlCapacity(): number {

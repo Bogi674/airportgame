@@ -11,6 +11,7 @@ const KIND = TASKS.map((t) => (t.kind === null ? -1 : (GSE_INDEX[t.kind] ?? -1))
 const AFTER = TASKS.map((t) => t.after.map((id) => TASKS.findIndex((o) => o.id === id)));
 const CLEAN = TASKS.findIndex((t) => t.id === 'clean');
 const LOAD = TASKS.findIndex((t) => t.id === 'load');
+const UNLOAD = TASKS.findIndex((t) => t.id === 'unload');
 
 /** The turnaround engine runs every this many ticks (docs/ARCHITECTURE.md section 2 cadences). */
 export const TURN_STEP = 10;
@@ -50,6 +51,8 @@ export class Turnarounds {
   bagsReady: ((f: number) => boolean) | null = null;
   /** Called with the flight once its load task is done, so the bags still in the baggage system are settled (T43). */
   loaded: ((f: number) => void) | null = null;
+  /** Called with the flight once its unload task is done, so its arriving bags enter the bay (T43). */
+  unloaded: ((f: number) => void) | null = null;
 
   constructor(
     private readonly traffic: Traffic,
@@ -113,6 +116,7 @@ export class Turnarounds {
           ph = Done;
           if (k === CLEAN && this.cleaned) this.cleaned();
           if (k === LOAD && this.loaded) this.loaded(this.flightOf[i]);
+          if (k === UNLOAD && this.unloaded) this.unloaded(this.flightOf[i]);
         }
       }
       this.phase[p] = ph;

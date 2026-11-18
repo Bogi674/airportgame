@@ -1,4 +1,5 @@
-import { BAGGAGE } from '@data/index';
+import { BAGGAGE, PROFILES } from '@data/index';
+import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, FIXTURE_ZONES, TICKS_PER_MINUTE, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { bagKey, dropOutCell, nodeCells, rampCell, screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
@@ -67,6 +68,11 @@ export interface BagFlowSave {
   missNext: number;
   missSerial: string;
   missCount: string;
+  /** Arrival bags, since the arrival slice. Older saves have none and start with zeros. */
+  born?: string;
+  claimedTotal?: number;
+  claimWaitSumS?: number;
+  claimFlights?: number;
 }
 
 /**
@@ -83,7 +89,18 @@ const DECI_PER_SECOND = 10;
 const MISS_ROWS = 64;
 
 /** Where a batch is. Free slots are 0. */
-export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5 } as const;
+export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5, BayIn: 6, ToCarousel: 7, Carousel: 8 } as const;
+
+/** Bags per passenger of an arriving flight: the mean of the profile table weighted by the profile mix. */
+const ARRIVAL_BAGS_PER_PAX = (() => {
+  let weighted = 0;
+  let mix = 0;
+  for (const key of PROFILE_KEYS) {
+    weighted += PROFILES.profiles[key].mix * PROFILES.profiles[key].bagsPerPax;
+    mix += PROFILES.profiles[key].mix;
+  }
+  return mix > 0 ? weighted / mix : 0;
+})();
 
 /** Per machine and per bay state the tick keeps, in node id order. Rebuilt when the layout changes. */
 interface NodeState {
@@ -136,6 +153,8 @@ export class Baggage {
   private readonly seq = new Int32Array(BATCH_CAP);
   /** 1 once a machine has screened the batch. */
   private readonly screened = new Uint8Array(BATCH_CAP);
+  /** Arrival batches: tick the unload task finished, the start of the claim wait. */
+  private readonly born = new Int32Array(BATCH_CAP);
   /** Origins of batches that reached a full machine this run, so their drop points stop sending. */
   private readonly stalled = new Int32Array(BATCH_CAP);
   private stalledCount = 0;
@@ -145,6 +164,11 @@ export class Baggage {
   missingToday = 0;
   checkedToday = 0;
   loadedTotal = 0;
+  /** Today's claim waits in game seconds and the flights they were measured on, reset daily. */
+  claimWaitSumS = 0;
+  claimFlights = 0;
+  /** Arrival bags claimed at a carousel, all time. */
+  claimedTotal = 0;
   private readonly missSerial = new Int32Array(MISS_ROWS);
   private readonly missCount = new Int32Array(MISS_ROWS);
   private missNext = 0;
@@ -172,6 +196,34 @@ export class Baggage {
   resetDay(): void {
     this.missingToday = 0;
     this.checkedToday = 0;
+    this.claimWaitSumS = 0;
+    this.claimFlights = 0;
+  }
+
+  /**
+   * The unload task of a flight finished. Its arriving bags become one batch in the bay of the flight's stand,
+   * resolved once here so the batch never follows another flight's stand. No bay counts them missing. GA flights carry no passengers.
+   */
+  unloaded(serial: number, pax: number, tick: number): void {
+    const bags = Math.round(pax * ARRIVAL_BAGS_PER_PAX);
+    if (bags <= 0 || serial <= 0) return;
+    this.checkedToday += bags;
+    const standId = this.host.standOfSerial(serial);
+    const bay = standId < 0 ? null : this.bayOfStand(standId);
+    const b = bay === null ? -1 : this.allocBatch();
+    if (b < 0 || bay === null) {
+      this.addMissing(serial, bags);
+      return;
+    }
+    this.serial[b] = serial;
+    this.count[b] = bags;
+    this.stage[b] = BagStage.BayIn;
+    this.node[b] = bay;
+    this.origin[b] = bay;
+    this.ready[b] = 0;
+    this.seq[b] = this.nextSeq++;
+    this.screened[b] = 0;
+    this.born[b] = tick;
   }
 
   /** Bags of a serial missing so far, from the recent rows. */
@@ -198,6 +250,12 @@ export class Baggage {
     return -1;
   }
 
+  /** Node id of the first batch of a serial in the given stage, -1 when there is none. For tests and the stand inspector. */
+  nodeOfBags(serial: number, stage: number): number {
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === stage) return this.node[b];
+    return -1;
+  }
+
   /**
    * A cohort finished at the check in or bag drop node whose anchor is array cell `cell` of grid `gridId`. Its bags become
    * one batch in that drop point's buffer. A drop point with no machine, or a full store, counts them missing at once.
@@ -220,6 +278,7 @@ export class Baggage {
     this.ready[b] = 0;
     this.seq[b] = this.nextSeq++;
     this.screened[b] = 0;
+    this.born[b] = 0;
   }
 
   /** True while the drop point at the anchor holds more bags than its buffer, so its desk starts no new service. */
@@ -247,7 +306,8 @@ export class Baggage {
   freeFlight(serial: number): void {
     if (serial <= 0 || this.live === 0) return;
     for (let b = 0; b < this.hi; b++) {
-      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free) continue;
+      // Arrival bags leave through the carousel, a departing flight's load does not settle them.
+      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free || this.stage[b] >= BagStage.BayIn) continue;
       if (this.stage[b] === BagStage.Bay) this.loadedTotal += this.count[b];
       else this.addMissing(serial, this.count[b]);
       this.freeBatch(b);
@@ -266,6 +326,9 @@ export class Baggage {
       return;
     }
     this.recount();
+    this.claim();
+    this.admitToCarousels(tick);
+    this.leaveBays(tick);
     this.admitToMachines(tick);
     this.screen();
     this.route(tick);
@@ -436,6 +499,10 @@ export class Baggage {
         ready: packTyped(this.ready.subarray(0, hi)),
         seq: packTyped(this.seq.subarray(0, hi)),
         screened: packTyped(this.screened.subarray(0, hi)),
+        born: packTyped(this.born.subarray(0, hi)),
+        claimWaitSumS: this.claimWaitSumS,
+        claimFlights: this.claimFlights,
+        claimedTotal: this.claimedTotal,
         tokens: this.states.filter((s) => s.isMachine).map((s): [number, number] => [s.id, s.tok]),
         missNext: this.missNext,
         missSerial: packTyped(this.missSerial),
@@ -503,8 +570,9 @@ export class Baggage {
       if (this.stage[b] === BagStage.Free) continue;
       acc = foldU32(foldU32(foldU32(foldU32(acc, b), this.serial[b]), this.count[b]), this.stage[b]);
       acc = foldU32(foldU32(foldU32(foldU32(acc, this.node[b]), this.origin[b]), this.ready[b]), this.seq[b]);
-      acc = foldU32(acc, this.screened[b]);
+      acc = foldU32(foldU32(acc, this.screened[b]), this.born[b]);
     }
+    acc = foldU32(foldU32(foldU32(acc, this.claimWaitSumS), this.claimFlights), this.claimedTotal);
     for (let r = 0; r < MISS_ROWS; r++) acc = foldU32(foldU32(acc, this.missSerial[r]), this.missCount[r]);
     return foldU32(acc, this.missNext);
   }
@@ -591,6 +659,10 @@ export class Baggage {
     this.missingToday = 0;
     this.checkedToday = 0;
     this.loadedTotal = 0;
+    this.claimWaitSumS = 0;
+    this.claimFlights = 0;
+    this.claimedTotal = 0;
+    this.born.fill(0);
     this.missSerial.fill(0);
     this.missCount.fill(0);
     this.missNext = 0;
@@ -610,6 +682,7 @@ export class Baggage {
     this.ready.set(unpackTyped(f.ready, Int32Array).subarray(0, hi));
     this.seq.set(unpackTyped(f.seq, Int32Array).subarray(0, hi));
     this.screened.set(unpackTyped(f.screened, Uint8Array).subarray(0, hi));
+    if (f.born !== undefined) this.born.set(unpackTyped(f.born, Int32Array).subarray(0, hi));
     this.hi = hi;
     this.live = 0;
     for (let b = 0; b < hi; b++) if (this.stage[b] !== BagStage.Free) this.live++;
@@ -617,6 +690,9 @@ export class Baggage {
     this.missingToday = f.missingToday;
     this.checkedToday = f.checkedToday;
     this.loadedTotal = f.loadedTotal;
+    this.claimWaitSumS = f.claimWaitSumS ?? 0;
+    this.claimFlights = f.claimFlights ?? 0;
+    this.claimedTotal = f.claimedTotal ?? 0;
     for (const [id, tok] of f.tokens) {
       const k = this.stateIdx(id);
       if (k >= 0) this.states[k].tok = tok;
@@ -761,6 +837,56 @@ export class Baggage {
         s.held += this.count[b];
         this.stage[b] = BagStage.Bay;
       }
+    }
+  }
+
+  /** Bags on a carousel are claimed at once, no arrival passengers exist yet. Runs first, so a batch that arrived last run frees its place now. */
+  private claim(): void {
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.Carousel) continue;
+      this.claimedTotal += this.count[b];
+      this.freeBatch(b);
+    }
+  }
+
+  private carouselHeld(carouselId: number): number {
+    let n = 0;
+    for (let b = 0; b < this.hi; b++) if (this.stage[b] === BagStage.Carousel && this.node[b] === carouselId) n += this.count[b];
+    return n;
+  }
+
+  /** A batch at the end of its carousel link goes on the carousel while it has room, else it holds the link (back pressure). */
+  private admitToCarousels(tick: number): void {
+    const room = BAGGAGE.carousel.capacityBags;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.ToCarousel || this.ready[b] > tick) continue;
+      const held = this.carouselHeld(this.node[b]);
+      // An empty carousel takes any batch, so one large batch can always arrive.
+      if (held !== 0 && held + this.count[b] > room) continue;
+      this.stage[b] = BagStage.Carousel;
+      this.claimWaitSumS += Math.round(((tick - this.born[b]) * CLOCK_SCALE) / DECI_PER_SECOND);
+      this.claimFlights++;
+    }
+  }
+
+  /** The oldest batch waiting in a bay enters the bay's link to its carousel once the previous one has left it. */
+  private leaveBays(tick: number): void {
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.BayIn) continue;
+      const bay = this.node[b];
+      let blocked = false;
+      for (let o = 0; o < this.hi && !blocked; o++) {
+        if (o === b || this.origin[o] !== bay) continue;
+        if (this.stage[o] === BagStage.ToCarousel || (this.stage[o] === BagStage.BayIn && this.seq[o] < this.seq[b])) blocked = true;
+      }
+      if (blocked) continue;
+      const rec = this.recById(bay);
+      const net = rec === null ? null : this.netOf(rec.building);
+      const carousel = net === null ? null : net.carouselOf(bay);
+      if (net === null || carousel === null) continue;
+      this.node[b] = carousel;
+      this.stage[b] = BagStage.ToCarousel;
+      this.ready[b] = tick + this.linkTicks(net.linkLengthM(bay, carousel));
     }
   }
 
