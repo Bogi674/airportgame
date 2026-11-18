@@ -17,7 +17,7 @@ import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
 import { Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
-import { Baggage, type BaggageSave } from './ops/baggage/baggage';
+import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
@@ -27,7 +27,7 @@ import { packTyped, unpackInto } from './save/pack';
 import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 
 /** Subsystems in execution order. The stress tool times each one separately. */
-const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'flights', 'aircraft', 'vehicles'] as const;
+const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'baggage', 'flights', 'aircraft', 'vehicles'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
 
 /**
@@ -122,8 +122,17 @@ export class Sim {
       getCash: (): number => this.cash,
       book: (amount: number): void => this.book('construction', amount),
       standExists: (id: number): boolean => this.airfield.data.stands.some((s) => s.id === id),
-    });
+      standOfSerial: (serial: number): number => {
+        const f = this.traffic.flightOfSerial(serial);
+        return f < 0 ? -2 : this.traffic.fStand[f];
+      },
+    }, this.rng);
     this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
+    this.business.bagMissingShare = () => this.baggage.missingShare();
+    this.business.bagDayReset = () => this.baggage.resetDay();
+    this.cohorts.onCheckIn = (gridId, cell, serial, bags) => this.baggage.checkIn(gridId, cell, serial, bags);
+    this.turns.bagsReady = (f) => this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
+    this.turns.loaded = (f) => this.baggage.freeFlight(this.traffic.serialOf(f));
     const businessPushback = this.traffic.hooks?.pushback;
     const businessDocked = this.traffic.hooks?.docked;
     this.traffic.hooks = {
@@ -149,6 +158,7 @@ export class Sim {
       pushback: (f) => {
         businessPushback?.(f);
         this.cohorts.onPushback(f);
+        this.baggage.freeFlight(this.traffic.serialOf(f));
       },
     };
   }
@@ -208,15 +218,18 @@ export class Sim {
         this.cohorts.update(this.tick);
         break;
       case 5:
+        if (this.tick % BAG_RUN_TICKS === 0) this.baggage.update(this.tick);
+        break;
+      case 6:
         if (this.tick % 10 === 0) {
           this.traffic.updateFlights(this.tick);
           this.traffic.updateGa(this.tick);
         }
         break;
-      case 6:
+      case 7:
         this.traffic.update(this.tick);
         break;
-      case 7:
+      case 8:
         this.gse.update();
         if (this.tick % TURN_STEP === 0) this.turns.update();
         break;

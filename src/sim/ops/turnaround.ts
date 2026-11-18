@@ -1,5 +1,5 @@
 import { GSE_INDEX, TURNAROUNDS } from '@data/index';
-import { VEHICLE_CAUSE } from '@shared/turnaround';
+import { CAUSE_BAGS, VEHICLE_CAUSE } from '@shared/turnaround';
 import { foldInts } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { AcState, MAX_AIRCRAFT, type Traffic } from './traffic';
@@ -10,6 +10,7 @@ const N = TASKS.length;
 const KIND = TASKS.map((t) => (t.kind === null ? -1 : (GSE_INDEX[t.kind] ?? -1)));
 const AFTER = TASKS.map((t) => t.after.map((id) => TASKS.findIndex((o) => o.id === id)));
 const CLEAN = TASKS.findIndex((t) => t.id === 'clean');
+const LOAD = TASKS.findIndex((t) => t.id === 'load');
 
 /** The turnaround engine runs every this many ticks (docs/ARCHITECTURE.md section 2 cadences). */
 export const TURN_STEP = 10;
@@ -45,6 +46,10 @@ export class Turnarounds {
   readonly lastBlock = new Int32Array(MAX_AIRCRAFT);
   /** Called once per turnaround when cleaning ends; the business tells whether a cleaning depot did it. */
   cleaned: (() => void) | null = null;
+  /** Asked with the flight before the load task starts; false holds it and names the bags as the delay cause (T43). */
+  bagsReady: ((f: number) => boolean) | null = null;
+  /** Called with the flight once its load task is done, so the bags still in the baggage system are settled (T43). */
+  loaded: ((f: number) => void) | null = null;
 
   constructor(
     private readonly traffic: Traffic,
@@ -92,6 +97,10 @@ export class Turnarounds {
       if (ph === Waiting) {
         let ready = true;
         for (const d of AFTER[k]) if (this.phase[i * N + d] !== Done) ready = false;
+        if (ready && k === LOAD && this.bagsReady !== null && !this.bagsReady(this.flightOf[i])) {
+          ready = false;
+          this.lastBlock[i] = CAUSE_BAGS;
+        }
         if (ready) ph = KIND[k] >= 0 && this.vehicles.crewHas(type, KIND[k]) ? NeedsVehicle : Running;
       }
       if (ph === NeedsVehicle) {
@@ -103,6 +112,7 @@ export class Turnarounds {
         if (this.left[p] <= 0) {
           ph = Done;
           if (k === CLEAN && this.cleaned) this.cleaned();
+          if (k === LOAD && this.loaded) this.loaded(this.flightOf[i]);
         }
       }
       this.phase[p] = ph;

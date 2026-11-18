@@ -1,8 +1,11 @@
 import { BAGGAGE } from '@data/index';
-import { FIXTURE_KEYS, FIXTURE_ZONES, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, dropOutCell, nodeCells, rampCell, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { FIXTURE_KEYS, FIXTURE_ZONES, TICKS_PER_MINUTE, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { bagKey, dropOutCell, nodeCells, rampCell, screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
+import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
+import { packTyped, unpackTyped } from '../../save/pack';
+import type { Rng } from '../../rng';
 import type { Business } from '../../business/business';
 import { BaggageNetwork, type BagNode, type BagNodeKind, type BagWarning, type Cell, type LinkMode, type RouteResult } from './network';
 
@@ -21,6 +24,8 @@ export interface BaggageHost {
   /** Books a construction cash change, negative for a cost. */
   book(amount: number): void;
   standExists(standId: number): boolean;
+  /** Stand id of the live flight with this serial, -1 when it has none yet and -2 when the flight is gone. */
+  standOfSerial(serial: number): number;
 }
 
 export interface PlaceBagNode {
@@ -38,6 +43,59 @@ export interface BaggageSave {
   /** Stands served per bay id. */
   bayStands: { id: number; stands: number[] }[];
   links: { building: number; links: [number, number, LinkMode][] }[];
+  /** Bag batches and counters, since save version 24. Missing in older saves, which start with no bags in flight. */
+  flow?: BagFlowSave;
+}
+
+/** Batch arrays are packed up to the highest slot ever used. */
+export interface BagFlowSave {
+  hi: number;
+  nextSeq: number;
+  missingToday: number;
+  checkedToday: number;
+  loadedTotal: number;
+  serial: string;
+  count: string;
+  stage: string;
+  node: string;
+  origin: string;
+  ready: string;
+  seq: string;
+  screened: string;
+  /** Screening tokens per machine id. */
+  tokens: [number, number][];
+  missNext: number;
+  missSerial: string;
+  missCount: string;
+}
+
+/**
+ * Batch store size. A batch holds the bags of one cohort, so even a busy terminal has far fewer in flight at once.
+ * Bags beyond it count as missing at check in.
+ */
+const BATCH_CAP = 4096;
+/** The baggage subsystem runs every this many ticks (docs/ARCHITECTURE.md section 3). */
+export const BAG_RUN_TICKS = 10;
+/** Game clock tenths of a second that pass between two runs, the unit of the machine token budget. */
+const RUN_DECI = BAG_RUN_TICKS * CLOCK_SCALE;
+const DECI_PER_SECOND = 10;
+/** Rows of the per serial missing bag table. The oldest row is overwritten when it is full. */
+const MISS_ROWS = 64;
+
+/** Where a batch is. Free slots are 0. */
+export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5 } as const;
+
+/** Per machine and per bay state the tick keeps, in node id order. Rebuilt when the layout changes. */
+interface NodeState {
+  id: number;
+  isMachine: boolean;
+  /** Machine only: screening time banked toward the head batch, in game tenths of a second. */
+  tok: number;
+  /** Machine only: cached screeningRoomOk and the terminal version it was worked out for. */
+  ok: boolean;
+  okTerminal: number;
+  /** Bags held now: queue bags for a machine, staged bags for a bay. Recounted every run. */
+  held: number;
 }
 
 const KIND_INDEX: readonly BagNodeKind[] = ['drop', 'machine', 'bay', 'carousel'];
@@ -62,10 +120,159 @@ export class Baggage {
   /** True while this class edits the grid itself, so the grid hook does not sync again. */
   private editing = false;
 
+  /** Reserved for belt jitter. Nothing draws from it yet, so it never advances and needs no save. */
+  readonly rng: Rng;
+  /** Bag batches as a struct of arrays. A slot is free when its stage is 0, and the lowest free slot is taken first so a restore keeps the order. */
+  private readonly serial = new Int32Array(BATCH_CAP);
+  private readonly count = new Int16Array(BATCH_CAP);
+  private readonly stage = new Uint8Array(BATCH_CAP);
+  /** Node id where the batch waits, or the link target while it is on a link. */
+  private readonly node = new Int32Array(BATCH_CAP);
+  /** Drop point the batch was checked in at. */
+  private readonly origin = new Int32Array(BATCH_CAP);
+  /** Tick the batch reaches the end of its link. */
+  private readonly ready = new Int32Array(BATCH_CAP);
+  /** Arrival order, so a machine serves first in first out. */
+  private readonly seq = new Int32Array(BATCH_CAP);
+  /** 1 once a machine has screened the batch. */
+  private readonly screened = new Uint8Array(BATCH_CAP);
+  /** Origins of batches that reached a full machine this run, so their drop points stop sending. */
+  private readonly stalled = new Int32Array(BATCH_CAP);
+  private stalledCount = 0;
+  private hi = 0;
+  private live = 0;
+  private nextSeq = 1;
+  missingToday = 0;
+  checkedToday = 0;
+  loadedTotal = 0;
+  private readonly missSerial = new Int32Array(MISS_ROWS);
+  private readonly missCount = new Int32Array(MISS_ROWS);
+  private missNext = 0;
+  private states: NodeState[] = [];
+  /** Bumped whenever a record is added or dropped, so the state table and the orphan sweep know to run. */
+  private layoutStamp = 0;
+  private statesStamp = -1;
+  private sweptStamp = -1;
+  private anyBlocked = false;
+
   constructor(
     private readonly business: Business,
     private readonly host: BaggageHost,
-  ) {}
+    rng: Rng,
+  ) {
+    this.rng = rng.fork('baggage');
+  }
+
+  /** Share of today's checked bags that are missing, 0 to 1. */
+  missingShare(): number {
+    return this.missingToday / Math.max(1, this.checkedToday);
+  }
+
+  /** Starts a new counting day. */
+  resetDay(): void {
+    this.missingToday = 0;
+    this.checkedToday = 0;
+  }
+
+  /** Bags of a serial missing so far, from the recent rows. */
+  missingFor(serial: number): number {
+    for (let r = 0; r < MISS_ROWS; r++) if (this.missSerial[r] === serial) return this.missCount[r];
+    return 0;
+  }
+
+  /** Bags of a serial in one stage of the system. */
+  bagsOf(serial: number, stage: number): number {
+    let n = 0;
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === stage) n += this.count[b];
+    return n;
+  }
+
+  /** Bag batches in the system, of any stage. */
+  get batchCount(): number {
+    return this.live;
+  }
+
+  /** Node id of the stage 5 batches of a serial, -1 when there are none. For tests and the stand inspector. */
+  bayOfBags(serial: number): number {
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.Bay) return this.node[b];
+    return -1;
+  }
+
+  /**
+   * A cohort finished at the check in or bag drop node whose anchor is array cell `cell` of grid `gridId`. Its bags become
+   * one batch in that drop point's buffer. A drop point with no machine, or a full store, counts them missing at once.
+   */
+  checkIn(gridId: number, cell: number, serial: number, bags: number): void {
+    if (bags <= 0 || serial <= 0) return;
+    this.checkedToday += bags;
+    const drop = this.dropAt(gridId, cell);
+    const net = drop === null ? null : this.netOf(drop.building);
+    const b = net !== null && drop !== null && net.machineOf(drop.id) !== null ? this.allocBatch() : -1;
+    if (b < 0 || drop === null) {
+      this.addMissing(serial, bags);
+      return;
+    }
+    this.serial[b] = serial;
+    this.count[b] = bags;
+    this.stage[b] = BagStage.Drop;
+    this.node[b] = drop.id;
+    this.origin[b] = drop.id;
+    this.ready[b] = 0;
+    this.seq[b] = this.nextSeq++;
+    this.screened[b] = 0;
+  }
+
+  /** True while the drop point at the anchor holds more bags than its buffer, so its desk starts no new service. */
+  dropBlocked(gridId: number, cell: number): boolean {
+    const drop = this.dropAt(gridId, cell);
+    return drop !== null && this.dropBags(drop.id) > BAGGAGE.dropPoint.bufferBags;
+  }
+
+  /**
+   * The load task of a flight may start when none of its bags is still on the way to the bay, or once the flight is
+   * lateBagHoldMin past its departure tick.
+   */
+  loadReady(serial: number, tick: number, departTick: number): boolean {
+    let onTheWay = false;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.serial[b] === serial && this.stage[b] >= BagStage.Drop && this.stage[b] <= BagStage.ToBay) {
+        onTheWay = true;
+        break;
+      }
+    }
+    return !onTheWay || tick >= departTick + Math.round(BAGGAGE.lateBagHoldMin * TICKS_PER_MINUTE);
+  }
+
+  /** The flight is loaded or has pushed back: bags in its bay count as loaded, all others as missing. */
+  freeFlight(serial: number): void {
+    if (serial <= 0 || this.live === 0) return;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free) continue;
+      if (this.stage[b] === BagStage.Bay) this.loadedTotal += this.count[b];
+      else this.addMissing(serial, this.count[b]);
+      this.freeBatch(b);
+    }
+  }
+
+  /** One run of the subsystem, every BAG_RUN_TICKS ticks. */
+  update(tick: number): void {
+    this.syncStates();
+    if (this.sweptStamp !== this.layoutStamp) {
+      this.sweptStamp = this.layoutStamp;
+      this.sweepOrphans();
+    }
+    if (this.live === 0) {
+      if (this.anyBlocked) this.refreshBlocked();
+      return;
+    }
+    this.recount();
+    this.admitToMachines(tick);
+    this.screen();
+    this.route(tick);
+    this.admitToBays(tick);
+    this.launch(tick);
+    this.refreshBlocked();
+  }
 
   nodesOf(building: number): BagNodeRec[] {
     return this.recs.filter((r) => r.building === building);
@@ -120,6 +327,7 @@ export class Baggage {
     this.refreshCells(g.id, cells);
     const rec: BagNodeRec = { id: this.nextId++, kind: spec.kind, building: g.id, spec, cell: [spec.cx, spec.cy] };
     this.recs.push(rec);
+    this.layoutStamp++;
     this.ensureNet(g.id).add(this.netNode(rec, g));
     this.syncBuilding(g.id);
     return null;
@@ -173,6 +381,7 @@ export class Baggage {
    */
   syncBuilding(building: number): void {
     const g = this.business.grids.find((x) => x.id === building);
+    this.layoutStamp++;
     if (!g) {
       this.recs = this.recs.filter((r) => r.building !== building);
       this.nets = this.nets.filter((n) => n.building !== building);
@@ -210,7 +419,28 @@ export class Baggage {
   }
 
   saveState(): BaggageSave {
+    this.syncStates();
+    const hi = this.hi;
     return {
+      flow: {
+        hi,
+        nextSeq: this.nextSeq,
+        missingToday: this.missingToday,
+        checkedToday: this.checkedToday,
+        loadedTotal: this.loadedTotal,
+        serial: packTyped(this.serial.subarray(0, hi)),
+        count: packTyped(this.count.subarray(0, hi)),
+        stage: packTyped(this.stage.subarray(0, hi)),
+        node: packTyped(this.node.subarray(0, hi)),
+        origin: packTyped(this.origin.subarray(0, hi)),
+        ready: packTyped(this.ready.subarray(0, hi)),
+        seq: packTyped(this.seq.subarray(0, hi)),
+        screened: packTyped(this.screened.subarray(0, hi)),
+        tokens: this.states.filter((s) => s.isMachine).map((s): [number, number] => [s.id, s.tok]),
+        missNext: this.missNext,
+        missSerial: packTyped(this.missSerial),
+        missCount: packTyped(this.missCount),
+      },
       nextId: this.nextId,
       nodes: this.recs.map((r) => ({ id: r.id, kind: r.kind, building: r.building, spec: r.spec ? { ...r.spec } : null, cell: [r.cell[0], r.cell[1]] })),
       bayStands: this.nets.flatMap((n) => n.net.nodeList().filter((x) => x.kind === 'bay').map((x) => ({ id: x.id, stands: x.stands.slice() }))),
@@ -223,8 +453,10 @@ export class Baggage {
     this.recs = [];
     this.nets = [];
     this.nextId = 1;
+    this.clearFlow();
     if (raw === undefined) {
       for (const g of this.business.grids) this.syncBuilding(g.id);
+      this.refreshBlocked();
       return;
     }
     this.nextId = raw.nextId;
@@ -243,6 +475,10 @@ export class Baggage {
       const net = this.netOf(group.building);
       if (net) for (const [src, dst, mode] of group.links) net.link(src, dst, mode);
     }
+    this.layoutStamp++;
+    this.syncStates();
+    if (raw.flow !== undefined) this.loadFlow(raw.flow);
+    this.refreshBlocked();
   }
 
   hash(h: number): number {
@@ -260,11 +496,317 @@ export class Baggage {
       }
       for (const l of n.net.linkList()) acc = foldU32(foldU32(foldU32(acc, l.src), l.dst), l.mode === 'auto' ? 0 : 1);
     }
-    return acc;
+    this.syncStates();
+    for (const s of this.states) if (s.isMachine) acc = foldU32(foldU32(acc, s.id), s.tok);
+    acc = foldU32(foldU32(foldU32(foldU32(acc, this.nextSeq), this.missingToday), this.checkedToday), this.loadedTotal);
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] === BagStage.Free) continue;
+      acc = foldU32(foldU32(foldU32(foldU32(acc, b), this.serial[b]), this.count[b]), this.stage[b]);
+      acc = foldU32(foldU32(foldU32(foldU32(acc, this.node[b]), this.origin[b]), this.ready[b]), this.seq[b]);
+      acc = foldU32(acc, this.screened[b]);
+    }
+    for (let r = 0; r < MISS_ROWS; r++) acc = foldU32(foldU32(acc, this.missSerial[r]), this.missCount[r]);
+    return foldU32(acc, this.missNext);
   }
 
   private netOf(building: number): BaggageNetwork | null {
-    return this.nets.find((n) => n.building === building)?.net ?? null;
+    for (let i = 0; i < this.nets.length; i++) if (this.nets[i].building === building) return this.nets[i].net;
+    return null;
+  }
+
+  // Batch store and the tick steps. Everything below runs in the baggage subsystem with plain loops and no allocation. -----
+
+  private recById(id: number): BagNodeRec | null {
+    for (let i = 0; i < this.recs.length; i++) if (this.recs[i].id === id) return this.recs[i];
+    return null;
+  }
+
+  private gridById(id: number): TerminalGrid | null {
+    const grids = this.business.grids;
+    for (let i = 0; i < grids.length; i++) if (grids[i].id === id) return grids[i];
+    return null;
+  }
+
+  /** The drop point whose anchor is array cell `cell` of the grid. */
+  private dropAt(gridId: number, cell: number): BagNodeRec | null {
+    const g = this.gridById(gridId);
+    if (g === null || cell < 0 || cell >= g.w * g.h) return null;
+    const x = g.x0 + (cell % g.w);
+    const y = g.y0 + Math.floor(cell / g.w);
+    for (let i = 0; i < this.recs.length; i++) {
+      const r = this.recs[i];
+      if (r.kind === 'drop' && r.building === gridId && r.cell[0] === x && r.cell[1] === y) return r;
+    }
+    return null;
+  }
+
+  private dropBags(dropId: number): number {
+    let n = 0;
+    for (let b = 0; b < this.hi; b++) if (this.stage[b] === BagStage.Drop && this.origin[b] === dropId) n += this.count[b];
+    return n;
+  }
+
+  private stateIdx(id: number): number {
+    for (let k = 0; k < this.states.length; k++) if (this.states[k].id === id) return k;
+    return -1;
+  }
+
+  /** The lowest free slot, so a restored store gives the same order as the one that was saved. -1 when full. */
+  private allocBatch(): number {
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] === BagStage.Free) {
+        this.live++;
+        return b;
+      }
+    }
+    if (this.hi >= BATCH_CAP) return -1;
+    this.live++;
+    return this.hi++;
+  }
+
+  private freeBatch(b: number): void {
+    this.stage[b] = BagStage.Free;
+    this.live--;
+  }
+
+  /** Counts bags as missing for a serial, in today's counter and in the per serial table. */
+  private addMissing(serial: number, bags: number): void {
+    this.missingToday += bags;
+    for (let r = 0; r < MISS_ROWS; r++) {
+      if (this.missSerial[r] === serial) {
+        this.missCount[r] += bags;
+        return;
+      }
+    }
+    this.missSerial[this.missNext] = serial;
+    this.missCount[this.missNext] = bags;
+    this.missNext = (this.missNext + 1) % MISS_ROWS;
+  }
+
+  private clearFlow(): void {
+    this.stage.fill(BagStage.Free);
+    this.hi = 0;
+    this.live = 0;
+    this.nextSeq = 1;
+    this.missingToday = 0;
+    this.checkedToday = 0;
+    this.loadedTotal = 0;
+    this.missSerial.fill(0);
+    this.missCount.fill(0);
+    this.missNext = 0;
+    this.states = [];
+    this.statesStamp = -1;
+    this.sweptStamp = -1;
+    this.anyBlocked = false;
+  }
+
+  private loadFlow(f: BagFlowSave): void {
+    const hi = Math.min(f.hi, BATCH_CAP);
+    this.serial.set(unpackTyped(f.serial, Int32Array).subarray(0, hi));
+    this.count.set(unpackTyped(f.count, Int16Array).subarray(0, hi));
+    this.stage.set(unpackTyped(f.stage, Uint8Array).subarray(0, hi));
+    this.node.set(unpackTyped(f.node, Int32Array).subarray(0, hi));
+    this.origin.set(unpackTyped(f.origin, Int32Array).subarray(0, hi));
+    this.ready.set(unpackTyped(f.ready, Int32Array).subarray(0, hi));
+    this.seq.set(unpackTyped(f.seq, Int32Array).subarray(0, hi));
+    this.screened.set(unpackTyped(f.screened, Uint8Array).subarray(0, hi));
+    this.hi = hi;
+    this.live = 0;
+    for (let b = 0; b < hi; b++) if (this.stage[b] !== BagStage.Free) this.live++;
+    this.nextSeq = f.nextSeq;
+    this.missingToday = f.missingToday;
+    this.checkedToday = f.checkedToday;
+    this.loadedTotal = f.loadedTotal;
+    for (const [id, tok] of f.tokens) {
+      const k = this.stateIdx(id);
+      if (k >= 0) this.states[k].tok = tok;
+    }
+    this.missNext = f.missNext;
+    this.missSerial.set(unpackTyped(f.missSerial, Int32Array));
+    this.missCount.set(unpackTyped(f.missCount, Int32Array));
+  }
+
+  /** Rebuilds the machine and bay state table when records changed, keeping each machine's tokens. */
+  private syncStates(): void {
+    if (this.statesStamp === this.layoutStamp) return;
+    this.statesStamp = this.layoutStamp;
+    const next: NodeState[] = [];
+    for (const rec of this.recs) {
+      if (rec.kind !== 'machine' && rec.kind !== 'bay') continue;
+      const prev = this.stateIdx(rec.id);
+      next.push({ id: rec.id, isMachine: rec.kind === 'machine', tok: prev >= 0 ? this.states[prev].tok : 0, ok: false, okTerminal: -1, held: 0 });
+    }
+    this.states = next;
+  }
+
+  /** Bags whose node or drop point is gone after an edit count as missing. */
+  private sweepOrphans(): void {
+    for (let b = 0; b < this.hi; b++) {
+      const st = this.stage[b];
+      if (st === BagStage.Free) continue;
+      if (this.recById(this.node[b]) === null || (st <= BagStage.Queue && this.recById(this.origin[b]) === null)) {
+        this.addMissing(this.serial[b], this.count[b]);
+        this.freeBatch(b);
+      }
+    }
+  }
+
+  private recount(): void {
+    for (let k = 0; k < this.states.length; k++) this.states[k].held = 0;
+    for (let b = 0; b < this.hi; b++) {
+      const st = this.stage[b];
+      if (st !== BagStage.Queue && st !== BagStage.Bay) continue;
+      const k = this.stateIdx(this.node[b]);
+      if (k >= 0) this.states[k].held += this.count[b];
+    }
+  }
+
+  private machineOk(s: NodeState): boolean {
+    const version = this.business.terminalVersion;
+    if (s.okTerminal !== version) {
+      s.okTerminal = version;
+      const rec = this.recById(s.id);
+      const g = rec === null || rec.spec === null ? null : this.gridById(rec.building);
+      s.ok = rec !== null && rec.spec !== null && g !== null && screeningRoomOk(g, rec.spec);
+    }
+    return s.ok;
+  }
+
+  private linkTicks(lengthM: number): number {
+    return gameSecondsToTicks(lengthM / BAGGAGE.beltSpeedMps);
+  }
+
+  /** A batch that reached the end of its link enters the machine when the buffer has room, else it waits and stalls its drop point. */
+  private admitToMachines(tick: number): void {
+    this.stalledCount = 0;
+    const room = BAGGAGE.screeningMachine.bufferBags;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.ToMachine || this.ready[b] > tick) continue;
+      const k = this.stateIdx(this.node[b]);
+      if (k < 0) continue;
+      const s = this.states[k];
+      // An empty machine takes any batch, so one large batch can always start.
+      if (s.held === 0 || s.held + this.count[b] <= room) {
+        s.held += this.count[b];
+        this.stage[b] = BagStage.Queue;
+      } else {
+        this.stalled[this.stalledCount++] = this.origin[b];
+      }
+    }
+  }
+
+  /** First in first out batch of a machine that is not screened yet, -1 for none. */
+  private headOf(machineId: number): number {
+    let best = -1;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.Queue || this.screened[b] === 1 || this.node[b] !== machineId) continue;
+      if (best < 0 || this.seq[b] < this.seq[best]) best = b;
+    }
+    return best;
+  }
+
+  /** Each machine in a valid staff room banks screening time and screens its head batches. */
+  private screen(): void {
+    const perBag = Math.round(BAGGAGE.screeningMachine.secondsPerBag * DECI_PER_SECOND);
+    for (let k = 0; k < this.states.length; k++) {
+      const s = this.states[k];
+      if (!s.isMachine) continue;
+      let head = this.headOf(s.id);
+      if (head < 0 || !this.machineOk(s)) {
+        s.tok = 0;
+        continue;
+      }
+      s.tok += RUN_DECI;
+      while (head >= 0 && s.tok >= this.count[head] * perBag) {
+        s.tok -= this.count[head] * perBag;
+        this.screened[head] = 1;
+        head = this.headOf(s.id);
+      }
+      if (head < 0) s.tok = 0;
+    }
+  }
+
+  /** Screened batches go to the bay of their flight's stand. Without a route they stay in the machine queue. */
+  private route(tick: number): void {
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.Queue || this.screened[b] === 0) continue;
+      const standId = this.host.standOfSerial(this.serial[b]);
+      if (standId === -2) {
+        this.addMissing(this.serial[b], this.count[b]);
+        this.freeBatch(b);
+        continue;
+      }
+      if (standId === -1) continue;
+      const drop = this.recById(this.origin[b]);
+      const net = drop === null ? null : this.netOf(drop.building);
+      if (net === null) continue;
+      const r = net.routeDeparture(this.origin[b], standId);
+      if (!('route' in r)) continue;
+      const bay = r.route[2];
+      this.node[b] = bay;
+      this.stage[b] = BagStage.ToBay;
+      this.ready[b] = tick + this.linkTicks(net.linkLengthM(r.route[1], bay));
+    }
+  }
+
+  /** A batch that reached the end of its bay link is staged in the bay up to its buffer. */
+  private admitToBays(tick: number): void {
+    const room = BAGGAGE.bay.bufferBags;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.ToBay || this.ready[b] > tick) continue;
+      const k = this.stateIdx(this.node[b]);
+      if (k < 0) continue;
+      const s = this.states[k];
+      if (s.held === 0 || s.held + this.count[b] <= room) {
+        s.held += this.count[b];
+        this.stage[b] = BagStage.Bay;
+      }
+    }
+  }
+
+  private isStalled(dropId: number): boolean {
+    for (let i = 0; i < this.stalledCount; i++) if (this.stalled[i] === dropId) return true;
+    return false;
+  }
+
+  /** Drop point buffers feed their belt to the machine, unless a batch from that drop point is waiting at a full machine. */
+  private launch(tick: number): void {
+    for (let b = 0; b < this.hi; b++) {
+      if (this.stage[b] !== BagStage.Drop) continue;
+      const drop = this.recById(this.origin[b]);
+      const net = drop === null ? null : this.netOf(drop.building);
+      if (net === null || this.isStalled(this.origin[b])) continue;
+      const machine = net.machineOf(this.origin[b]);
+      if (machine === null) continue;
+      this.node[b] = machine;
+      this.stage[b] = BagStage.ToMachine;
+      this.ready[b] = tick + this.linkTicks(net.linkLengthM(this.origin[b], machine));
+    }
+  }
+
+  /** Sets the back pressure flag of every drop point's service node from its buffer. */
+  private refreshBlocked(): void {
+    this.anyBlocked = false;
+    const limit = BAGGAGE.dropPoint.bufferBags;
+    for (let i = 0; i < this.recs.length; i++) {
+      const rec = this.recs[i];
+      if (rec.kind !== 'drop') continue;
+      const g = this.gridById(rec.building);
+      const table = this.business.serviceTable(rec.building);
+      if (g === null || table === null) continue;
+      const cell = cellIndex(g, rec.cell[0], rec.cell[1]);
+      let k = -1;
+      for (let j = 0; j < table.count; j++) {
+        if (table.cell[j] === cell) {
+          k = j;
+          break;
+        }
+      }
+      if (k < 0) continue;
+      const blocked = this.dropBags(rec.id) > limit;
+      table.blocked[k] = blocked ? 1 : 0;
+      if (blocked) this.anyBlocked = true;
+    }
   }
 
   private ensureNet(building: number): BaggageNetwork {
@@ -278,6 +820,7 @@ export class Baggage {
 
   /** Removes the record and its network node with its links (rule F). */
   private dropRec(rec: BagNodeRec): void {
+    this.layoutStamp++;
     this.netOf(rec.building)?.remove(rec.id);
     this.recs = this.recs.filter((r) => r !== rec);
   }

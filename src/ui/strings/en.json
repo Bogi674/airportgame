@@ -564,6 +564,7 @@
   "delay.41": "Waiting for fuel",
   "delay.42": "Passengers late to the gate",
   "delay.43": "Waiting for the tower",
+  "delay.44": "Waiting for bags",
   "delay.withOwner": "{what} ({owner})",
   "delay.owner.airport": "airport",
   "delay.owner.airline": "airline",

@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BUSINESS, GROUND, MARKET, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
+import { BAGGAGE, BUSINESS, GROUND, MARKET, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
 import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
 import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
@@ -221,6 +221,9 @@ export class Business {
   gridRemoved: ((index: number) => void) | null = null;
   /** Called with the building id at the end of every successful terminal edit or demolition, set by the sim. */
   onGridEdited: ((building: number) => void) | null = null;
+  /** Share of today's checked bags that were missing, 0 to 1, and the reset after the daily close. Set by the sim (T43). */
+  bagMissingShare: (() => number) | null = null;
+  bagDayReset: (() => void) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -712,6 +715,7 @@ export class Business {
       if (this.history.length > LEDGER_DAYS) this.history.shift();
       this.today.fill(0);
       this.updateRating();
+      this.bagDayReset?.();
     }
     this.day = d;
     this.updateFire(d);
@@ -789,7 +793,9 @@ export class Business {
     const toilets = hasTerminal ? Math.min(1, this.totals.toilet / 4) : 0;
     const shops = hasTerminal ? Math.min(1, leased / 4) : 0;
     const queues = hasTerminal ? this.satisfaction : 0;
-    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore) / 5;
+    // Missing bags weigh missingBagWeight each against the bags checked today. With none checked the term is a full score.
+    const bagScore = Math.max(0, 1 - BAGGAGE.missingBagWeight * (this.bagMissingShare ? this.bagMissingShare() : 0));
+    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore + bagScore) / 6;
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
     this.airlineScore = (this.handlingScore + infra + this.onTime + this.cleanScore) / 4;
     const target = 100 * (this.paxScore + this.airlineScore) / 2;

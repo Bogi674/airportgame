@@ -203,16 +203,25 @@ export class BaggageNetwork {
     return this.links.filter((l) => l.dst === id);
   }
 
+  // The three lookups below run in the baggage tick, so they use plain loops and allocate nothing.
   machineOf(dropId: number): number | null {
-    const l = this.links.find((x) => x.src === dropId);
-    return l ? l.dst : null;
+    for (let i = 0; i < this.links.length; i++) if (this.links[i].src === dropId) return this.links[i].dst;
+    return null;
   }
 
   bayOfStand(standId: number): number | null {
-    const bay = this.nodes.find((n) => n.kind === 'bay' && n.stands.includes(standId));
-    return bay ? bay.id : null;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const n = this.nodes[i];
+      if (n.kind === 'bay' && n.stands.indexOf(standId) >= 0) return n.id;
+    }
+    return null;
   }
 
+  /** Length in metres of the link from src to dst, or -1 when there is none. */
+  linkLengthM(src: number, dst: number): number {
+    for (let i = 0; i < this.links.length; i++) if (this.links[i].src === src && this.links[i].dst === dst) return this.links[i].lengthM;
+    return -1;
+  }
   carouselOf(bayId: number): number | null {
     const l = this.links.find((x) => x.src === bayId && this.findNode(x.dst)?.kind === 'carousel');
     return l ? l.dst : null;
@@ -224,7 +233,7 @@ export class BaggageNetwork {
     if (m === null) return { problem: 'noMachine' };
     const b = this.bayOfStand(standId);
     if (b === null) return { problem: 'noBay' };
-    if (!this.links.some((l) => l.src === m && l.dst === b)) return { problem: 'notRouted', bay: b };
+    if (this.linkLengthM(m, b) < 0) return { problem: 'notRouted', bay: b };
     return { route: [dropId, m, b] };
   }
 

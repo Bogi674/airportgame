@@ -42,6 +42,7 @@ const DEG = Math.PI / 180;
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
+const BAG_DROP = FIXTURE_KEYS.indexOf('bagDrop') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 
@@ -115,6 +116,8 @@ export class Cohorts {
   readonly flBoarded: Int32Array;
   readonly flGate: Int32Array;
   readonly flActive: Int32Array;
+  /** Called with grid id, anchor cell index, flight serial and bag count when a cohort finishes at a check in or bag drop node. Set by the sim (T43). */
+  onCheckIn: ((gridId: number, cell: number, serial: number, bags: number) => void) | null = null;
   private readonly rng: Rng;
   private readonly initialRng: number;
   private readonly business: Business;
@@ -414,6 +417,10 @@ export class Cohorts {
       this.stage[c] = Stage.Airside;
       this.schedule(c, this.tick + STEP);
       return;
+    }
+    const kind = t.kind[this.node[c]];
+    if (this.onCheckIn !== null && (kind === CHECK_IN || kind === BAG_DROP) && this.bags[c] > 0) {
+      this.onCheckIn(this.gridId(g), t.cell[this.node[c]], this.traffic.serialOf(this.flight[c]), this.bags[c]);
     }
     const from = t.walkNode[this.node[c]];
     const n = this.pickNode(g, SECURITY, SECURITY, from, c);
