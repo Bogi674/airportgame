@@ -5,7 +5,7 @@ import { packTyped, unpackTyped } from './pack';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -24,6 +24,10 @@ export interface SaveData {
   airfield: unknown;
   traffic: unknown;
   business: unknown;
+  /** Ground vehicles, since version 21 (T63). */
+  vehicles?: unknown;
+  /** Turnaround task lists, since version 21 (T63). */
+  turnarounds?: unknown;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -185,5 +189,8 @@ export function migrate(raw: unknown): SaveData {
     if (b) b.fireGraceUntil = (b.day ?? 0) + GROUND.fire.graceDays;
     save.version = 20;
   }
+  // Version 20 to 21: vehicles and turnaround task lists are saved, and airline flights run task lists (T63). Older saves
+  // have no vehicles on the apron, and their aircraft already on stands finish on the timer they had, as no slot is tasked.
+  if (save.version < 21) save.version = 21;
   return save as SaveData;
 }

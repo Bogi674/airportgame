@@ -13,6 +13,7 @@ import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
+import { Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
@@ -42,6 +43,8 @@ export class Sim {
   readonly business: Business;
   readonly cohorts: Cohorts;
   readonly gse: Gse;
+  /** Turnaround task lists of airline flights (T63). */
+  readonly turns: Turnarounds;
   /** Service road graph and the vehicle routes on it, derived from the airfield (T60). */
   readonly roads = new RoadNet();
   /** Airfield and ground versions the road net was built for, and the depots counted then. */
@@ -105,6 +108,9 @@ export class Sim {
       owned: (k) => this.business.fleet[k] ?? 0,
       cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
     });
+    this.turns = new Turnarounds(this.traffic, this.gse);
+    this.gse.turns = this.turns;
+    this.turns.cleaned = () => this.business.cleanedTurnaround();
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
@@ -125,6 +131,9 @@ export class Sim {
       contactOk: (x, y) => this.business.hasTerminalNear(x, y),
       scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
       boardingReady: (f) => this.cohorts.boardingReady(f),
+      turnDone: (i) => this.turns.done[i] === 1 && this.turns.flightOf[i] === this.traffic.flight[i],
+      crewGone: (i) => this.gse.crewGone(i),
+      blocker: (i) => this.turns.blocker(i),
       // The business settles the flight first, then the passengers still in the terminal miss it.
       pushback: (f) => {
         businessPushback?.(f);
@@ -198,6 +207,7 @@ export class Sim {
         break;
       case 7:
         this.gse.update();
+        if (this.tick % TURN_STEP === 0) this.turns.update();
         break;
     }
   }
@@ -562,6 +572,8 @@ export class Sim {
       traffic: this.traffic.saveState(),
       business: this.business.saveState(),
       cohorts: this.cohorts.saveState(),
+      vehicles: this.gse.saveState(),
+      turnarounds: this.turns.saveState(),
     };
     return save;
   }
@@ -584,6 +596,8 @@ export class Sim {
     this.business.loadState(save.business);
     this.roadSeen.fill(-1);
     this.syncRoads(true);
+    this.gse.loadState(save.vehicles);
+    this.turns.loadState(save.turnarounds);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts);
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
@@ -611,6 +625,8 @@ export class Sim {
     h = this.traffic.hash(h);
     h = this.business.hash(h);
     h = this.cohorts.hash(h);
+    h = this.gse.hash(h);
+    h = this.turns.hash(h);
     return h;
   }
 

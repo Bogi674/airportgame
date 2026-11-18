@@ -6,6 +6,8 @@ import { followHitch, type TowPose } from '@shared/trailer';
 import { atan2Det, cosLut, PI, sinLut } from '@shared/trig';
 import { AcState, MAX_AIRCRAFT, type Traffic } from '../ops/traffic';
 import type { RoadNet } from './roads';
+import { foldInts, foldU32 } from '../hash';
+import { packTyped, unpackInto, unpackTyped } from '../save/pack';
 
 export const MAX_VEHICLES = 1024;
 
@@ -120,7 +122,7 @@ export interface GseHost {
  * stand path to the dock, and leave the same way. Without one they appear at the stand's road point, as
  * before roads existed. Junctions and taxiway crossings are held by one vehicle at a time, a crossing
  * also waits for aircraft on the crossed taxiway, and vehicles keep their gap to the one ahead.
- * Vehicles never change aircraft timing yet, so they are not part of saves or hashes (T63 makes them so).
+ * Airline turnarounds wait for their docked vehicles (T63), so vehicles are part of saves and hashes.
  */
 export class Gse {
   count = 0;
@@ -184,6 +186,12 @@ export class Gse {
   private readonly waiting = new Uint8Array(MAX_AIRCRAFT * 2);
   private readonly last = new Int32Array(MAX_AIRCRAFT * 2).fill(-1);
   private readonly prev = new Int32Array(MAX_VEHICLES).fill(-1);
+  /** One bit per vehicle kind docked at each aircraft, read by the turnaround tasks (T63). */
+  readonly dockedMask = new Uint32Array(MAX_AIRCRAFT);
+  /** 1 when the vehicle counts against the owned fleet of its kind while it is out. */
+  private readonly counted = new Uint8Array(MAX_VEHICLES);
+  /** Turnaround task state: an airline flight's crew leaves once its vehicle tasks are done. Set by the sim. */
+  turns: { readonly vehDone: Uint8Array } | null = null;
   private readonly pose: TowPose = { x: 0, y: 0, heading: 0 };
   private roadVersion = -1;
   private phase = 0;
@@ -212,6 +220,24 @@ export class Gse {
     this.out.fill(0);
     this.outUnit = 0;
     this.count = 0;
+    this.dockedMask.fill(0);
+    this.counted.fill(0);
+  }
+
+  /** True when the type's crew has a vehicle of the kind with a drive path to its dock. */
+  crewHas(type: number, kind: number): boolean {
+    return (crewMask[type] & (1 << kind)) !== 0 && pathN[type * KINDS + kind] >= 2;
+  }
+
+  /** True when no crew vehicle of the aircraft is left on its stand: every one is gone or on the road home. */
+  crewGone(a: number): boolean {
+    if (this.pending[a] !== 0) return false;
+    for (let v = 0; v < MAX_VEHICLES; v++) {
+      if (this.active[v] === 0 || this.owner[v] !== a || this.kind[v] === TUG) continue;
+      const s = this.state[v];
+      if (s !== RoadOut && s !== Towed) return false;
+    }
+    return true;
   }
 
   // hot
@@ -225,6 +251,68 @@ export class Gse {
     }
     if (this.count === 0) return;
     this.move(t);
+  }
+
+  // Saving (T63: vehicles change turnaround timing, so they are saved and hashed) ----------
+
+  private arrays(): Record<string, Float64Array | Int32Array | Uint32Array | Uint8Array> {
+    return {
+      active: this.active, kind: this.kind, state: this.state, owner: this.owner, x: this.x, y: this.y, heading: this.heading,
+      lead: this.lead, tail: this.tail, wpX: this.wpX, wpY: this.wpY, wpN: this.wpN, ti: this.ti, outX: this.outX, outY: this.outY,
+      outN: this.outN, dockHead: this.dockHead, lf: this.lf, rStand: this.rStand, ri: this.ri, held: this.held, waited: this.waited,
+      ahead: this.ahead, turnBack: this.turnBack, out: this.out, served: this.served, cleared: this.cleared, turnAt: this.turnAt,
+      front: this.front, tugged: this.tugged, pending: this.pending, waiting: this.waiting, last: this.last, prev: this.prev,
+      dockedMask: this.dockedMask, counted: this.counted,
+    };
+  }
+
+  saveState(): unknown {
+    const arrays: Record<string, string> = {};
+    const src = this.arrays();
+    for (const k of Object.keys(src)) arrays[k] = packTyped(src[k]);
+    // Road routes are valid for the road net they were made on; the restored net has its own version number.
+    const routeOk = new Uint8Array(MAX_VEHICLES);
+    for (let v = 0; v < MAX_VEHICLES; v++) routeOk[v] = this.active[v] === 1 && this.rVer[v] === this.roadVersion ? 1 : 0;
+    arrays.routeOk = packTyped(routeOk);
+    return { arrays, count: this.count, outUnit: this.outUnit, phase: this.phase, roadsCurrent: this.host !== null && this.roadVersion === this.host.roads.version };
+  }
+
+  /** Restores the vehicles after the road net was rebuilt for the loaded airfield. A save without vehicles starts empty. */
+  loadState(raw: unknown): void {
+    this.reset();
+    const o = raw as { arrays?: Record<string, string>; count?: number; outUnit?: number; phase?: number; roadsCurrent?: boolean } | undefined;
+    const roads = this.host?.roads;
+    this.roadVersion = roads ? roads.version : -1;
+    if (!o?.arrays) return;
+    const dst = this.arrays();
+    for (const k of Object.keys(dst)) {
+      const a = dst[k];
+      if (o.arrays[k] !== undefined) unpackInto(o.arrays[k], a as never, a.constructor as never);
+    }
+    const routeOk = o.arrays.routeOk !== undefined ? unpackTyped(o.arrays.routeOk, Uint8Array) : new Uint8Array(MAX_VEHICLES);
+    // A save made before the vehicles saw a road rebuild replays that rebuild on the first update, with every route stale.
+    const stale = o.roadsCurrent === false;
+    for (let v = 0; v < MAX_VEHICLES; v++) this.rVer[v] = routeOk[v] === 1 && !stale ? this.roadVersion : -1;
+    if (stale) this.roadVersion = -1;
+    this.count = o.count ?? 0;
+    this.outUnit = o.outUnit ?? 0;
+    this.phase = o.phase ?? 0;
+    if (roads) {
+      for (let i = 0; i < this.held.length; i++) {
+        const n = this.held[i];
+        if (n >= 0 && n < roads.nodeOwner.length) roads.nodeOwner[n] = i >> 1;
+      }
+    }
+  }
+
+  hash(h: number): number {
+    let acc = foldU32(h, this.count);
+    acc = foldInts(acc, this.state, MAX_VEHICLES);
+    acc = foldInts(acc, this.owner, MAX_VEHICLES);
+    acc = foldInts(acc, this.kind, MAX_VEHICLES);
+    for (let i = 0; i < MAX_AIRCRAFT; i++) acc = foldU32(acc, this.dockedMask[i]);
+    for (let v = 0; v < MAX_VEHICLES; v++) if (this.active[v] === 1) acc = foldU32(acc, Math.floor(this.x[v] * 100) ^ (Math.floor(this.y[v] * 100) << 7));
+    return acc;
   }
 
   /** True when a vehicle is at its dock: docked itself, or a cart in a train whose tractor is docked. */
@@ -268,8 +356,7 @@ export class Gse {
         this.served[a] = -1;
         if (this.cleared[a] === 0) this.release(a, false);
         this.cleared[a] = 0;
-      } else if (st === AcState.Turnaround && this.cleared[a] === 0 && t.timer[a] <= Math.min(CLEAR_LEAD_TICKS, this.turnAt[a] / 3)) {
-        // The crew starts to leave before the turnaround ends, so the stand is clear by pushback.
+      } else if (st === AcState.Turnaround && this.cleared[a] === 0 && this.crewDone(a)) {
         this.cleared[a] = 1;
         this.release(a, false);
       }
@@ -284,6 +371,16 @@ export class Gse {
         this.release(a, true);
       }
     }
+  }
+
+  /**
+   * True when the crew of an aircraft may leave. A tasked airline flight lets it go once its vehicle tasks are done
+   * (T63); other traffic starts to leave before the timer ends, so the stand is clear by pushback.
+   */
+  private crewDone(a: number): boolean {
+    const t = this.traffic;
+    if (t.tasked[a] === 1) return this.turns !== null && this.turns.vehDone[a] === 1;
+    return t.timer[a] <= Math.min(CLEAR_LEAD_TICKS, this.turnAt[a] / 3);
   }
 
   /** For every vehicle on a road, the nearest one ahead in its lane. Quadratic, but only a few times a second. */
@@ -514,6 +611,7 @@ export class Gse {
         this.ti[v]++;
       } else if (this.ti[v] === this.wpN[v] - 1) {
         this.state[v] = Work;
+        this.dockedMask[this.owner[v]] |= 1 << this.kind[v];
         this.heading[v] = this.dockHead[v];
         this.advance(this.owner[v], sideOf[this.kind[v]]);
       } else {
@@ -558,8 +656,10 @@ export class Gse {
     for (let c = v; c >= 0; ) {
       const next = this.tail[c];
       const unit = this.host !== null && this.rStand[c] >= this.host.roads.standCount;
+      if (this.state[c] === Work && this.owner[c] >= 0) this.dockedMask[this.owner[c]] &= ~(1 << this.kind[c]);
       if (unit && this.outUnit > 0) this.outUnit--;
-      else if (this.rStand[c] >= 0 && this.out[this.kind[c]] > 0) this.out[this.kind[c]]--;
+      else if (this.counted[c] === 1 && this.out[this.kind[c]] > 0) this.out[this.kind[c]]--;
+      this.counted[c] = 0;
       this.active[c] = 0;
       this.owner[c] = -1;
       this.lead[c] = -1;
@@ -576,6 +676,7 @@ export class Gse {
   private leave(v: number): void {
     const s = this.state[v];
     if (s === Leave || s === RoadOut) return;
+    if (s === Work) this.dockedMask[this.owner[v]] &= ~(1 << this.kind[v]);
     if (s === RoadIn) {
       this.turnBack[v] = 1;
       return;
@@ -621,8 +722,8 @@ export class Gse {
       const bit = 1 << k;
       if ((this.pending[a] & bit) === 0 || sideOf[k] !== side) continue;
       const v = this.spawnDock(a, k);
-      if (v === -2) {
-        // The depot exit is busy: try again on the next scan.
+      // The depot exit is busy, or an airline flight waits for a vehicle of the kind to be free (T63): try again on the next scan.
+      if (v === -2 || (v === -3 && this.traffic.tasked[a] === 1)) {
         this.waiting[a * 2 + side] = 1;
         return;
       }
@@ -644,6 +745,7 @@ export class Gse {
         this.rStand[v] = -1;
         this.outN[v] = 0;
         this.turnBack[v] = 0;
+        this.counted[v] = 0;
         this.ahead[v] = -1;
         this.waited[v] = 0;
         return v;
@@ -683,10 +785,10 @@ export class Gse {
     const r = fromUnit ? nS + s : s;
     const routed = !!roads && s >= 0 && s < nS && roads.standRoad[r] === 1;
     const carts = kind === TRACTOR && host ? host.cartsFor(a) : 0;
-    if (routed) {
-      if (!fromUnit && this.out[kind] >= host!.owned(kind)) return -1;
-      if (!this.clearAt(roads!.ptX[roads!.inStart[r]], roads!.ptY[roads!.inStart[r]])) return -2;
-    }
+    // A vehicle from a depot, and every vehicle of an airline flight (T63, user: always wait), comes out of the owned fleet.
+    const counted = !fromUnit && !!host && (routed || t.tasked[a] === 1);
+    if (counted && this.out[kind] >= host!.owned(kind)) return -3;
+    if (routed && !this.clearAt(roads!.ptX[roads!.inStart[r]], roads!.ptY[roads!.inStart[r]])) return -2;
     const v = this.alloc();
     if (v < 0) return -1;
     const h = t.heading[a];
@@ -721,11 +823,14 @@ export class Gse {
     this.owner[v] = a;
     this.dockHead[v] = h + dockRel[pk];
     this.prev[v] = -1;
+    if (counted) {
+      this.out[kind]++;
+      this.counted[v] = 1;
+    }
     if (routed) {
       this.rStand[v] = r;
       this.rVer[v] = roads!.version;
       if (fromUnit) this.outUnit++;
-      else this.out[kind]++;
       // The vehicle, and its train, start just outside the depot door, so no part of them is in the building.
       const trainM = GSE[kind].lengthM + carts * (GSE[CART].lengthM + GROUND.train.hitchGapM);
       this.placeAlong(v, roads!, roads!.inStart[r], roads!.inStart[r] + roads!.inLen[r], trainM);
@@ -737,7 +842,7 @@ export class Gse {
       this.heading[v] = atan2Det(this.wpY[v * MAX_WP + 1] - this.y[v], this.wpX[v * MAX_WP + 1] - this.x[v]);
       this.state[v] = Drive;
     }
-    if (carts > 0) this.hitchCarts(v, routed ? Math.min(carts, host!.owned(CART) - this.out[CART]) : carts, routed);
+    if (carts > 0) this.hitchCarts(v, counted ? Math.min(carts, host!.owned(CART) - this.out[CART]) : carts, counted);
     return v;
   }
 
@@ -763,7 +868,7 @@ export class Gse {
   }
 
   /** Hangs carts behind a tractor in a straight line along its heading. */
-  private hitchCarts(v: number, n: number, routed: boolean): void {
+  private hitchCarts(v: number, n: number, counted: boolean): void {
     let lead = v;
     let back = GSE[this.kind[v]].lengthM / 2 + CART_ARM;
     for (let i = 0; i < n; i++) {
@@ -775,9 +880,10 @@ export class Gse {
       this.heading[c] = this.heading[v];
       this.x[c] = this.x[v] - cosLut(this.heading[v]) * back;
       this.y[c] = this.y[v] - sinLut(this.heading[v]) * back;
-      if (routed) {
-        this.rStand[c] = this.rStand[v];
+      this.rStand[c] = this.rStand[v];
+      if (counted) {
         this.out[CART]++;
+        this.counted[c] = 1;
       }
       this.lead[c] = lead;
       this.tail[lead] = c;

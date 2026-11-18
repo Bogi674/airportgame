@@ -1,0 +1,19 @@
+{
+ "version": 1,
+ "note": "Turnaround task list of airline flights (T63, user 2026-11-18). Each share is a part of the role turnaround of the flight; the longest chain of shares is exactly 1, so a turnaround with no waits ends on its planned time. A task with a vehicle kind counts down only while a vehicle of that kind is docked, unless the type's crew never gets that kind. Tasks are listed after the tasks they wait for.",
+ "ratingWeight": 0.08,
+ "tasks": [
+  { "id": "chocks", "kind": null, "share": 0.04, "after": [] },
+  { "id": "power", "kind": "gpu", "share": 0.1, "after": ["chocks"] },
+  { "id": "access", "kind": "stairs", "share": 0.05, "after": ["chocks"] },
+  { "id": "deboard", "kind": null, "share": 0.2, "after": ["chocks"] },
+  { "id": "unload", "kind": "beltloader", "share": 0.2, "after": ["chocks"] },
+  { "id": "clean", "kind": null, "share": 0.3, "after": ["deboard"] },
+  { "id": "catering", "kind": "catering", "share": 0.2, "after": ["deboard"] },
+  { "id": "fuel", "kind": "refueller", "share": 0.2, "after": ["deboard"] },
+  { "id": "waterWaste", "kind": null, "share": 0.1, "after": ["deboard"] },
+  { "id": "load", "kind": "tractor", "share": 0.25, "after": ["unload"] },
+  { "id": "board", "kind": null, "share": 0.4, "after": ["clean", "catering", "fuel", "access"] },
+  { "id": "doorClose", "kind": null, "share": 0.06, "after": ["board", "load", "waterWaste", "power"] }
+ ]
+}

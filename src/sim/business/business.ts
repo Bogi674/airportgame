@@ -2,7 +2,8 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BUSINESS, GROUND, MARKET, SURFACE_SPEC } from '@data/index';
+import { BUSINESS, GROUND, MARKET, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
+import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
 import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
   LEDGER_CATEGORIES,
@@ -196,6 +197,9 @@ export class Business {
   rating = 25;
   satisfaction = 0.8;
   onTime = 0.9;
+  /** Running share of airline turnarounds cleaned by a cleaning depot, and handled with no vehicle or crew delay (T63). */
+  cleanScore = 1;
+  handlingScore = 1;
   /** Passenger and airline experience, 0 to 1, from the last daily close. Derived, never saved. */
   paxScore = 0;
   airlineScore = 0;
@@ -628,6 +632,11 @@ export class Business {
     if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
     this.paxToday += pax;
     this.flightsToday++;
+    if (this.traffic.fAirline[f] >= 0) {
+      const c = this.traffic.fCause[f];
+      const handled = isVehicleCause(c) || c === CAUSE_CREW_LEAVING ? 0 : 1;
+      this.handlingScore += (handled - this.handlingScore) * TURNAROUNDS.ratingWeight;
+    }
     const hours = Math.max(0.25, (this.traffic.nowTick - this.flightDockedAt[f]) / (TICKS_PER_MINUTE * 60));
     this.host.book('parking', Math.round(hours * BUSINESS.fees.parkingPerStandHour * m));
     const al = this.traffic.fAirline[f];
@@ -741,19 +750,24 @@ export class Business {
   /**
    * The rating follows two experiences (user, 2026-11-17). Passengers judge toilets, shops and food,
    * queues (the share of passengers served in time) and punctuality; airlines judge ground handling
-   * support, airside infrastructure and punctuality. Cleanliness joins both once cleaning exists (T63).
+   * support (turnarounds with no vehicle or crew delay), airside infrastructure and punctuality. Cleanliness joins both (T63).
    * Each experience is the mean of its parts, the rating target the mean of the two.
    */
+  /** A turnaround's cleaning ended: it counts as clean only with a cleaning depot on the airfield (user, 2026-11-18). */
+  cleanedTurnaround(): void {
+    const depot = (this.airfield.data.buildings ?? []).some((b) => b.kind === 'cleaning') ? 1 : 0;
+    this.cleanScore += (depot - this.cleanScore) * TURNAROUNDS.ratingWeight;
+  }
+
   private updateRating(): void {
     const leased = this.terminals.reduce((n, t) => n + t.leased, 0);
     const hasTerminal = this.terminals.length > 0;
     const toilets = hasTerminal ? Math.min(1, this.totals.toilet / 4) : 0;
     const shops = hasTerminal ? Math.min(1, leased / 4) : 0;
     const queues = hasTerminal ? this.satisfaction : 0;
-    this.paxScore = (toilets + shops + queues + this.onTime) / 4;
-    const handling = Math.max(0, Math.min(1, (1.6 - this.traffic.serviceSlowdown) / 0.6));
+    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore) / 5;
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
-    this.airlineScore = (handling + infra + this.onTime) / 3;
+    this.airlineScore = (this.handlingScore + infra + this.onTime + this.cleanScore) / 4;
     const target = 100 * (this.paxScore + this.airlineScore) / 2;
     this.rating += (target - this.rating) * 0.15;
     this.rating = Math.max(0, Math.min(100, this.rating));
@@ -809,6 +823,7 @@ export class Business {
         stand: stand ? stand.number : '',
         eta,
         delayMin: f >= 0 ? Math.round(t.fDelay[f] / TICKS_PER_MINUTE) : 0,
+        cause: f >= 0 ? t.fCause[f] : 0,
         stageKm: f >= 0 ? t.fStage[f] : 0,
         flight: f,
         standId: t.standId[i],
@@ -830,6 +845,7 @@ export class Business {
         stand: '',
         eta,
         delayMin: Math.round(t.fDelay[f] / TICKS_PER_MINUTE),
+        cause: 0,
         stageKm: t.fStage[f],
         flight: f,
         standId: t.fStand[f],
@@ -904,7 +920,7 @@ export class Business {
   saveState(): unknown {
     return {
       fleet: this.fleet, fuelStockL: this.fuelStockL, fuelOrders: this.fuelOrders, fireGraceUntil: this.fireGraceUntil, version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
-      onTime: this.onTime, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
+      onTime: this.onTime, cleanScore: this.cleanScore, handlingScore: this.handlingScore, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
       weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
       flightsToday: this.flightsToday, lostToday: this.lostToday,
@@ -945,6 +961,9 @@ export class Business {
     this.rating = o.rating;
     this.satisfaction = o.satisfaction;
     this.onTime = o.onTime;
+    const sc = raw as { cleanScore?: number; handlingScore?: number };
+    this.cleanScore = sc.cleanScore ?? 1;
+    this.handlingScore = sc.handlingScore ?? 1;
     this.loan = o.loan;
     this.loanOriginal = o.loanOriginal;
     this.weather = o.weather;
@@ -978,6 +997,8 @@ export class Business {
     acc = foldU32(acc, Math.floor(this.rating * 100));
     acc = foldU32(acc, this.loan);
     acc = foldU32(acc, this.paxToday);
+    acc = foldU32(acc, Math.floor(this.cleanScore * 10000));
+    acc = foldU32(acc, Math.floor(this.handlingScore * 10000));
     for (const a of this.airlines) acc = foldU32(acc, a.pax);
     acc = this.market.hash(acc);
     for (const g of this.grids) {

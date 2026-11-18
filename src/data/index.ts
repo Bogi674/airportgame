@@ -9,6 +9,7 @@ import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
 import standSizesJson from './stand_sizes.json';
 import surfacesJson from './surfaces.json';
+import turnaroundsJson from './turnarounds.json';
 import {
   airfieldCodesSchema,
   businessSchema,
@@ -21,6 +22,7 @@ import {
   spritesSchema,
   standSizesSchema,
   surfacesSchema,
+  turnaroundsSchema,
   type AirfieldCodes,
   type BusinessData,
   type MarketData,
@@ -32,6 +34,7 @@ import {
   type SpritesData,
   type StandSizesData,
   type SurfacesData,
+  type TurnaroundsData,
 } from './schemas';
 
 /** Validated once at load, then trusted (docs/PERFORMANCE.md section 7). */
@@ -56,6 +59,9 @@ export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
 export const STAND_PLACEMENT: StandSizesData['placement'] = STAND_DATA.placement;
 /** Stand marking dimensions. */
 export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
+
+/** Turnaround task list of airline flights (T63). */
+export const TURNAROUNDS: TurnaroundsData = turnaroundsSchema.parse(turnaroundsJson);
 
 /** Service roads, apron lanes, the ground handling depot and vehicle trains. */
 export const GROUND: GroundData = groundSchema.parse(groundJson);

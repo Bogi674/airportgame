@@ -207,6 +207,8 @@ export interface BoardRow {
   /** Scheduled arrival, minute of the day. */
   eta: number;
   delayMin: number;
+  /** Latest reason the turnaround ran past its plan, a code of `src/shared/turnaround.ts`, 0 for none (T63). */
+  cause: number;
   /** Stage length of the flight in km, 0 for test flights. */
   stageKm: number;
   /** Flight index for commands, the stand id it is assigned to or sits on (-1 for none) and its stay in minutes. */
