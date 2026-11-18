@@ -20,6 +20,7 @@ import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
 import { WALL, type TerminalGrid } from '@shared/business';
+import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
@@ -40,6 +41,7 @@ import { formatMoney, formatNumber } from '../format';
 import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
+import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { fixtureEdit, footprintRect, isTwoCell, nextFixtureRot } from './fixtureRot';
 import { markShape, markTip, type SnapMark } from './snapMark';
 
@@ -119,7 +121,7 @@ export class ToolController {
   /** True for the tools where a plain click only sets the start point. */
   get twoClick(): boolean {
     const st = useToolStore.getState();
-    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door');
+    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode');
   }
 
   /** True while any gesture is in progress, so the map should scroll when the pointer reaches an edge. */
@@ -794,6 +796,11 @@ export class ToolController {
     }
     if ((e.key === 'r' || e.key === 'R') && (st.tool === 'depot' || st.tool === 'building') && !e.ctrlKey && !e.metaKey) {
       st.set({ depotHeading: (st.depotHeading + 90) % 360 });
+      this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'bagNode' && !e.ctrlKey && !e.metaKey) {
+      st.set({ bagRot: nextBagRot(st.bagRot) });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
@@ -2054,6 +2061,7 @@ export class ToolController {
 
   private terminalDown(p: Pt, mods: Mods): void {
     this.frozen = false;
+    if (useToolStore.getState().tSub === 'bagNode') return;
     const g = this.gridFor(p, mods);
     this.tGrid = g;
     const c = worldToCell(g, p.x, p.y);
@@ -2061,7 +2069,51 @@ export class ToolController {
     this.dragging = true;
   }
 
+  /** The baggage node under the cursor on an existing building, or null off every building. */
+  private bagSpecAt(p: Pt): { g: TerminalGrid; spec: BagNodeSpec } | null {
+    const st = useToolStore.getState();
+    const g = this.buildingAt(p);
+    if (!g) return null;
+    const origin = bagOrigin(cellAtWorld(g, p.x, p.y), st.bagKind, st.bagRot, st.bagWidth);
+    if (!origin) return null;
+    return { g, spec: { kind: st.bagKind, cx: origin.cx, cy: origin.cy, rot: st.bagRot, widthCells: st.bagWidth } };
+  }
+
+  private previewBagNode(p: Pt): void {
+    const st = useToolStore.getState();
+    const at = this.bagSpecAt(p);
+    if (!at) {
+      this.deps.setGhost(null);
+      st.set({ hint: 'hint.terminal.bagNode', problem: null, buy: null, bagRoomWarn: false });
+      return;
+    }
+    const { g, spec } = at;
+    const code = validateBagNode(g, spec);
+    const ghost = bagGhostCells(spec);
+    const shapes: GhostShape[] = ghost.cells.map(([x, y]) => ({ k: 'poly', pts: rectWorld(g, x, y, x + 1, y + 1) }));
+    // Ramps are markers, a diamond for the in ramp and a square for the out ramp, so they stand out over the footprint.
+    for (const [ramp, shape] of [[ghost.rampIn, 'diamond'], [ghost.rampOut, 'square']] as const) {
+      if (!ramp) continue;
+      const c = cornerWorld(g, ramp[0] + 0.5, ramp[1] + 0.5);
+      shapes.push({ k: 'marker', x: c.x, y: c.y, shape });
+    }
+    const roomWarn = code === null && spec.kind === 'machine' && !screeningRoomOk(g, spec);
+    this.show({ valid: code === null, shapes, label: { x: p.x, y: p.y, text: tFormat('ghost.bagNode', { cost: formatMoney(bagCost(spec.kind, spec.widthCells)) }) } }, code ? { code } : null, 'hint.terminal.bagNode');
+    st.set({ buy: null, bagRoomWarn: roomWarn });
+  }
+
+  private placeBagNode(p: Pt): void {
+    const at = this.bagSpecAt(p);
+    if (!at || validateBagNode(at.g, at.spec) !== null) return;
+    const { g, spec } = at;
+    this.deps.send({ type: 'placeBaggageNode', building: g.id, kind: spec.kind, cx: spec.cx, cy: spec.cy, rot: spec.rot, widthCells: spec.widthCells });
+  }
+
   private previewTerminal(p: Pt, mods: Mods): void {
+    if (useToolStore.getState().tSub === 'bagNode') {
+      this.previewBagNode(p);
+      return;
+    }
     if (this.frozen && !this.dragging) return;
     const st = useToolStore.getState();
     const hint = `hint.terminal.${st.tSub}`;
@@ -2105,6 +2157,10 @@ export class ToolController {
   }
 
   private finishTerminal(p: Pt): void {
+    if (useToolStore.getState().tSub === 'bagNode') {
+      this.placeBagNode(p);
+      return;
+    }
     const g = this.tGrid;
     const a = this.tStart;
     this.dragging = false;
