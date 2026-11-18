@@ -5,7 +5,7 @@ import { packTyped, unpackTyped } from './pack';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 22;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -192,5 +192,7 @@ export function migrate(raw: unknown): SaveData {
   // Version 20 to 21: vehicles and turnaround task lists are saved, and airline flights run task lists (T63). Older saves
   // have no vehicles on the apron, and their aircraft already on stands finish on the timer they had, as no slot is tasked.
   if (save.version < 21) save.version = 21;
+  // Version 21 to 22: flights carry a stable serial (T43). Traffic derives serials for saves without them.
+  if (save.version < 22) save.version = 22;
   return save as SaveData;
 }
