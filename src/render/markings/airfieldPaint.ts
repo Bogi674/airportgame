@@ -3,9 +3,9 @@ import { padPolygon } from '@shared/turnPad';
 import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
-import { FLOOR, fixtureKey, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { FLOOR, fixtureKey, footprintOf, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { drawCenter, drawFootprint, dropRampCenter, stagingLaneCenters, type BagDrawNode } from '@shared/baggageNodes';
-import { cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
+import { ACROSS, cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
 import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
 import { bakeFixture, drawFixture, type FixtureSprite } from '../sprites/fixtureSprite';
@@ -34,9 +34,17 @@ export const FIXTURE_ASSET: Partial<Record<FixtureKey, string>> = {
   gateDesk: 'gateDesk.l1',
   seating: 'bench.beam3',
   toilet: 'washroom.wcStall',
+  eGate: 'eGate',
+  customs: 'customs',
 };
+/** Kit asset per level of a fixture whose levels differ in footprint, index level minus 1. */
+export const FIXTURE_LEVEL_ASSET: Partial<Record<FixtureKey, readonly string[]>> = {
+  securityExit: ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'],
+};
+/** Kit asset of a staff door, drawn on its wall edge. */
+export const STAFF_DOOR_ASSET = 'staffDoor';
 /** Kit packs the terminal painter needs before its chunks bake. */
-export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'seating', 'washroom', 'baggage'];
+export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'seating', 'washroom', 'baggage', 'zoning'];
 /** Rotation in degrees of a two cell fixture by its footprint code 1 to 4, see fixtureRot in TerminalGrid. */
 const KIT_ROT: readonly Rot[] = [0, 90, 180, 270];
 /** Kit assets of the baggage nodes that do not depend on a bay width. */
@@ -627,39 +635,81 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
 }
 
 const FLOOR_COLOR = ['', '#a9aeb3', '#d3dadd', '#7f90a8'];
-const FIXTURE_COLOR = ['', '#3f7fd8', '#e08a2e', '#8b95a0', '#3aa89a', '#9a5cc8', '#d85c5c', '#e0a030', '#b87a4a', '#c8a8e8', '#5aa860', '#4ab0b8', '#2c3441', '#4f6d8f', '#8a9bb3', '#c49a3c', '#9c8a6c'];
-const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk', 'Rx', 'T', 'K', 'D', 'P', 'G'];
+const FIXTURE_COLOR = ['', '#3f7fd8', '#e08a2e', '#8b95a0', '#3aa89a', '#9a5cc8', '#d85c5c', '#e0a030', '#b87a4a', '#c8a8e8', '#5aa860', '#4ab0b8', '#2c3441', '#4f6d8f', '#8a9bb3', '#c49a3c', '#9c8a6c', '', '', '', '#2f6fd1', '#7a4fd0', '#3ea35a'];
+const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk', 'Rx', 'T', 'K', 'D', 'P', 'G', '', '', '', 'X', 'E', 'Cu'];
+const STAFF_DOOR_COLOR = '#d9463e';
 
-/** Draws one terminal building as a cutaway: floors, walls, doors and fixtures. */
-const ZONE_TINT = ['', 'rgba(70,140,230,0.22)', 'rgba(235,170,50,0.26)', 'rgba(70,190,120,0.24)', 'rgba(220,80,80,0.26)'];
+/** Body of a fixture in meters: its footprint from the anchor along and across its direction, and the kit rotation. */
+interface FixtureBody {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rot: Rot;
+}
 
-/** Baked kit sprite for a fixture id and footprint code, or null when its block drawing applies. */
-function kitSpriteAt(f: number, code: number, tier: 0 | Tier, scale: number): FixtureSprite | null {
+/** Body of the fixture whose anchor is cell (cx, cy). A footprint code 0 is one cell with no direction. */
+function fixtureBody(f: number, code: number, level: number, cx: number, cy: number): FixtureBody {
+  const C = TERMINAL_CELL_M;
+  const rot = code === 0 ? 0 : code - 1;
+  const [along, across] = footprintOf(fixtureKey(f), level);
+  const [ax, ay] = ROT_STEP[rot];
+  const [bx, by] = ACROSS(rot);
+  const minX = cx + Math.min(0, (along - 1) * ax) + Math.min(0, (across - 1) * bx);
+  const minY = cy + Math.min(0, (along - 1) * ay) + Math.min(0, (across - 1) * by);
+  return {
+    x: minX * C,
+    y: minY * C,
+    w: (along * Math.abs(ax) + across * Math.abs(bx)) * C,
+    h: (along * Math.abs(ay) + across * Math.abs(by)) * C,
+    rot: KIT_ROT[rot],
+  };
+}
+
+/** Kit asset of a fixture at a level, or undefined when it has no kit sprite. */
+function kitAssetOf(key: FixtureKey, level: number): string | undefined {
+  const levels = FIXTURE_LEVEL_ASSET[key];
+  if (levels !== undefined) return levels[Math.max(level, 1) - 1];
+  return FIXTURE_ASSET[key];
+}
+
+/** Baked kit sprite for a fixture id, level and footprint code, or null when its block drawing applies. */
+function kitSpriteAt(f: number, level: number, code: number, tier: 0 | Tier, scale: number): FixtureSprite | null {
   if (tier === 0 || f === 0 || code >= 5) return null;
-  const asset = FIXTURE_ASSET[fixtureKey(f)];
+  const asset = kitAssetOf(fixtureKey(f), level);
   if (asset === undefined) return null;
   return bakeFixture(asset, tier, code === 0 ? 0 : KIT_ROT[code - 1], scale, null);
 }
 
 /** Draws the kit sprites of the fixtures in a cell range at their footprint centers. */
 function paintKitFixtures(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1: number, y1: number, tier: 0 | Tier, scale: number): void {
-  const C = TERMINAL_CELL_M;
   for (let cy = y0; cy <= y1; cy++) {
     for (let cx = x0; cx <= x1; cx++) {
       const i = cellIndex(g, cx, cy);
       const code = g.fixtureRot[i];
-      const sprite = kitSpriteAt(g.fixture[i], code, tier, scale);
+      const sprite = kitSpriteAt(g.fixture[i], g.fixtureLevel[i], code, tier, scale);
       if (sprite === null) continue;
-      if (code === 0) {
-        drawFixture(ctx, sprite, (cx + 0.5) * C, (cy + 0.5) * C, 0);
-        continue;
-      }
-      const [sx, sy] = ROT_STEP[code - 1];
-      const bx = (cx + Math.min(0, sx)) * C;
-      const by = (cy + Math.min(0, sy)) * C;
-      const bw = (1 + Math.abs(sx)) * C;
-      const bh = (1 + Math.abs(sy)) * C;
-      drawFixture(ctx, sprite, bx + bw / 2, by + bh / 2, KIT_ROT[code - 1]);
+      const body = fixtureBody(g.fixture[i], code, g.fixtureLevel[i], cx, cy);
+      drawFixture(ctx, sprite, body.x + body.w / 2, body.y + body.h / 2, body.rot);
+    }
+  }
+}
+
+/** Draws the kit staff door centered on each staff door edge in a cell range, 0.45 m into the cell below or right. */
+function paintStaffDoors(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1: number, y1: number, tier: 0 | Tier, scale: number): void {
+  if (tier === 0) return;
+  const C = TERMINAL_CELL_M;
+  const inset = 0.45;
+  const horizontal = bakeFixture(STAFF_DOOR_ASSET, tier, 0, scale, null);
+  const vertical = bakeFixture(STAFF_DOOR_ASSET, tier, 90, scale, null);
+  for (let y = y0; y <= y1 + 1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (horizontal !== null && g.hWall[hEdgeIndex(g, x, y)] === WALL.StaffDoor) drawFixture(ctx, horizontal, (x + 0.5) * C, y * C + inset, 0);
+    }
+  }
+  for (let x = x0; x <= x1 + 1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      if (vertical !== null && g.vWall[vEdgeIndex(g, x, y)] === WALL.StaffDoor) drawFixture(ctx, vertical, x * C + inset, (y + 0.5) * C, 90);
     }
   }
 }
@@ -700,6 +750,7 @@ function paintBagNodes(ctx: Ctx, nodes: readonly BagDrawNode[], tier: 0 | Tier, 
   }
 }
 
+/** Draws one terminal building as a cutaway: floors, walls, doors and fixtures. */
 function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   const C = TERMINAL_CELL_M;
   const tier = tierForZoom(win.scale);
@@ -776,22 +827,6 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     ctx.restore();
     return;
   }
-  // Zone tint, merged along rows: public blue, commercial amber, secure green, staff red.
-  for (let cy = y0; cy <= y1; cy++) {
-    let runStart = -1;
-    let runZone = 0;
-    for (let cx = x0; cx <= x1 + 1; cx++) {
-      const z = cx <= x1 && g.floor[at(cx, cy)] > 0 ? g.zone[at(cx, cy)] : 0;
-      if (z !== runZone) {
-        if (runZone !== 0) {
-          ctx.fillStyle = ZONE_TINT[runZone];
-          ctx.fillRect(runStart * C, cy * C, (cx - runStart) * C, C);
-        }
-        runStart = cx;
-        runZone = z;
-      }
-    }
-  }
   if (win.scale >= 2) {
     ctx.strokeStyle = 'rgba(0,0,0,0.08)';
     ctx.lineWidth = 0.06;
@@ -818,73 +853,54 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
       if (!filled(cx, cy + 1)) ctx.fillRect(px, py + C - 0.3, C, 0.3);
     }
   }
-  // Fixtures. A two cell fixture is one body from its anchor across the tail, so the loops widen by one
-  // cell to catch an anchor just outside the window whose tail is inside it. Tail cells (code 5 to 8) are skipped.
-  const fx0 = Math.max(g.x0, x0 - 1);
-  const fy0 = Math.max(g.y0, y0 - 1);
-  const fx1 = Math.min(g.x0 + g.w - 1, x1 + 1);
-  const fy1 = Math.min(g.y0 + g.h - 1, y1 + 1);
+  // Fixtures. A footprint can reach two cells past its anchor (the automated exit lane is three cells long), so the
+  // loops widen by two cells to catch an anchor just outside the window whose body is inside it. Tail cells (code 5 to 8) are skipped.
+  const fx0 = Math.max(g.x0, x0 - 2);
+  const fy0 = Math.max(g.y0, y0 - 2);
+  const fx1 = Math.min(g.x0 + g.w - 1, x1 + 2);
+  const fy1 = Math.min(g.y0 + g.h - 1, y1 + 2);
   for (let cy = fy0; cy <= fy1; cy++) {
     for (let cx = fx0; cx <= fx1; cx++) {
       const i = at(cx, cy);
       const code = g.fixtureRot[i];
-      if (g.fixture[i] === 0 || code >= 5 || isBaggageFixture(g.fixture[i]) || kitSpriteAt(g.fixture[i], code, tier, win.scale) !== null) continue;
+      const f = g.fixture[i];
+      if (f === 0 || code >= 5 || isBaggageFixture(f) || kitSpriteAt(f, g.fixtureLevel[i], code, tier, win.scale) !== null) continue;
       // A short shadow under each fixture lifts it off the floor in the same cheap way.
+      const body = fixtureBody(f, code, g.fixtureLevel[i], cx, cy);
       ctx.fillStyle = 'rgba(0,0,0,0.22)';
-      if (code === 0) {
-        ctx.fillRect(cx * C + 0.45, cy * C + 0.45, C - 0.4, C - 0.4);
-      } else {
-        const [sx, sy] = ROT_STEP[code - 1];
-        ctx.fillRect((cx + Math.min(0, sx)) * C + 0.45, (cy + Math.min(0, sy)) * C + 0.45, (1 + Math.abs(sx)) * C - 0.4, (1 + Math.abs(sy)) * C - 0.4);
-      }
+      ctx.fillRect(body.x + 0.45, body.y + 0.45, body.w - 0.4, body.h - 0.4);
     }
   }
   paintKitFixtures(ctx, g, fx0, fy0, fx1, fy1, tier, win.scale);
+  paintStaffDoors(ctx, g, x0, y0, x1, y1, tier, win.scale);
   if (g.bagNodes) paintBagNodes(ctx, g.bagNodes, tier, win.scale);
   for (let cy = fy0; cy <= fy1; cy++) {
     for (let cx = fx0; cx <= fx1; cx++) {
       const i = at(cx, cy);
       const f = g.fixture[i];
       const code = g.fixtureRot[i];
-      if (f === 0 || code >= 5 || isBaggageFixture(f) || kitSpriteAt(f, code, tier, win.scale) !== null) continue;
-      if (code === 0) {
-        ctx.fillStyle = FIXTURE_COLOR[f];
-        ctx.fillRect(cx * C + 0.2, cy * C + 0.2, C - 0.4, C - 0.4);
-        if (f === 4) {
-          ctx.fillStyle = 'rgba(255,255,255,0.55)';
-          ctx.fillRect(cx * C + 0.5, cy * C + 0.7, C - 1, 0.6);
-        } else if (win.scale >= 2 && FIXTURE_LETTER[f]) {
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 1px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(FIXTURE_LETTER[f], cx * C + C / 2, cy * C + C / 2);
-        }
-      } else {
-        // Body spans the anchor and its tail, inset like a single cell fixture.
-        const [sx, sy] = ROT_STEP[code - 1];
-        const bx = (cx + Math.min(0, sx)) * C;
-        const by = (cy + Math.min(0, sy)) * C;
-        const bw = (1 + Math.abs(sx)) * C;
-        const bh = (1 + Math.abs(sy)) * C;
-        ctx.fillStyle = FIXTURE_COLOR[f];
-        ctx.fillRect(bx + 0.2, by + 0.2, bw - 0.4, bh - 0.4);
-        if (win.scale >= 2 && FIXTURE_LETTER[f]) {
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 1px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(FIXTURE_LETTER[f], bx + bw / 2, by + bh / 2);
-        }
+      if (f === 0 || code >= 5 || isBaggageFixture(f) || kitSpriteAt(f, g.fixtureLevel[i], code, tier, win.scale) !== null) continue;
+      const body = fixtureBody(f, code, g.fixtureLevel[i], cx, cy);
+      ctx.fillStyle = FIXTURE_COLOR[f];
+      ctx.fillRect(body.x + 0.2, body.y + 0.2, body.w - 0.4, body.h - 0.4);
+      if (f === 4 && code === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.fillRect(cx * C + 0.5, cy * C + 0.7, C - 1, 0.6);
+      } else if (win.scale >= 2 && FIXTURE_LETTER[f]) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 1px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(FIXTURE_LETTER[f], body.x + body.w / 2, body.y + body.h / 2);
       }
     }
   }
-  // Walls, glass and doors on grid lines, merged into runs per type.
+  // Walls, glass, doors and staff doors on grid lines, merged into runs per type.
   const wallStyle = (t: number): void => {
-    ctx.strokeStyle = t === WALL.Wall ? '#37424c' : t === WALL.Glass ? '#79bde8' : '#c58f3a';
+    ctx.strokeStyle = t === WALL.Wall ? '#37424c' : t === WALL.Glass ? '#79bde8' : t === WALL.StaffDoor ? STAFF_DOOR_COLOR : '#c58f3a';
     ctx.lineWidth = lineM(win, t === WALL.Wall ? 0.35 : t === WALL.Glass ? 0.22 : 0.3);
   };
-  for (const t of [WALL.Wall, WALL.Glass, WALL.Door]) {
+  for (const t of [WALL.Wall, WALL.Glass, WALL.Door, WALL.StaffDoor]) {
     wallStyle(t);
     ctx.beginPath();
     for (let y = y0; y <= y1 + 1; y++) {
