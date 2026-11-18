@@ -1,7 +1,7 @@
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
 import { labelRooms } from '@shared/terminalRooms';
-import { stepAud, zoneAccess, type ZoneAccess } from '@shared/terminalZones';
+import { effectiveZones, stepAud, zoneAccess, type ZoneAccess } from '@shared/terminalZones';
 import { newWalkCache, type WalkCache } from './walkDistance';
 
 /** Kinds of walk node. A node is a cell that walking routes must know about. */
@@ -75,8 +75,12 @@ export interface WalkGraph {
   edgeMask: Uint8Array;
   /** Who may cross each cell edge of the grid, kept from the last rebuild. Never recomputed per tick. */
   access: ZoneAccess;
-  /** Cached walking distance rows over the edges above, see walkDistance. */
+  /** Effective zone per array cell from the last rebuild, 0 without floor. Read by the curb and the queue cells. */
+  effective: Uint8Array;
+  /** Cached walking distance rows for passengers over the edges above, see walkDistance. */
   cache: WalkCache;
+  /** The same for staff, over the edges staff may take. */
+  staffCache: WalkCache;
 }
 
 /** True when everyone may cross the edge from array cell (x, y) in direction d, both ways. */
@@ -538,7 +542,9 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
     edgeLen: new Float32Array(0),
     edgeMask: new Uint8Array(0),
     access: zoneAccess(g),
+    effective: effectiveZones(g),
     cache: newWalkCache(0),
+    staffCache: newWalkCache(0),
   };
   const rect = gridRect(g);
   fillNodes(g, wg, rect);
@@ -547,6 +553,7 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
   collectEdges(g, wg, rect, tuples);
   packEdges(wg, tuples);
   wg.cache = newWalkCache(wg.nodeCount);
+  wg.staffCache = newWalkCache(wg.nodeCount);
   return wg;
 }
 
@@ -590,6 +597,7 @@ export function updateWalkGraph(wg: WalkGraph, g: TerminalGrid, lx0: number, ly0
   const box = { x0: lx0, y0: ly0, x1: lx1, y1: ly1 };
   widenToChanges(g, wg.access, next, box);
   wg.access = next;
+  wg.effective = effectiveZones(g);
   const rect: BlockRect = {
     bx0: Math.max(whole.bx0, Math.floor((box.x0 - M) / L)),
     by0: Math.max(whole.by0, Math.floor((box.y0 - M) / L)),
@@ -605,7 +613,12 @@ export function updateWalkGraph(wg: WalkGraph, g: TerminalGrid, lx0: number, ly0
   compactNodes(g, wg);
   collectEdges(g, wg, rect, tuples);
   packEdges(wg, tuples);
-  if (wg.nodeCount === oldNodeCount) resetCache(wg.cache);
-  else wg.cache = newWalkCache(wg.nodeCount);
+  if (wg.nodeCount === oldNodeCount) {
+    resetCache(wg.cache);
+    resetCache(wg.staffCache);
+  } else {
+    wg.cache = newWalkCache(wg.nodeCount);
+    wg.staffCache = newWalkCache(wg.nodeCount);
+  }
   return wg;
 }

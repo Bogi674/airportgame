@@ -29,6 +29,7 @@ import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEd
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
 import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
+import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { Market } from '../market/market';
 import type { BuildContext } from '@shared/validate';
@@ -543,10 +544,10 @@ export class Business {
     return buildOverlayData(out, grid, g.id, g, sn, people, this, tick);
   }
 
-  /** Walking distance in metres between two walk nodes of a grid, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
-  walkDistance(grid: number, fromNode: number, toNode: number): number {
+  /** Walking distance in metres between two walk nodes of a grid for an audience, passengers by default, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
+  walkDistance(grid: number, fromNode: number, toNode: number, aud: number = AUD.Pax): number {
     for (let i = 0; i < this.grids.length; i++) {
-      if (this.grids[i]!.id === grid) return walkDistance(this.walkGraphs[i]!, fromNode, toNode);
+      if (this.grids[i]!.id === grid) return walkDistance(this.walkGraphs[i]!, fromNode, toNode, aud);
     }
     return Infinity;
   }
@@ -641,11 +642,11 @@ export class Business {
     return AIRCRAFT[this.traffic.fType[f]].capacity.seatsTypical >= TERMINAL_SEAT_THRESHOLD;
   }
 
-  /** Walk node of the lowest id door of a grid, the curb where passengers arrive. Index into grids, -1 when there is none. */
+  /** Walk node of the lowest id door of a grid that stands on public floor, the curb where passengers arrive. Index into grids, -1 when there is none. */
   curbNode(grid: number): number {
     const wg = this.walkGraphs[grid];
     if (!wg) return -1;
-    for (let n = 0; n < wg.nodeCount; n++) if (wg.nodeKind[n] === WALK_NODE.Door) return n;
+    for (let n = 0; n < wg.nodeCount; n++) if (wg.nodeKind[n] === WALK_NODE.Door && wg.effective[wg.nodeCell[n]!] === ZONE.Public) return n;
     return -1;
   }
 

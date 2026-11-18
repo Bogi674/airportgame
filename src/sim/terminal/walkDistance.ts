@@ -84,8 +84,7 @@ function siftDown(cache: WalkCache, i: number, size: number): void {
 }
 
 /** Fills row from the Dijkstra distances out of source, over the walk graph edges. */
-function fillRow(wg: WalkGraph, source: number, row: number): void {
-  const cache = wg.cache;
+function fillRow(wg: WalkGraph, cache: WalkCache, aud: number, source: number, row: number): void {
   const n = wg.nodeCount;
   const dist = cache.dist;
   const pos = cache.heapPos;
@@ -105,8 +104,8 @@ function fillRow(wg: WalkGraph, source: number, row: number): void {
     }
     const du = dist[u]!;
     for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
-      // Edges no passenger may take, such as a staff door or the wrong way through a transition, are not in this layer.
-      if ((wg.edgeMask[e]! & AUD.Pax) === 0) continue;
+      // Edges this audience may not take, such as a staff door for passengers or the wrong way through a transition, are not in the layer.
+      if ((wg.edgeMask[e]! & aud) === 0) continue;
       const v = wg.edgeTo[e]!;
       const dv = du + wg.edgeLen[e]!;
       if (dv >= dist[v]!) continue;
@@ -126,8 +125,7 @@ function fillRow(wg: WalkGraph, source: number, row: number): void {
 }
 
 /** The row that holds the distances from source, filling it first when it is not cached. */
-function rowFor(wg: WalkGraph, source: number): number {
-  const cache = wg.cache;
+function rowFor(wg: WalkGraph, cache: WalkCache, aud: number, source: number): number {
   let row = cache.sourceRow[source]!;
   if (row < 0) {
     row = cache.rowSource.indexOf(-1);
@@ -140,7 +138,7 @@ function rowFor(wg: WalkGraph, source: number): number {
     }
     cache.rowSource[row] = source;
     cache.sourceRow[source] = row;
-    fillRow(wg, source, row);
+    fillRow(wg, cache, aud, source, row);
   }
   cache.rowStamp[row] = ++cache.clock;
   return row;
@@ -148,14 +146,17 @@ function rowFor(wg: WalkGraph, source: number): number {
 
 /**
  * Walking distance in metres from walk node from to walk node to, or Infinity when either id is not a node or no walk
- * joins them. The graph is directed, so the row of from answers and the distance back can differ.
+ * joins them for that audience, passengers by default. The graph is directed, so the row of from answers and the
+ * distance back can differ. Passengers and staff each have their own cached rows.
  */
-export function walkDistance(wg: WalkGraph, from: number, to: number): number {
+export function walkDistance(wg: WalkGraph, from: number, to: number, aud: number = AUD.Pax): number {
   const n = wg.nodeCount;
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= n || to >= n) return Infinity;
   if (from === to) return 0;
-  const row = rowFor(wg, from);
-  return wg.cache.rows[row * n + to]!;
+  // Any audience other than staff uses the passenger rows, so callers pass AUD.Pax or AUD.Staff only.
+  const cache = aud === AUD.Staff ? wg.staffCache : wg.cache;
+  const row = rowFor(wg, cache, aud, from);
+  return cache.rows[row * n + to]!;
 }
 
 /**

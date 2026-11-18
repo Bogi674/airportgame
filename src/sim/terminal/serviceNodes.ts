@@ -1,7 +1,7 @@
 import { BUSINESS } from '@data/index';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, ZONE, fixtureKey, type TerminalGrid } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
-import { canStep } from '@shared/terminalRooms';
+import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
 import type { Rng } from '../rng';
 import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
@@ -21,7 +21,6 @@ const NORMAL_ROLLS = 12;
 /** Finished cohorts the done buffer holds per node. The buffer is shared by all nodes of a table: count * 16 entries per call. */
 export const DONE_PER_NODE = 16;
 
-const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const SERVICE_IDS: readonly number[] = SERVICE_KEYS.map((k) => FIXTURE_KEYS.indexOf(k) + 1);
 const AREA_PER_CELL = TERMINAL_CELL_M * TERMINAL_CELL_M;
 const DX = [-1, 1, 0, 0];
@@ -86,14 +85,20 @@ function timing(key: ServiceKey): { servers: number; meanS: number } {
 }
 
 /**
- * Counts the cells a queue for the anchor at `start` can use. Breadth first over canStep, at most `reach`
- * steps out. Only cells without a fixture count and only they are passed through. Secure cells are skipped
- * when `secure` is set. The anchor is the start and is not counted. The counted cells are left in
+ * Counts the cells a queue for the anchor at `start` can use. Breadth first, at most `reach` steps out. Only cells
+ * without a fixture count and only they are passed through. A transition fixture queues on its entry side, in cells
+ * of its from zone. Its own first step may cross any edge that lets one of its audiences through in either direction,
+ * and every later step needs the audience the fixture serves (passengers, or staff for a staff lane) to be able to
+ * walk back toward the anchor, so a staff only door never extends a passenger queue. Every other anchor steps over
+ * edges that are open to everyone. The anchor is the start and is not counted. The counted cells are left in
  * queue[1..count], in the order found, so nearest the anchor first. parent[p] is the queue position the cell at
  * queue[p] was reached from.
  */
-function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): number {
+function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, start: number, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): number {
   const W = g.w;
+  const transition = transitionOf(fixtureKey(g.fixture[start]!), g.fixtureMode[start]!);
+  // The audience whose walk toward the anchor must be possible: passengers unless the fixture is staff only.
+  const need = transition && (transition.aud & AUD.Pax) !== 0 ? AUD.Pax : AUD.Staff;
   seen[start] = 1;
   dist[start] = 0;
   queue[0] = start;
@@ -107,10 +112,15 @@ function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: numb
     const x = i % W;
     const y = (i - x) / W;
     for (let d = 0; d < 4; d++) {
-      if (!canStep(g, x, y, d)) continue;
       const j = (y + DY[d]) * W + x + DX[d];
+      if (x + DX[d] < 0 || x + DX[d] >= W || y + DY[d] < 0 || y + DY[d] >= g.h) continue;
+      const out = stepAud(acc, g, x, y, d);
+      const back = stepAud(acc, g, x + DX[d], y + DY[d], d ^ 1);
+      if (transition) {
+        if (effective[j] !== transition.from) continue;
+        if (i === start ? ((out | back) & transition.aud) === 0 : (back & need) === 0) continue;
+      } else if (out !== 3) continue;
       if (seen[j] === 1 || g.fixture[j] !== 0) continue;
-      if (secure && g.zone[j] === ZONE.Secure) continue;
       seen[j] = 1;
       dist[j] = dist[i] + 1;
       parent[tail] = pos;
@@ -186,7 +196,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     nodes.ly[k] = g.y0 + (c - x) / g.w;
     nodes.servers[k] = t.servers;
     nodes.meanS[k] = t.meanS;
-    const cells = queueCells(g, c, id === SECURITY, reach, seen, dist, queue, parent);
+    const cells = queueCells(g, wg.access, wg.effective, c, reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
     nodes.qCellOffset[k] = cellX.length;
     nodes.qCellLen[k] = cells;
