@@ -1,4 +1,5 @@
 import airfieldCodesJson from './airfield_codes.json';
+import baggageJson from './baggage.json';
 import businessJson from './business.json';
 import marketJson from './market.json';
 import gseJson from './gse.json';
@@ -12,6 +13,7 @@ import surfacesJson from './surfaces.json';
 import turnaroundsJson from './turnarounds.json';
 import {
   airfieldCodesSchema,
+  baggageSchema,
   businessSchema,
   marketSchema,
   gseSchema,
@@ -24,6 +26,7 @@ import {
   surfacesSchema,
   turnaroundsSchema,
   type AirfieldCodes,
+  type BaggageData,
   type BusinessData,
   type MarketData,
   type GseData,
@@ -40,6 +43,8 @@ import {
 /** Validated once at load, then trusted (docs/PERFORMANCE.md section 7). */
 export const AIRFIELD: AirfieldCodes = airfieldCodesSchema.parse(airfieldCodesJson);
 export const BUSINESS: BusinessData = businessSchema.parse(businessJson);
+/** Automatic baggage network values, docs/BAGGAGE.md section 11. */
+export const BAGGAGE: BaggageData = baggageSchema.parse(baggageJson);
 /** Destinations, flight series, airline satisfaction and growth. */
 export const MARKET: MarketData = marketSchema.parse(marketJson);
 export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
