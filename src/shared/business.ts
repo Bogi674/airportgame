@@ -164,6 +164,15 @@ export interface TerminalGrid {
    * fixture and 5 + rot on its tail. Rot 0 to 3 is the direction from anchor to tail: +column, +row, -column, -row.
    */
   fixtureRot: Uint8Array;
+  /**
+   * Position of a footprint cell relative to its anchor, as along | across << 4 cells. 0 on anchors and on cells
+   * without a fixture. Along follows the fixture direction, across is one quarter turn after it.
+   */
+  fixtureOff: Uint8Array;
+  /** Level of the fixture on every cell of its footprint, 1 to 3. 0 where there is no fixture. */
+  fixtureLevel: Uint8Array;
+  /** Mode of the fixture on every cell of its footprint: 0 departure or passenger use, 1 arrival or staff use. */
+  fixtureMode: Uint8Array;
   /** Horizontal wall edges, (h + 1) rows of w columns. Index row * w + column, the edge above that cell. */
   hWall: Uint8Array;
   /** Vertical wall edges, h rows of (w + 1) columns. Index row * (w + 1) + column, the edge left of that cell. */

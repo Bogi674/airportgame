@@ -5,6 +5,7 @@ import {
   FIXTURE_COUNT,
   FIXTURE_KEYS,
   FIXTURE_SPAN,
+  footprintOf,
   FLOOR,
   TERMINAL_CELL_M,
   TERMINAL_CHUNK,
@@ -51,21 +52,58 @@ export const ROT_STEP: readonly (readonly [number, number])[] = [
   [0, -1],
 ];
 
+/** Step across a fixture, one quarter turn after its direction. */
+export const ACROSS = (rot: number): readonly [number, number] => ROT_STEP[(rot + 1) % 4];
+
+/** Anchor cell of the fixture covering a cell, or -1 when the cell is outside the grid or empty. */
+export function fixtureAnchor(g: TerminalGrid, cell: number): number {
+  if (cell < 0 || cell >= g.fixture.length || g.fixture[cell] === 0) return -1;
+  const code = g.fixtureRot[cell];
+  if (code < 5) return cell;
+  const rot = code - 5;
+  const off = g.fixtureOff[cell];
+  const i = off & 15;
+  const j = off >> 4;
+  const [ax, ay] = ROT_STEP[rot];
+  const [bx, by] = ACROSS(rot);
+  const c = cellOf(g, cell);
+  return cellIndex(g, c.x - i * ax - j * bx, c.y - i * ay - j * by);
+}
+
+/** Cells of the fixture anchored at a cell, in along then across order. Empty when the anchor holds no fixture. */
+export function fixtureCells(g: TerminalGrid, anchor: number): number[] {
+  if (anchor < 0 || anchor >= g.fixture.length || g.fixture[anchor] === 0) return [];
+  const rot = g.fixtureRot[anchor] ? g.fixtureRot[anchor] - 1 : 0;
+  const [along, across] = footprintOf(fixtureKey(g.fixture[anchor]), g.fixtureLevel[anchor]);
+  const [ax, ay] = ROT_STEP[rot];
+  const [bx, by] = ACROSS(rot);
+  const c = cellOf(g, anchor);
+  const out: number[] = [];
+  for (let i = 0; i < along; i++) {
+    for (let j = 0; j < across; j++) {
+      const k = cellIndex(g, c.x + i * ax + j * bx, c.y + i * ay + j * by);
+      if (k >= 0) out.push(k);
+    }
+  }
+  return out;
+}
+
 /** Cell index of the other half of a two cell fixture, or -1 when the cell has none or it is outside the grid. */
 export function fixturePartner(g: TerminalGrid, cell: number): number {
-  const code = g.fixtureRot[cell];
-  if (code === 0) return -1;
-  const tail = code >= 5;
-  const [dx, dy] = ROT_STEP[tail ? code - 5 : code - 1];
-  const sign = tail ? -1 : 1;
-  const c = cellOf(g, cell);
-  return cellIndex(g, c.x + sign * dx, c.y + sign * dy);
+  const anchor = fixtureAnchor(g, cell);
+  if (anchor < 0) return -1;
+  const cells = fixtureCells(g, anchor);
+  if (cells.length !== 2) return -1;
+  return cells[0] === cell ? cells[1] : cells[0];
 }
 
 /** Clears one cell's fixture, its footprint and its lease. */
 function clearFixtureCell(g: TerminalGrid, i: number): void {
   g.fixture[i] = 0;
   g.fixtureRot[i] = 0;
+  g.fixtureOff[i] = 0;
+  g.fixtureLevel[i] = 0;
+  g.fixtureMode[i] = 0;
   g.leased[i] = 0;
 }
 
@@ -81,7 +119,7 @@ export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: numb
 
 /** An empty building. Its grid is allocated as edits reach into it. */
 export function newGrid(id: number, ox: number, oy: number, headingDeg: number): TerminalGrid {
-  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
+  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), fixtureOff: new Uint8Array(0), fixtureLevel: new Uint8Array(0), fixtureMode: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
 }
 
 /** The grid of one floor of one building, or undefined. */
@@ -144,6 +182,9 @@ export function ensureCells(g: TerminalGrid, x0: number, y0: number, x1: number,
   g.zone = cells(g.zone);
   g.fixture = cells(g.fixture);
   g.fixtureRot = cells(g.fixtureRot);
+  g.fixtureOff = cells(g.fixtureOff);
+  g.fixtureLevel = cells(g.fixtureLevel);
+  g.fixtureMode = cells(g.fixtureMode);
   g.leased = cells(g.leased);
   g.hWall = hEdges;
   g.vWall = vEdges;
@@ -386,6 +427,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
               const j = at(tail.x, tail.y);
               g.fixture[j] = e.variant;
               g.fixtureRot[j] = 5 + rot;
+              g.fixtureOff[j] = 1;
               g.leased[j] = 0;
               if (g.zone[j] === 0) g.zone[j] = allowed[0] ?? 0;
             }
@@ -404,12 +446,12 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
           if (cur.floor === 0 && cur.fixture === 0) continue;
           writes.push(() => {
             const i = at(cx, cy);
-            // A two cell fixture leaves with its other half, which may lie outside the erased rectangle.
-            const partner = fixturePartner(g, i);
+            // A multi cell fixture leaves with all its cells, which may lie outside the erased rectangle.
+            const covered = fixtureCells(g, fixtureAnchor(g, i));
             g.floor[i] = 0;
             g.zone[i] = 0;
             clearFixtureCell(g, i);
-            if (partner >= 0) clearFixtureCell(g, partner);
+            for (const k of covered) clearFixtureCell(g, k);
           });
         }
       }
