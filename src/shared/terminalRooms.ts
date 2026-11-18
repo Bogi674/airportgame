@@ -1,8 +1,10 @@
 import { FIXTURE_KEYS, WALL, ZONE, type TerminalGrid } from './business';
+import { AUD, stepAud, zoneAccess, zoneIssues } from './terminalZones';
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
+const SECURITY_EXIT = FIXTURE_KEYS.indexOf('securityExit') + 1;
 const SEATING = FIXTURE_KEYS.indexOf('seating') + 1;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 /** fixtureRot of the tail cell of a two cell fixture is 5 to 8. Only anchors (0 to 4) decide reach. */
@@ -92,6 +94,7 @@ export function terminalIssues(g: TerminalGrid): string[] {
   if (!hasSource || !hasSecurity) return issues;
 
   const W = g.w;
+  const acc = zoneAccess(g);
   const seen = new Uint8Array(g.w * g.h);
   const queue = new Int32Array(g.w * g.h);
   let head = 0;
@@ -111,8 +114,12 @@ export function terminalIssues(g: TerminalGrid): string[] {
     const x = i % W;
     const y = (i - x) / W;
     for (let d = 0; d < 4; d++) {
-      if (!canStep(g, x, y, d)) continue;
       const j = (y + DY[d]) * W + x + DX[d];
+      if ((stepAud(acc, g, x, y, d) & AUD.Pax) === 0) {
+        // A physical opening into secure floor that the zone rules closed is still a way round the lanes.
+        if (canStep(g, x, y, d) && g.fixture[j] !== SECURITY && g.fixture[j] !== SECURITY_EXIT && g.zone[j] === ZONE.Secure && g.zone[y * W + x] !== ZONE.Secure) bypass = true;
+        continue;
+      }
       if (g.fixture[j] === SECURITY) {
         touchesLane = true;
         if (!lanes.includes(j)) lanes.push(j);
@@ -149,7 +156,7 @@ export function terminalIssues(g: TerminalGrid): string[] {
     const x = i % W;
     const y = (i - x) / W;
     for (let d = 0; d < 4; d++) {
-      if (!canStep(g, x, y, d)) continue;
+      if ((stepAud(acc, g, x, y, d) & AUD.Pax) === 0) continue;
       const j = (y + DY[d]) * W + x + DX[d];
       if (air[j] === 1 || g.zone[j] !== ZONE.Secure) continue;
       air[j] = 1;
@@ -160,5 +167,6 @@ export function terminalIssues(g: TerminalGrid): string[] {
   }
   if (!seats) issues.push('noSeatingLink');
   if (hasGateDesk && !gateReached) issues.push('noGateDeskLink');
+  issues.push(...zoneIssues(g, acc));
   return issues;
 }

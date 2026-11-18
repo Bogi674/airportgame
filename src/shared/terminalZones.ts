@@ -1,5 +1,5 @@
-import { TRANSITION_KEYS, WALL, fixtureKey, type FixtureKey, type TerminalGrid } from './business';
-import { ROT_STEP, fixtureCells } from './terminalOps';
+import { TERMINAL_CELL_M, TRANSITION_KEYS, WALL, fixtureKey, type FixtureKey, type TerminalGrid } from './business';
+import { ROT_STEP, cellOf, fixtureCells } from './terminalOps';
 
 /** Audience bits of an edge mask: passengers and staff. */
 export const AUD = { Pax: 1, Staff: 2 } as const;
@@ -86,7 +86,7 @@ export function effectiveZones(g: TerminalGrid): Uint8Array {
 }
 
 /** Array index of the neighbour of array cell (x, y) in direction d (0 left, 1 right, 2 up, 3 down), or -1 outside. */
-function neighbourOf(g: TerminalGrid, x: number, y: number, d: number): number {
+export function neighbourOf(g: TerminalGrid, x: number, y: number, d: number): number {
   if (d === 0) return x > 0 ? y * g.w + x - 1 : -1;
   if (d === 1) return x < g.w - 1 ? y * g.w + x + 1 : -1;
   if (d === 2) return y > 0 ? (y - 1) * g.w + x : -1;
@@ -94,7 +94,7 @@ function neighbourOf(g: TerminalGrid, x: number, y: number, d: number): number {
 }
 
 /** Wall type on the edge of array cell (x, y) in direction d. */
-function edgeWall(g: TerminalGrid, x: number, y: number, d: number): number {
+export function edgeWall(g: TerminalGrid, x: number, y: number, d: number): number {
   if (d === 0) return g.vWall[y * (g.w + 1) + x];
   if (d === 1) return g.vWall[y * (g.w + 1) + x + 1];
   if (d === 2) return g.hWall[y * g.w + x];
@@ -173,4 +173,176 @@ export function stepAud(acc: ZoneAccess, g: TerminalGrid, x: number, y: number, 
   if (d === 1) return x < W - 1 ? acc.v[y * (W + 1) + x + 1] & 3 : 0;
   if (d === 2) return y > 0 ? (acc.h[y * W + x] >> 2) & 3 : 0;
   return y < g.h - 1 ? acc.h[(y + 1) * W + x] & 3 : 0;
+}
+
+/** A cell edge in logical cell coordinates, as hEdgeIndex and vEdgeIndex take them. */
+export interface ZoneEdge {
+  x: number;
+  y: number;
+  horizontal: boolean;
+}
+
+/** Every edge with floor on both sides, a plain opening and different effective zones that nobody may cross. */
+export function zoneBreaches(g: TerminalGrid, acc: ZoneAccess): ZoneEdge[] {
+  const W = g.w;
+  const eff = effectiveZones(g);
+  const out: ZoneEdge[] = [];
+  for (let y = 1; y < g.h; y++) {
+    for (let x = 0; x < W; x++) {
+      const e = y * W + x;
+      if (eff[e] !== 0 && eff[e - W] !== 0 && isPlain(g.hWall[e]) && eff[e] !== eff[e - W] && acc.h[e] === 0) out.push({ x: g.x0 + x, y: g.y0 + y, horizontal: true });
+    }
+  }
+  for (let y = 0; y < g.h; y++) {
+    for (let x = 1; x < W; x++) {
+      const e = y * (W + 1) + x;
+      const c = y * W + x;
+      if (eff[c] !== 0 && eff[c - 1] !== 0 && isPlain(g.vWall[e]) && eff[c] !== eff[c - 1] && acc.v[e] === 0) out.push({ x: g.x0 + x, y: g.y0 + y, horizontal: false });
+    }
+  }
+  return out;
+}
+
+/** Where a transition fixture shows its badge: grid meters, the middle of the front edge in the flow direction. */
+export interface TransitionBadge {
+  x: number;
+  y: number;
+  to: number;
+}
+
+/** One badge per transition fixture, in cell index order of the anchors. */
+export function transitionBadges(g: TerminalGrid): TransitionBadge[] {
+  const out: TransitionBadge[] = [];
+  for (let i = 0; i < g.fixture.length; i++) {
+    if (g.fixture[i] === 0 || g.fixtureRot[i] >= 5) continue;
+    const t = transitionOf(fixtureKey(g.fixture[i]), g.fixtureMode[i]);
+    if (!t) continue;
+    const [fx, fy] = flowStep(g.fixtureRot[i]);
+    let best = -Infinity;
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+    for (const c of fixtureCells(g, i)) {
+      const p = cellOf(g, c);
+      const proj = p.x * fx + p.y * fy;
+      if (proj > best) {
+        best = proj;
+        sumX = 0;
+        sumY = 0;
+        count = 0;
+      }
+      if (proj === best) {
+        sumX += p.x + 0.5;
+        sumY += p.y + 0.5;
+        count++;
+      }
+    }
+    if (count === 0) continue;
+    out.push({ x: (sumX / count + fx * 0.5) * TERMINAL_CELL_M, y: (sumY / count + fy * 0.5) * TERMINAL_CELL_M, to: t.to });
+  }
+  return out;
+}
+
+/** Direction index of a unit step, the numbering of stepAud. */
+const dirOf = (dx: number, dy: number): number => (dx > 0 ? 1 : dx < 0 ? 0 : dy < 0 ? 2 : 3);
+
+/** True when a transition fixture has at least one open transition edge in its flow direction. */
+function transitionWorks(g: TerminalGrid, acc: ZoneAccess, eff: Uint8Array, anchor: number, t: Transition): boolean {
+  const W = g.w;
+  const [fx, fy] = flowStep(g.fixtureRot[anchor]);
+  const d = dirOf(fx, fy);
+  for (const c of fixtureCells(g, anchor)) {
+    const cx = c % W;
+    const cy = (c - cx) / W;
+    for (const [ax, ay] of [[cx - fx, cy - fy], [cx, cy]]) {
+      const bx = ax + fx;
+      const by = ay + fy;
+      if (ax < 0 || ay < 0 || bx < 0 || by < 0 || ax >= W || bx >= W || ay >= g.h || by >= g.h) continue;
+      if (eff[ay * W + ax] === t.from && eff[by * W + bx] === t.to && (stepAud(acc, g, ax, ay, d) & t.aud) !== 0) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Zone problems of a building, in order: zoneBreach, transitionOrientation, paxCannotLeave, staffBypass.
+ * Run on graph rebuilds and edits, never per tick.
+ */
+export function zoneIssues(g: TerminalGrid, acc: ZoneAccess): string[] {
+  const issues: string[] = [];
+  const W = g.w;
+  const n = W * g.h;
+  const eff = effectiveZones(g);
+  if (zoneBreaches(g, acc).length > 0) issues.push('zoneBreach');
+
+  for (let i = 0; i < g.fixture.length; i++) {
+    if (g.fixture[i] === 0 || g.fixtureRot[i] >= 5) continue;
+    const t = transitionOf(fixtureKey(g.fixture[i]), g.fixtureMode[i]);
+    if (t && !transitionWorks(g, acc, eff, i, t)) {
+      issues.push('transitionOrientation');
+      break;
+    }
+  }
+
+  const queue = new Int32Array(n);
+  const reach = new Uint8Array(n);
+  let head = 0;
+  let tail = 0;
+  // Passengers walking back: a reverse flood from public floor over the steps passengers may take.
+  for (let i = 0; i < n; i++) {
+    if (eff[i] === PUBLIC) {
+      reach[i] = 1;
+      queue[tail++] = i;
+    }
+  }
+  while (head < tail) {
+    const j = queue[head++];
+    const x = j % W;
+    const y = (j - x) / W;
+    for (let d = 0; d < 4; d++) {
+      const i = neighbourOf(g, x, y, d);
+      if (i < 0 || reach[i] === 1 || eff[i] === 0) continue;
+      const ix = i % W;
+      // The step from i to j runs opposite to d.
+      if ((stepAud(acc, g, ix, (i - ix) / W, d ^ 1) & AUD.Pax) === 0) continue;
+      reach[i] = 1;
+      queue[tail++] = i;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (reach[i] === 0 && (eff[i] === SECURE || eff[i] === INTERNATIONAL)) {
+      issues.push('paxCannotLeave');
+      break;
+    }
+  }
+
+  // Staff walking in from landside, crossing zones only where a staff door allows it, never through a transition.
+  const seen = new Uint8Array(n);
+  head = 0;
+  tail = 0;
+  for (let i = 0; i < n; i++) {
+    if (eff[i] === PUBLIC) {
+      seen[i] = 1;
+      queue[tail++] = i;
+    }
+  }
+  while (head < tail) {
+    const i = queue[head++];
+    const x = i % W;
+    const y = (i - x) / W;
+    for (let d = 0; d < 4; d++) {
+      const j = neighbourOf(g, x, y, d);
+      if (j < 0 || seen[j] === 1 || (stepAud(acc, g, x, y, d) & AUD.Staff) === 0) continue;
+      if (eff[j] !== eff[i] && isPlain(edgeWall(g, x, y, d))) continue;
+      seen[j] = 1;
+      queue[tail++] = j;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (seen[i] === 1 && (eff[i] === SECURE || eff[i] === INTERNATIONAL)) {
+      issues.push('staffBypass');
+      break;
+    }
+  }
+  return issues;
 }

@@ -9,7 +9,7 @@ import { SAVE_VERSION } from '@sim/save/migrations';
 import { FlState } from '@sim/ops/traffic';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BuildContext } from '@shared/validate';
-import { cellIndex, ensureCells, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellIndex, ensureCells, fixtureCost, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 describe('service node data', () => {
@@ -49,8 +49,8 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.terminals[0].cells).toBe(cells);
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
     expect(sim.business.arrCapacity()).toBe(2 * 260);
-    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
-    const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
+    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures. The test terminal gained a security exit in a gap of its wall, two edges fewer.
+    const expected = cells * (2000 + 480) + 127 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
     expect(g.cost).toBe(expected);
   });
 
