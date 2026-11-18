@@ -2,11 +2,14 @@ import type { BuildingKind } from '@shared/airfield';
 import { create } from 'zustand';
 import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
+import { BAGGAGE } from '@data/index';
+import type { BagKind } from '@shared/baggageNodes';
+import type { BagRot } from '../tools/baggageTool';
 import type { FixtureRot } from '../tools/fixtureRot';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish';
 
-export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode';
 
 /** Snap mode of a placement tool: the construction grid, or free placement. */
 export type SnapMode = 'grid' | 'free';
@@ -23,7 +26,7 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
 }
 
 export interface Selection {
-  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower' | 'road' | 'depot' | 'building';
+  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'bagNode' | 'tower' | 'road' | 'depot' | 'building';
   id: number;
 }
 
@@ -72,6 +75,11 @@ interface ToolState {
   /** Rotation of the two cell fixture about to be placed. R cycles it. */
   fixtureRot: FixtureRot;
   zoneType: 1 | 2 | 3 | 4;
+  /** Baggage node tool: the kind, its rotation turned with R, the bay width in cells, and whether a machine stands outside a valid screening room. */
+  bagKind: BagKind;
+  bagRot: BagRot;
+  bagWidth: number;
+  bagRoomWarn: boolean;
   selection: Selection | null;
   /** Id of the construction grid offered near the cursor, or null when the cursor is out of reach of every grid. Set by the tool controller. */
   gridId: string | null;
@@ -118,6 +126,10 @@ export const useToolStore = create<ToolState>((set) => ({
   fixtureId: 1,
   fixtureRot: 0,
   zoneType: 1,
+  bagKind: 'machine',
+  bagRot: 0,
+  bagWidth: BAGGAGE.footprints.bay.widths[0],
+  bagRoomWarn: false,
   selection: null,
   gridId: null,
   snapMode: {},

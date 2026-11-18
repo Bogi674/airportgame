@@ -1,5 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
-import { GROUND, GSE } from '@data/index';
+import { GROUND, GSE, STAND_ACCESS } from '@data/index';
+import { STAND_UPGRADE, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
@@ -14,10 +15,11 @@ import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
-import { Turnarounds, TURN_STEP } from './ops/turnaround';
+import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
-import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
+import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
+import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
@@ -26,7 +28,7 @@ import { packTyped, unpackInto } from './save/pack';
 import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 
 /** Subsystems in execution order. The stress tool times each one separately. */
-const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'flights', 'aircraft', 'vehicles'] as const;
+const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'baggage', 'flights', 'aircraft', 'vehicles'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
 
 /**
@@ -43,6 +45,8 @@ export class Sim {
   readonly traffic: Traffic;
   readonly business: Business;
   readonly cohorts: Cohorts;
+  /** Baggage nodes and their automatic link network, one per building (T43). */
+  readonly baggage: Baggage;
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -53,6 +57,7 @@ export class Sim {
   private depotsSeen = 0;
   private businessSent = -1;
   private gridsSent = -1;
+  private bagDrawSent = -1;
   private businessSentTick = -1000000;
   /** Airfield version of the last business payload, whose stand link and contact facts follow the airfield. */
   private businessAirfield = -1;
@@ -106,6 +111,11 @@ export class Sim {
         const st = this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a]);
         return GROUND.cartsPerTrain[st ? st.size : sizeForCode(AIRCRAFT[this.traffic.type[a]].derivedForReading.code)];
       },
+      upgradesOf: (a) => this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a])?.upgrades ?? 0,
+      boardingOf: (a) => {
+        const st = this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a]);
+        return st ? this.boardingMode(st, this.traffic.flight[a]) : BOARDING.near;
+      },
       owned: (k) => this.business.fleet[k] ?? 0,
       cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
     });
@@ -115,6 +125,22 @@ export class Sim {
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
+    this.baggage = new Baggage(this.business, {
+      getCash: (): number => this.cash,
+      book: (amount: number): void => this.book('construction', amount),
+      standExists: (id: number): boolean => this.airfield.data.stands.some((s) => s.id === id),
+      standOfSerial: (serial: number): number => {
+        const f = this.traffic.flightOfSerial(serial);
+        return f < 0 ? -2 : this.traffic.fStand[f];
+      },
+    }, this.rng);
+    this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
+    this.business.bagMissingShare = () => this.baggage.missingShare();
+    this.business.bagDayReset = () => this.baggage.resetDay();
+    this.cohorts.onCheckIn = (gridId, cell, serial, bags) => this.baggage.checkIn(gridId, cell, serial, bags);
+    this.turns.bagsReady = (f) => this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
+    this.turns.loaded = (f) => this.baggage.freeFlight(this.traffic.serialOf(f));
+    this.turns.unloaded = (f) => this.baggage.unloaded(this.traffic.serialOf(f), this.business.flightPaxOf(f), this.tick);
     const businessPushback = this.traffic.hooks?.pushback;
     const businessDocked = this.traffic.hooks?.docked;
     this.traffic.hooks = {
@@ -122,6 +148,7 @@ export class Sim {
       docked: (f) => {
         businessDocked?.(f);
         this.warnNoRoad(f);
+        this.warnFarStand(f);
         this.fuelAtDock(f);
       },
       fuelReady: (i) => {
@@ -140,6 +167,7 @@ export class Sim {
       pushback: (f) => {
         businessPushback?.(f);
         this.cohorts.onPushback(f);
+        this.baggage.freeFlight(this.traffic.serialOf(f));
       },
     };
   }
@@ -188,7 +216,7 @@ export class Sim {
         this.gameSeconds += TICK_SECONDS;
         break;
       case 2:
-        this.airfield.update(this.tick);
+        if (this.airfield.update(this.tick)) this.standsDirty = true;
         this.updateObstacles();
         this.syncAirfield();
         break;
@@ -199,15 +227,18 @@ export class Sim {
         this.cohorts.update(this.tick);
         break;
       case 5:
+        if (this.tick % BAG_RUN_TICKS === 0) this.baggage.update(this.tick);
+        break;
+      case 6:
         if (this.tick % 10 === 0) {
           this.traffic.updateFlights(this.tick);
           this.traffic.updateGa(this.tick);
         }
         break;
-      case 6:
+      case 7:
         this.traffic.update(this.tick);
         break;
-      case 7:
+      case 8:
         this.gse.update();
         if (this.tick % TURN_STEP === 0) this.turns.update();
         break;
@@ -290,6 +321,29 @@ export class Sim {
     this.eventQueue.push(`noServiceRoad|stand=${this.airfield.data.stands[s].number}`);
   }
 
+  private farStandWarned = new Map<number, number>();
+
+  /**
+   * How a flight at a stand boards (T66): a stand farther than the stairs walk limit from its gate desk needs a bus
+   * from a bus bay, or boards slower without one. General aviation, stands with no gate desk and near stands board as before.
+   */
+  private boardingMode(stand: Stand, f: number): number {
+    if (f < 0 || this.traffic.fAirline[f] === GA_AIRLINE) return BOARDING.near;
+    const desk = this.business.gateFor(stand);
+    if (!desk || Math.hypot(desk.wx - stand.x, desk.wy - stand.y) <= STAND_ACCESS.stairsWalkLimitM) return BOARDING.near;
+    return ((stand.upgrades ?? 0) & STAND_UPGRADE.busBay) !== 0 ? BOARDING.bus : BOARDING.farSlow;
+  }
+
+  /** A flight docks at a far stand with no bus bay: boarding runs slower and an alert asks for a bus bay, once a game day per stand. */
+  private warnFarStand(f: number): void {
+    const stand = this.airfield.data.stands.find((x) => x.id === this.traffic.fStand[f]);
+    if (!stand || this.boardingMode(stand, f) !== BOARDING.farSlow) return;
+    const day = Math.floor(this.tick / TICKS_PER_DAY);
+    if (this.farStandWarned.get(stand.id) === day) return;
+    this.farStandWarned.set(stand.id, day);
+    this.eventQueue.push(`standNeedsBusBay|stand=${stand.number}`);
+  }
+
   /** Tells the player once a game day per kind when an airline flight waits for a vehicle kind the airport owns none of (T63). */
   private warnNoVehicle(cause: number): void {
     if (!isVehicleCause(cause)) return;
@@ -338,6 +392,18 @@ export class Sim {
         break;
       case 'demolishTerminal':
         this.report(this.business.demolishTerminal(cmd.id));
+        break;
+      case 'placeBaggageNode':
+        this.report(this.baggage.place(cmd));
+        break;
+      case 'removeBaggageNode':
+        this.report(this.baggage.remove(cmd.id));
+        break;
+      case 'setStandBay':
+        this.report(this.baggage.setStandBay(cmd.standId, cmd.bayId));
+        break;
+      case 'fixBaggageNode':
+        this.report(this.baggage.fix(cmd.id));
         break;
       case 'signAirline':
         this.report(this.business.signAirline(cmd.airlineId, cmd.sign));
@@ -408,7 +474,7 @@ export class Sim {
         } else {
           if (r.cashDelta !== 0) this.book('construction', r.cashDelta);
           // Stands moved or removed: the automatic assigner runs in the airfield sync, once the copy is current.
-          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
+          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || cmd.type === 'setStandGate' || cmd.type === 'startStandUpgrade' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
         }
         // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
         if (this.airfield.towersVersion !== towersBefore) {
@@ -469,21 +535,24 @@ export class Sim {
   }
 
   /** The business payload when it or the airfield changed or ten game minutes passed, otherwise null. */
-  takeBusiness(): ReturnType<Business['payload']> | null {
+  takeBusiness(): BusinessPayload | null {
     const afVersion = this.airfield.data.version;
     if (this.business.version === this.businessSent && afVersion === this.businessAirfield && this.tick - this.businessSentTick < 6000) return null;
     this.businessSent = this.business.version;
     this.businessAirfield = afVersion;
     this.businessSentTick = this.tick;
-    return this.business.payload(this.tick);
+    return { ...this.business.payload(this.tick), baggage: this.baggage.inspect(this.airfield.data.stands.map((st) => st.id)) };
   }
 
   /** Copies of the terminal grids when they changed since the last call, otherwise null. */
   takeTerminalGrids(): TerminalGrid[] | null {
-    if (this.business.terminalVersion === this.gridsSent) return null;
+    const bagVersion = this.baggage.drawVersion();
+    if (this.business.terminalVersion === this.gridsSent && bagVersion === this.bagDrawSent) return null;
     this.gridsSent = this.business.terminalVersion;
+    this.bagDrawSent = bagVersion;
     return this.business.grids.map((g) => ({
       ...g,
+      bagNodes: this.baggage.drawList(g.id),
       floor: g.floor.slice(),
       zone: g.zone.slice(),
       fixture: g.fixture.slice(),
@@ -585,6 +654,7 @@ export class Sim {
       airfield: this.airfield.saveState(),
       traffic: this.traffic.saveState(),
       business: this.business.saveState(),
+      baggage: this.baggage.saveState(),
       cohorts: this.cohorts.saveState(),
       vehicles: this.gse.saveState(),
       turnarounds: this.turns.saveState(),
@@ -608,6 +678,7 @@ export class Sim {
     this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
+    this.baggage.loadState(save.baggage as BaggageSave | undefined);
     this.roadSeen.fill(-1);
     this.syncRoads(true);
     this.gse.loadState(save.vehicles);
@@ -625,6 +696,7 @@ export class Sim {
     this.updateObstacles();
     this.businessSent = -1;
     this.gridsSent = -1;
+    this.bagDrawSent = -1;
     this.pending.length = 0;
   }
 
@@ -638,6 +710,7 @@ export class Sim {
     h = this.airfield.hash(h);
     h = this.traffic.hash(h);
     h = this.business.hash(h);
+    h = this.baggage.hash(h);
     h = this.cohorts.hash(h);
     h = this.gse.hash(h);
     h = this.turns.hash(h);

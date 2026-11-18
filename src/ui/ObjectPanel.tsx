@@ -1,13 +1,14 @@
-import { AIRFIELD, BUSINESS, GROUND, SURFACE_SPEC } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, GSE_INDEX, STAND_ACCESS, SURFACE_SPEC } from '@data/index';
+import { bagNodeNumber, bayOptions, deskOptions, standBagState, standWarnings } from './standInspector';
 import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
-import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
 import { apronArea } from '@shared/apronGeom';
-import { APPROACHES, CODES, SURFACES, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, APPROACHES, CODES, STAND_UPGRADE, SURFACES, type StandUpgrade, type Approach, type CodeLetter, type PadSide, type PushbackDir, type Runway, type Stand, type Surface, type Taxiway } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
 import { standRefusal } from '@shared/standSizes';
 import { standFork, standLeadOut } from '@shared/standFork';
@@ -241,6 +242,181 @@ function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
   );
 }
 
+/** Stand upgrades with cost and state, the gate desk choice and the warnings that follow from them (T66). */
+function StandAccess({ stand, index, send }: { stand: Stand; index: number; send(cmd: Command): void }) {
+  const biz = useGameStore((s) => s.business);
+  const cash = useGameStore((s) => s.cash);
+  const desks = deskOptions(biz?.gateDesks ?? []);
+  const nowIndex = biz?.standGate[index] ?? -1;
+  const now = desks.find((d) => d.index === nowIndex);
+  const built = stand.upgrades ?? 0;
+  const warnings = standWarnings({
+    commercial: (stand.accepts & ACCEPT_COMMERCIAL) !== 0,
+    gateDeskCount: desks.length,
+    far: biz?.standFar[index] === 1,
+    busBay: (built & STAND_UPGRADE.busBay) !== 0,
+    busOwned: (biz?.fleet[GSE_INDEX.bus] ?? 0) > 0,
+  });
+  const assigned = stand.gate ? desks.find((d) => d.building === stand.gate?.building && d.x === stand.gate.x && d.y === stand.gate.y) : undefined;
+  const pick = (value: string): void => {
+    const d = desks.find((o) => `${o.building}:${o.x}:${o.y}` === value);
+    send({ type: 'setStandGate', id: stand.id, building: d ? d.building : -1, x: d ? d.x : 0, y: d ? d.y : 0 });
+  };
+  return (
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft);display:grid;gap:4px" data-testid="stand-access">
+      <div class="section" style="margin:0 0 2px">{t('inspector.stand.upgrades')}</div>
+      {(Object.keys(STAND_UPGRADE) as StandUpgrade[]).map((u) => {
+        const spec = STAND_ACCESS.upgrades[u];
+        const isBuilt = (built & STAND_UPGRADE[u]) !== 0;
+        const running = stand.upgradeWorks;
+        const inWorks = running?.upgrade === u;
+        const reason = running ? t('inspector.stand.upgradeBusy') : cash < spec.cost ? t('inspector.stand.upgradeNoCash') : undefined;
+        return (
+          <div key={u} data-testid={`stand-upgrade-${u}`} style="display:flex;justify-content:space-between;gap:6px;align-items:center">
+            <span>
+              {t(`inspector.stand.upgrade.${u}`)}
+              <span style="color:var(--muted);font-size:11px;display:block">{tFormat('inspector.stand.upgradeCost', { cost: formatMoney(spec.cost), days: spec.days })}</span>
+            </span>
+            {isBuilt ? (
+              <span>{t('inspector.stand.upgradeBuilt')}</span>
+            ) : inWorks && running ? (
+              <span>{tFormat('inspector.stand.upgradeWorks', { day: Math.floor(running.doneTick / TICKS_PER_DAY) })}</span>
+            ) : (
+              <button data-testid={`stand-build-${u}`} disabled={reason !== undefined} title={reason} onClick={() => send({ type: 'startStandUpgrade', id: stand.id, upgrade: u })}>
+                {t('inspector.stand.upgradeBuild')}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <label style="display:flex;justify-content:space-between;gap:6px;margin-top:4px">
+        {t('inspector.stand.gate')}
+        <select data-testid="stand-gate" value={assigned ? `${assigned.building}:${assigned.x}:${assigned.y}` : ''} onChange={(e) => pick((e.target as HTMLSelectElement).value)}>
+          <option value="">{t('inspector.stand.gateAuto')}</option>
+          {desks.map((d) => (
+            <option key={`${d.building}:${d.x}:${d.y}`} value={`${d.building}:${d.x}:${d.y}`}>
+              {tFormat('inspector.stand.gateDesk', { building: d.building, n: d.number })}
+            </option>
+          ))}
+        </select>
+      </label>
+      {now && (
+        <div style="color:var(--muted);font-size:11px" data-testid="stand-gate-now">
+          {tFormat('inspector.stand.gateNow', { building: now.building, n: now.number })}
+        </div>
+      )}
+      {warnings.map((w) => (
+        <div key={w} style="color:var(--warn)" data-testid={`stand-warn-${w}`}>
+          {t(`inspector.stand.warn.${w}`)}
+        </div>
+      ))}
+      <StandBaggage stand={stand} index={index} send={send} />
+    </div>
+  );
+}
+
+/** Baggage bay choice of a commercial stand, its arrival carousel and the warnings that follow (T43). */
+function StandBaggage({ stand, index, send }: { stand: Stand; index: number; send(cmd: Command): void }) {
+  const info = useGameStore((s) => s.business?.baggage);
+  const bays = info?.bays ?? [];
+  const bayId = info?.standBay[index] ?? -1;
+  const state = standBagState({ commercial: (stand.accepts & ACCEPT_COMMERCIAL) !== 0, bayId, bays });
+  if (!state.visible) return null;
+  const options = bayOptions(bays);
+  const now = options.find((o) => o.id === bayId);
+  const nodes = info?.nodes ?? [];
+  const select = (id: number): void => useToolStore.getState().set({ tool: 'select', selection: { kind: 'bagNode', id } });
+  return (
+    <div style="display:grid;gap:4px" data-testid="stand-baggage">
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('inspector.stand.bay')}
+        <select data-testid="stand-bay" value={String(bayId)} onChange={(e) => send({ type: 'setStandBay', standId: stand.id, bayId: Number((e.target as HTMLSelectElement).value) })}>
+          <option value="-1">{t('inspector.stand.bayNone')}</option>
+          {options.map((o) => (
+            <option key={o.id} value={String(o.id)}>
+              {tFormat('inspector.stand.bayOption', { n: o.number, building: o.building, used: o.used, total: o.total })}
+            </option>
+          ))}
+        </select>
+      </label>
+      {now && state.carousel !== null && (
+        <div style="color:var(--muted);font-size:11px" data-testid="stand-carousel">
+          {tFormat('inspector.stand.carousel', { n: bagNodeNumber(nodes, state.carousel) })}
+        </div>
+      )}
+      {now && state.warning === 'bayNoCarousel' && (
+        <div style="color:var(--warn)" data-testid="stand-warn-bayNoCarousel">
+          {tFormat('inspector.stand.bayNoCarousel', { n: now.number })}
+        </div>
+      )}
+      {now && (
+        <button data-testid="stand-bay-select" onClick={() => select(now.id)}>
+          {t('inspector.stand.selectBay')}
+        </button>
+      )}
+      {state.warning === 'noBay' && (
+        <div style="color:var(--warn)" data-testid="stand-warn-noBay">
+          {t('inspector.stand.warn.noBay')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Panel of a selected baggage node: buffer, read only connections, warnings, Fix automatically and Remove. */
+function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
+  const info = useGameStore((s) => s.business?.baggage);
+  const nodes = info?.nodes ?? [];
+  const node = nodes.find((n) => n.id === id);
+  if (!node) return null;
+  const label = (other: number): { kind: string; n: number } => {
+    const o = nodes.find((x) => x.id === other);
+    return { kind: o ? t(`inspector.bag.kind.${o.kind}`) : '', n: bagNodeNumber(nodes, other) };
+  };
+  return (
+    <div data-testid="bag-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+      <div style="font-weight:600">{t(`inspector.bag.kind.${node.kind}`)}</div>
+      <div style="color:var(--muted);font-size:11px" data-testid="bag-id">
+        {tFormat('inspector.bag.id', { id: node.id })}
+      </div>
+      <div data-testid="bag-buffer">{tFormat('inspector.bag.buffer', { held: node.held, capacity: node.capacity })}</div>
+      <div class="section" style="margin:4px 0 2px">{t('inspector.bag.connections')}</div>
+      {node.links.length === 0 && <div style="color:var(--muted)">{t('inspector.bag.none')}</div>}
+      {node.links.map((l) => {
+        const outgoing = l.from === node.id;
+        const other = label(outgoing ? l.to : l.from);
+        return (
+          <div key={`${l.from}:${l.to}`} data-testid="bag-link" style="display:flex;justify-content:space-between">
+            <span>{tFormat(outgoing ? 'inspector.bag.to' : 'inspector.bag.from', other)}</span>
+            <span style="color:var(--muted)">{t(l.mode === 'auto' ? 'inspector.bag.auto' : 'inspector.bag.manual')}</span>
+          </div>
+        );
+      })}
+      {node.warnings.map((w) => (
+        <div key={w} style="color:var(--warn)" data-testid={`bag-warn-${w}`}>
+          {t(`inspector.bag.warn.${w}`)}
+        </div>
+      ))}
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button data-testid="bag-fix" onClick={() => send({ type: 'fixBaggageNode', id })}>
+          {t('inspector.bag.fix')}
+        </button>
+        {node.kind !== 'drop' && (
+          <button
+            data-testid="bag-remove"
+            onClick={() => {
+              send({ type: 'removeBaggageNode', id });
+              useToolStore.getState().set({ selection: null });
+            }}
+          >
+            {t('inspector.bag.remove')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Inspector for the selected airfield object, with segment properties, resurfacing and demolition. */
 export function ObjectPanel({ send }: Props) {
   const selection = useToolStore((s) => s.selection);
@@ -248,10 +424,11 @@ export function ObjectPanel({ send }: Props) {
   const biz = useGameStore((st) => st.business);
   if (!selection) return null;
   const { kind, id } = selection;
+  if (kind === 'bagNode') return <BagNodePanel id={id} send={send} />;
   if (kind === 'terminal') {
     const term = biz?.terminals.find((x) => x.id === id);
     if (!biz || !term) return null;
-    const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k }));
+    const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k })).filter((r) => !BAGGAGE_FIXTURE_KEYS.includes(r.key));
     return (
       <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
@@ -536,6 +713,7 @@ export function ObjectPanel({ send }: Props) {
             </select>
           </label>
         )}
+        <StandAccess stand={x} index={af.stands.indexOf(x)} send={send} />
         {x.type === 'contact' && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
       </>
     );

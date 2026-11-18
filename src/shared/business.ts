@@ -1,5 +1,6 @@
 /** Business state shared with the UI: terminals, airlines, the ledger, the loan and the rating. */
 
+import type { BagDrawNode } from './baggageNodes';
 import { TICKS_PER_GAME_MINUTE } from './time';
 
 /** Calendar ticks, derived from CLOCK_SCALE in time.ts: 50 ticks per game minute, 72000 per game day. */
@@ -20,7 +21,7 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
@@ -28,6 +29,9 @@ export const isShopFixture = (id: number): boolean => id >= 6 && id <= 11;
 /** Cells of control room a tower needs before it counts (a 2 by 2 cab). */
 export const ATC_MIN_CELLS = 4;
 export const fixtureKey = (id: number): FixtureKey => FIXTURE_KEYS[id - 1];
+/** Baggage network nodes. The player places them with the baggage tool, never with the fixture tool. */
+export const BAGGAGE_FIXTURE_KEYS: readonly FixtureKey[] = ['screeningMachine', 'baggageBay', 'carousel'];
+export const isBaggageFixture = (id: number): boolean => id >= 17 && id <= 19;
 export type ShopKind = FixtureKey;
 
 export const FLOOR = { None: 0, Concrete: 1, Tile: 2, Carpet: 3 } as const;
@@ -53,6 +57,9 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   bagDrop: [1],
   passport: [3],
   gateDesk: [3],
+  screeningMachine: [4],
+  baggageBay: [4, 3],
+  carousel: [1],
 };
 /** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
@@ -72,6 +79,9 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   bagDrop: 2,
   passport: 1,
   gateDesk: 2,
+  screeningMachine: 1,
+  baggageBay: 1,
+  carousel: 1,
 };
 
 export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
@@ -122,6 +132,8 @@ export interface TerminalGrid {
   leased: Uint8Array;
   /** Money spent on this building, for demolition refunds. */
   cost: number;
+  /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
+  bagNodes?: BagDrawNode[];
 }
 
 /** A building in the business payload: counts only, the grids travel separately. */
@@ -223,6 +235,46 @@ export interface BoardRow {
   startMin: number;
 }
 
+/** A link of the baggage network as the inspector lists it. */
+export interface BagLinkInfo {
+  from: number;
+  to: number;
+  mode: 'auto' | 'manual';
+}
+
+export type BagWarningCode = 'dropNoMachine' | 'machineNoBay' | 'bayNoCarousel';
+
+export interface BagNodeInfo {
+  id: number;
+  kind: 'drop' | 'machine' | 'bay' | 'carousel';
+  building: number;
+  /** Logical cells the node covers, for picking it with the select tool. */
+  cells: [number, number][];
+  /** Bags held now and the buffer size from data. */
+  held: number;
+  capacity: number;
+  /** Every link that starts or ends at this node. */
+  links: BagLinkInfo[];
+  warnings: BagWarningCode[];
+}
+
+export interface BagBayInfo {
+  id: number;
+  building: number;
+  slots: number;
+  /** Ids of the stands assigned to this bay. */
+  stands: number[];
+  /** Carousel the bay feeds, null when it has none. */
+  carousel: number | null;
+}
+
+export interface BaggageInfo {
+  /** Per stand, indexed like airfield.data.stands: the bay id, -1 when none. */
+  standBay: number[];
+  bays: BagBayInfo[];
+  nodes: BagNodeInfo[];
+}
+
 export interface BusinessPayload {
   board: BoardRow[];
   /** Flight series of every signed airline (T61). */
@@ -237,6 +289,14 @@ export interface BusinessPayload {
   standLinked: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a contact stand has a terminal in reach, others are 1. */
   standContact: number[];
+  /** Gate desks of every terminal in terminal then node order, by building id and logical cell (T66). */
+  gateDesks: { building: number; x: number; y: number }[];
+  /** Per stand, indexed like airfield.data.stands: the index in `gateDesks` that boards it (assigned or nearest), -1 when there is no desk. */
+  standGate: number[];
+  /** 1 or 0 per stand, indexed like airfield.data.stands: farther from its gate desk than the stairs walk limit (T66). */
+  standFar: number[];
+  /** Derived baggage network facts for the inspectors (T43). Filled by the sim, never part of the saved state. */
+  baggage: BaggageInfo;
   /** Landings plus takeoffs the tower allows per rolling hour across every runway, 0 without a tower. */
   movementBudget: number;
   /** Four numbers per flight that holds a stand (Scheduled, Inbound or OnGround): stand id, flight, start and end in absolute game minutes. Uncapped, the numbers the stand rule compares. */

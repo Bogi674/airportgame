@@ -1,9 +1,10 @@
 import type { FromBakeMessage, ToBakeMessage } from '@shared/protocol';
 import { chunkPixelSize } from '../chunks';
 import { TerrainBaker } from '../terrain';
-import { paintAirfield } from '../markings/airfieldPaint';
+import { paintAirfield, TERMINAL_KIT_PACKS } from '../markings/airfieldPaint';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
 import type { TerminalGrid } from '@shared/business';
+import { ensurePacks } from '../sprites/fixtureKit';
 
 interface BakeScope {
   postMessage(message: FromBakeMessage, transfer: Transferable[]): void;
@@ -15,7 +16,7 @@ let terrain: TerrainBaker | null = null;
 let airfield: AirfieldPayload = EMPTY_AIRFIELD;
 let terminals: TerminalGrid[] = [];
 
-scope.onmessage = (event) => {
+scope.onmessage = async (event) => {
   const msg = event.data;
   if (msg.type === 'site') {
     terrain = new TerrainBaker(msg.site);
@@ -35,6 +36,7 @@ scope.onmessage = (event) => {
   }
   try {
     if (!terrain) throw new Error('bake requested before the site arrived');
+    if (terminals.length > 0) await ensurePacks(TERMINAL_KIT_PACKS).catch(() => undefined);
     const px = chunkPixelSize(msg.band);
     const canvas = new OffscreenCanvas(px, px);
     const ctx = canvas.getContext('2d');

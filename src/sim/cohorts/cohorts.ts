@@ -42,6 +42,7 @@ const DEG = Math.PI / 180;
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
+const BAG_DROP = FIXTURE_KEYS.indexOf('bagDrop') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 
@@ -115,6 +116,8 @@ export class Cohorts {
   readonly flBoarded: Int32Array;
   readonly flGate: Int32Array;
   readonly flActive: Int32Array;
+  /** Called with grid id, anchor cell index, flight serial and bag count when a cohort finishes at a check in or bag drop node. Set by the sim (T43). */
+  onCheckIn: ((gridId: number, cell: number, serial: number, bags: number) => void) | null = null;
   private readonly rng: Rng;
   private readonly initialRng: number;
   private readonly business: Business;
@@ -415,6 +418,10 @@ export class Cohorts {
       this.schedule(c, this.tick + STEP);
       return;
     }
+    const kind = t.kind[this.node[c]];
+    if (this.onCheckIn !== null && (kind === CHECK_IN || kind === BAG_DROP) && this.bags[c] > 0) {
+      this.onCheckIn(this.gridId(g), t.cell[this.node[c]], this.traffic.serialOf(this.flight[c]), this.bags[c]);
+    }
     const from = t.walkNode[this.node[c]];
     const n = this.pickNode(g, SECURITY, SECURITY, from, c);
     if (n < 0) {
@@ -481,13 +488,31 @@ export class Cohorts {
   private toGate(g: number, c: number): void {
     const f = this.flight[c];
     const from = this.originWalk(g, c);
-    const n = this.traffic.fState[f] === FlState.OnGround ? this.pickNode(g, GATE_DESK, GATE_DESK, from, c) : -1;
+    let n = -1;
+    if (this.traffic.fState[f] === FlState.OnGround) {
+      n = this.assignedDeskNode(g, this.traffic.fStand[f]);
+      if (n < 0) n = this.pickNode(g, GATE_DESK, GATE_DESK, from, c);
+    }
     if (n < 0) {
       this.schedule(c, this.tick + RETRY_TICKS);
       return;
     }
     this.flGate[f] += this.size[c];
     this.walk(g, c, n, from, Stage.ToGate);
+  }
+
+  /**
+   * Service node of the gate desk a stand is assigned to, found again by its cell (node ids go stale after edits).
+   * -1 when the stand has no valid assignment, the desk is in another grid or it has no queue room.
+   */
+  private assignedDeskNode(g: number, standId: number): number {
+    const desk = this.business.assignedGate(standId);
+    const t = this.table(g);
+    if (!desk || !t || desk.building !== this.gridId(g)) return -1;
+    for (let n = 0; n < t.count; n++) {
+      if (t.kind[n] === GATE_DESK && t.lx[n] === desk.x && t.ly[n] === desk.y) return t.queueCap[n] > 0 ? n : -1;
+    }
+    return -1;
   }
 
   /** Walk node a cohort leaves from: its service node when it has one, otherwise the curb. */

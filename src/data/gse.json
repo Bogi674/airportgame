@@ -88,7 +88,13 @@
    "heightM": 2.2,
    "docks": false,
    "articulated": false,
-   "towedBy": null
+   "towedBy": null,
+   "dock": {
+    "station": null,
+    "side": "R",
+    "orient": "perp",
+    "underWing": true
+   }
   },
   {
    "id": "refueller",

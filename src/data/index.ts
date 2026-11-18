@@ -1,4 +1,5 @@
 import airfieldCodesJson from './airfield_codes.json';
+import baggageJson from './baggage.json';
 import businessJson from './business.json';
 import marketJson from './market.json';
 import gseJson from './gse.json';
@@ -8,10 +9,12 @@ import peopleJson from './people.json';
 import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
 import standSizesJson from './stand_sizes.json';
+import standAccessJson from './stand_access.json';
 import surfacesJson from './surfaces.json';
 import turnaroundsJson from './turnarounds.json';
 import {
   airfieldCodesSchema,
+  baggageSchema,
   businessSchema,
   marketSchema,
   gseSchema,
@@ -20,10 +23,12 @@ import {
   peopleSchema,
   profilesSchema,
   spritesSchema,
+  standAccessSchema,
   standSizesSchema,
   surfacesSchema,
   turnaroundsSchema,
   type AirfieldCodes,
+  type BaggageData,
   type BusinessData,
   type MarketData,
   type GseData,
@@ -32,6 +37,7 @@ import {
   type PeopleData,
   type ProfilesData,
   type SpritesData,
+  type StandAccessData,
   type StandSizesData,
   type SurfacesData,
   type TurnaroundsData,
@@ -40,6 +46,8 @@ import {
 /** Validated once at load, then trusted (docs/PERFORMANCE.md section 7). */
 export const AIRFIELD: AirfieldCodes = airfieldCodesSchema.parse(airfieldCodesJson);
 export const BUSINESS: BusinessData = businessSchema.parse(businessJson);
+/** Automatic baggage network values, docs/BAGGAGE.md section 11. */
+export const BAGGAGE: BaggageData = baggageSchema.parse(baggageJson);
 /** Destinations, flight series, airline satisfaction and growth. */
 export const MARKET: MarketData = marketSchema.parse(marketJson);
 export const SURFACE_DATA: SurfacesData = surfacesSchema.parse(surfacesJson);
@@ -59,6 +67,9 @@ export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
 export const STAND_PLACEMENT: StandSizesData['placement'] = STAND_DATA.placement;
 /** Stand marking dimensions. */
 export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
+
+/** Stand upgrade costs and days, and the far stand boarding rule (T66). */
+export const STAND_ACCESS: StandAccessData = standAccessSchema.parse(standAccessJson);
 
 /** Turnaround task list of airline flights (T63). */
 export const TURNAROUNDS: TurnaroundsData = turnaroundsSchema.parse(turnaroundsJson);

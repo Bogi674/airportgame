@@ -1,6 +1,6 @@
 import { PAINT, STAND_MARKINGS, STAND_SIZES } from '@data/index';
 import { standGeometry } from '@data/aircraft';
-import { ACCEPT_GA, type AirfieldPayload, type Stand } from '@shared/airfield';
+import { ACCEPT_GA, STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
 import { standBox } from '@shared/clearance';
 import { standForks, standLeadOut, type StandFork } from '@shared/standFork';
@@ -209,6 +209,8 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, out: StandFork |
     ctx.setLineDash([]);
   };
   const contact = s.type === 'contact' && s.size !== 'small';
+  // Stairs position and bus bay are drawn only where the bus bay upgrade is built (T66, revision 3 type 5).
+  const hasBusBay = ((s.upgrades ?? 0) & STAND_UPGRADE.busBay) !== 0;
 
   // Service road above the stand top, under everything else. Jet bridges are a stand upgrade of T66 and are not drawn before it.
   if (contact && detail) {
@@ -289,7 +291,7 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, out: StandFork |
   } else if (l.funnel) {
     const f = l.funnel;
     const hx = l.W / 2;
-    if (detail && l.zones) paintZones(ctx, l, l.zones, w, contact ? 'bridge' : l.through ? 'none' : 'bus');
+    if (detail && l.zones) paintZones(ctx, l, l.zones, w, contact ? 'bridge' : l.through || !hasBusBay ? 'none' : 'bus');
     // Wing stop outline: the solid restraint line down both sides, angled in to the nose line and closed at the road.
     const rx = hx - MK.restraintInsetM;
     const ry = l.D + MK.restraintTopM;
@@ -313,7 +315,7 @@ function paintStand(ctx: Ctx, s: Stand, fork: StandFork | null, out: StandFork |
       // An aircraft leaving forward is never pushed, so its stand has no push limit.
       if (!out) paintPushLimit(ctx, l, w);
       if (STAND_SIZES[s.size].hydrants) paintPits(ctx, l, w);
-      if (l.through) paintThrough(ctx, l, l.through, w, !STAND_SIZES[s.size].hydrants);
+      if (l.through) paintThrough(ctx, l, l.through, w, !STAND_SIZES[s.size].hydrants, hasBusBay);
     }
   }
   // Stand number box on the centerline inside the stand; unpaved stands have a signboard instead.
@@ -422,11 +424,11 @@ function paintLeadOutArrow(ctx: Ctx, l: StandLayout, out: StandFork, concrete: b
 }
 
 /** Marshaller spot, fuel truck box, zebra walkway and bus only bay of the sheet's taxi through template (T72). */
-function paintThrough(ctx: Ctx, l: StandLayout, t: ThroughMarks, w: StandWindow, truck: boolean): void {
+function paintThrough(ctx: Ctx, l: StandLayout, t: ThroughMarks, w: StandWindow, truck: boolean, busBay: boolean): void {
   const at = (p: Pt): Pt => toWorld(l, p.x, p.y);
   // Fuel truck box where no hydrant pits fuel the aircraft: white dashes, FUEL TRUCK written on the tail side.
   if (truck) paintFuelTruck(ctx, l, t, w);
-  paintWalkway(ctx, l, t, w);
+  if (busBay) paintWalkway(ctx, l, t, w);
   // Marshaller spot: white ring with M ahead of the nose.
   const c = at(t.marshaller);
   ctx.strokeStyle = C.white;

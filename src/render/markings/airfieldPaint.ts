@@ -3,10 +3,14 @@ import { padPolygon } from '@shared/turnPad';
 import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
-import { FLOOR, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
+import { FLOOR, fixtureKey, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { drawCenter, drawFootprint, dropRampCenter, stagingLaneCenters, type BagDrawNode } from '@shared/baggageNodes';
 import { cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
 import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
+import { bakeFixture, drawFixture, type FixtureSprite } from '../sprites/fixtureSprite';
+import { tierForZoom, type Rot, type Tier } from '../sprites/fixturePlan';
+import type { KitCategory } from '../sprites/fixtureKit';
 import { paintStands } from './standPaint';
 import { paintTowers } from './towerPaint';
 import { paintBuildings, paintDepots, paintRoadCrossings, paintRoadLines, paintRoadSurface } from './roadPaint';
@@ -21,6 +25,37 @@ const TW = PAINT.taxiway;
 const SLAB_JOINT = 'rgba(40,38,34,0.18)';
 const RED = '#d8362f';
 const THRESHOLD_STRIPES: Record<number, number> = { 18: 4, 23: 6, 30: 8, 45: 12, 60: 16 };
+/** Kit asset drawn for each terminal fixture. Security, belt, shops and atc keep block drawing: their kit footprint differs from the game footprint and sprites are never scaled. */
+export const FIXTURE_ASSET: Partial<Record<FixtureKey, string>> = {
+  checkIn: 'checkIn.l1',
+  kiosk: 'kiosk',
+  bagDrop: 'bagDrop',
+  passport: 'passport.l1',
+  gateDesk: 'gateDesk.l1',
+  seating: 'bench.beam3',
+  toilet: 'washroom.wcStall',
+};
+/** Kit packs the terminal painter needs before its chunks bake. */
+export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'seating', 'washroom', 'baggage'];
+/** Rotation in degrees of a two cell fixture by its footprint code 1 to 4, see fixtureRot in TerminalGrid. */
+const KIT_ROT: readonly Rot[] = [0, 90, 180, 270];
+/** Kit assets of the baggage nodes that do not depend on a bay width. */
+export const BAG_FIXED_ASSETS: readonly string[] = ['screeningMachine', 'carousel', 'ramp.out', 'ramp.unconnected', 'stagingLane'];
+const BAG_BLOCK_COLOR = '#8e959c';
+
+/** Kit asset of a baggage node's body: a drop has none, it draws only its ramp stub. */
+export function bagAssetId(n: BagDrawNode): string | null {
+  if (n.kind === 'machine') return 'screeningMachine';
+  if (n.kind === 'carousel') return 'carousel';
+  if (n.kind === 'bay') return `baggageBay.w${n.widthCells}`;
+  return null;
+}
+
+/** Footprint center in grid meters and kit rotation in degrees of a baggage node, null for a drop. */
+export function bagPlacement(n: BagDrawNode): { x: number; y: number; rot: Rot } | null {
+  const c = drawCenter(n);
+  return c === null ? null : { x: c[0] * TERMINAL_CELL_M, y: c[1] * TERMINAL_CELL_M, rot: KIT_ROT[n.rot] };
+}
 
 const isPaved = (s: Surface): boolean => s === 'asphalt' || s === 'concrete';
 
@@ -598,8 +633,76 @@ const FIXTURE_LETTER = ['', 'C', 'S', 'B', '', 'WC', 'Sh', 'F', 'Cf', 'DF', 'Bk'
 /** Draws one terminal building as a cutaway: floors, walls, doors and fixtures. */
 const ZONE_TINT = ['', 'rgba(70,140,230,0.22)', 'rgba(235,170,50,0.26)', 'rgba(70,190,120,0.24)', 'rgba(220,80,80,0.26)'];
 
+/** Baked kit sprite for a fixture id and footprint code, or null when its block drawing applies. */
+function kitSpriteAt(f: number, code: number, tier: 0 | Tier, scale: number): FixtureSprite | null {
+  if (tier === 0 || f === 0 || code >= 5) return null;
+  const asset = FIXTURE_ASSET[fixtureKey(f)];
+  if (asset === undefined) return null;
+  return bakeFixture(asset, tier, code === 0 ? 0 : KIT_ROT[code - 1], scale, null);
+}
+
+/** Draws the kit sprites of the fixtures in a cell range at their footprint centers. */
+function paintKitFixtures(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1: number, y1: number, tier: 0 | Tier, scale: number): void {
+  const C = TERMINAL_CELL_M;
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      const i = cellIndex(g, cx, cy);
+      const code = g.fixtureRot[i];
+      const sprite = kitSpriteAt(g.fixture[i], code, tier, scale);
+      if (sprite === null) continue;
+      if (code === 0) {
+        drawFixture(ctx, sprite, (cx + 0.5) * C, (cy + 0.5) * C, 0);
+        continue;
+      }
+      const [sx, sy] = ROT_STEP[code - 1];
+      const bx = (cx + Math.min(0, sx)) * C;
+      const by = (cy + Math.min(0, sy)) * C;
+      const bw = (1 + Math.abs(sx)) * C;
+      const bh = (1 + Math.abs(sy)) * C;
+      drawFixture(ctx, sprite, bx + bw / 2, by + bh / 2, KIT_ROT[code - 1]);
+    }
+  }
+}
+
+/** A flat block of w by d meters centered on (x, y) and turned by rot degrees, the fallback without a kit sprite. */
+function fillBlock(ctx: Ctx, x: number, y: number, rot: Rot, wM: number, dM: number): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((rot * Math.PI) / 180);
+  ctx.fillStyle = BAG_BLOCK_COLOR;
+  ctx.fillRect(-wM / 2, -dM / 2, wM, dM);
+  ctx.restore();
+}
+
+/** Draws one kit asset centered at a logical cell point, or a flat block of the given size when it cannot. */
+function drawBagAsset(ctx: Ctx, id: string, at: readonly [number, number], rot: Rot, tier: 0 | Tier, scale: number, blockM: readonly [number, number] | null): void {
+  const C = TERMINAL_CELL_M;
+  const sprite = tier === 0 ? null : bakeFixture(id, tier, rot, scale, null);
+  if (sprite !== null) drawFixture(ctx, sprite, at[0] * C, at[1] * C, rot);
+  else if (blockM !== null) fillBlock(ctx, at[0] * C, at[1] * C, rot, blockM[0], blockM[1]);
+}
+
+/** Draws the baggage nodes of one building: machines, bays and carousels, drop ramp stubs and bay staging lanes. */
+function paintBagNodes(ctx: Ctx, nodes: readonly BagDrawNode[], tier: 0 | Tier, scale: number): void {
+  const C = TERMINAL_CELL_M;
+  for (const n of nodes) {
+    const rot = KIT_ROT[n.rot];
+    if (n.kind === 'drop') {
+      drawBagAsset(ctx, n.linked ? 'ramp.out' : 'ramp.unconnected', dropRampCenter(n), rot, tier, scale, [C, C]);
+      continue;
+    }
+    const id = bagAssetId(n);
+    const size = drawFootprint(n);
+    const c = drawCenter(n);
+    if (id === null || size === null || c === null) continue;
+    drawBagAsset(ctx, id, c, rot, tier, scale, [size.w * C, size.d * C]);
+    for (const lane of stagingLaneCenters(n)) drawBagAsset(ctx, 'stagingLane', lane, rot, tier, scale, null);
+  }
+}
+
 function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
   const C = TERMINAL_CELL_M;
+  const tier = tierForZoom(win.scale);
   // Cell range under the window.
   let minX = Infinity;
   let minY = Infinity;
@@ -725,7 +828,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     for (let cx = fx0; cx <= fx1; cx++) {
       const i = at(cx, cy);
       const code = g.fixtureRot[i];
-      if (g.fixture[i] === 0 || code >= 5) continue;
+      if (g.fixture[i] === 0 || code >= 5 || isBaggageFixture(g.fixture[i]) || kitSpriteAt(g.fixture[i], code, tier, win.scale) !== null) continue;
       // A short shadow under each fixture lifts it off the floor in the same cheap way.
       ctx.fillStyle = 'rgba(0,0,0,0.22)';
       if (code === 0) {
@@ -736,12 +839,14 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
       }
     }
   }
+  paintKitFixtures(ctx, g, fx0, fy0, fx1, fy1, tier, win.scale);
+  if (g.bagNodes) paintBagNodes(ctx, g.bagNodes, tier, win.scale);
   for (let cy = fy0; cy <= fy1; cy++) {
     for (let cx = fx0; cx <= fx1; cx++) {
       const i = at(cx, cy);
       const f = g.fixture[i];
       const code = g.fixtureRot[i];
-      if (f === 0 || code >= 5) continue;
+      if (f === 0 || code >= 5 || isBaggageFixture(f) || kitSpriteAt(f, code, tier, win.scale) !== null) continue;
       if (code === 0) {
         ctx.fillStyle = FIXTURE_COLOR[f];
         ctx.fillRect(cx * C + 0.2, cy * C + 0.2, C - 0.4, C - 0.4);

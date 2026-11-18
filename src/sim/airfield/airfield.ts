@@ -1,4 +1,4 @@
-import { AIRFIELD, BUSINESS, GROUND, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, STAND_ACCESS, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { standBox, standTaxiwayClash } from '@shared/clearance';
 import { standLeadTaxiways } from '@shared/standFork';
@@ -6,6 +6,7 @@ import { standSlot } from '@shared/standGeom';
 import {
   ACCEPT_GA,
   validAccepts,
+  STAND_UPGRADE,
   codeIndex,
   compassVector,
   towerRect,
@@ -49,8 +50,8 @@ import {
   standHeading,
   type PricedBox,
 } from '@shared/apronPricing';
-import { terminalOverlaps } from '@shared/terminalOps';
-import type { TerminalGrid } from '@shared/business';
+import { cellIndex, terminalOverlaps } from '@shared/terminalOps';
+import { fixtureKey, type TerminalGrid } from '@shared/business';
 import { foldU32 } from '../hash';
 import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
@@ -330,6 +331,32 @@ export class Airfield {
         if (cmd.pushback !== undefined) s.pushback = cmd.pushback;
         this.refresh();
         return { cashDelta: 0 };
+      }
+      case 'setStandGate': {
+        const s = this.data.stands.find((x) => x.id === cmd.id);
+        if (!s) return { code: 'nothingThere' };
+        if (cmd.building === -1) {
+          delete s.gate;
+        } else {
+          const grid = env.terminals?.find((g) => g.id === cmd.building);
+          const at = grid ? cellIndex(grid, cmd.x, cmd.y) : -1;
+          // An anchor has fixtureRot below 5, 5 and up is the tail of a two cell fixture.
+          if (!grid || at < 0 || grid.fixture[at] === 0 || fixtureKey(grid.fixture[at]) !== 'gateDesk' || grid.fixtureRot[at] >= 5) return { code: 'notGateDesk' };
+          s.gate = { building: cmd.building, x: cmd.x, y: cmd.y };
+        }
+        this.refresh();
+        return { cashDelta: 0 };
+      }
+      case 'startStandUpgrade': {
+        const s = this.data.stands.find((x) => x.id === cmd.id);
+        if (!s) return { code: 'nothingThere' };
+        if (((s.upgrades ?? 0) & STAND_UPGRADE[cmd.upgrade]) !== 0) return { code: 'upgradeBuilt' };
+        if (s.upgradeWorks) return { code: 'worksRunning' };
+        const spec = STAND_ACCESS.upgrades[cmd.upgrade];
+        if (spec.cost > cash) return { code: 'insufficientFunds', args: { cost: spec.cost } };
+        s.upgradeWorks = { upgrade: cmd.upgrade, doneTick: env.tick + worksTicks(spec.days) };
+        this.refresh();
+        return { cashDelta: -spec.cost };
       }
       case 'moveHolding':
         return this.moveHolding(cmd);
@@ -1040,8 +1067,10 @@ export class Airfield {
   }
 
   /** Finishes the works that are due. Called once per tick; cheap when nothing is under works. */
-  update(tick: number): void {
+  /** Finishes due works. Returns true when a stand upgrade finished, so the sim reruns stand assignment. */
+  update(tick: number): boolean {
     let done = false;
+    let standsReopened = false;
     for (const t of this.data.taxiways) {
       const w = t.works;
       if (!w || w.doneTick > tick) continue;
@@ -1057,7 +1086,16 @@ export class Airfield {
       delete r.works;
       done = true;
     }
+    for (const s of this.data.stands) {
+      const w = s.upgradeWorks;
+      if (!w || w.doneTick > tick) continue;
+      s.upgrades = (s.upgrades ?? 0) | STAND_UPGRADE[w.upgrade];
+      delete s.upgradeWorks;
+      done = true;
+      standsReopened = true;
+    }
     if (done) this.refresh();
+    return standsReopened;
   }
 
   /**
@@ -1524,7 +1562,11 @@ export class Airfield {
       for (const p of t.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
     }
     for (const a of this.data.aprons) acc = foldU32(foldU32(foldU32(acc, a.id), a.polygon.length), a.holes?.length ?? 0);
-    for (const s of this.data.stands) acc = foldU32(foldU32(foldU32(acc, s.id), r(s.x)), r(s.y));
+    for (const s of this.data.stands) {
+      acc = foldU32(foldU32(foldU32(acc, s.id), r(s.x)), r(s.y));
+      acc = foldU32(foldU32(acc, s.upgrades ?? 0), s.upgradeWorks ? s.upgradeWorks.doneTick % 0xffffffff : 0);
+      acc = s.gate ? foldU32(foldU32(foldU32(acc, s.gate.building), s.gate.x), s.gate.y) : foldU32(acc, 0xffffffff);
+    }
     for (const t of this.towerList) acc = foldU32(foldU32(foldU32(foldU32(acc, t.id), t.level), t.cost), r(t.x) * 64 + r(t.y));
     for (const x of this.roadList) {
       acc = foldU32(foldU32(acc, x.id), x.points.length);

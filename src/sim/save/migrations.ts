@@ -5,7 +5,7 @@ import { packTyped, unpackTyped } from './pack';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 26;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -28,6 +28,8 @@ export interface SaveData {
   vehicles?: unknown;
   /** Turnaround task lists, since version 21 (T63). */
   turnarounds?: unknown;
+  /** Baggage network, since version 23 (T43). */
+  baggage?: unknown;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -192,5 +194,15 @@ export function migrate(raw: unknown): SaveData {
   // Version 20 to 21: vehicles and turnaround task lists are saved, and airline flights run task lists (T63). Older saves
   // have no vehicles on the apron, and their aircraft already on stands finish on the timer they had, as no slot is tasked.
   if (save.version < 21) save.version = 21;
+  // Version 21 to 22: flights carry a stable serial (T43). Traffic derives serials for saves without them.
+  if (save.version < 22) save.version = 22;
+  // Version 22 to 23: the baggage network is saved (T43). Older saves have no baggage key and get drop points from their grids on load.
+  if (save.version < 23) save.version = 23;
+  // Version 23 to 24: bag batches, machine tokens and the daily missing bag counters are saved inside the baggage key (T43). Older saves have none and start with no bags in flight.
+  if (save.version < 24) save.version = 24;
+  // Version 24 to 25: arrival bag batches and the daily claim wait counters are saved in the baggage flow (T43). Older saves load them as zero.
+  if (save.version < 25) save.version = 25;
+  // Version 25 to 26: stands gained upgrades, upgrade works and a gate desk (T66). Older stands load with no upgrades, no works and the nearest gate desk.
+  if (save.version < 26) save.version = 26;
   return save as SaveData;
 }

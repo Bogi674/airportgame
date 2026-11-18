@@ -1,0 +1,251 @@
+{
+ "buy": [
+  [
+   3900,
+   4900,
+   4200,
+   5200
+  ]
+ ],
+ "commands": [
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 0,
+    "y0": 0,
+    "x1": 16,
+    "y1": 10,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 0,
+    "y0": 0,
+    "x1": 16,
+    "y1": 10,
+    "variant": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "zone",
+    "x0": 0,
+    "y0": 0,
+    "x1": 16,
+    "y1": 5,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "zone",
+    "x0": 0,
+    "y0": 5,
+    "x1": 16,
+    "y1": 10,
+    "variant": 4
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 1,
+    "y0": 5,
+    "x1": 6,
+    "y1": 5,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 1,
+    "y0": 8,
+    "x1": 3,
+    "y1": 8,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 3,
+    "y0": 8,
+    "x1": 4,
+    "y1": 8,
+    "variant": 3
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 4,
+    "y0": 8,
+    "x1": 6,
+    "y1": 8,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 1,
+    "y0": 5,
+    "x1": 1,
+    "y1": 8,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 6,
+    "y0": 5,
+    "x1": 6,
+    "y1": 8,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 10,
+    "y0": 10,
+    "x1": 14,
+    "y1": 10,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 14,
+    "y0": 1,
+    "x1": 15,
+    "y1": 2,
+    "variant": 1
+   }
+  },
+  {
+   "type": "placeBaggageNode",
+   "building": 1,
+   "kind": "machine",
+   "cx": 2,
+   "cy": 6,
+   "rot": 0,
+   "widthCells": 4
+  },
+  {
+   "type": "placeBaggageNode",
+   "building": 1,
+   "kind": "carousel",
+   "cx": 2,
+   "cy": 1,
+   "rot": 0,
+   "widthCells": 4
+  },
+  {
+   "type": "placeBaggageNode",
+   "building": 1,
+   "kind": "bay",
+   "cx": 10,
+   "cy": 6,
+   "rot": 0,
+   "widthCells": 4
+  }
+ ],
+ "camera": {
+  "x": 4016,
+  "y": 5014,
+  "zoom": 22
+ },
+ "hideUi": true,
+ "actions": [
+  {
+   "shot": "tier2",
+   "clip": {
+    "w": 1000,
+    "h": 700
+   }
+  },
+  {
+   "camera": {
+    "x": 4016,
+    "y": 5014,
+    "zoom": 30
+   }
+  },
+  {
+   "shot": "tier3",
+   "clip": {
+    "w": 1000,
+    "h": 700
+   }
+  }
+ ],
+ "report": [
+  "cash"
+ ]
+}

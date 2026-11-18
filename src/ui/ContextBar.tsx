@@ -1,12 +1,13 @@
-import { BUSINESS, STAND_SIZES, SURFACE_SPEC } from '@data/index';
+import { BAGGAGE, BUSINESS, STAND_SIZES, SURFACE_SPEC } from '@data/index';
 import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type AirfieldPayload, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
 import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
-import { FIXTURE_KEYS } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS } from '@shared/business';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useGameStore } from './stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
+import { bagCost } from './tools/baggageTool';
 import { pickedStandSurface } from './tools/controller';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
@@ -207,7 +208,7 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'terminal' && (
           <>
-            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as TerminalSub[]).map((sub) => (
+            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode'>[]).map((sub) => (
               <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
                 <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
@@ -227,9 +228,24 @@ export function ContextBar({ send }: Props) {
                 label={t('opt.fixture')}
                 value={s.fixtureId}
                 testId="opt-fixture"
-                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc').map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
+                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
                 onChange={(v) => s.set({ fixtureId: v })}
               />
+            )}
+            {s.tSub === 'bagNode' && s.bagKind === 'bay' && (
+              <Select
+                label={t('opt.bagWidth')}
+                value={s.bagWidth}
+                testId="opt-bag-width"
+                options={BAGGAGE.footprints.bay.widths.map((n) => ({ v: n, text: tFormat('opt.bagWidthCells', { n, cost: formatMoney(bagCost('bay', n)) }) }))}
+                onChange={(v) => s.set({ bagWidth: v })}
+              />
+            )}
+            {s.tSub === 'bagNode' && s.bagKind !== 'bay' && <span style="align-self:center;font-size:12px">{formatMoney(bagCost(s.bagKind, 0))}</span>}
+            {s.tSub === 'bagNode' && s.bagKind === 'machine' && s.bagRoomWarn && (
+              <span data-testid="bag-room-warning" style="align-self:center;color:var(--warn, var(--bad));font-size:12px">
+                {tFormat('notice.bagScreeningRoom', { area: BAGGAGE.screeningRoom.minAreaM2 })}
+              </span>
             )}
           </>
         )}

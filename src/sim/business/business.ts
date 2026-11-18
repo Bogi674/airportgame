@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BUSINESS, GROUND, MARKET, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
+import { BAGGAGE, BUSINESS, GROUND, MARKET, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
 import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
 import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
@@ -23,6 +23,7 @@ import {
   type TerminalGrid,
   type WeatherKind,
 } from '@shared/business';
+import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -54,6 +55,15 @@ export interface BusinessHost {
   getCash(): number;
   book(category: LedgerCategory, amount: number): void;
   emit(code: string): void;
+}
+
+/** A gate desk anchor: its grid id, logical cell and world center in meters. */
+export interface GateDesk {
+  building: number;
+  x: number;
+  y: number;
+  wx: number;
+  wy: number;
 }
 
 /** Terminals, airlines, flights revenue, daily close, rating, loan and weather. Everything is aggregated. */
@@ -219,6 +229,11 @@ export class Business {
   boarded: ((f: number) => number) | null = null;
   /** Called with the index of a terminal grid after it is demolished, set by the sim. */
   gridRemoved: ((index: number) => void) | null = null;
+  /** Called with the building id at the end of every successful terminal edit or demolition, set by the sim. */
+  onGridEdited: ((building: number) => void) | null = null;
+  /** Share of today's checked bags that were missing, 0 to 1, and the reset after the daily close. Set by the sim (T43). */
+  bagMissingShare: (() => number) | null = null;
+  bagDayReset: (() => void) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -352,7 +367,7 @@ export class Business {
       if (this.secureSeating === 0) out.push('noSeating');
       if (this.anyGateDesk && this.gatelessHall) out.push('noGateDesk');
       for (const k of this.roomIssues) out.push(k);
-      if (this.totals.belt === 0) out.push('noBelt');
+      if (this.totals.belt + this.carouselCount() === 0) out.push('noBelt');
     }
     if (!this.atcOk) out.push('noAtc');
     return out;
@@ -383,22 +398,43 @@ export class Business {
       const wg = buildWalkGraph(grid);
       this.walkGraphs.push(wg);
       this.serviceNodes.push(buildServiceNodes(grid, wg));
-    } else if (cellCount(grid) > 0) {
-      const i = this.grids.indexOf(grid);
-      this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(edit.x0, edit.x1), Math.min(edit.y0, edit.y1), Math.max(edit.x0, edit.x1), Math.max(edit.y0, edit.y1));
-      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!);
     }
+    const id = grid.id;
     if (cellCount(grid) === 0) {
       const i = this.grids.indexOf(grid);
       this.grids.splice(i, 1);
       this.gridRemoved?.(i);
       this.walkGraphs.splice(i, 1);
       this.serviceNodes.splice(i, 1);
+      this.bumpTerminals();
+    } else if (fresh) {
+      this.bumpTerminals();
+    } else {
+      this.refreshGrid(id, edit.x0, edit.y0, edit.x1, edit.y1);
     }
+    this.onGridEdited?.(id);
+    return null;
+  }
+
+  /**
+   * Rebuilds the derived data of one building after its cells changed inside the rectangle (corners in any order):
+   * the walking graph, the service nodes and the terminal counts.
+   */
+  refreshGrid(building: number, x0: number, y0: number, x1: number, y1: number): void {
+    const i = this.grids.findIndex((g) => g.id === building);
+    if (i < 0) return;
+    const grid = this.grids[i]!;
+    if (cellCount(grid) > 0) {
+      this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1));
+      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!);
+    }
+    this.bumpTerminals();
+  }
+
+  private bumpTerminals(): void {
     this.walkVersion++;
     this.serviceVersion++;
     this.refreshTerminals();
-    return null;
   }
 
   demolishTerminal(id: number): string | null {
@@ -412,6 +448,7 @@ export class Business {
     this.walkVersion++;
     this.serviceVersion++;
     this.refreshTerminals();
+    this.onGridEdited?.(id);
     return null;
   }
 
@@ -439,6 +476,60 @@ export class Business {
   serviceTable(grid: number): ServiceNodes | null {
     const i = this.gridIndex(grid);
     return i < 0 ? null : this.serviceNodes[i]!;
+  }
+
+  /** Gate desk anchors of every grid in grid then cell order, with their world centers. Rebuilt when serviceVersion changes. */
+  private gateDesks: GateDesk[] = [];
+  private gateDesksAt = -1;
+
+  private deskList(): GateDesk[] {
+    if (this.gateDesksAt === this.serviceVersion) return this.gateDesks;
+    this.gateDesksAt = this.serviceVersion;
+    this.gateDesks = [];
+    for (let i = 0; i < this.grids.length; i++) {
+      const g = this.grids[i]!;
+      const sn = this.serviceNodes[i]!;
+      for (let n = 0; n < sn.count; n++) {
+        if (fixtureKey(sn.kind[n]!) !== 'gateDesk') continue;
+        const w = cornerWorld(g, sn.lx[n]! + 0.5, sn.ly[n]! + 0.5);
+        this.gateDesks.push({ building: g.id, x: sn.lx[n]!, y: sn.ly[n]!, wx: w.x, wy: w.y });
+      }
+    }
+    return this.gateDesks;
+  }
+
+  /** True when the logical cell (x, y) of the grid with this id holds the anchor of a gate desk. */
+  isGateDesk(building: number, x: number, y: number): boolean {
+    return this.deskList().some((d) => d.building === building && d.x === x && d.y === y);
+  }
+
+  /** The desk a stand is assigned to while that desk still exists, null when the stand is unknown, has no assignment or the desk is gone. */
+  assignedGate(standId: number): GateDesk | null {
+    const stand = this.airfield.data.stands.find((s) => s.id === standId);
+    const want = stand?.gate;
+    if (!want) return null;
+    return this.deskList().find((d) => d.building === want.building && d.x === want.x && d.y === want.y) ?? null;
+  }
+
+  /**
+   * The gate desk that boards a stand: its assigned desk while that still exists, else the desk nearest the stand
+   * center by straight line (ties to the lowest grid, then the lowest cell). Null when the airport has no gate desk.
+   * The returned object is shared, never change it.
+   */
+  gateFor(stand: Pick<Stand, 'x' | 'y' | 'gate'>): GateDesk | null {
+    const desks = this.deskList();
+    const want = stand.gate;
+    if (want) for (const d of desks) if (d.building === want.building && d.x === want.x && d.y === want.y) return d;
+    let best: GateDesk | null = null;
+    let bestD = Infinity;
+    for (const d of desks) {
+      const dist = Math.hypot(d.wx - stand.x, d.wy - stand.y);
+      if (dist < bestD) {
+        bestD = dist;
+        best = d;
+      }
+    }
+    return best;
   }
 
   /**
@@ -485,8 +576,20 @@ export class Business {
     return null;
   }
 
+  /** Placed carousels. A carousel fixture fills every cell of its footprint, so the cell count is divided by the footprint size. */
+  private carouselCount(): number {
+    const F = BAGGAGE.footprints.carousel;
+    return Math.floor(this.totals.carousel / (F.w * F.d));
+  }
+
+  /** Each belt and each carousel adds the belt module capacity. */
   arrCapacity(): number {
-    return this.totals.belt * BUSINESS.modules.belt.capacityPerHour;
+    return (this.totals.belt + this.carouselCount()) * BUSINESS.modules.belt.capacityPerHour;
+  }
+
+  /** Passengers a flight was served with at docking, 0 for GA and for flights lost to a missing terminal. */
+  flightPaxOf(f: number): number {
+    return f < 0 ? 0 : this.flightPax[f];
   }
 
   intlCapacity(): number {
@@ -688,6 +791,7 @@ export class Business {
       if (this.history.length > LEDGER_DAYS) this.history.shift();
       this.today.fill(0);
       this.updateRating();
+      this.bagDayReset?.();
     }
     this.day = d;
     this.updateFire(d);
@@ -765,7 +869,9 @@ export class Business {
     const toilets = hasTerminal ? Math.min(1, this.totals.toilet / 4) : 0;
     const shops = hasTerminal ? Math.min(1, leased / 4) : 0;
     const queues = hasTerminal ? this.satisfaction : 0;
-    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore) / 5;
+    // Missing bags weigh missingBagWeight each against the bags checked today. With none checked the term is a full score.
+    const bagScore = Math.max(0, 1 - BAGGAGE.missingBagWeight * (this.bagMissingShare ? this.bagMissingShare() : 0));
+    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore + bagScore) / 6;
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
     this.airlineScore = (this.handlingScore + infra + this.onTime + this.cleanScore) / 4;
     const target = 100 * (this.paxScore + this.airlineScore) / 2;
@@ -871,7 +977,7 @@ export class Business {
     return out;
   }
 
-  payload(tick: number): BusinessPayload {
+  payload(tick: number): Omit<BusinessPayload, 'baggage'> {
     const stands = this.airfield.data.stands;
     return {
       board: this.board(tick),
@@ -882,6 +988,15 @@ export class Business {
       airlineScore: Math.round(this.airlineScore * 100),
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
+      gateDesks: this.deskList().map((d) => ({ building: d.building, x: d.x, y: d.y })),
+      standGate: stands.map((st) => {
+        const d = this.gateFor(st);
+        return d ? this.deskList().indexOf(d) : -1;
+      }),
+      standFar: stands.map((st) => {
+        const d = this.gateFor(st);
+        return d && Math.hypot(d.wx - st.x, d.wy - st.y) > STAND_ACCESS.stairsWalkLimitM ? 1 : 0;
+      }),
       movementBudget: this.traffic.movementBudget(),
       standBlocks: this.standBlocks(),
       version: this.version,

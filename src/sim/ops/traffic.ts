@@ -207,6 +207,10 @@ export class Traffic {
   readonly fCause = new Uint8Array(MAX_FLIGHTS);
   /** Ticks the flight was held past its plan for reasons the airline owns. */
   readonly fAirlineHold = new Int32Array(MAX_FLIGHTS);
+  /** Stable flight serial, never reused. A freed slot keeps its old value until a new flight takes it. */
+  readonly fSerial = new Int32Array(MAX_FLIGHTS);
+  /** The serial the next scheduled flight takes. */
+  nextSerial = 1;
   /** When false only flights with an assigned stand are accepted. */
   autoStands = true;
   /** Multiplier on new turnaround times from the ground handling fleet, set by the business. */
@@ -509,6 +513,19 @@ export class Traffic {
 
   // Flights ----------------------------------------------------------------
 
+  /** The stable serial of a flight slot, 0 for no flight. */
+  serialOf(f: number): number {
+    return f < 0 ? 0 : this.fSerial[f];
+  }
+
+  /** The live flight slot that carries a serial, -1 when it is finished or unknown. */
+  flightOfSerial(serial: number): number {
+    for (let f = 0; f < MAX_FLIGHTS; f++) {
+      if (this.fSerial[f] === serial && this.fState[f] !== FlState.Free && this.fState[f] !== FlState.Done) return f;
+    }
+    return -1;
+  }
+
   /** Schedules an arriving flight. Its turnaround and departure follow automatically. */
   scheduleArrival(typeIdx: number, etaTick: number, livery: number, turnTicks: number, airline = -1, stageKm = 0, rot = -1): number {
     let f = -1;
@@ -519,6 +536,7 @@ export class Traffic {
       }
     }
     if (f < 0) return -1;
+    this.fSerial[f] = this.nextSerial++;
     this.fState[f] = FlState.Scheduled;
     this.fType[f] = typeIdx;
     this.fLivery[f] = livery;
@@ -742,7 +760,7 @@ export class Traffic {
   private standFactsOf(s: number): StandFacts {
     const st = this.af.stands[s];
     const f = this.standScratch;
-    f.closed = st.closed === true;
+    f.closed = st.closed === true || st.upgradeWorks !== undefined;
     f.accepts = st.accepts;
     f.size = st.size;
     f.surface = st.surface;
@@ -768,7 +786,7 @@ export class Traffic {
   /** True when a stand is open and takes the category of flight f (user, 2026-11-17). Without a flight the type decides. */
   private standAllows(t: number, s: number, f = -1): boolean {
     const st = this.af.stands[s];
-    return st.closed !== true && refuseUsage(st.accepts, this.categoryOf(f, t)) === null;
+    return st.closed !== true && st.upgradeWorks === undefined && refuseUsage(st.accepts, this.categoryOf(f, t)) === null;
   }
 
   /** True when a stand with a taxi node takes general aviation. */
@@ -2319,7 +2337,7 @@ export class Traffic {
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
       movStart: this.movStart, movHead: this.movHead, movCount: this.movCount, depWait: this.depWait, depRetryAt: this.depRetryAt,
       boardHold: this.boardHold, fuelOwed: this.fuelOwed, fuelWait: this.fuelWait,
-      tasked: this.tasked, fCause: this.fCause, fAirlineHold: this.fAirlineHold,
+      tasked: this.tasked, fCause: this.fCause, fAirlineHold: this.fAirlineHold, fSerial: this.fSerial,
     };
   }
 
@@ -2330,7 +2348,7 @@ export class Traffic {
     return {
       arrays,
       completed: this.completedFlights, diverted: this.divertedFlights, deadlocks: this.deadlocks,
-      autoStands: this.autoStands,
+      autoStands: this.autoStands, nextSerial: this.nextSerial,
       windFromDeg: this.windFromDeg, windKt: this.windKt, testPerHour: this.testPerHour, testTurnScale: this.testTurnScale,
       tick: this.tick, weather: this.weather, rng: this.rng.getState(), weatherRng: this.weatherRng.getState(),
       gaNextTick: this.gaNextTick, gaRng: this.gaRng.getState(),
@@ -2363,6 +2381,17 @@ export class Traffic {
     // Saves from before GA traffic have no GA state, so the check starts now and the stream keeps its fresh seed.
     this.gaNextTick = o.gaNextTick ?? 0;
     if (o.gaRng !== undefined) this.gaRng.setState(o.gaRng);
+    const savedSerial = (raw as { nextSerial?: number }).nextSerial;
+    if (savedSerial !== undefined) {
+      this.nextSerial = savedSerial;
+    } else {
+      // Saves from before flight serials: number the live flights in slot order.
+      this.fSerial.fill(0);
+      this.nextSerial = 1;
+      for (let f = 0; f < MAX_FLIGHTS; f++) {
+        if (this.fState[f] !== FlState.Free && this.fState[f] !== FlState.Done) this.fSerial[f] = this.nextSerial++;
+      }
+    }
     this.rebuildActive();
   }
 
@@ -2404,6 +2433,8 @@ export class Traffic {
     acc = foldInts(acc, this.tasked, MAX_AIRCRAFT);
     acc = foldInts(acc, this.fCause, MAX_FLIGHTS);
     acc = foldInts(acc, this.fAirlineHold, MAX_FLIGHTS);
+    acc = foldInts(acc, this.fSerial, MAX_FLIGHTS);
+    acc = foldU32(acc, this.nextSerial);
     acc = foldInts(acc, this.movHead, this.movHead.length);
     acc = foldInts(acc, this.movCount, this.movCount.length);
     acc = foldInts(acc, this.movStart, this.movStart.length);

@@ -12,6 +12,7 @@ import {
   WALL,
   FIXTURE_ZONES,
   isShopFixture,
+  isBaggageFixture,
   fixtureKey,
   type FixtureKey,
   type Terminal,
@@ -215,7 +216,7 @@ export function summarize(g: TerminalGrid): Terminal {
   return { id: g.id, cells: cellCount(g), counts, zones, leased };
 }
 
-const FIXTURE_COST = (id: number): number => (isShopFixture(id) ? BUSINESS.shops[fixtureKey(id) as keyof typeof BUSINESS.shops].cost : BUSINESS.modules[fixtureKey(id) as keyof typeof BUSINESS.modules].cost);
+const FIXTURE_COST = (id: number): number => (isBaggageFixture(id) ? 0 : isShopFixture(id) ? BUSINESS.shops[fixtureKey(id) as keyof typeof BUSINESS.shops].cost : BUSINESS.modules[fixtureKey(id) as keyof typeof BUSINESS.modules].cost);
 
 export interface Env {
   ctx: BuildContext;
@@ -308,6 +309,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
   const area = e.op === 'foundation' || e.op === 'floor' || e.op === 'erase' || e.op === 'fixture' || e.op === 'zone';
   if (area) {
     if (x1 <= x0 || y1 <= y0) return none({ code: 'terminalBounds' });
+    if (e.op === 'fixture' && isBaggageFixture(e.variant)) return none({ code: 'baggageNodeTool' });
     let blocked: Problem | null = null;
     const span = e.op === 'fixture' ? (FIXTURE_SPAN[fixtureKey(e.variant)] ?? 1) : 1;
     const rot = e.rot ?? 0;

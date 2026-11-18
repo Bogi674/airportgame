@@ -277,7 +277,7 @@ Context: The user asked for the terminal fixture kit (three levels of check in, 
 
 Options: A accept the proposals as a batch, B answer row by row.
 Recommendation: A, then tune with play tests.
-Answer: (pending)
+Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are proposed in each task and reported.
 
 ## 2026-11-17 user reports after phase 1: stand row, service road, aircraft tiers
 
@@ -321,3 +321,20 @@ Answer: (pending)
 | Old saves and games with no depot | Accept stuck airline flights until the player builds a depot and buys vehicles. GA needs no vehicles |
 | Delay owners | The airline owns the boarding hold for passengers late to the gate, in full; the airport owns vehicles, crew, fuel and ATC |
 | Cleaning, water and waste | Timed tasks with no vehicle. Cleaning counts only with a cleaning depot, and cleanliness joins the rating. Staff does not gate tasks until T68 |
+
+## 2026-11-18 phase 2 run: T73, T43, T66
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| How to run the rest of phase 2 | Two parallel tracks: T73 fixture baker and the T43 sim slices, each in its own worktree. T43 drawing and T66 follow once both land |
+| Where fixture sprites are baked | Main thread, lazily, cached per asset, tier, rotation and livery |
+| Kit asset for fixtures without a level | Level 1 of the family; `seating` draws `bench.beam3`, `toilet` draws `washroom.wcStall` |
+| Late bags | The departure waits up to 15 minutes past its slot for its bags, owned by the airport, then leaves. Each missed bag is logged as mishandled and lowers passenger satisfaction with weight 0.5 per bag |
+
+## 2026-11-18 T66 stand upgrades and assignments
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| Jet bridges while only floor 0 can be built | Bridges wait for T51. T66 ships stairs and bus bay, hydrant pit and fixed ground power now; jet bridge access types 1 to 4 stay unbuildable until multi floor terminals exist |
+| What the stand inspector assigns | The gate desk only. Check in stays airline wide. A stand with no gate desk falls back to the nearest one and shows a warning. The baggage bay comes from T43 and the carousel follows the bay |
+| Bus bay (access type 5) | A stand within 150 m of its gate desk boards by stairs. A farther stand needs a bus bay, and boarding then waits for a depot bus. Without a bus bay a far stand boards 25 percent slower and an alert asks for a bus bay |

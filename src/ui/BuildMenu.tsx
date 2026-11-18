@@ -1,6 +1,8 @@
-import { BUSINESS, GROUND, GSE } from '@data/index';
+import { BAGGAGE, BUSINESS, GROUND, GSE } from '@data/index';
 import { BUILDING_KINDS } from '@shared/airfield';
 import { FIXTURE_KEYS } from '@shared/business';
+import type { BagKind } from '@shared/baggageNodes';
+import { bagCost } from './tools/baggageTool';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { Icon, type IconName } from './icons';
@@ -55,6 +57,15 @@ const fx = (key: string, thumb: string, icon: IconName = 'fixture'): Item => ({
   price: fixturePrice(key),
   run: (s) => s.set({ tool: 'terminal', tSub: 'fixture', fixtureId: fixture(key) }),
   active: (s) => s.tool === 'terminal' && s.tSub === 'fixture' && s.fixtureId === fixture(key),
+});
+
+const bag = (kind: BagKind, thumb: string): Item => ({
+  id: kind,
+  thumb,
+  icon: 'fixture',
+  price: bagCost(kind, BAGGAGE.footprints.bay.widths[0]),
+  run: (s) => s.set({ tool: 'terminal', tSub: 'bagNode', bagKind: kind, hint: 'hint.terminal.bagNode', problem: null, buy: null }),
+  active: (s) => s.tool === 'terminal' && s.tSub === 'bagNode' && s.bagKind === kind,
 });
 
 const sub = (id: string, tSub: TerminalSub, thumb: string, icon: IconName): Item => ({
@@ -213,6 +224,7 @@ export const CATEGORIES: Category[] = [
       { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase')] },
       { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk')] },
       { id: 'facilities', items: [fx('belt', 'belt'), fx('seating', 'seating'), fx('toilet', 'toilet')] },
+      { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'shops', items: [fx('convenience', 'shop'), fx('quickFood', 'shop'), fx('cafe', 'shop'), fx('dutyFree', 'shop'), fx('booksGifts', 'shop'), fx('pharmacy', 'shop')] },
     ],
   },

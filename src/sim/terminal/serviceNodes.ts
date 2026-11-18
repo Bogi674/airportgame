@@ -74,6 +74,8 @@ export interface ServiceNodes {
   evictedCount: number;
   /** Cohorts queued or serving at any node. */
   active: number;
+  /** 1 while the node may not start a new service, set by the baggage back pressure. Derived, not saved. */
+  blocked: Uint8Array;
 }
 
 /** Module timing for a service key. Every service key carries both values in the data. */
@@ -169,6 +171,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     evicted: new Int32Array(0),
     evictedCount: 0,
     active: 0,
+    blocked: new Uint8Array(count),
   };
 
   for (let k = 0; k < count; k++) {
@@ -229,6 +232,7 @@ export function rebuildServiceNodes(prev: ServiceNodes, g: TerminalGrid, wg: Wal
     next.busyUntil[k] = prev.busyUntil[p]!;
     next.serving[k] = prev.serving[p]!;
     next.servingSize[k] = prev.servingSize[p]!;
+    next.blocked[k] = prev.blocked[p]!;
     next.qHead[k] = prev.qHead[p]!;
     next.qCount[k] = prev.qCount[p]!;
     for (let s = 0; s < prev.slots; s++) {
@@ -337,7 +341,7 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
         sn.serving[k] = -1;
         sn.active -= 1;
       }
-      if (sn.qCount[k] === 0) break;
+      if (sn.qCount[k] === 0 || sn.blocked[k] === 1) break;
       const slot = k * sn.slots + sn.qHead[k];
       const size = sn.qSize[slot];
       sn.qHead[k] = (sn.qHead[k] + 1) % sn.slots;

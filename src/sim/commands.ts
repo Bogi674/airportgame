@@ -1,4 +1,4 @@
-import type { Approach, BuildingKind, CodeLetter, PadSide, PushbackDir, StandSize, StandType, Surface } from '@shared/airfield';
+import type { Approach, BuildingKind, CodeLetter, PadSide, PushbackDir, StandSize, StandUpgrade, StandType, Surface } from '@shared/airfield';
 import type { FeeLevel } from '@shared/business';
 import type { TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
@@ -52,6 +52,10 @@ export type Command =
   | { type: 'moveHolding'; runwayId: number; taxiwayId: number; side: 1 | -1; distM: number }
   | { type: 'buyGse'; kind: string; count: number }
   | { type: 'setStandProps'; id: number; closed?: boolean; accepts?: number; pushback?: PushbackDir }
+  /** Builds a stand upgrade (T66): pays its cost and closes the stand until the works finish. */
+  | { type: 'startStandUpgrade'; id: number; upgrade: StandUpgrade }
+  /** Picks the gate desk (logical cell of a grid) that boards a stand; building -1 clears it (T66). */
+  | { type: 'setStandGate'; id: number; building: number; x: number; y: number }
   | { type: 'assignStand'; flight: number; standId: number }
   | { type: 'cancelFlight'; flight: number }
   | { type: 'setAutoStands'; on: boolean }
@@ -65,6 +69,11 @@ export type Command =
   /** level is the floor index and defaults to 0, the only floor that can be built for now. */
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; level?: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
+  /** Baggage network (T43): place a node on a building grid, remove it, assign a stand to a bay (bayId -1 unassigns), or rerun the link rule of a node. */
+  | { type: 'placeBaggageNode'; building: number; kind: 'machine' | 'bay' | 'carousel'; cx: number; cy: number; rot: 0 | 1 | 2 | 3; widthCells: number }
+  | { type: 'removeBaggageNode'; id: number }
+  | { type: 'setStandBay'; standId: number; bayId: number }
+  | { type: 'fixBaggageNode'; id: number }
   | { type: 'signAirline'; airlineId: number; sign: boolean }
   /** Weekly planner (T61): place a flight series on a stand at an arrival minute of the day, on all its operating days. */
   | { type: 'placeSeries'; seriesId: number; standId: number; minute: number }

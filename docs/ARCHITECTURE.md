@@ -457,6 +457,17 @@ Record every architectural choice with a date and one line of reason.
   * Each flight keeps its latest delay cause (`Traffic.fCause`, codes in `src/shared/turnaround.ts`) once it runs past plan, and the ticks the airline owns (`fAirlineHold`, the boarding hold, user). Airline satisfaction judges lateness less that hold. The flights board shows the cause with its owner.
   * Cleanliness and ground handling are running scores over airline turnarounds (weight `ratingWeight`): cleaned counts only with a cleaning depot, handled when no vehicle or crew delay was recorded. Cleanliness joins both experiences of the rating; handling replaces the fleet slowdown term.
   * Vehicles and task lists are saved and hashed. Road routes are saved with a flag that they belong to the current road net, so a restore rebinds them to the rebuilt net and reclaims held road nodes. Save version 21; older saves load with no vehicles and their parked aircraft untasked.
+* 2026-11-18 T73: fixture sprites are baked where the chunk painter runs (the bake worker, or the main thread baker without one), on OffscreenCanvas, cached per asset, tier, rotation, scale and livery. The planner is pure so tier, shadow and livery rules are unit tested; the canvas part only executes a plan.
+* 2026-11-18 T73: kit packs load once per category by dynamic import and every bake awaits the packs it needs; a failed load falls back to block drawing instead of stalling the bake.
+* 2026-11-18 T73: only fixtures whose kit footprint equals the game footprint draw from the kit (check in, kiosk, bag drop, passport, gate desk, seating as `bench.beam3`, toilet as `washroom.wcStall`). Security, the legacy belt, shops and the tower keep block drawing until their footprints follow the kit, because hard rule 12 forbids scaling a sprite to fit.
+* 2026-11-18 T43: flights carry a serial that is never reused, because flight slots are reused and bags must never follow a slot to another flight.
+* 2026-11-18 T43: screening machines, bays and carousels are appended fixture keys whose cells carry the key, so walking, overlap and erase treat them like fixtures; the baggage subsystem owns their metadata and drops a node whose cells were erased (rule F).
+* 2026-11-18 T43: one link network per terminal building, kept as state with link modes rather than rebuilt, so rule F (no refill on delete) holds; saves store links and recompute paths.
+* 2026-11-18 T43: bag batches live in fixed size typed arrays and take the lowest free slot instead of a free list, so restore keeps slot order and the index order processing stays deterministic.
+* 2026-11-18 T43: a flight waits up to `lateBagHoldMin` past its slot for bags still in the system, owned by the airport, then leaves; missing bags enter the rating as a sixth passenger term weighted by `missingBagWeight` (owner, 2026-11-18). This replaces the on time departure line of `docs/BAGGAGE.md` 4.6.
+* 2026-11-18 T43: arrival bags are claimed as they reach the carousel until arrival passengers exist (T20); claim wait is recorded but not rated yet.
+* 2026-11-18 T66: turnaround vehicle kinds are resolved per aircraft from its stand's upgrades instead of a fixed table per type, so plain stands keep their exact timings.
+* 2026-11-18 T66: far stand distance is the straight line from the gate desk to the stand center, since no walking graph exists outside the terminal. Buses do not dock; a far bus bay stand boards once the airport owns a bus.
 
 ## 13. Known limits
 
