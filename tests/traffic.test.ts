@@ -27,8 +27,8 @@ describe('single flight', () => {
   it('refuses a flight the runway cannot take and names the limit', () => {
     const sim = ownedSim();
     buildTestAirport(sim, { runwayLengthM: 1100, standsPerRow: 2, standCode: 'E' });
-    run(sim, { type: 'testArrival', typeIdx: idx('b777_300er'), inTicks: 0, turnTicks: 600 });
-    const events: string[] = [];
+    // The refusal can come in the tick of the command, so its events count too.
+    const events: string[] = run(sim, { type: 'testArrival', typeIdx: idx('b777_300er'), inTicks: 0, turnTicks: 600 });
     for (let t = 0; t < 2000; t++) {
       sim.step();
       sim.drainEvents(events);

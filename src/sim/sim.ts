@@ -1,18 +1,21 @@
 import { AIRCRAFT } from '@data/aircraft';
+import { GROUND } from '@data/index';
+import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
 import { checkRunwayObstacles } from '@shared/obstacles';
 import type { GameOptions } from '@shared/protocol';
 import type { OverlayData } from '@shared/overlay';
-import { Gse, MAX_VEHICLES, WORK_STATE } from './vehicles/gse';
+import { Gse, MAX_VEHICLES } from './vehicles/gse';
+import { RoadNet } from './vehicles/roads';
 import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
-import { FlState, Traffic } from './ops/traffic';
+import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
-import { ATC_MIN_CELLS, type LedgerCategory, type TerminalGrid } from '@shared/business';
+import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
@@ -39,6 +42,11 @@ export class Sim {
   readonly business: Business;
   readonly cohorts: Cohorts;
   readonly gse: Gse;
+  /** Service road graph and the vehicle routes on it, derived from the airfield (T60). */
+  readonly roads = new RoadNet();
+  /** Airfield and ground versions the road net was built for, and the depots counted then. */
+  private roadSeen = [-1, -1];
+  private depotsSeen = 0;
   private businessSent = -1;
   private gridsSent = -1;
   private businessSentTick = -1000000;
@@ -47,6 +55,7 @@ export class Sim {
   private airfieldSent = -1;
   private obstaclesSent = -1;
   private towersSent = -1;
+  private groundSent = -1;
   private networkVersion = -1;
   /** Set by a stand command. The automatic assigner runs once in the next airfield sync. It is clear at every save point. */
   private standsDirty = false;
@@ -85,14 +94,27 @@ export class Sim {
         this.eventQueue.push(code);
       },
     };
-    this.gse = new Gse(this.traffic);
     this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
+    this.gse = new Gse(this.traffic, {
+      roads: this.roads,
+      standIndexOf: (a) => this.airfield.data.stands.findIndex((s) => s.id === this.traffic.standId[a]),
+      cartsFor: (a) => {
+        const st = this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a]);
+        return GROUND.cartsPerTrain[st ? st.size : sizeForCode(AIRCRAFT[this.traffic.type[a]].derivedForReading.code)];
+      },
+      owned: (k) => this.business.fleet[k] ?? 0,
+    });
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
     const businessPushback = this.traffic.hooks?.pushback;
+    const businessDocked = this.traffic.hooks?.docked;
     this.traffic.hooks = {
       ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }),
+      docked: (f) => {
+        businessDocked?.(f);
+        this.warnNoRoad(f);
+      },
       contactOk: (x, y) => this.business.hasTerminalNear(x, y),
       scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
       boardingReady: (f) => this.cohorts.boardingReady(f),
@@ -191,10 +213,46 @@ export class Sim {
       this.networkVersion = this.airfield.version;
       this.traffic.setAirfield(this.airfield.data);
     }
+    this.syncRoads(false);
     if (this.standsDirty) {
       this.standsDirty = false;
       if (this.traffic.autoStands) this.traffic.autoAssign();
     }
+  }
+
+  /**
+   * Rebuilds the road net after the airfield or the roads changed, and gives traffic the no road penalty per
+   * stand. A new depot brings its starter vehicles and a removed one takes them back, so undo is exact;
+   * a restore only counts the depots, as their vehicles are in the saved fleet.
+   */
+  private syncRoads(restoring: boolean): void {
+    if (this.roadSeen[0] === this.airfield.version && this.roadSeen[1] === this.airfield.groundVersion) return;
+    this.roadSeen[0] = this.airfield.version;
+    this.roadSeen[1] = this.airfield.groundVersion;
+    const af = this.airfield.data;
+    this.roads.rebuild(af, this.traffic.net);
+    const factor = new Float64Array(af.stands.length);
+    for (let s = 0; s < factor.length; s++) factor[s] = this.roads.standRoad[s] === 1 ? 1 : GROUND.noRoadTurnaroundFactor;
+    this.traffic.standRoadFactor = factor;
+    const depots = af.depots?.length ?? 0;
+    if (!restoring && depots !== this.depotsSeen) this.business.depotsChanged(depots - this.depotsSeen);
+    this.depotsSeen = depots;
+    this.business.depotCapacity = depots * GROUND.depot.capacity;
+  }
+
+  /** Day each stand last warned that it has no service road, so the alert asks once a day per stand. */
+  private noRoadWarned = new Map<number, number>();
+
+  /** A commercial flight docked at a stand no depot reaches: the turnaround runs slower and an alert asks for a road (D2 as revised 2026-11-16). */
+  private warnNoRoad(f: number): void {
+    if (this.traffic.fAirline[f] === GA_AIRLINE) return;
+    const id = this.traffic.fStand[f];
+    const s = this.airfield.data.stands.findIndex((x) => x.id === id);
+    if (s < 0 || this.roads.standRoad[s] === 1) return;
+    const day = Math.floor(this.tick / TICKS_PER_DAY);
+    if (this.noRoadWarned.get(id) === day) return;
+    this.noRoadWarned.set(id, day);
+    this.eventQueue.push(`noServiceRoad|stand=${this.airfield.data.stands[s].number}`);
   }
 
   /** Advances the tick counter after all subsystems ran. */
@@ -402,7 +460,8 @@ export class Sim {
 
   /** True once per airfield change. */
   takeAirfieldDirty(): boolean {
-    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent && this.airfield.towersVersion === this.towersSent) return false;
+    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent && this.airfield.towersVersion === this.towersSent && this.airfield.groundVersion === this.groundSent) return false;
+    this.groundSent = this.airfield.groundVersion;
     this.airfieldSent = this.airfield.version;
     this.obstaclesSent = this.airfield.obstaclesVersion;
     this.towersSent = this.airfield.towersVersion;
@@ -501,6 +560,8 @@ export class Sim {
     this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
+    this.roadSeen.fill(-1);
+    this.syncRoads(true);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts);
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
@@ -508,6 +569,7 @@ export class Sim {
     this.airfieldSent = -1;
     this.obstaclesSent = -1;
     this.towersSent = -1;
+    this.groundSent = -1;
     this.obstacleKey = '';
     this.obstacleSeen.fill(-1);
     this.updateObstacles();
@@ -545,7 +607,7 @@ export class Sim {
       views.vehicleY[n] = g.y[v];
       views.vehicleHeading[n] = g.heading[v];
       views.vehicleKind[n] = g.kind[v];
-      views.vehicleDocked[n] = g.state[v] === WORK_STATE ? 1 : 0;
+      views.vehicleDocked[n] = g.isDocked(v) ? 1 : 0;
       n++;
     }
     views.header[SnapHeader.VehicleCount] = n;

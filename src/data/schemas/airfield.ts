@@ -313,6 +313,27 @@ export const paintSchema = z.strictObject({
     }),
     levels: towerLevelsSchema,
   }),
+  /** Service road look (T60): the 7 m road, its edge and center lines and the hold line at taxiway crossings. */
+  road: z.strictObject({
+    fill: hexColor,
+    edgeInsetM: positive,
+    lineWidthM: positive,
+    lineMinPx: positive,
+    dashM: positive,
+    holdWidthM: positive,
+    minScale: positive,
+  }),
+  /** Ground handling depot look (T60). */
+  depot: z.strictObject({
+    colors: z.strictObject({ apron: hexColor, wall: hexColor, roof: hexColor, ridge: hexColor, door: hexColor, outline: hexColor, shadow: z.string() }),
+    shadowOffsetM: positive,
+    doorCount: z.number().int().positive(),
+    doorWidthM: positive,
+    doorDepthM: positive,
+    apronM: positive,
+    ridgeWidthM: positive,
+    outlinePx: positive,
+  }),
 });
 
 export type PaintData = z.infer<typeof paintSchema>;

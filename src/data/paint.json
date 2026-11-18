@@ -54,5 +54,24 @@
       { "heightM": 32, "baseM": 12, "shaftM": 6, "cabM": 9, "cabSides": 8, "glassSweepDeg": 360, "glassBandM": 1.1, "walkwayM": 10.5, "antennas": 2, "radomeM": 1.6 },
       { "heightM": 45, "baseM": 14, "shaftM": 7, "cabM": 11, "cabSides": 32, "glassSweepDeg": 360, "glassBandM": 1.3, "walkwayM": 13, "antennas": 3, "radomeM": 2.4 }
     ]
+  },
+  "road": {
+    "fill": "#3f4046",
+    "edgeInsetM": 0.4,
+    "lineWidthM": 0.15,
+    "lineMinPx": 1.3,
+    "dashM": 3,
+    "holdWidthM": 0.6,
+    "minScale": 0.4
+  },
+  "depot": {
+    "colors": { "apron": "#8e8b84", "wall": "#d4d0c6", "roof": "#7b8794", "ridge": "#66717d", "door": "#c9a64a", "outline": "#1b1b1b", "shadow": "rgba(0,0,0,0.24)" },
+    "shadowOffsetM": 1.6,
+    "doorCount": 4,
+    "doorWidthM": 8,
+    "doorDepthM": 1.2,
+    "apronM": 6,
+    "ridgeWidthM": 0.6,
+    "outlinePx": 0.9
   }
 }

@@ -4,7 +4,7 @@ import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 18;
+export const SAVE_VERSION = 19;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -169,6 +169,13 @@ export function migrate(raw: unknown): SaveData {
       b.market = { series, nextSeries: next };
     }
     save.version = 18;
+  }
+  // Version 18 to 19: the airfield gained service roads and depots, and vehicles live in depots (T60, user 2026-11-18).
+  // Older saves have neither, so their fleet is emptied; building a depot brings its starter set.
+  if (save.version < 19) {
+    const b = (save as { business?: { fleet?: number[] } }).business;
+    if (b?.fleet) b.fleet = b.fleet.map(() => 0);
+    save.version = 19;
   }
   return save as SaveData;
 }

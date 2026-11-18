@@ -290,3 +290,15 @@ Answer: (pending)
 | Jet bridges | Not drawn before they are built as an upgrade |
 | Blurry map at apron zoom and missing liveries | Map chunks must stay sharp at every working zoom; liveries show at apron working zoom |
 | Rapid exit direction | The player can flip a rapid exit to serve the other landing direction |
+
+## 2026-11-18 T60 service roads, depot and vehicles
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| How service roads are built | Stand road strips become graph edges automatically (two one way apron lanes) and join where stands abut. A road tool draws 7 m two lane service roads, press and drag like taxiways, snapping to strip ends and other roads |
+| Where vehicles start | The ground handling depot of T65 is built inside T60, so vehicles drive depot to stand on roads from the start. With no depot or no road path, vehicles appear beside the stand as before and the soft penalty applies |
+| Soft penalty for a commercial stand with no road path to a depot | Turnaround 25 percent slower, with an alert asking for a road |
+| May a service road cross a taxiway | Yes, with a hold line; vehicles wait while an aircraft is on or has reserved the crossed taxiway section. Runways are never crossed |
+| Vehicles in saves and the hash | Approved: vehicles, roads and depot fleets are saved with a migration. Old saves load with no roads and an empty fleet |
+| Baggage carts per tractor | By aircraft size: small 1, medium 2, large 3, extra large 4 |
+| How the fleet is bought | Per kind in the depot inspector at the catalog price, up to the depot capacity of 24. A new depot comes with 2 tugs, 2 tractors, 4 carts, 2 belt loaders, 2 GPUs, 1 refueller, 1 stairs and 1 catering truck |

@@ -1,9 +1,10 @@
 import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
 import type { StandType } from '@shared/airfield';
-import { STAND_SIZES } from '@data/index';
+import { GROUND, STAND_SIZES } from '@data/index';
 import { sizeForCode } from '@shared/standSizes';
 import { originFor } from '@shared/terminalOps';
+import { standRoadAnchors } from '@shared/roadGraph';
 
 export const OPTIONS = { preset: 'flatCoastal' } as const;
 
@@ -27,6 +28,8 @@ export interface AirportOptions {
   standsPerRow?: number;
   standType?: StandType;
   standCode?: 'A' | 'B' | 'C' | 'D' | 'E';
+  /** Build a depot west of the stand row and a service road along the stand tops (T60). Defaults to true. */
+  ground?: boolean;
 }
 
 /**
@@ -54,7 +57,30 @@ export function buildTestAirport(sim: Sim, o: AirportOptions = {}): void {
   for (let placed = 0; placed < per; placed += 30) {
     go({ type: 'buildStands', x: x0 + 800 + span - 50 - placed * spacing, y: 5330, headingDeg: 180, count: Math.min(30, per - placed), spacingM: spacing, standType: type, size });
   }
+  if (o.ground !== false) errors.push(...buildTestGround(sim));
   if (errors.length > 0) throw new Error(`test airport failed: ${errors.join(', ')}`);
+}
+
+/**
+ * A ground handling depot west of the stands and one service road from its exit through every stand
+ * connection point, so turnarounds run at full speed and vehicles drive from the depot. Returns problems.
+ */
+export function buildTestGround(sim: Sim): string[] {
+  const conns = sim.airfield.data.stands.map((s) => standRoadAnchors(s)?.conn).filter((p) => p !== undefined);
+  if (conns.length === 0) return ['noStands'];
+  conns.sort((a, b) => a.x - b.x);
+  const y = conns[0].y;
+  // Just west of the westmost apron, door side east, so the depot sits off the pavement.
+  let west = conns[0].x;
+  for (const a of sim.airfield.data.aprons) for (const p of a.polygon) west = Math.min(west, p.x);
+  const x = west - 25;
+  const problems = run(sim, { type: 'buildDepot', x, y, headingDeg: 90 });
+  // One road through every connection point, laid in pieces of at most 60 points that join end to end.
+  const line = [{ x: x + GROUND.depot.depthM / 2 + GROUND.depot.exitGapM, y }, ...conns];
+  for (let i = 0; i + 1 < line.length; i += 59) problems.push(...run(sim, { type: 'buildRoad', points: line.slice(i, i + 60) }));
+  // Top the fleet up to the kit the tests used before depots, so turnaround timing stays as it was.
+  for (const [kind, count] of [['beltloader', 1], ['refueller', 1], ['gpu', 1]] as const) problems.push(...run(sim, { type: 'buyGse', kind, count }));
+  return problems;
 }
 
 export interface TerminalOptions {

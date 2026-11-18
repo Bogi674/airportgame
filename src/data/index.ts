@@ -2,6 +2,7 @@ import airfieldCodesJson from './airfield_codes.json';
 import businessJson from './business.json';
 import marketJson from './market.json';
 import gseJson from './gse.json';
+import groundJson from './ground.json';
 import paintJson from './paint.json';
 import peopleJson from './people.json';
 import profilesJson from './profiles.json';
@@ -13,6 +14,7 @@ import {
   businessSchema,
   marketSchema,
   gseSchema,
+  groundSchema,
   paintSchema,
   peopleSchema,
   profilesSchema,
@@ -23,6 +25,7 @@ import {
   type BusinessData,
   type MarketData,
   type GseData,
+  type GroundData,
   type PaintData,
   type PeopleData,
   type ProfilesData,
@@ -53,6 +56,9 @@ export const STAND_SIZES: StandSizesData['sizes'] = STAND_DATA.sizes;
 export const STAND_PLACEMENT: StandSizesData['placement'] = STAND_DATA.placement;
 /** Stand marking dimensions. */
 export const STAND_MARKINGS: StandSizesData['markings'] = STAND_DATA.markings;
+
+/** Service roads, apron lanes, the ground handling depot and vehicle trains. */
+export const GROUND: GroundData = groundSchema.parse(groundJson);
 
 export type GseSpec = GseData['vehicles'][number];
 

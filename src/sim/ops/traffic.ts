@@ -527,6 +527,26 @@ export class Traffic {
     return f;
   }
 
+  /**
+   * True when a moving aircraft is on one of the marked network edges or has it next on its route, so a
+   * vehicle at a road crossing gives way (T60). Parked and free aircraft never block a crossing.
+   */
+  taxiOnEdges(mark: Uint8Array): boolean {
+    for (let i = 0; i < MAX_AIRCRAFT; i++) {
+      if (this.active[i] === 0 || this.state[i] === AcState.Turnaround) continue;
+      const k = this.routeIdx[i];
+      const n = this.routeLen[i];
+      for (let j = k; j < n && j <= k + 1; j++) {
+        const e = this.routeEdge[i * MAX_ROUTE + j];
+        if (e >= 0 && e < mark.length && mark[e] === 1) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Turnaround factor per stand index for commercial flights with no road from a depot (T60): 1 or the soft penalty. Set by the sim. */
+  standRoadFactor = new Float64Array(0);
+
   turnaroundTicks(typeIdx: number): number {
     return Math.round((ROLE_TURNAROUND_MIN[AIRCRAFT[typeIdx].role] ?? 120) * TICKS_PER_MINUTE * this.testTurnScale);
   }
@@ -1428,6 +1448,13 @@ export class Traffic {
     return 0.5 + (len - this.dockGoal(i, e, len));
   }
 
+  /** The no road penalty of the stand an aircraft docked at, for a commercial flight; general aviation never pays it (D2). */
+  private roadFactor(i: number, f: number): number {
+    if (this.fAirline[f] === GA_AIRLINE) return 1;
+    const s = this.af.stands.findIndex((x) => x.id === this.standId[i]);
+    return s >= 0 && s < this.standRoadFactor.length ? this.standRoadFactor[s] : 1;
+  }
+
   private holdDistFor(i: number): number {
     const idx = this.entryIdx[i];
     for (const h of this.net.holds) if (h.entryIdx === idx) return h.holdDist;
@@ -1443,7 +1470,7 @@ export class Traffic {
       this.releaseAll(i);
       this.state[i] = AcState.Turnaround;
       const f = this.flight[i];
-      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown) : 45 * TICKS_PER_MINUTE;
+      this.timer[i] = f >= 0 ? Math.round(this.fTurn[f] * this.serviceSlowdown * this.roadFactor(i, f)) : 45 * TICKS_PER_MINUTE;
       this.boardHold[i] = 0;
       if (f >= 0) {
         this.fState[f] = FlState.OnGround;

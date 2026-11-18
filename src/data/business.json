@@ -192,31 +192,31 @@
   },
   "tractor": {
    "price": 45000,
-   "start": 4
+   "start": 2
   },
   "cart": {
    "price": 12000,
-   "start": 8
+   "start": 4
   },
   "beltloader": {
    "price": 120000,
-   "start": 3
+   "start": 2
   },
   "catering": {
    "price": 210000,
-   "start": 2
+   "start": 1
   },
   "dispenser": {
    "price": 260000,
-   "start": 1
+   "start": 0
   },
   "refueller": {
    "price": 230000,
-   "start": 2
+   "start": 1
   },
   "gpu": {
    "price": 38000,
-   "start": 3
+   "start": 2
   },
   "bus": {
    "price": 160000,

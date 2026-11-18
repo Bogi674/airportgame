@@ -1,0 +1,43 @@
+{
+ "version": 1,
+ "note": "Service roads, apron lanes and the ground handling depot (docs/DESIGN_REVISION_4.md sections 4 and 5, D17 and D18, user answers of 2026-11-18). Meters, km/h and the game currency. A new depot comes with the start counts of business.json gse.",
+ "road": {
+  "widthM": 7,
+  "laneOffsetM": 1.75,
+  "speedKmh": 25,
+  "surface": "asphalt",
+  "snapM": 8,
+  "minSegmentM": 4
+ },
+ "apronLane": {
+  "laneOffsetM": 3,
+  "speedKmh": 15
+ },
+ "approach": {
+  "slowLastM": 15,
+  "speedKmh": 5
+ },
+ "crossing": {
+  "holdBackM": 4
+ },
+ "noRoadTurnaroundFactor": 1.25,
+ "depot": {
+  "widthM": 60,
+  "depthM": 40,
+  "cost": 180000,
+  "capacity": 24,
+  "exitGapM": 4
+ },
+ "cartsPerTrain": {
+  "small": 1,
+  "medium": 2,
+  "large": 3,
+  "xl": 4
+ },
+ "train": {
+  "hitchGapM": 0.6
+ },
+ "vehicleGapM": 2,
+ "crewClearLeadS": 150,
+ "trainLateralExtraM": 1.5
+}

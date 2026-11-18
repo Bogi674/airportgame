@@ -1,4 +1,4 @@
-import { AIRFIELD, BUSINESS, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
+import { AIRFIELD, BUSINESS, GROUND, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { standBox, standTaxiwayClash } from '@shared/clearance';
 import { standLeadTaxiways } from '@shared/standFork';
@@ -19,7 +19,10 @@ import {
   type Surface,
   type Taxiway,
   type Tower,
+  type ServiceRoad,
+  type Depot,
 } from '@shared/airfield';
+import { depotRect, roadSnapPoints, segmentRect } from '@shared/roadGraph';
 import type { RunwayObstacles } from '@shared/obstacles';
 import { padArea, padPolygon, padValue } from '@shared/turnPad';
 import { levelForRunways, runwayCapOf, towerBuildCost, towerLevelOf } from '@shared/towerBudget';
@@ -51,10 +54,10 @@ import type { Command } from '../commands';
 import { rapidExitPoints, runwayFrame } from '@shared/airfieldGeom';
 import { assignRunwayNames, assignTaxiNames, deriveNetwork } from './geometry';
 
-type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower';
+type ObjType = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower' | 'road' | 'depot';
 interface Item {
   type: ObjType;
-  obj: Runway | Taxiway | Apron | Stand | Tower;
+  obj: Runway | Taxiway | Apron | Stand | Tower | ServiceRoad | Depot;
 }
 interface Op {
   items: Item[];
@@ -153,6 +156,8 @@ export class Airfield {
   obstaclesVersion = 0;
   /** Bumped when a tower is built, upgraded or removed. Towers sit off the taxi network, so this never rebuilds it. */
   towersVersion = 0;
+  /** Bumped when a service road or depot is built or removed (T60). They sit off the taxi network, so this never rebuilds it. */
+  groundVersion = 0;
 
   get version(): number {
     return this.data.version;
@@ -181,6 +186,10 @@ export class Airfield {
         return this.data.aprons;
       case 'tower':
         return this.towerList;
+      case 'road':
+        return this.roadList;
+      case 'depot':
+        return this.depotList;
       default:
         return this.data.stands;
     }
@@ -188,6 +197,14 @@ export class Airfield {
 
   private get towerList(): Tower[] {
     return (this.data.towers ??= []);
+  }
+
+  private get roadList(): ServiceRoad[] {
+    return (this.data.roads ??= []);
+  }
+
+  private get depotList(): Depot[] {
+    return (this.data.depots ??= []);
   }
 
   private nextTaxiName(): string {
@@ -208,6 +225,7 @@ export class Airfield {
   /** Rebuilds the taxi network, unless the items are towers only, which never touch it. */
   private refreshFor(items: Item[]): void {
     if (items.length > 0 && items.every((it) => it.type === 'tower')) this.towersVersion++;
+    else if (items.length > 0 && items.every((it) => it.type === 'road' || it.type === 'depot')) this.groundVersion++;
     else this.refresh();
   }
 
@@ -272,6 +290,10 @@ export class Airfield {
         return this.upgradeTower(cmd.id, cash);
       case 'demolishTower':
         return this.demolishTower(cmd.id);
+      case 'buildRoad':
+        return this.buildRoad(cmd.points, ctx, cash, env);
+      case 'buildDepot':
+        return this.buildDepot(cmd, ctx, cash, env);
       case 'setTaxiwayProps':
         return this.setTaxiwayProps(cmd);
       case 'resurface':
@@ -662,6 +684,7 @@ export class Airfield {
   private buildingProblem(poly: readonly Pt[], env: BuildEnv): Problem | null {
     const side = BUSINESS.tower.footprintM;
     if (this.towerList.some((t) => overlaps(poly, towerRect(t.x, t.y, side)))) return { code: 'onTower' };
+    if (this.depotList.some((d) => overlaps(poly, depotRect(d)))) return { code: 'onDepot' };
     if (env.terminals && terminalOverlaps(env.terminals, poly)) return { code: 'onTerminal' };
     return null;
   }
@@ -880,6 +903,56 @@ export class Airfield {
     this.undoStack.push({ items: [], added: true, cashDelta: -price, towerSwaps: [{ id, before, after: { ...t } }] });
     this.redoStack.length = 0;
     return { cashDelta: -price };
+  }
+
+  /**
+   * Builds a service road along the points (T60, D17). Ends within the snap reach of a depot exit, a stand
+   * connection point, a road strip end or another road end snap onto it. Roads may cross taxiways, where
+   * vehicles give way, but never a runway, a tower or a depot. Priced as asphalt of the road width.
+   */
+  private buildRoad(raw: readonly Pt[], ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
+    if (raw.length < 2 || raw.length > 60) return { code: 'roadPoints' };
+    const pts = raw.map((p) => ({ x: round05(p.x), y: round05(p.y) }));
+    const snaps = roadSnapPoints(this.data);
+    for (const k of [0, pts.length - 1]) {
+      let best = GROUND.road.snapM * GROUND.road.snapM;
+      for (const q of snaps) {
+        const d = (q.x - pts[k].x) ** 2 + (q.y - pts[k].y) ** 2;
+        if (d < best) {
+          best = d;
+          pts[k] = { x: q.x, y: q.y };
+        }
+      }
+    }
+    for (let i = 1; i < pts.length; i++) {
+      if (Math.sqrt((pts[i].x - pts[i - 1].x) ** 2 + (pts[i].y - pts[i - 1].y) ** 2) < GROUND.road.minSegmentM) return { code: 'roadShort', args: { min: GROUND.road.minSegmentM } };
+    }
+    const land = checkStrip(ctx, pts, GROUND.road.widthM);
+    if (land) return land;
+    const half = GROUND.road.widthM / 2;
+    for (let i = 1; i < pts.length; i++) {
+      const strip = segmentRect(pts[i - 1], pts[i], half);
+      if (this.onRunway(strip)) return { code: 'roadOnRunway' };
+      const building = this.buildingProblem(strip, env);
+      if (building) return building;
+    }
+    const cost = Math.round(polylineLength(pts) * GROUND.road.widthM * SURFACE_SPEC[GROUND.road.surface].costPerM2);
+    return this.place([{ type: 'road', obj: { id: this.nextId++, cost, points: pts } }], cash);
+  }
+
+  /** Builds a ground handling depot centred on the point with its door side facing the heading, a multiple of 90 (T60, D18). */
+  private buildDepot(cmd: Extract<Command, { type: 'buildDepot' }>, ctx: BuildContext, cash: number, env: BuildEnv): BuildResult {
+    const headingDeg = ((Math.round(cmd.headingDeg / 90) * 90) % 360 + 360) % 360;
+    const d: Depot = { id: 0, cost: GROUND.depot.cost, x: round05(cmd.x), y: round05(cmd.y), headingDeg };
+    const poly = depotRect(d);
+    const land = checkPolygon(ctx, poly);
+    if (land) return land;
+    if (towerBlocked(this.data, poly)) return { code: 'depotOnPavement' };
+    if (this.towerList.some((t) => towersOverlap(poly, towerRect(t.x, t.y, BUSINESS.tower.footprintM)))) return { code: 'onTower' };
+    if (this.depotList.some((o) => towersOverlap(poly, depotRect(o)))) return { code: 'onDepot' };
+    if (env.terminals && terminalOverlaps(env.terminals, poly)) return { code: 'onTerminal' };
+    d.id = this.nextId++;
+    return this.place([{ type: 'depot', obj: d }], cash);
   }
 
   /** Removes a tower and refunds a share of everything the player spent on it, as the other demolitions do. */
@@ -1361,7 +1434,7 @@ export class Airfield {
   /** Everything needed to rebuild the airfield. Undo history is not saved. */
   saveState(): unknown {
     const d = this.data;
-    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, towers: this.towerList, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
+    return { runways: d.runways, taxiways: d.taxiways, aprons: d.aprons, stands: d.stands, towers: this.towerList, roads: this.roadList, depots: this.depotList, nextId: this.nextId, nameIndex: this.nameIndex, standNumber: this.standNumber, apronNumber: this.apronNumber, version: d.version };
   }
 
   loadState(raw: unknown): void {
@@ -1372,6 +1445,9 @@ export class Airfield {
     d.aprons = o.aprons;
     d.stands = o.stands;
     this.towerList.splice(0, this.towerList.length, ...(o.towers ?? []));
+    const g = raw as { roads?: ServiceRoad[]; depots?: Depot[] };
+    this.roadList.splice(0, this.roadList.length, ...(g.roads ?? []));
+    this.depotList.splice(0, this.depotList.length, ...(g.depots ?? []));
     this.nextId = o.nextId;
     this.nameIndex = o.nameIndex;
     this.standNumber = o.standNumber;
@@ -1404,6 +1480,11 @@ export class Airfield {
     for (const a of this.data.aprons) acc = foldU32(foldU32(foldU32(acc, a.id), a.polygon.length), a.holes?.length ?? 0);
     for (const s of this.data.stands) acc = foldU32(foldU32(foldU32(acc, s.id), r(s.x)), r(s.y));
     for (const t of this.towerList) acc = foldU32(foldU32(foldU32(foldU32(acc, t.id), t.level), t.cost), r(t.x) * 64 + r(t.y));
+    for (const x of this.roadList) {
+      acc = foldU32(foldU32(acc, x.id), x.points.length);
+      for (const p of x.points) acc = foldU32(foldU32(acc, r(p.x)), r(p.y));
+    }
+    for (const x of this.depotList) acc = foldU32(foldU32(foldU32(acc, x.id), r(x.x) * 64 + r(x.y)), x.headingDeg);
     return acc;
   }
 }

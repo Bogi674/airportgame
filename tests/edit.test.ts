@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { ACCEPT_COMMERCIAL, ACCEPT_GA } from '@shared/airfield';
 import { AIRCRAFT } from '@data/aircraft';
-import { STAND_SIZES } from '@data/index';
+import { BUSINESS, GROUND, GSE_INDEX, STAND_SIZES } from '@data/index';
 import { Sim } from '@sim/sim';
 import { TICKS_PER_MINUTE } from '@shared/business';
 import { sizeForCode } from '@shared/standSizes';
 import { buildTestAirport, OPTIONS, ownedSim, run } from './helpers';
 
-function airport() {
+function airport(o: { ground?: boolean } = {}) {
   const sim = ownedSim();
   sim.cash = 500_000_000;
-  buildTestAirport(sim, { standsPerRow: 4 });
+  buildTestAirport(sim, { standsPerRow: 4, ...o });
   return sim;
 }
 
@@ -234,16 +234,22 @@ describe('stand management', () => {
 });
 
 describe('ground handling fleet', () => {
-  it('buying vehicles costs money and a short fleet slows turnarounds', () => {
+  it('buying vehicles needs a depot with room, costs money, and a short fleet slows turnarounds', () => {
     const sim = airport();
-    const before = sim.business.fleet.slice();
+    const belt = GSE_INDEX.beltloader;
+    const before = sim.business.fleet[belt];
+    // The test airport has one depot, which came with its starter set, topped up by one.
+    expect(before).toBe(BUSINESS.gse.beltloader.start + 1);
     const cash = sim.cash;
     expect(run(sim, { type: 'buyGse', kind: 'beltloader', count: 2 })).toEqual([]);
-    const i = before.length > 0 ? 3 : 0;
-    expect(sim.business.fleet[i]).toBe(before[i] + 2);
+    expect(sim.business.fleet[belt]).toBe(before + 2);
     expect(sim.cash).toBeLessThan(cash);
     expect(run(sim, { type: 'buyGse', kind: 'nonsense', count: 1 })[0]).toBe('nothingThere');
+    expect(run(sim, { type: 'buyGse', kind: 'cart', count: 20 })[0]).toBe(`depotFull|max=${GROUND.depot.capacity}`);
     expect(sim.traffic.serviceSlowdown).toBe(1);
+    const bare = airport({ ground: false });
+    expect(run(bare, { type: 'buyGse', kind: 'beltloader', count: 1 })[0]).toBe('noDepot');
+    expect(bare.business.fleet.every((n) => n === 0)).toBe(true);
   });
 });
 

@@ -30,13 +30,17 @@ export type Command =
   | { type: 'buildStands'; x: number; y: number; headingDeg: number; count: number; spacingM: number; standType: StandType; size: StandSize; surface?: Surface }
   /** surface is optional: without it a GA block takes the apron under its stands, else asphalt. */
   | { type: 'buildGaBlock'; x: number; y: number; headingDeg: number; count: number; surface?: Surface }
-  | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand'; id: number }
+  | { type: 'demolish'; kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'road' | 'depot'; id: number }
   /** Builds an ATC tower centred on the point, at the given level from 1 to 5, paying the build cost plus each upgrade. */
   | { type: 'buildTower'; x: number; y: number; level: number }
   /** Raises a tower by one level. */
   | { type: 'upgradeTower'; id: number }
   /** Removes a tower and refunds a share of what it cost. */
   | { type: 'demolishTower'; id: number }
+  /** Draws a service road (T60). Its ends snap to depot exits, stand connection points and other roads. */
+  | { type: 'buildRoad'; points: Pt[] }
+  /** Builds a ground handling depot centred on the point, door side facing the heading (rounded to 90 degrees). */
+  | { type: 'buildDepot'; x: number; y: number; headingDeg: number }
   | { type: 'setTaxiwayProps'; id: number; oneWay?: boolean; preferred?: number; closed?: boolean; userMaxCode?: CodeLetter; speedKmh?: number }
   | { type: 'reclassTaxiway'; id: number; code: CodeLetter; surface: Surface; tier: number }
   | { type: 'reverseTaxiway'; id: number }

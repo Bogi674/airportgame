@@ -71,8 +71,22 @@ export class Business {
   terminals: Terminal[] = [];
   terminalVersion = 0;
     atcCells = 0;
-  /** Ground support vehicles owned, by catalog index. */
-  fleet: number[] = GSE.map((v) => BUSINESS.gse[v.id]?.start ?? 0);
+  /** Ground support vehicles owned, by catalog index. They live in depots, so a new game owns none (T60). */
+  fleet: number[] = GSE.map(() => 0);
+  /** Vehicles the depots can hold, set by the sim from the depot count (D18). */
+  depotCapacity = 0;
+
+  /**
+   * Depots were built or removed: each new depot brings the starter set (the `start` counts of the gse
+   * catalog in business.json, user 2026-11-18), each removed one takes it back as far as it is owned.
+   */
+  depotsChanged(delta: number): void {
+    GSE.forEach((v, i) => {
+      const n = (BUSINESS.gse[v.id]?.start ?? 0) * delta;
+      this.fleet[i] = Math.max(0, this.fleet[i] + n);
+    });
+    this.version++;
+  }
 
   /** Buys vehicles for the ground handling fleet. */
   buyGse(kind: string, count: number): string | null {
@@ -80,6 +94,10 @@ export class Business {
     const spec = BUSINESS.gse[kind];
     if (i < 0 || !spec) return 'nothingThere';
     const n = Math.max(1, Math.min(20, Math.floor(count)));
+    if (this.depotCapacity === 0) return 'noDepot';
+    let owned = 0;
+    for (const k of this.fleet) owned += k;
+    if (owned + n > this.depotCapacity) return `depotFull|max=${this.depotCapacity}`;
     const cost = spec.price * n;
     if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
     this.host.book('construction', -cost);

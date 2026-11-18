@@ -13,6 +13,9 @@ import { buildTestAirport, ownedSim, run } from './helpers';
 /** The clash gap the crew keeps, as in src/sim/vehicles/gse.ts. */
 const GAP_M = 0.5;
 
+/** Turnaround long enough for the whole crew to drive in from the depot and dock (T60). */
+const TURN_TICKS = 6000;
+
 /** Wingspan above which a type needs a code E runway and stand, as the test airport is code C. */
 const CODE_C_MAX_SPAN_M = 36;
 
@@ -108,8 +111,8 @@ describe('ground vehicles clear the aircraft at every tick', () => {
       let turnedHere = false;
       if (spec.dimensions.wingspanM > CODE_C_MAX_SPAN_M) buildCodeEAirport(sim);
       else buildTestAirport(sim, { standsPerRow: 4 });
-      run(sim, { type: 'testArrival', typeIdx, inTicks: 0, turnTicks: 600 });
-      for (let t = 0; t < 4000 && sim.traffic.completedFlights === 0; t++) {
+      run(sim, { type: 'testArrival', typeIdx, inTicks: 0, turnTicks: TURN_TICKS });
+      for (let t = 0; t < 20000 && sim.traffic.completedFlights === 0; t++) {
         sim.step();
         let turningNow = false;
         const live: number[] = [];
@@ -169,7 +172,7 @@ describe('ground vehicles clear the aircraft at every tick', () => {
           for (let j = i + 1; j < live.length; j++) {
             const a = live[i];
             const b = live[j];
-            if (sim.gse.owner[a] !== sim.gse.owner[b]) continue;
+            if (sim.gse.owner[a] !== sim.gse.owner[b] || sim.gse.sameTrain(a, b)) continue;
             const ga = GSE[sim.gse.kind[a]];
             const gb = GSE[sim.gse.kind[b]];
             const pa = rectOf(sim.gse.x[a], sim.gse.y[a], sim.gse.heading[a], ga.lengthM, ga.widthM);
@@ -194,12 +197,12 @@ describe('ground vehicles clear the aircraft at every tick', () => {
       if (spec.role === 'ga') expect([...kinds], spec.id).toEqual([GSE_INDEX.refueller]);
       if (spec.role !== 'ga') expect(kinds.has(GSE_INDEX.beltloader), spec.id).toBe(spec.dimensions.lengthM >= 20);
     }
+    expect(problems).toEqual([]);
     // The refueller sits under the wing only where the wing clears it, and beyond the wingtip otherwise.
     for (const spec of AIRCRAFT) {
       const footprint = footprintSpecSchema.parse(SPRITE_BASES[spec.sprite.base]);
       const under = footprint.heights.wing > GSE[GSE_INDEX.refueller].heightM;
       expect(refuellerUnder.get(spec.id), spec.id).toBe(under);
     }
-    expect(problems).toEqual([]);
-  }, 10_000);
+  }, 60_000);
 });

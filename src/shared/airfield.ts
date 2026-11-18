@@ -189,6 +189,24 @@ export interface Tower {
   level: number;
 }
 
+/** A service road the player drew: 7 m, two lanes, vehicles keep right (T60, D17). */
+export interface ServiceRoad {
+  id: number;
+  /** What it cost to build, used for demolition refunds. */
+  cost: number;
+  points: Pt[];
+}
+
+/** A ground handling depot (T60, D18). Its exit faces the compass heading, which is a multiple of 90. */
+export interface Depot {
+  id: number;
+  cost: number;
+  /** Centre of the footprint. */
+  x: number;
+  y: number;
+  headingDeg: number;
+}
+
 /** The axis aligned square a tower covers, as four corners. */
 export function towerRect(x: number, y: number, sideM: number): Pt[] {
   const h = sideM / 2;
@@ -211,6 +229,9 @@ export interface AirfieldPayload {
   entries: RunwayEntry[];
   /** ATC towers. Missing means none, so older payload literals stay valid. */
   towers?: Tower[];
+  /** Service roads and ground handling depots (T60). Missing means none. */
+  roads?: ServiceRoad[];
+  depots?: Depot[];
   /** Obstacle surface results per runway, derived from the terrain, land and buildings. */
   obstacles?: RunwayObstacles[];
   /** Stands whose parked box breaks a taxiway clearance, ascending by id. Derived from the layout, never saved. Missing means none. */

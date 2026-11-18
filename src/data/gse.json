@@ -25,7 +25,7 @@
    "dock": {
     "station": 0.75,
     "side": "R",
-    "orient": "perp",
+    "orient": "along",
     "underWing": false,
     "minAircraftLengthM": 20
    }
