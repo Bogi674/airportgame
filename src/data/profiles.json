@@ -4,6 +4,7 @@
   "arrivalSpread": 0.25,
   "boardingHoldS": 600,
   "sampleCap": 3000,
+  "walkSample": { "note": "People sample spacing. laneOffsetCells: side step of a walker in 2 m cells. minGapM: least centre gap between drawn groups in metres. dwellRingCells: spiral radius around a dwell anchor in cells. dwellTries: spiral cells tried per dweller.", "laneOffsetCells": 1, "minGapM": 1.9, "dwellRingCells": 3, "dwellTries": 24 },
   "profiles": {
     "business": { "leadMin": 120,  "walkSpeed": 1.4, "patienceS": 600,  "spend": 25, "bagsPerPax": 0.4, "mix": 0.15 },
     "leisure":  { "leadMin": 150,  "walkSpeed": 1.2, "patienceS": 900,  "spend": 30, "bagsPerPax": 1.0, "mix": 0.40 },

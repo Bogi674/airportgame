@@ -8,7 +8,7 @@ import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
-import { HEADING_STEPS, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
+import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
@@ -317,6 +317,8 @@ export class Cohorts {
           views.peopleSize[n] = this.size[c]!;
           views.peopleSeed[n] = this.recipeSeed[c]!;
           views.peopleHeading[n] = heading;
+          views.peopleId[n] = c;
+          views.peopleMode[n] = PEOPLE_MODE.Queued;
           n++;
         }
       }

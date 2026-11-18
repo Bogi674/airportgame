@@ -585,6 +585,11 @@ describe('snapshot sample of cohort positions', () => {
       if (views.peopleSeed[i] !== 0) anySeed = true;
     }
     expect(anySeed).toBe(true);
+    const queuedStages = [Stage.CheckIn, Stage.Security, Stage.Gate];
+    for (let i = 0; i < n; i++) {
+      expect(views.peopleMode[i]).toBe(0);
+      expect(queuedStages).toContain(sim.cohorts.stage[views.peopleId[i]!]);
+    }
   });
 
   it('queued figures stand 1.9 m apart and face the cell they were reached from, next to a shared queue', () => {

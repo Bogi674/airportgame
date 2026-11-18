@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
+import profilesJson from '../src/data/profiles.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
 import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
+import { profilesSchema } from '../src/data/schemas/profiles';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -103,5 +105,17 @@ describe('revision 2 tables', () => {
       expect(SURFACE_SPEC[s].paint).toBe('markers');
     }
     for (const s of ['asphalt', 'concrete'] as const) expect(SURFACE_SPEC[s].allowedCodes).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+  });
+});
+
+describe('people sample spacing', () => {
+  it('profiles validate with the walk sample block', () => {
+    expect(profilesSchema.safeParse(profilesJson).success).toBe(true);
+  });
+
+  it('rejects dwellTries above the spiral size', () => {
+    const bad = structuredClone(profilesJson);
+    bad.walkSample.dwellTries = 50;
+    expect(profilesSchema.safeParse(bad).success).toBe(false);
   });
 });

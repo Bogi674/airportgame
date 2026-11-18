@@ -3,12 +3,14 @@
  * (docs/ARCHITECTURE.md section 1). Bump SNAPSHOT_VERSION on every layout change.
  */
 
-export const SNAPSHOT_VERSION = 6;
+export const SNAPSHOT_VERSION = 7;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
 export const SNAPSHOT_PEOPLE_CAPACITY = 3000;
 /** Heading steps in a full turn, for people groups and anything else that snaps to a heading byte. */
 export const HEADING_STEPS = 256;
+/** People sample modes, a value of peopleMode. */
+export const PEOPLE_MODE = { Queued: 0, Walking: 1, Dwelling: 2 } as const;
 
 /** Header slots, Int32. */
 export const enum SnapHeader {
@@ -46,6 +48,10 @@ export interface SnapshotViews {
   peopleSeed: Uint32Array;
   /** Rotation of the group in HEADING_STEPS per turn. 0 faces world minus y, increasing turns clockwise on screen. */
   peopleHeading: Uint8Array;
+  /** Cohort slot the sample belongs to, the key the renderer matches snapshots by. */
+  peopleId: Int32Array;
+  /** A PEOPLE_MODE value. */
+  peopleMode: Uint8Array;
 }
 
 const align4 = (n: number): number => (n + 3) & ~3;
@@ -78,8 +84,10 @@ const OFF_PSIZE = OFF_PPROFILE + align4(PCAP);
 
 const OFF_PSEED = OFF_PSIZE + align4(PCAP);
 const OFF_PHEAD = OFF_PSEED + PCAP * 4;
+const OFF_PID = OFF_PHEAD + align4(PCAP);
+const OFF_PMODE = OFF_PID + PCAP * 4;
 
-export const SNAPSHOT_BYTES = OFF_PHEAD + align4(PCAP);
+export const SNAPSHOT_BYTES = OFF_PMODE + align4(PCAP);
 
 export function createSnapshotBuffer(): ArrayBuffer {
   return new ArrayBuffer(SNAPSHOT_BYTES);
@@ -109,5 +117,7 @@ export function createSnapshotViews(buffer: ArrayBuffer): SnapshotViews {
     peopleSize: new Uint8Array(buffer, OFF_PSIZE, PCAP),
     peopleSeed: new Uint32Array(buffer, OFF_PSEED, PCAP),
     peopleHeading: new Uint8Array(buffer, OFF_PHEAD, PCAP),
+    peopleId: new Int32Array(buffer, OFF_PID, PCAP),
+    peopleMode: new Uint8Array(buffer, OFF_PMODE, PCAP),
   };
 }
