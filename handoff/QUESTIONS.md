@@ -347,3 +347,15 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | How a flight is domestic or international | Per destination: each generated destination carries a seeded flag, the international share lives in data (35 percent proposed). A flight is international when its destination is |
 | Values marked Confirm and missing numbers | Every Confirm value of `docs/TERMINAL_ZONING.md` is accepted as written. Numbers for T67 needs and T68 shifts that no doc gives are proposed by the orchestrator in data files, listed here per task and reported for review |
 | Saves and stress | Save version bumps with a migration are approved for every task that needs one. A stress regression or a broken 4 ms medium budget stops the run for the owner; no baseline update without asking |
+
+### T67 proposed values (orchestrator, for the user's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| Group size | family 3, 4 or 5 at 34, 33 and 33 percent; budget and premium 1 or 2 at 60 and 40 percent; crew 1 |
+| Need threshold | a member acts on a need above 0.5 |
+| Visits | food 20 min with spend share 0.4, drink 10 min with 0.15, shop 15 min with 0.6, rest 20 min with 0 |
+| Gate lead | members head to the gate 15 to 40 min before departure |
+| Reduced mobility | 3 percent of members, walking at 0.7 speed |
+| Satisfaction | queue costs 1 point per game minute over patience; walking costs 0.02 per m beyond 300 m; an unmet need costs 10 per hour; a missed flight costs 40 |
+| Scope | needs act only airside (retail window, GAME_DESIGN section 8); flight delay and facility bonuses stay in their own rating parts; travel class and price sensitivity move to T32 |
