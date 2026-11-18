@@ -5,7 +5,7 @@ import { packTyped, unpackTyped } from './pack';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 26;
+export const SAVE_VERSION = 27;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -204,5 +204,11 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 25) save.version = 25;
   // Version 25 to 26: stands gained upgrades, upgrade works and a gate desk (T66). Older stands load with no upgrades, no works and the nearest gate desk.
   if (save.version < 26) save.version = 26;
+  // Version 26 to 27: cohorts gained the walk they are on (T54). Older cohorts load with no walk.
+  if (save.version < 27) {
+    const co = (save as { cohorts?: { hi?: number; arrays?: Record<string, string> } }).cohorts;
+    if (co?.arrays && typeof co.hi === 'number') co.arrays.walkStart = packTyped(new Int32Array(co.hi).fill(-1));
+    save.version = 27;
+  }
   return save as SaveData;
 }

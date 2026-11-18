@@ -102,6 +102,13 @@ export class Cohorts {
   flags = new Uint8Array(this.cap);
   /** Grid index the cohort uses. */
   building = new Uint8Array(this.cap);
+  /** Logical cell of the walk node the cohort left and the one it heads for, valid while walkStart is not -1. */
+  walkFromX = new Int16Array(this.cap);
+  walkFromY = new Int16Array(this.cap);
+  walkToX = new Int16Array(this.cap);
+  walkToY = new Int16Array(this.cap);
+  /** Tick the current walk began, -1 for none. */
+  walkStart = new Int32Array(this.cap).fill(-1);
   /** Free list link and wheel link. */
   next = new Int32Array(this.cap);
   /** One past the highest slot ever used. */
@@ -187,6 +194,7 @@ export class Cohorts {
       this.recipeSeed[c] = Math.floor(this.rng.next() * RECIPE_RANGE);
       this.flags[c] = 0;
       this.node[c] = -1;
+      this.walkStart[c] = -1;
       this.stage[c] = Stage.Curb;
       this.schedule(c, curb);
       this.generated += size;
@@ -549,8 +557,23 @@ export class Cohorts {
     this.node[c] = node;
     this.stage[c] = stage;
     const to = t ? t.walkNode[node] : -1;
+    this.setRoute(g, c, from, to);
     const dist = this.business.walkDistance(this.gridId(g), from, to);
     this.schedule(c, this.tick + Math.max(STEP, Math.ceil((dist / WALK_SPEED[this.profile[c]]) * TICKS_PER_SECOND)));
+  }
+
+  /** Records the walk between two nodes of the grid, or no walk when either id is not a node. */
+  private setRoute(g: number, c: number, from: number, to: number): void {
+    const wg = this.business.walkGraphs[g];
+    if (!wg || from < 0 || to < 0 || from >= wg.nodeCount || to >= wg.nodeCount) {
+      this.walkStart[c] = -1;
+      return;
+    }
+    this.walkFromX[c] = wg.nodeX[from]!;
+    this.walkFromY[c] = wg.nodeY[from]!;
+    this.walkToX[c] = wg.nodeX[to]!;
+    this.walkToY[c] = wg.nodeY[to]!;
+    this.walkStart[c] = this.tick;
   }
 
   private gridId(g: number): number {
@@ -602,6 +625,7 @@ export class Cohorts {
       flight: this.flight, size: this.size, profile: this.profile, stage: this.stage, node: this.node, timer: this.timer,
       bags: this.bags, spendBudget: this.spendBudget, satisfaction: this.satisfaction, recipeSeed: this.recipeSeed,
       flags: this.flags, building: this.building, next: this.next,
+      walkFromX: this.walkFromX, walkFromY: this.walkFromY, walkToX: this.walkToX, walkToY: this.walkToY, walkStart: this.walkStart,
     };
   }
 
@@ -672,6 +696,11 @@ export class Cohorts {
       acc = foldU32(acc, this.stage[c]);
       acc = foldU32(acc, this.node[c]);
       acc = foldU32(acc, this.timer[c]);
+      acc = foldU32(acc, this.walkFromX[c]);
+      acc = foldU32(acc, this.walkFromY[c]);
+      acc = foldU32(acc, this.walkToX[c]);
+      acc = foldU32(acc, this.walkToY[c]);
+      acc = foldU32(acc, this.walkStart[c]);
     }
     return acc;
   }

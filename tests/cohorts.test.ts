@@ -282,6 +282,57 @@ describe('cohort journey from curb to boarded', () => {
     }
     expect(b.stateHash()).toBe(a.stateHash());
   });
+
+  it('a cohort walking to check in records the walk between the curb and its node', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    const wg = sim.business.walkGraphs[0]!;
+    const t = sim.business.serviceNodes[0]!;
+    let found = false;
+    for (let i = 0; i < RUN_TICKS && !found; i++) {
+      sim.step();
+      for (let c = 0; c < sim.cohorts.hi && !found; c++) {
+        if (sim.cohorts.stage[c] !== Stage.ToCheckIn || sim.cohorts.node[c]! < 0) continue;
+        const co = sim.cohorts;
+        const from = sim.business.curbNode(0);
+        const to = t.walkNode[co.node[c]!]!;
+        expect(co.walkStart[c]).toBeGreaterThanOrEqual(0);
+        expect(co.walkStart[c]).toBeLessThanOrEqual(sim.tick);
+        expect([co.walkFromX[c], co.walkFromY[c]]).toEqual([wg.nodeX[from], wg.nodeY[from]]);
+        expect([co.walkToX[c], co.walkToY[c]]).toEqual([wg.nodeX[to], wg.nodeY[to]]);
+        found = true;
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  it('two runs with walkers agree on the hash and record walks', () => {
+    const a = terminalSim();
+    scheduleLong(a);
+    const b = terminalSim();
+    scheduleLong(b);
+    let walked = false;
+    for (let i = 0; i < 2000; i++) {
+      a.step();
+      b.step();
+      for (let c = 0; c < a.cohorts.hi; c++) if (a.cohorts.walkStart[c]! >= 0) walked = true;
+    }
+    expect(walked).toBe(true);
+    expect(a.stateHash()).toBe(b.stateHash());
+  });
+
+  it('a version 26 save loads with no walk recorded', () => {
+    const a = terminalSim();
+    scheduleLong(a);
+    for (let i = 0; i < 1500; i++) a.step();
+    const data = JSON.parse(JSON.stringify(a.serialize())) as { version: number; cohorts: { hi: number; arrays: Record<string, string> } };
+    expect(data.cohorts.hi).toBeGreaterThan(0);
+    data.version = 26;
+    for (const k of ['walkFromX', 'walkFromY', 'walkToX', 'walkToY', 'walkStart']) delete data.cohorts.arrays[k];
+    const b = new Sim(a.seed, OPTIONS);
+    b.restore(data);
+    for (let c = 0; c < b.cohorts.hi; c++) expect(b.cohorts.walkStart[c]).toBe(-1);
+  });
 });
 
 const BOARD_HOLD_TICKS = gameSecondsToTicks(PROFILES.boardingHoldS);
