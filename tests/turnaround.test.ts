@@ -82,6 +82,9 @@ describe('turnaround task lists (T63)', () => {
     expect(sim.traffic.state[a]).toBe(AcState.Turnaround);
     expect(sim.traffic.fCause[f]).toBe(VEHICLE_CAUSE + GSE_INDEX.beltloader);
     expect(causeOwner(sim.traffic.fCause[f])).toBe('airport');
+    const events: string[] = [];
+    sim.drainEvents(events);
+    expect(events).toContain('noVehicle|vehicle=belt loader');
     expect(run(sim, { type: 'buyGse', kind: 'beltloader', count: 1 })).toEqual([]);
     for (let t = 0; t < 2 * plan && sim.traffic.state[a] === AcState.Turnaround; t++) sim.step();
     expect(sim.traffic.state[a]).not.toBe(AcState.Turnaround);
@@ -95,6 +98,9 @@ describe('turnaround task lists (T63)', () => {
     for (let t = 0; t < plan + 2000; t++) sim.step();
     expect(sim.traffic.state[a]).toBe(AcState.Turnaround);
     expect(causeOwner(sim.traffic.fCause[f])).toBe('airport');
+    const events: string[] = [];
+    sim.drainEvents(events);
+    expect(events.some((e) => e.startsWith('noVehicle|'))).toBe(true);
     const t2 = ownedSim();
     buildTestAirport(t2, { standsPerRow: 4, ground: false });
     run(t2, { type: 'testArrival', typeIdx: A320, inTicks: 0, turnTicks: 3000 });

@@ -1,5 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
-import { GROUND } from '@data/index';
+import { GROUND, GSE } from '@data/index';
+import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
 import type { BuildContext } from '@shared/validate';
@@ -134,6 +135,7 @@ export class Sim {
       turnDone: (i) => this.turns.done[i] === 1 && this.turns.flightOf[i] === this.traffic.flight[i],
       crewGone: (i) => this.gse.crewGone(i),
       blocker: (i) => this.turns.blocker(i),
+      delayCause: (_f, c) => this.warnNoVehicle(c),
       // The business settles the flight first, then the passengers still in the terminal miss it.
       pushback: (f) => {
         businessPushback?.(f);
@@ -274,6 +276,7 @@ export class Sim {
 
   /** Day each stand last warned that it has no service road, so the alert asks once a day per stand. */
   private noRoadWarned = new Map<number, number>();
+  private noVehicleWarned = new Map<number, number>();
 
   /** A commercial flight docked at a stand no depot reaches: the turnaround runs slower and an alert asks for a road (D2 as revised 2026-11-16). */
   private warnNoRoad(f: number): void {
@@ -285,6 +288,17 @@ export class Sim {
     if (this.noRoadWarned.get(id) === day) return;
     this.noRoadWarned.set(id, day);
     this.eventQueue.push(`noServiceRoad|stand=${this.airfield.data.stands[s].number}`);
+  }
+
+  /** Tells the player once a game day per kind when an airline flight waits for a vehicle kind the airport owns none of (T63). */
+  private warnNoVehicle(cause: number): void {
+    if (!isVehicleCause(cause)) return;
+    const kind = cause - VEHICLE_CAUSE;
+    if ((this.business.fleet[kind] ?? 0) > 0) return;
+    const day = Math.floor(this.tick / TICKS_PER_DAY);
+    if (this.noVehicleWarned.get(kind) === day) return;
+    this.noVehicleWarned.set(kind, day);
+    this.eventQueue.push(`noVehicle|vehicle=${GSE[kind].name.toLowerCase()}`);
   }
 
   /** Advances the tick counter after all subsystems ran. */
