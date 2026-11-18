@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BUSINESS } from '@data/index';
+import { AUD, effectiveZones, stepAud, zoneAccess } from '@shared/terminalZones';
+import { grid, paint, put, wall } from './zoningGrid';
 import { FIXTURE_FOOTPRINT, FIXTURE_KEYS, FLOOR, WALL, footprintOf, type TerminalGrid } from '@shared/business';
 import { cellIndex, ensureCells, fixtureAnchor, fixtureCells, newGrid, planEdit, type TerminalEdit } from '@shared/terminalOps';
 import type { AirfieldPayload } from '@shared/airfield';
@@ -94,5 +96,71 @@ describe('placement of zoning fixtures', () => {
     const g = floor();
     const p = edit(g, { op: 'wall', variant: WALL.StaffDoor, x0: 4, y0: 4, x1: 7, y1: 4 });
     expect(p.cost).toBe(3 * BUSINESS.terminal.staffDoorPerEdge);
+  });
+});
+
+describe('zone access', () => {
+  const split = () => {
+    const g = grid(10, 5);
+    paint(g, 0, 0, 5, 5, 1);
+    paint(g, 5, 0, 10, 5, 3);
+    return g;
+  };
+  const cell = (g: TerminalGrid, x: number, y: number): number => y * g.w + x;
+
+  it('opens public to secure one way through a lane', () => {
+    const g = split();
+    put(g, 'security', 5, 2, 1);
+    const acc = zoneAccess(g);
+    expect(stepAud(acc, g, 4, 2, 1)).toBe(AUD.Pax | AUD.Staff);
+    expect(stepAud(acc, g, 5, 2, 0)).toBe(0);
+    expect(stepAud(acc, g, 4, 1, 1)).toBe(0);
+    expect(stepAud(acc, g, 4, 3, 1)).toBe(0);
+  });
+
+  it('closes a backwards security exit both ways', () => {
+    const g = split();
+    put(g, 'securityExit', 5, 3, 1);
+    const acc = zoneAccess(g);
+    for (const y of [2, 3]) {
+      expect(stepAud(acc, g, 4, y, 1)).toBe(0);
+      expect(stepAud(acc, g, 5, y, 0)).toBe(0);
+    }
+  });
+
+  it('lets a security exit carry people from secure to public', () => {
+    const g = split();
+    put(g, 'securityExit', 5, 3, 3);
+    const acc = zoneAccess(g);
+    expect(stepAud(acc, g, 5, 3, 0)).toBe(AUD.Pax | AUD.Staff);
+    expect(stepAud(acc, g, 4, 3, 1)).toBe(0);
+  });
+
+  it('gives a staff door to staff only', () => {
+    const g = split();
+    wall(g, false, 5, 1, 4);
+    const acc = zoneAccess(g);
+    expect(stepAud(acc, g, 4, 1, 1)).toBe(AUD.Staff);
+    expect(stepAud(acc, g, 5, 1, 0)).toBe(AUD.Staff);
+  });
+
+  it('keeps a plain door between zones closed', () => {
+    const g = split();
+    wall(g, false, 5, 3, 3);
+    const acc = zoneAccess(g);
+    expect(stepAud(acc, g, 4, 3, 1)).toBe(0);
+    expect(stepAud(acc, g, 5, 3, 0)).toBe(0);
+  });
+
+  it('lets commercial adopt its side and stay apart when it has two', () => {
+    const g = split();
+    paint(g, 3, 0, 4, 1, 2);
+    expect(effectiveZones(g)[cell(g, 3, 0)]).toBe(1);
+    expect(stepAud(zoneAccess(g), g, 2, 0, 1)).toBe(3);
+    paint(g, 4, 0, 5, 1, 2);
+    expect(effectiveZones(g)[cell(g, 4, 0)]).toBe(2);
+    const acc = zoneAccess(g);
+    expect(stepAud(acc, g, 4, 0, 1)).toBe(0);
+    expect(stepAud(acc, g, 2, 0, 1)).toBe(0);
   });
 });
