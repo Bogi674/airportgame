@@ -1124,6 +1124,8 @@ export class Business {
         acc = foldU32(foldU32(foldU32(acc, c.x + 65536), c.y + 65536), g.fixture[i]);
         // The pairing of two cell fixtures is state. Only nonzero footprints hash, so layouts without them keep their hash.
         if (g.fixtureRot[i] !== 0) acc = foldU32(foldU32(acc, i), g.fixtureRot[i]);
+        // Level and mode only hash when they differ from the defaults, so older layouts keep their hash.
+        if (g.fixtureLevel[i] > 1 || g.fixtureMode[i] > 0) acc = foldU32(foldU32(acc, g.fixtureLevel[i]), g.fixtureMode[i]);
       }
     }
     // Queues only enter the hash once someone waits, so idle games keep their hashes.
@@ -1168,6 +1170,9 @@ interface SavedGrid {
   zone?: string;
   fixture: string;
   fixtureRot: string;
+  fixtureOff?: string;
+  fixtureLevel?: string;
+  fixtureMode?: string;
   hWall: string;
   vWall: string;
   leased: string;
@@ -1187,7 +1192,7 @@ const cellCountOf = (g: TerminalGrid): number => cellCount(g);
 const LEGACY_GRID = 160;
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
@@ -1198,11 +1203,14 @@ function loadGrid(sg: SavedGrid): TerminalGrid {
   const y0 = sg.y0 ?? 0;
   const w = sg.w ?? LEGACY_GRID;
   const h = sg.h ?? LEGACY_GRID;
-  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
+  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), fixtureOff: new Uint8Array(w * h), fixtureLevel: new Uint8Array(w * h), fixtureMode: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
   unpackInto(sg.floor, g.floor, Uint8Array);
   if (sg.zone) unpackInto(sg.zone, g.zone, Uint8Array);
   unpackInto(sg.fixture, g.fixture, Uint8Array);
   unpackInto(sg.fixtureRot, g.fixtureRot, Uint8Array);
+  if (sg.fixtureOff) unpackInto(sg.fixtureOff, g.fixtureOff, Uint8Array);
+  if (sg.fixtureLevel) unpackInto(sg.fixtureLevel, g.fixtureLevel, Uint8Array);
+  if (sg.fixtureMode) unpackInto(sg.fixtureMode, g.fixtureMode, Uint8Array);
   unpackInto(sg.hWall, g.hWall, Uint8Array);
   unpackInto(sg.vWall, g.vWall, Uint8Array);
   unpackInto(sg.leased, g.leased, Uint8Array);

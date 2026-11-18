@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '@sim/sim';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
+import { FIXTURE_KEYS, FLOOR } from '@shared/business';
 import { terminalIssues } from '@shared/terminalRooms';
-import { gridOnLevel, newGrid } from '@shared/terminalOps';
+import { cellIndex, ensureCells, gridOnLevel, newGrid } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 
 function prepared(): Sim {
@@ -80,6 +81,48 @@ describe('saves', () => {
       expect(g.building).toBe(g.id);
       expect(g.level).toBe(0);
     });
+  });
+
+  it('a version 26 save migrates fixture offsets, levels and security lane direction', () => {
+    const sim = ownedSim();
+    const g = newGrid(7, 0, 0, 0);
+    ensureCells(g, 0, 0, 32, 32);
+    g.floor.fill(FLOOR.Tile);
+    const gate = FIXTURE_KEYS.indexOf('gateDesk') + 1;
+    const security = FIXTURE_KEYS.indexOf('security') + 1;
+    const at = (x: number, y: number): number => cellIndex(g, x, y);
+    g.fixture[at(3, 3)] = gate;
+    g.fixtureRot[at(3, 3)] = 1;
+    g.fixture[at(4, 3)] = gate;
+    g.fixtureRot[at(4, 3)] = 5;
+    g.fixture[at(10, 3)] = security;
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) g.zone[at(x, y)] = x <= 10 ? 1 : 3;
+    sim.business.grids.push(g);
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: Record<string, string | number>[] } };
+    data.version = 26;
+    for (const sg of data.business.grids) {
+      delete sg.fixtureOff;
+      delete sg.fixtureLevel;
+      delete sg.fixtureMode;
+    }
+    const zonesBefore = data.business.grids.map((sg) => sg.zone);
+    const migrated = migrate(data);
+    expect(migrated.version).toBe(SAVE_VERSION);
+    expect(data.business.grids.map((sg) => sg.zone)).toEqual(zonesBefore);
+    const c = new Sim('GOLDEN-0001', OPTIONS);
+    c.restore(migrated);
+    const loaded = c.business.grids.find((x) => x.id === 7);
+    if (!loaded) throw new Error('grid 7 missing');
+    expect(Array.from(loaded.zone)).toEqual(Array.from(g.zone));
+    expect(loaded.fixtureOff[at(4, 3)]).toBe(1);
+    expect(loaded.fixtureOff[at(3, 3)]).toBe(0);
+    expect(loaded.fixtureLevel[at(3, 3)]).toBe(1);
+    expect(loaded.fixtureLevel[at(4, 3)]).toBe(1);
+    expect(loaded.fixtureLevel[at(5, 5)]).toBe(0);
+    expect(loaded.fixtureRot[at(10, 3)]).toBe(2);
+    const d = new Sim('GOLDEN-0001', OPTIONS);
+    d.restore(JSON.parse(JSON.stringify(c.serialize())));
+    expect(d.stateHash()).toBe(c.stateHash());
   });
 
   it('a version 13 save migrates to the current version and restores with the GA clock at zero', () => {

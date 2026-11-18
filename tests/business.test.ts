@@ -583,7 +583,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(26);
+    expect(SAVE_VERSION).toBe(27);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -593,7 +593,8 @@ describe('two cell fixture footprints', () => {
     expect(c.business.grids.length).toBeGreaterThan(0);
     for (const g of c.business.grids) {
       expect(g.fixtureRot.length).toBe(g.fixture.length);
-      expect(g.fixtureRot.every((v) => v === 0)).toBe(true);
+      // Only security lanes gain a direction in the version 26 to 27 step (T75). No cell pairs with a tail.
+      expect(g.fixtureRot.every((v, i) => v === 0 || (g.fixture[i] === FIXTURE_KEYS.indexOf('security') + 1 && v <= 4))).toBe(true);
     }
   });
 });

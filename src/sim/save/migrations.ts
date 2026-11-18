@@ -2,10 +2,11 @@ import type { GameOptions } from '@shared/protocol';
 import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
+import { ROT_STEP } from '@shared/terminalOps';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 26;
+export const SAVE_VERSION = 27;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -204,5 +205,48 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 25) save.version = 25;
   // Version 25 to 26: stands gained upgrades, upgrade works and a gate desk (T66). Older stands load with no upgrades, no works and the nearest gate desk.
   if (save.version < 26) save.version = 26;
+  // Version 26 to 27: fixtures keep an anchor offset, a level and a mode, security lanes a direction (T75).
+  if (save.version < 27) {
+    type OldGrid = { w?: number; zone?: string; fixture: string; fixtureRot?: string; fixtureOff?: string; fixtureLevel?: string; fixtureMode?: string };
+    const business = (save as { business?: { grids?: OldGrid[] } }).business;
+    const SECURITY = 2;
+    for (const g of business?.grids ?? []) {
+      const fixture = unpackTyped(g.fixture, Uint8Array);
+      const n = fixture.length;
+      const rotLayer = g.fixtureRot ? unpackTyped(g.fixtureRot, Uint8Array) : new Uint8Array(n);
+      const zone = g.zone ? unpackTyped(g.zone, Uint8Array) : new Uint8Array(n);
+      const w = g.w ?? 160;
+      const h = n / w;
+      const off = new Uint8Array(n);
+      const level = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        if (rotLayer[i] >= 5) off[i] = 1;
+        if (fixture[i] > 0) level[i] = 1;
+      }
+      const zoneAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= w || y >= h ? -1 : zone[y * w + x]);
+      for (let i = 0; i < n; i++) {
+        if (fixture[i] !== SECURITY || rotLayer[i] !== 0) continue;
+        const x = i % w;
+        const y = Math.floor(i / w);
+        const here = zone[i];
+        let found = 0;
+        for (let rot = 0; rot < 4; rot++) {
+          const [sx, sy] = ROT_STEP[(rot + 3) % 4];
+          const ahead = zoneAt(x + sx, y + sy);
+          const behind = zoneAt(x - sx, y - sy);
+          if (((here === 0 || here === 1) && ahead === 3) || ((behind === 0 || behind === 1) && here === 3)) {
+            found = rot;
+            break;
+          }
+        }
+        rotLayer[i] = 1 + found;
+      }
+      g.fixtureRot = packTyped(rotLayer);
+      g.fixtureOff = packTyped(off);
+      g.fixtureLevel = packTyped(level);
+      g.fixtureMode = packTyped(new Uint8Array(n));
+    }
+    save.version = 27;
+  }
   return save as SaveData;
 }
