@@ -106,7 +106,7 @@ Goal: vehicles live in buildings, drive on roads the player draws, and service e
 
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
-| T60 | Service roads and apron lanes as a graph with reservations, one connection point per stand, trailer kinematics with an off tracking test (section 4) | T24, T25 | T59 | todo |
+| T60 | Service roads and apron lanes as a graph with reservations, one connection point per stand, trailer kinematics with an off tracking test (section 4) | T24, T25 | T59 | done 0239289 da11972. The ground handling depot of T65 came with it (user). Vehicles join saves in T63 |
 | T64 | Footprints, keep out zones, the collision test over every stand class and type, draw order. T57 delivers the hard footprint, this task finishes the port of `gse.py` | T26, T27 | T60 | todo |
 | T65 | Supporting buildings (the ground handling depot was built in T60): fuel farm with stock and road tankers, catering unit, fire station with categories, staff center, cleaning depot, maintenance workshop (section 5) | depot part of T24 | T60 | todo |
 | T63 | Turnaround task lists per type with dependencies, docking poses per service point, delays shown with their cause and whether the airport or the airline owns it (section 4) | T22, T23 | T64, T65 | todo |
