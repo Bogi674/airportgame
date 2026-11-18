@@ -1,6 +1,6 @@
 import { PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
 import { CLOCK_SCALE } from '@shared/time';
 import type { Business } from '../business/business';
 import { foldU32 } from '../hash';
@@ -8,6 +8,10 @@ import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
+import type { TerminalGrid } from '@shared/business';
+import { nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
+import type { WalkGraph } from '../terminal/walkGraph';
+import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 
@@ -46,6 +50,11 @@ const BAG_DROP = FIXTURE_KEYS.indexOf('bagDrop') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 
+/** Side step of a sampled walker in cells, the squared least gap between drawn groups in metres, and the lanes tried in order. */
+const LANE = PROFILES.walkSample.laneOffsetCells;
+const MIN_GAP2 = PROFILES.walkSample.minGapM ** 2;
+const LANES = Int8Array.of(0, 1, -1);
+
 const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
 /** Walk speed in metres per second, by profile id. */
 const WALK_SPEED = Float32Array.from(PROFILE_ROWS, (r) => r.walkSpeed);
@@ -65,6 +74,12 @@ const LAST_MIXED = (() => {
   for (let k = 0; k < PROFILE_ROWS.length; k++) if (PROFILE_ROWS[k].mix > 0) last = k;
   return last;
 })();
+
+/** Room id of the walk node nearest to an array cell, -1 when there is none. */
+function nearestNodeRoom(wg: WalkGraph, cell: number): number {
+  const node = nearestNode(wg, cell);
+  return node < 0 ? -1 : wg.nodeRoom[node]!;
+}
 
 /** Per slot arrays the save packs up to `hi`, and the per flight arrays and wheel that it packs whole. */
 type SlotArray = Int16Array | Uint8Array | Uint16Array | Int32Array | Uint32Array;
@@ -133,7 +148,19 @@ export class Cohorts {
   /** The business service version the queued cohorts were last checked against. */
   private seenVersion: number;
   /** One mark per cell of the grid being sampled, 1 once a figure stands there in the current sample. */
-  private occupied = new Uint8Array(0);
+  private occupied = new Int32Array(0);
+  /** Sample caches of the walk rows, one per grid. Derived, never saved or hashed. */
+  private sampleCaches: WalkCache[] = [];
+  private sampleCacheVersion = -1;
+  private readonly route = new Float64Array(ROUTE_OUT);
+  /** World position written by toWorld. */
+  private readonly world = new Float64Array(2);
+  /** Axes and heading of the grid being sampled. */
+  private axUx = 0;
+  private axUy = 0;
+  private axVx = 0;
+  private axVy = 0;
+  private axA = 0;
 
   constructor(rng: Rng, business: Business, traffic: Traffic) {
     this.rng = rng.fork('cohorts');
@@ -263,29 +290,88 @@ export class Cohorts {
   private ensureOccupancy(): void {
     let largest = 0;
     for (const g of this.business.grids) largest = Math.max(largest, g.w * g.h);
-    if (this.occupied.length < largest) this.occupied = new Uint8Array(largest);
+    if (this.occupied.length < largest) this.occupied = new Int32Array(largest);
+  }
+
+  /** Rebuilds the walk row caches of the sample when the graphs changed. Allocates only then. */
+  private ensureSampleCaches(): void {
+    const wgs = this.business.walkGraphs;
+    let stale = this.sampleCacheVersion !== this.business.walkVersion || this.sampleCaches.length !== wgs.length;
+    for (let g = 0; !stale && g < wgs.length; g++) stale = this.sampleCaches[g]!.sourceRow.length !== wgs[g]!.nodeCount;
+    if (!stale) return;
+    this.sampleCaches = wgs.map((wg) => newWalkCache(wg.nodeCount));
+    this.sampleCacheVersion = this.business.walkVersion;
+  }
+
+  /** World position in metres of the centred logical point (lx, ly) of a grid, left in this.world. */
+  private toWorld(grid: TerminalGrid, lx: number, ly: number): void {
+    this.world[0] = grid.ox + (this.axUx * lx + this.axVx * ly) * TERMINAL_CELL_M;
+    this.world[1] = grid.oy + (this.axUy * lx + this.axVy * ly) * TERMINAL_CELL_M;
+  }
+
+  /** True when a walker may stand at this.world on array cell `cell`: floor, free, in its zone, in its room and clear of other groups. */
+  private clear(views: SnapshotViews, grid: TerminalGrid, wg: WalkGraph, cell: number, airside: boolean, room: number): boolean {
+    if (cell < 0 || wg.cellMain[cell]! < 0 || grid.fixture[cell] !== 0 || this.occupied[cell] !== 0) return false;
+    const zone = grid.zone[cell];
+    if (airside ? zone === ZONE.Public : zone === ZONE.Secure) return false;
+    if (room >= 0) {
+      const node = nearestNode(wg, cell);
+      if (node < 0 || wg.nodeRoom[node] !== room) return false;
+    }
+    const cx = cell % grid.w;
+    const cy = (cell - cx) / grid.w;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= grid.w || ny >= grid.h) continue;
+        const m = this.occupied[ny * grid.w + nx]! - 1;
+        if (m < 0) continue;
+        const gx = views.peopleX[m]! - this.world[0]!;
+        const gy = views.peopleY[m]! - this.world[1]!;
+        if (gx * gx + gy * gy < MIN_GAP2) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Writes entry n for cohort c at this.world, facing the grid step (ex, ey), and marks its cell. */
+  private put(views: SnapshotViews, n: number, c: number, ex: number, ey: number, mode: number, cell: number): void {
+    views.peopleX[n] = this.world[0]!;
+    views.peopleY[n] = this.world[1]!;
+    views.peopleProfile[n] = this.profile[c]!;
+    views.peopleSize[n] = this.size[c]!;
+    views.peopleSeed[n] = this.recipeSeed[c]!;
+    views.peopleHeading[n] = Math.round(((this.axA + atan2Det(ey, ex)) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
+    views.peopleId[n] = c;
+    views.peopleMode[n] = mode;
+    this.occupied[cell] = n + 1;
   }
 
   /**
-   * Writes the queued cohorts for the renderer. Each one stands in the queue cell of its rank at its node and faces
-   * the cell it was reached from, the node cell for the first ring. A cell already held by a figure in this sample
-   * is skipped, so no two figures share a spot. Walking and airside cohorts are not sampled. Reads only, the sim
-   * state does not change, and nothing is allocated.
+   * Writes the people for the renderer in two passes per grid. Queued cohorts stand in the queue cell of their rank
+   * at their node and face the cell they were reached from, the node cell for the first ring. Walking cohorts are
+   * placed on their route, by the time walked, on the first of three lanes that is clear. A cell already held by a
+   * figure in this sample is skipped, so no two figures share a spot, and walkers keep a least gap to other groups.
+   * Reads only, the sim state does not change, and only the derived row caches are written.
    */
-  writeSample(views: SnapshotViews): void {
+  writeSample(views: SnapshotViews, tick: number): void {
+    this.ensureSampleCaches();
     const cap = Math.min(PROFILES.sampleCap, SNAPSHOT_PEOPLE_CAPACITY);
     let n = 0;
     for (let g = 0; g < this.business.grids.length && n < cap; g++) {
       const t = this.table(g);
       if (!t) continue;
       const grid = this.business.grids[g]!;
+      const wg = this.business.walkGraphs[g]!;
       this.occupied.fill(0, 0, grid.w * grid.h);
       // Axes of the grid, as terminalOps gridAxes gives them. Constant per grid, so computed once here.
-      const a = grid.headingDeg * DEG;
-      const ux = sinLut(a);
-      const uy = -cosLut(a);
-      const vx = -uy;
-      const vy = ux;
+      this.axA = grid.headingDeg * DEG;
+      this.axUx = sinLut(this.axA);
+      this.axUy = -cosLut(this.axA);
+      this.axVx = -this.axUy;
+      this.axVy = this.axUx;
       for (let k = 0; k < t.count && n < cap; k++) {
         const ranks = Math.min(t.qCount[k]!, t.qCellLen[k]!);
         const off = t.qCellOffset[k]!;
@@ -294,8 +380,7 @@ export class Cohorts {
           const lx = t.qCellX[cell]!;
           const ly = t.qCellY[cell]!;
           const mark = (ly - grid.y0) * grid.w + (lx - grid.x0);
-          if (this.occupied[mark] === 1) continue;
-          this.occupied[mark] = 1;
+          if (this.occupied[mark] !== 0) continue;
           const parent = t.qCellParent[cell]!;
           const frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
           const frontY = parent < 0 ? t.ly[k]! : t.qCellY[off + parent]!;
@@ -306,20 +391,40 @@ export class Cohorts {
           const sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
           const sy = sx === 0 ? Math.sign(dy) : 0;
           // Figure forward is local minus y, which maps to (sin, -cos) at heading zero, so the grid frame angle
-          // of the step is atan2(sy, sx) turned by the grid heading.
-          const heading = Math.round(((a + atan2Det(sy, sx)) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
-          // Half a cell past the cell corner is its centre, 1 m on each axis.
-          const cx = lx + 0.5;
-          const cy = ly + 0.5;
-          views.peopleX[n] = grid.ox + (ux * cx + vx * cy) * TERMINAL_CELL_M;
-          views.peopleY[n] = grid.oy + (uy * cx + vy * cy) * TERMINAL_CELL_M;
-          views.peopleProfile[n] = this.profile[c]!;
-          views.peopleSize[n] = this.size[c]!;
-          views.peopleSeed[n] = this.recipeSeed[c]!;
-          views.peopleHeading[n] = heading;
-          views.peopleId[n] = c;
-          views.peopleMode[n] = PEOPLE_MODE.Queued;
+          // of the step is atan2(sy, sx) turned by the grid heading. Half a cell past the corner is the centre.
+          this.toWorld(grid, lx + 0.5, ly + 0.5);
+          this.put(views, n, c, sx, sy, PEOPLE_MODE.Queued, mark);
           n++;
+        }
+      }
+      const cache = this.sampleCaches[g]!;
+      for (let c = 0; c < this.hi && n < cap; c++) {
+        const st = this.stage[c]!;
+        if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
+        if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate) continue;
+        const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
+        const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
+        if (from < 0 || to < 0) continue;
+        const s = Math.max(0, ((tick - this.walkStart[c]!) * WALK_SPEED[this.profile[c]!]!) / TICKS_PER_SECOND);
+        if (routePoint(wg, cache, from, 0, to, s, this.route) !== 1) continue;
+        const ex = this.route[2]!;
+        const ey = this.route[3]!;
+        const sx = Math.abs(ex) >= Math.abs(ey) ? Math.sign(ex) : 0;
+        const sy = sx === 0 ? Math.sign(ey) : 0;
+        const px = this.route[0]!;
+        const py = this.route[1]!;
+        const room = nearestNodeRoom(wg, cellAt(wg, Math.floor(px), Math.floor(py)));
+        const airside = st === Stage.ToGate;
+        for (let l = 0; l < LANES.length; l++) {
+          const off = LANES[l]! * LANE;
+          const qx = px - sy * off;
+          const qy = py + sx * off;
+          this.toWorld(grid, qx, qy);
+          const cellIdx = cellAt(wg, Math.floor(qx), Math.floor(qy));
+          if (!this.clear(views, grid, wg, cellIdx, airside, room)) continue;
+          this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, cellIdx);
+          n++;
+          break;
         }
       }
     }
@@ -648,6 +753,7 @@ export class Cohorts {
   /** Restores the store from a save. `undefined` (a save from before cohorts) gives an empty store. */
   loadState(s: CohortsSave | undefined): void {
     this.ensureOccupancy();
+    this.sampleCacheVersion = -1;
     if (!s) {
       this.generated = 0;
       this.boarded = 0;

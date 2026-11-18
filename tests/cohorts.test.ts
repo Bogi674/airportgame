@@ -9,6 +9,9 @@ import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
 import { gameSecondsToTicks } from '@shared/time';
 import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import { cornerWorld } from '@shared/terminalOps';
+import { PROFILE_KEYS } from '@data/schemas/profiles';
+import { nearestNode, walkDistance } from '@sim/terminal/walkDistance';
+import { cellAt } from '@sim/cohorts/walkSample';
 import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run, type TerminalOptions } from './helpers';
 
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
@@ -585,10 +588,12 @@ describe('snapshot sample of cohort positions', () => {
       if (views.peopleSeed[i] !== 0) anySeed = true;
     }
     expect(anySeed).toBe(true);
-    const queuedStages = [Stage.CheckIn, Stage.Security, Stage.Gate];
+    const queuedStages: number[] = [Stage.CheckIn, Stage.Security, Stage.Gate];
+    const walkingStages: number[] = [Stage.ToCheckIn, Stage.ToSecurity, Stage.ToGate];
     for (let i = 0; i < n; i++) {
-      expect(views.peopleMode[i]).toBe(0);
-      expect(queuedStages).toContain(sim.cohorts.stage[views.peopleId[i]!]);
+      const stage = sim.cohorts.stage[views.peopleId[i]!]!;
+      expect(views.peopleMode[i]).toBe(queuedStages.includes(stage) ? 0 : 1);
+      expect([...queuedStages, ...walkingStages]).toContain(stage);
     }
   });
 
@@ -622,6 +627,7 @@ describe('snapshot sample of cohort positions', () => {
           const e = entryAt(views, n, written, at.x, at.y);
           if (e < 0) continue;
           written[e] = 1;
+          if (views.peopleMode[e] !== 0) continue;
           matched++;
           const parent = t.qCellParent[cell]!;
           const frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
@@ -633,7 +639,82 @@ describe('snapshot sample of cohort positions', () => {
         }
       }
     }
-    expect(matched).toBe(n);
+    let queued = 0;
+    for (let i = 0; i < n; i++) if (views.peopleMode[i] === 0) queued++;
+    expect(matched).toBe(queued);
+  });
+
+  it('walkers are sampled on their way, share no cell and keep the gap to other groups', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    const n = views.header[SnapHeader.PeopleCount]!;
+    let walkers = 0;
+    const ids = new Set<number>();
+    for (let i = 0; i < n; i++) {
+      expect(ids.has(views.peopleId[i]!)).toBe(false);
+      ids.add(views.peopleId[i]!);
+      if (views.peopleMode[i] !== 1) continue;
+      walkers++;
+      for (let j = 0; j < n; j++) {
+        if (j === i || views.peopleMode[j] === 0) continue;
+        const d = Math.hypot(views.peopleX[i]! - views.peopleX[j]!, views.peopleY[i]! - views.peopleY[j]!);
+        expect(d).toBeGreaterThanOrEqual(PROFILES.walkSample.minGapM);
+      }
+    }
+    expect(walkers).toBeGreaterThan(0);
+  });
+
+  it('a walker with route left gets closer to the cell it walks to over 60 ticks', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    const wg = sim.business.walkGraphs[0]!;
+    const grid = sim.business.grids[0]!;
+    const toNode = (c: number): number => nearestNode(wg, cellAt(wg, sim.cohorts.walkToX[c]!, sim.cohorts.walkToY[c]!));
+    /** Walk distance from the node nearest to the world point to the walk target of cohort c. */
+    const remaining = (x: number, y: number, c: number): number => {
+      let best = 0;
+      let bestD = Infinity;
+      for (let k = 0; k < wg.nodeCount; k++) {
+        const p = cornerWorld(grid, wg.nodeX[k]! + 0.5, wg.nodeY[k]! + 0.5);
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < bestD) {
+          bestD = d;
+          best = k;
+        }
+      }
+      return walkDistance(wg, best, toNode(c));
+    };
+    let id = -1;
+    let d0 = 0;
+    for (let t = 0; t < RUN_TICKS && id < 0; t++) {
+      sim.step();
+      sim.writeSnapshot(views);
+      for (let i = 0; i < views.header[SnapHeader.PeopleCount]!; i++) {
+        if (views.peopleMode[i] !== 1) continue;
+        const c = views.peopleId[i]!;
+        const from = nearestNode(wg, cellAt(wg, sim.cohorts.walkFromX[c]!, sim.cohorts.walkFromY[c]!));
+        const speed = PROFILES.profiles[PROFILE_KEYS[sim.cohorts.profile[c]!]!].walkSpeed;
+        const left = walkDistance(wg, from, toNode(c)) - ((sim.tick - sim.cohorts.walkStart[c]!) * speed) / 10;
+        if ((left / speed) * 10 < 150) continue;
+        id = c;
+        d0 = remaining(views.peopleX[i]!, views.peopleY[i]!, c);
+        break;
+      }
+    }
+    expect(id).toBeGreaterThanOrEqual(0);
+    for (let t = 0; t < 60; t++) sim.step();
+    sim.writeSnapshot(views);
+    expect([Stage.ToCheckIn, Stage.ToSecurity, Stage.ToGate]).toContain(sim.cohorts.stage[id]);
+    let d1 = -1;
+    for (let i = 0; i < views.header[SnapHeader.PeopleCount]!; i++) {
+      if (views.peopleId[i] === id) d1 = remaining(views.peopleX[i]!, views.peopleY[i]!, id);
+    }
+    expect(d1).toBeGreaterThanOrEqual(0);
+    expect(d1).toBeLessThan(d0);
   });
 
   it('a save without cohort state still samples shared queues 1.9 m apart', () => {

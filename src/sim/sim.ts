@@ -736,6 +736,6 @@ export class Sim {
       n++;
     }
     views.header[SnapHeader.VehicleCount] = n;
-    this.cohorts.writeSample(views);
+    this.cohorts.writeSample(views, this.tick);
   }
 }
