@@ -1,4 +1,5 @@
 import { BUSINESS } from '@data/index';
+import { AUD } from '@shared/terminalZones';
 import type { WalkGraph } from './walkGraph';
 
 /**
@@ -104,6 +105,8 @@ function fillRow(wg: WalkGraph, source: number, row: number): void {
     }
     const du = dist[u]!;
     for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
+      // Edges no passenger may take, such as a staff door or the wrong way through a transition, are not in this layer.
+      if ((wg.edgeMask[e]! & AUD.Pax) === 0) continue;
       const v = wg.edgeTo[e]!;
       const dv = du + wg.edgeLen[e]!;
       if (dv >= dist[v]!) continue;
@@ -144,17 +147,15 @@ function rowFor(wg: WalkGraph, source: number): number {
 }
 
 /**
- * Walking distance in metres between two walk nodes, or Infinity when either id is not a node or no walk
- * joins them. The row of the smaller id answers, so the result does not depend on what is cached.
+ * Walking distance in metres from walk node from to walk node to, or Infinity when either id is not a node or no walk
+ * joins them. The graph is directed, so the row of from answers and the distance back can differ.
  */
 export function walkDistance(wg: WalkGraph, from: number, to: number): number {
   const n = wg.nodeCount;
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= n || to >= n) return Infinity;
   if (from === to) return 0;
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-  const row = rowFor(wg, lo);
-  return wg.cache.rows[row * n + hi]!;
+  const row = rowFor(wg, from);
+  return wg.cache.rows[row * n + to]!;
 }
 
 /**

@@ -25,6 +25,8 @@ const COMMERCIAL = 2;
 const SECURE = 3;
 const INTERNATIONAL = 5;
 const BOTH = AUD.Pax | AUD.Staff;
+/** Staff may cross a staff door both ways: the staff bit in each direction. */
+const STAFF_BOTH = AUD.Staff | (AUD.Staff << 2);
 
 /** The zone change a fixture makes in its flow direction, or null for a fixture that is no transition. */
 export function transitionOf(key: FixtureKey, mode: number): Transition | null {
@@ -110,17 +112,25 @@ export function zoneAccess(g: TerminalGrid): ZoneAccess {
   const W = g.w;
   const eff = effectiveZones(g);
   const acc: ZoneAccess = { h: new Uint8Array((g.h + 1) * W), v: new Uint8Array(g.h * (W + 1)) };
-  const staffBoth = AUD.Staff | (AUD.Staff << 2);
+  const wallV = g.vWall;
+  const wallH = g.hWall;
   for (let y = 0; y < g.h; y++) {
     for (let x = 1; x < W; x++) {
+      const c = y * W + x;
+      const a = eff[c - 1];
+      const b = eff[c];
+      if (a === 0 || b === 0) continue;
       const e = y * (W + 1) + x;
-      acc.v[e] = edgeMask(g.vWall[e], eff[y * W + x - 1], eff[y * W + x], staffBoth);
+      acc.v[e] = edgeMask(wallV[e], a, b);
     }
   }
   for (let y = 1; y < g.h; y++) {
     for (let x = 0; x < W; x++) {
-      const e = y * W + x;
-      acc.h[e] = edgeMask(g.hWall[e], eff[e - W], eff[e], staffBoth);
+      const c = y * W + x;
+      const a = eff[c - W];
+      const b = eff[c];
+      if (a === 0 || b === 0) continue;
+      acc.h[c] = edgeMask(wallH[c], a, b);
     }
   }
   for (let i = 0; i < g.fixture.length; i++) {
@@ -138,11 +148,10 @@ export function zoneAccess(g: TerminalGrid): ZoneAccess {
   return acc;
 }
 
-/** Mask of an edge from its wall and the effective zones of its two cells, before transitions. */
-function edgeMask(wall: number, zoneA: number, zoneB: number, staffBoth: number): number {
-  if (zoneA === 0 || zoneB === 0) return 0;
+/** Mask of an edge between two floored cells from its wall and their effective zones, before transitions. */
+function edgeMask(wall: number, zoneA: number, zoneB: number): number {
   if (wall === WALL.Wall || wall === WALL.Glass) return 0;
-  if (wall === WALL.StaffDoor) return staffBoth;
+  if (wall === WALL.StaffDoor) return STAFF_BOTH;
   return zoneA === zoneB ? 15 : 0;
 }
 
