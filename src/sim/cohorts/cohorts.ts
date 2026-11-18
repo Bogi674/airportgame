@@ -1,5 +1,5 @@
 import { NEEDS, PROFILES } from '@data/index';
-import { NEED_COUNT } from '@data/schemas/needs';
+import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
 import { CLOCK_SCALE } from '@shared/time';
@@ -9,12 +9,12 @@ import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
-import { buildVisitPoints, type VisitPoints } from '../terminal/visitPoints';
+import { SIDE, buildVisitPoints, findPoint, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
 import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
-import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from './traits';
+import { TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, writeTraits } from './traits';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 
@@ -31,6 +31,12 @@ export const Stage = {
   Gate: 8,
   Boarded: 9,
   Missed: 10,
+  /** A cohort walking to a visit point, standing at one, and walking back to its group. Wheel stages. */
+  ToVisit: 11,
+  Visit: 12,
+  /** A cohort waiting in a toilet queue (T67 slice 7). A queued stage. */
+  VisitQueue: 13,
+  Rejoin: 14,
 } as const;
 
 /** Timer wheel buckets and the tick step between bucket visits. */
@@ -95,8 +101,10 @@ const LAST_MIXED = (() => {
 
 /** Member slots per cohort block. */
 const M = PROFILES.maxGroup;
-/** Cohort flag bit: a group with a reduced mobility member. */
+/** Cohort flag bits: a sub cohort split off a group, a group with a reduced mobility member, and a cohort standing at the point it last walked to with no service node. */
+const FLAG_SUB = 1;
 export const FLAG_SLOW = 2;
+const FLAG_AT_VISIT = 4;
 const SLOW = NEEDS.mobility.slowFactor;
 /** Cumulative group size weights per profile, normalised to 1. Index 0 is size 1. */
 const GROUP_CUM = PROFILE_ROWS.map((r) => {
@@ -115,6 +123,18 @@ const LAST_SIZE = PROFILE_ROWS.map((r) => {
   for (let k = 0; k < r.groupSize.length; k++) if (r.groupSize[k]! > 0) last = k + 1;
   return last;
 });
+
+/** Need ids by name, and the per need tables: level of 1 000 is the threshold, visit minutes, spend share and the two fixtures that serve it. */
+const NEED_TOILET = NEED_KEYS.indexOf('toilet');
+const NEED_SHOP = NEED_KEYS.indexOf('shop');
+const NEED_THRESHOLD = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.threshold * 1000 : 1000));
+const NEED_VISIT_MIN = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.visitMin : NEEDS.needs[k].visitMin));
+const NEED_SPEND_SHARE = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.spendShare : NEEDS.needs[k].spendShare));
+const fixtureId = (name: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.indexOf(name) + 1;
+const NEED_KIND_A = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[0]!)));
+const NEED_KIND_B = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[1] ?? NEEDS.needs[k].fixtures[0]!)));
+/** Counters of the current day: visits per need, then visitor spend. */
+const DAY = { Visits0: 0, Spend: NEED_COUNT, Count: NEED_COUNT + 1 } as const;
 
 /** Room id of the walk node nearest to an array cell, -1 when there is none. */
 function nearestNodeRoom(wg: WalkGraph, cell: number): number {
@@ -210,6 +230,8 @@ export class Cohorts {
   /** Visit points per grid. Derived from the grids, never saved or hashed. */
   private visitTables: VisitPoints[] = [];
   private readonly route = new Float64Array(ROUTE_OUT);
+  /** Counters of the current day, layout in DAY. */
+  readonly day = new Float64Array(DAY.Count);
   /** Scratch trait vector of one member. */
   private readonly traits = new Float64Array(TRAIT_COUNT);
   /** Per slot: last route node a walker was resumed from and the length walked up to it. Derived, never saved or hashed. */
@@ -298,6 +320,11 @@ export class Cohorts {
     }
   }
 
+  /** True for the stages a passenger can be in before boarding or missing the flight. */
+  private live(st: number): boolean {
+    return (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin);
+  }
+
   /** Group size for a uniform float: the first size whose cumulative weight exceeds it. */
   private pickSize(p: number, u: number): number {
     const cum = GROUP_CUM[p]!;
@@ -353,7 +380,7 @@ export class Cohorts {
   onPushback(f: number): void {
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
-      if (this.flight[c] !== f || st < Stage.Curb || st > Stage.Gate) continue;
+      if (this.flight[c] !== f || !this.live(st)) continue;
       const n = this.size[c];
       this.missed += n;
       this.active -= n;
@@ -391,7 +418,7 @@ export class Cohorts {
         this.free(c);
         continue;
       }
-      if (st < Stage.Curb || st > Stage.Gate) continue;
+      if (!this.live(st)) continue;
       const f = this.flight[c];
       const n = this.size[c];
       this.missed += n;
@@ -522,7 +549,7 @@ export class Cohorts {
       for (let c = 0; c < this.hi && n < cap; c++) {
         const st = this.stage[c]!;
         if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
-        if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate) continue;
+        if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate && st !== Stage.ToVisit && st !== Stage.Rejoin) continue;
         const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
         const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
         if (from < 0 || to < 0) continue;
@@ -541,7 +568,7 @@ export class Cohorts {
         const px = this.route[0]!;
         const py = this.route[1]!;
         const room = nearestNodeRoom(wg, cellAt(wg, Math.floor(px), Math.floor(py)));
-        const airside = st === Stage.ToGate;
+        const airside = st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin;
         for (let l = 0; l < LANES.length; l++) {
           const off = LANES[l]! * LANE;
           const qx = px - sy * off;
@@ -557,9 +584,10 @@ export class Cohorts {
       for (let c = 0; c < this.hi && n < cap; c++) {
         const st = this.stage[c]!;
         if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
-        const airside = st === Stage.Airside || st === Stage.ToGate;
-        if (st !== Stage.Airside) {
-          if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate) continue;
+        const airside = st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit;
+        const dwelling = st === Stage.Airside || st === Stage.Visit;
+        if (!dwelling) {
+          if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate && st !== Stage.ToVisit && st !== Stage.Rejoin) continue;
           const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
           const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
           if (from < 0 || to < 0) continue;
@@ -580,8 +608,8 @@ export class Cohorts {
           this.toWorld(grid, ax + dx + 0.5, ay + dy + 0.5);
           const cellIdx = cellAt(wg, ax + dx, ay + dy);
           if (!this.clear(views, grid, wg, cellIdx, airside, room)) continue;
-          const fx = i === 0 ? 0 : st === Stage.Airside ? dx : -dx;
-          const fy = i === 0 ? -1 : st === Stage.Airside ? dy : -dy;
+          const fx = i === 0 ? 0 : dwelling ? dx : -dx;
+          const fy = i === 0 ? -1 : dwelling ? dy : -dy;
           this.put(views, n, c, fx, fy, PEOPLE_MODE.Dwelling, cellIdx);
           n++;
           break;
@@ -757,7 +785,19 @@ export class Cohorts {
         this.join(g, c, GATE_DESK, GATE_DESK, Stage.Gate);
         break;
       case Stage.Airside:
-        this.toGate(g, c);
+        if (!this.decide(g, c)) this.toGate(g, c);
+        break;
+      case Stage.ToVisit:
+        this.arriveVisit(g, c);
+        break;
+      case Stage.Visit:
+        this.bringNeeds(c);
+        this.recordVisit(c);
+        this.resetNeed(c, this.visitNeed[c]!);
+        this.afterVisit(g, c);
+        break;
+      case Stage.Rejoin:
+        this.rejoin(c);
         break;
     }
   }
@@ -778,7 +818,7 @@ export class Cohorts {
   /** Airside passengers walk to a gate desk once the flight is on the ground. The flight's gate count rises only on the first walk. */
   private toGate(g: number, c: number): void {
     const f = this.flight[c];
-    const from = this.originWalk(g, c);
+    const from = this.hereNode(g, c);
     let n = -1;
     if (this.traffic.fState[f] === FlState.OnGround) {
       n = this.assignedDeskNode(g, this.traffic.fStand[f]);
@@ -839,11 +879,229 @@ export class Cohorts {
     const t = this.table(g);
     this.node[c] = node;
     this.stage[c] = stage;
+    this.flags[c] = this.flags[c]! & ~FLAG_AT_VISIT;
     this.trailNode[c] = -1;
     const to = t ? t.walkNode[node] : -1;
     this.setRoute(g, c, from, to);
     const dist = this.business.walkDistance(this.gridId(g), from, to);
     this.schedule(c, this.tick + Math.max(STEP, Math.ceil((dist / this.speed(c)) * TICKS_PER_SECOND)));
+  }
+
+  /** Sends a cohort on a walk between two walk nodes, with no service node. It is due when the walk ends. */
+  private walkTo(g: number, c: number, fromWalk: number, toWalk: number, stage: number): void {
+    this.node[c] = -1;
+    this.stage[c] = stage;
+    this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+    this.trailNode[c] = -1;
+    this.setRoute(g, c, fromWalk, toWalk);
+    const dist = this.business.walkDistance(this.gridId(g), fromWalk, toWalk);
+    const ticks = Number.isFinite(dist) ? Math.ceil((dist / this.speed(c)) * TICKS_PER_SECOND) : RETRY_TICKS;
+    this.schedule(c, this.tick + Math.max(STEP, ticks));
+  }
+
+  /** Walk node a cohort stands at: its service node, else the point it last walked to, else the curb. */
+  private hereNode(g: number, c: number): number {
+    if (this.node[c]! < 0 && this.flags[c]! & FLAG_AT_VISIT) {
+      const wg = this.business.walkGraphs[g];
+      const at = wg ? nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!)) : -1;
+      if (at >= 0) return at;
+    }
+    return this.originWalk(g, c);
+  }
+
+  /** Brings the hunger, thirst, toilet and rest levels of the live members up to date. Levels grow linearly from needTick. */
+  private bringNeeds(c: number): void {
+    const dt = Math.max(0, this.tick - this.needTick[c]!);
+    this.needTick[c] = this.tick;
+    if (dt === 0) return;
+    const b = c * M;
+    const profile = this.profile[c]!;
+    for (let i = 0; i < this.size[c]!; i++) {
+      writeTraits(this.memberSeed[b + i]!, profile, this.traits);
+      const base = (b + i) * NEED_COUNT;
+      for (let k = 0; k < NEED_SHOP; k++) {
+        const level = this.memberNeed[base + k]! + Math.floor(needRatePerTick(k, this.traits[k]!) * dt);
+        this.memberNeed[base + k] = Math.min(65535, level);
+      }
+    }
+  }
+
+  /**
+   * Airside decision point. Picks the most urgent want over its threshold, and when a reachable airside point serves it
+   * and the group can be back in time, sends the members with that want on a visit. True when the cohort left.
+   */
+  private decide(g: number, c: number): boolean {
+    this.bringNeeds(c);
+    const n = this.size[c]!;
+    const b = c * M;
+    let need = -1;
+    let lead = -1;
+    let bestOver = -1;
+    for (let k = 0; k < NEED_COUNT; k++) {
+      for (let m = 0; m < n; m++) {
+        const over = this.memberNeed[(b + m) * NEED_COUNT + k]! - NEED_THRESHOLD[k]!;
+        if (over >= 0 && over > bestOver) {
+          bestOver = over;
+          need = k;
+          lead = m;
+        }
+      }
+    }
+    if (need < 0 || need === NEED_TOILET) return false;
+    const vp = this.visitTable(g);
+    if (!vp) return false;
+    writeTraits(this.memberSeed[b + lead]!, this.profile[c]!, this.traits);
+    const gateLeadMin = this.traits[TRAIT.GateLeadMin]!;
+    const kindA = need === NEED_SHOP ? this.traits[TRAIT.Fav1]! : NEED_KIND_A[need]!;
+    const kindB = need === NEED_SHOP ? this.traits[TRAIT.Fav2]! : NEED_KIND_B[need]!;
+    const here = this.hereNode(g, c);
+    const id = this.gridId(g);
+    const speed = this.speed(c);
+    let point = -1;
+    let bestSeconds = Infinity;
+    // Ascending scan with a strict comparison, so ties go to the lowest point and an infinite walk never wins.
+    for (let p = 0; p < vp.count; p++) {
+      const kind = vp.kind[p]!;
+      if ((kind !== kindA && kind !== kindB) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
+      const seconds = this.business.walkDistance(id, here, vp.walkNode[p]!) / speed;
+      if (seconds < bestSeconds) {
+        bestSeconds = seconds;
+        point = p;
+      }
+    }
+    if (point < 0) return false;
+    const f = this.flight[c]!;
+    const walkTicks = Math.ceil(bestSeconds * TICKS_PER_SECOND);
+    const departure = this.traffic.fEta[f]! + this.traffic.fTurn[f]!;
+    if (walkTicks * 2 + NEED_VISIT_MIN[need]! * TICKS_PER_MINUTE > departure - gateLeadMin * TICKS_PER_MINUTE - this.tick) return false;
+    const v = this.splitMovers(c, need, lead);
+    if (v < 0) return false;
+    this.target[v] = vp.cell[point]!;
+    this.visitNeed[v] = need;
+    this.walkTo(g, v, here, vp.walkNode[point]!, Stage.ToVisit);
+    return true;
+  }
+
+  /**
+   * Moves the members of `c` whose level of `need` is over its threshold to a sub cohort, keeping member order on both
+   * sides. When every member goes the cohort itself is returned. -1 when the store has no free slot.
+   */
+  private splitMovers(c: number, need: number, lead: number): number {
+    const n = this.size[c]!;
+    const b = c * M;
+    const threshold = NEED_THRESHOLD[need]!;
+    let movers = 0;
+    for (let i = 0; i < n; i++) if (this.memberNeed[(b + i) * NEED_COUNT + need]! >= threshold) movers++;
+    if (movers === n) return c;
+    const v = this.alloc();
+    if (v < 0) return -1;
+    const vb = v * M;
+    this.flight[v] = this.flight[c]!;
+    this.profile[v] = this.profile[c]!;
+    this.building[v] = this.building[c]!;
+    this.recipeSeed[v] = this.memberSeed[b + lead]!;
+    this.bags[v] = 0;
+    this.spendBudget[v] = 0;
+    this.node[v] = -1;
+    this.walkStart[v] = -1;
+    this.flags[v] = FLAG_SUB;
+    this.parent[v] = this.flags[c]! & FLAG_SUB ? this.parent[c]! : c;
+    this.needTick[v] = this.tick;
+    this.waitStart[v] = -1;
+    this.target[v] = -1;
+    this.visitNeed[v] = need;
+    let kept = 0;
+    let moved = 0;
+    for (let i = 0; i < n; i++) {
+      const from = b + i;
+      const to = this.memberNeed[from * NEED_COUNT + need]! >= threshold ? vb + moved++ : b + kept++;
+      if (to === from) continue;
+      this.memberSeed[to] = this.memberSeed[from]!;
+      this.memberSat[to] = this.memberSat[from]!;
+      for (let k = 0; k < NEED_COUNT; k++) this.memberNeed[to * NEED_COUNT + k] = this.memberNeed[from * NEED_COUNT + k]!;
+    }
+    this.size[v] = moved;
+    this.size[c] = kept;
+    this.syncFlags(c);
+    this.syncSat(c);
+    this.syncFlags(v);
+    this.syncSat(v);
+    return v;
+  }
+
+  /** The cohort reached its visit point. It stays for the visit time, or ends the visit when an edit removed the point. */
+  private arriveVisit(g: number, c: number): void {
+    const vp = this.visitTable(g);
+    const kind = this.business.grids[g]?.fixture[this.target[c]!] ?? 0;
+    if (!vp || findPoint(vp, this.target[c]!, kind) < 0) {
+      this.afterVisit(g, c);
+      return;
+    }
+    this.stage[c] = Stage.Visit;
+    this.schedule(c, this.tick + NEED_VISIT_MIN[this.visitNeed[c]!]! * TICKS_PER_MINUTE);
+  }
+
+  /** Counts a finished visit of need k and the spend of its members, in the day counters. The single place a visit is counted. */
+  private recordVisit(c: number): void {
+    const k = this.visitNeed[c]!;
+    this.day[DAY.Visits0 + k]!++;
+    const b = c * M;
+    for (let i = 0; i < this.size[c]!; i++) {
+      writeTraits(this.memberSeed[b + i]!, this.profile[c]!, this.traits);
+      this.day[DAY.Spend] += Math.floor(this.traits[TRAIT.Budget]! * NEED_SPEND_SHARE[k]!);
+    }
+  }
+
+  /** Sets the level of need k of the live members to 0. */
+  private resetNeed(c: number, k: number): void {
+    const b = c * M;
+    for (let i = 0; i < this.size[c]!; i++) this.memberNeed[(b + i) * NEED_COUNT + k] = 0;
+  }
+
+  /** A visit ended. A sub cohort walks back to its group when the group is still airside, anything else carries on airside. */
+  private afterVisit(g: number, c: number): void {
+    this.target[c] = -1;
+    const p = this.parent[c]!;
+    if (this.flags[c]! & FLAG_SUB && this.canRejoin(c, p)) {
+      this.walkTo(g, c, this.hereNode(g, c), this.hereNode(g, p), Stage.Rejoin);
+      return;
+    }
+    this.stage[c] = Stage.Airside;
+    this.schedule(c, this.tick + STEP);
+  }
+
+  /** True when `p` is a live airside main cohort of the same flight with room for the members of sub cohort `c`. */
+  private canRejoin(c: number, p: number): boolean {
+    return (
+      p >= 0 &&
+      this.stage[p] === Stage.Airside &&
+      this.flight[p] === this.flight[c] &&
+      !(this.flags[p]! & FLAG_SUB) &&
+      this.size[p]! + this.size[c]! <= M
+    );
+  }
+
+  /** A sub cohort reached its group: its members are appended and the slot is freed. Otherwise it carries on airside on its own. */
+  private rejoin(c: number): void {
+    const p = this.parent[c]!;
+    if (!this.canRejoin(c, p)) {
+      this.stage[c] = Stage.Airside;
+      this.schedule(c, this.tick + STEP);
+      return;
+    }
+    this.bringNeeds(p);
+    this.bringNeeds(c);
+    const dst = p * M + this.size[p]!;
+    const src = c * M;
+    for (let i = 0; i < this.size[c]!; i++) {
+      this.memberSeed[dst + i] = this.memberSeed[src + i]!;
+      this.memberSat[dst + i] = this.memberSat[src + i]!;
+      for (let k = 0; k < NEED_COUNT; k++) this.memberNeed[(dst + i) * NEED_COUNT + k] = this.memberNeed[(src + i) * NEED_COUNT + k]!;
+    }
+    this.size[p] = this.size[p]! + this.size[c]!;
+    this.syncFlags(p);
+    this.syncSat(p);
+    this.free(c);
   }
 
   /** Records the walk between two nodes of the grid, or no walk when either id is not a node. */

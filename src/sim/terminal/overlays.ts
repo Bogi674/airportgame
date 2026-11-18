@@ -13,6 +13,10 @@ export interface OverlayPeople {
   node: Int32Array;
   size: Uint8Array;
   building: Uint8Array;
+  /** Tick the current walk began, -1 for none, and the logical cell the walk heads for. */
+  walkStart: Int32Array;
+  walkToX: Int16Array;
+  walkToY: Int16Array;
 }
 
 /** Walk graph queries of one building, supplied by the business. */
@@ -138,6 +142,10 @@ export function buildOverlayData(
       else if (st === Stage.ToCheckIn && firstCheckIn >= 0) cell = out.nodeCell[firstCheckIn]!;
       else if (st === Stage.ToSecurity && firstSecurity >= 0) cell = out.nodeCell[firstSecurity]!;
       else if (st === Stage.ToGate && firstGate >= 0) cell = out.nodeCell[firstGate]!;
+    } else if (st === Stage.ToVisit || st === Stage.Visit || st === Stage.Rejoin) {
+      // No service node: the walkers and the visitors count at the cell of the node they walk to.
+      if (people.walkStart[c]! >= 0) cell = (people.walkToY[c]! - grid.y0) * grid.w + (people.walkToX[c]! - grid.x0);
+      else if (firstGate >= 0) cell = out.nodeCell[firstGate]!;
     } else if (st === Stage.Airside) {
       if (firstGate >= 0) cell = out.nodeCell[firstGate]!;
     } else {
