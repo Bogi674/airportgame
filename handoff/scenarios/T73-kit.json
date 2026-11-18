@@ -1,0 +1,26 @@
+{
+  "buy": [[3900, 4900, 4200, 5200]],
+  "commands": [
+    { "type": "terminalBuild", "building": -1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "foundation", "x0": 0, "y0": 0, "x1": 10, "y1": 6, "variant": 0 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "floor", "x0": 0, "y0": 0, "x1": 10, "y1": 6, "variant": 2 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 1, "y0": 1, "x1": 2, "y1": 2, "variant": 1 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 2, "y0": 1, "x1": 3, "y1": 2, "variant": 1 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 4, "y0": 1, "x1": 5, "y1": 2, "variant": 13 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 1, "y0": 3, "x1": 2, "y1": 4, "variant": 14, "rot": 0 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 6, "y0": 1, "x1": 7, "y1": 2, "variant": 15 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 6, "y0": 3, "x1": 7, "y1": 4, "variant": 16, "rot": 0 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 8, "y0": 1, "x1": 9, "y1": 2, "variant": 4 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 8, "y0": 3, "x1": 9, "y1": 4, "variant": 5 } },
+    { "type": "terminalBuild", "building": 1, "ox": 4000, "oy": 5000, "headingDeg": 90, "edit": { "op": "fixture", "x0": 4, "y0": 3, "x1": 5, "y1": 4, "variant": 14, "rot": 1 } }
+  ],
+  "camera": { "x": 4010, "y": 5006, "zoom": 30 },
+  "hideUi": true,
+  "actions": [
+    { "shot": "tier3", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 4010, "y": 5006, "zoom": 14 } },
+    { "shot": "tier2", "clip": { "w": 900, "h": 600 } },
+    { "camera": { "x": 4010, "y": 5006, "zoom": 8 } },
+    { "shot": "tier1", "clip": { "w": 900, "h": 600 } }
+  ],
+  "report": ["cash"]
+}

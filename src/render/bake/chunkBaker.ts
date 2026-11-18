@@ -2,9 +2,10 @@ import BakeWorker from './bakeWorker.ts?worker&inline';
 import type { BakeSite, FromBakeMessage, ToBakeMessage } from '@shared/protocol';
 import { chunkPixelSize, type ChunkRequester } from '../chunks';
 import { TerrainBaker } from '../terrain';
-import { paintAirfield } from '../markings/airfieldPaint';
+import { paintAirfield, TERMINAL_KIT_PACKS } from '../markings/airfieldPaint';
 import { EMPTY_AIRFIELD, type AirfieldPayload } from '@shared/airfield';
 import type { TerminalGrid } from '@shared/business';
+import { ensurePacks } from '../sprites/fixtureKit';
 
 type Deliver = (key: number, image: CanvasImageSource) => void;
 
@@ -68,8 +69,15 @@ class MainThreadBaker implements ChunkBaker {
   private terrain: TerrainBaker | null = null;
   private airfield: AirfieldPayload = EMPTY_AIRFIELD;
   private terminals: TerminalGrid[] = [];
+  private kitReady = false;
 
-  constructor(private readonly deliver: Deliver) {}
+  constructor(private readonly deliver: Deliver) {
+    // A pack that fails to load leaves its fixtures on the block drawing rather than stalling every bake.
+    const ready = (): void => {
+      this.kitReady = true;
+    };
+    ensurePacks(TERMINAL_KIT_PACKS).then(ready, ready);
+  }
 
   setTerminals(terminals: TerminalGrid[]): void {
     this.terminals = terminals;
@@ -97,6 +105,11 @@ class MainThreadBaker implements ChunkBaker {
 
   private drain(): void {
     this.scheduled = false;
+    if (!this.kitReady && this.terminals.length > 0) {
+      this.scheduled = true;
+      requestAnimationFrame(() => this.drain());
+      return;
+    }
     const start = performance.now();
     while (this.queue.length > 0 && this.terrain && performance.now() - start < 4) {
       const job = this.queue.shift();
