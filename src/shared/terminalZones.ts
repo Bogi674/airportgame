@@ -76,7 +76,7 @@ export function effectiveZones(g: TerminalGrid): Uint8Array {
             seen[j] = 1;
             stack.push(j);
           }
-        } else if (out[j] === PUBLIC || out[j] === SECURE || out[j] === INTERNATIONAL) touched |= 1 << out[j];
+        } else if (out[j] === PUBLIC || out[j] === SECURE || out[j] === INTERNATIONAL) touched |= 1 << (out[j] as number);
       }
     }
     if (touched !== 0 && (touched & (touched - 1)) === 0) {

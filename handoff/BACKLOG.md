@@ -14,3 +14,5 @@ Bugs passed with notice or skipped as minor (see the bug triage rule in `CLAUDE.
 * T43: legacy belt fixtures keep counting for arrival capacity instead of becoming carousel anchors on load, because a carousel needs 11 by 2 free cells. Implication: old saves keep working without carousels; the migration is in T78.
 * T43: screening machines need no security officer until staff exist (T68). Implication: machines never halt for lack of staff.
 * T66: through stands now draw the zebra walkway and bus bay only with the bus bay upgrade, and remote stands no longer draw the bus box by default. Implication: the stand scene baselines change again (see the T72 entry).
+* T75: at 30 px/m a transition badge sits on the security lane block and covers its letter, because lanes still draw the old 2 m block (T74 gives them the kit footprint). Implication: the badge hides the lane label up close; the overlay can be turned off.
+* T75: customs is placeable only in Public as a 2 by 2 fixture, not as a transition on the International to Public edge. Implication: the customs channel of docs/TERMINAL_ZONING.md section 3 is left for T20, which adds the arrival flow through it.

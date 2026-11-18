@@ -468,6 +468,13 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-18 T43: arrival bags are claimed as they reach the carousel until arrival passengers exist (T20); claim wait is recorded but not rated yet.
 * 2026-11-18 T66: turnaround vehicle kinds are resolved per aircraft from its stand's upgrades instead of a fixed table per type, so plain stands keep their exact timings.
 * 2026-11-18 T66: far stand distance is the straight line from the gate desk to the stand center, since no walking graph exists outside the terminal. Buses do not dock; a far bus bay stand boards once the airport owns a bus.
+* 2026-11-18 T75: access is a mask per walkable edge and direction, computed in src/shared/terminalZones.ts from effective zones, walls and transition fixtures only when the walking graph is built or updated, so the sim graph, readiness and the overlay read one rule set and nothing runs per tick.
+* 2026-11-18 T75: passengers and staff share one walking graph with a mask per edge and get separate distance row caches, instead of two graphs, so edits rebuild once and staff doors cost no extra nodes.
+* 2026-11-18 T75: a commercial area takes the zone it opens onto; one touching both Secure and International stays commercial and its edges are breaches (owner answer 1).
+* 2026-11-18 T75: rectangular fixtures keep three per cell layers (fixtureOff, fixtureLevel, fixtureMode) and the hash folds level and mode only when they differ from the defaults, so grids without the new fixtures keep their hashes.
+* 2026-11-18 T75: save version 27 derives footprint tails from the old rot codes and points each security lane toward the zone it leads into, so old terminals load with working lanes.
+* 2026-11-18 T75: a wall gap into secure floor that only the zone rules close raises both zoneBreach and securityBypass, since the two tell the player different things; zone issues are listed only once a building has check in and security, because a half built terminal would show only noise.
+* 2026-11-18 T75: the zone tint left the chunk bake for an overlay cached per terminal grid object, which the sim replaces on every terminal change, so painting zones never rebakes chunks.
 
 ## 13. Known limits
 
