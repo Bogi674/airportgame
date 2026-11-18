@@ -103,6 +103,7 @@ export class Sim {
         return GROUND.cartsPerTrain[st ? st.size : sizeForCode(AIRCRAFT[this.traffic.type[a]].derivedForReading.code)];
       },
       owned: (k) => this.business.fleet[k] ?? 0,
+      cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
     });
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);

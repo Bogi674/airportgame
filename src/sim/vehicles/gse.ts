@@ -110,6 +110,8 @@ export interface GseHost {
   cartsFor(a: number): number;
   /** Vehicles of a kind the airport owns. */
   owned(kind: number): number;
+  /** Catering trucks the catering units hold. */
+  cateringTrucks(): number;
 }
 
 /**
@@ -156,8 +158,9 @@ export class Gse {
   private readonly ahead = new Int32Array(MAX_VEHICLES).fill(-1);
   /** 1 when the vehicle leaves as soon as it reaches the stand, because its aircraft left first. */
   private readonly turnBack = new Uint8Array(MAX_VEHICLES);
-  /** Vehicles of each kind out of their depot. */
+  /** Vehicles of each kind out of their depot, and catering trucks out of the catering units. */
   private readonly out = new Int32Array(KINDS);
+  private outUnit = 0;
   /** Flight the aircraft slot was serviced for, so a turnaround spawns its crew once. */
   private readonly served = new Int32Array(MAX_AIRCRAFT).fill(-1);
   /** 1 once an aircraft's crew was sent away ahead of the end of its turnaround. */
@@ -207,6 +210,7 @@ export class Gse {
     this.tail.fill(-1);
     this.held.fill(-1);
     this.out.fill(0);
+    this.outUnit = 0;
     this.count = 0;
   }
 
@@ -553,7 +557,9 @@ export class Gse {
     this.sendPrev(v);
     for (let c = v; c >= 0; ) {
       const next = this.tail[c];
-      if (this.rStand[c] >= 0 && this.out[this.kind[c]] > 0) this.out[this.kind[c]]--;
+      const unit = this.host !== null && this.rStand[c] >= this.host.roads.standCount;
+      if (unit && this.outUnit > 0) this.outUnit--;
+      else if (this.rStand[c] >= 0 && this.out[this.kind[c]] > 0) this.out[this.kind[c]]--;
       this.active[c] = 0;
       this.owner[c] = -1;
       this.lead[c] = -1;
@@ -671,11 +677,15 @@ export class Gse {
     const host = this.host;
     const roads = host?.roads;
     const s = host ? host.standIndexOf(a) : -1;
-    const routed = !!roads && s >= 0 && s < roads.standRoad.length && roads.standRoad[s] === 1;
+    // A catering truck comes from a catering unit that reaches the stand and has a truck free, else from a depot (T65).
+    const nS = roads ? roads.standCount : 0;
+    const fromUnit = !!roads && kind === CATERING && s >= 0 && s < nS && roads.standRoad[nS + s] === 1 && this.outUnit < host!.cateringTrucks();
+    const r = fromUnit ? nS + s : s;
+    const routed = !!roads && s >= 0 && s < nS && roads.standRoad[r] === 1;
     const carts = kind === TRACTOR && host ? host.cartsFor(a) : 0;
     if (routed) {
-      if (this.out[kind] >= host!.owned(kind)) return -1;
-      if (!this.clearAt(roads!.ptX[roads!.inStart[s]], roads!.ptY[roads!.inStart[s]])) return -2;
+      if (!fromUnit && this.out[kind] >= host!.owned(kind)) return -1;
+      if (!this.clearAt(roads!.ptX[roads!.inStart[r]], roads!.ptY[roads!.inStart[r]])) return -2;
     }
     const v = this.alloc();
     if (v < 0) return -1;
@@ -712,12 +722,13 @@ export class Gse {
     this.dockHead[v] = h + dockRel[pk];
     this.prev[v] = -1;
     if (routed) {
-      this.rStand[v] = s;
+      this.rStand[v] = r;
       this.rVer[v] = roads!.version;
-      this.out[kind]++;
+      if (fromUnit) this.outUnit++;
+      else this.out[kind]++;
       // The vehicle, and its train, start just outside the depot door, so no part of them is in the building.
       const trainM = GSE[kind].lengthM + carts * (GSE[CART].lengthM + GROUND.train.hitchGapM);
-      this.placeAlong(v, roads!, roads!.inStart[s], roads!.inStart[s] + roads!.inLen[s], trainM);
+      this.placeAlong(v, roads!, roads!.inStart[r], roads!.inStart[r] + roads!.inLen[r], trainM);
       this.state[v] = RoadIn;
     } else {
       this.ti[v] = 1;

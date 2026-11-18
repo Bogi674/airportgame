@@ -2,7 +2,7 @@ import { tDynamic, tFormat, type StringKey } from './strings';
 import { formatInt } from './format';
 
 /** Event codes that become alerts, as opposed to build notices. */
-export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'noAtc', 'atcLost', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock', 'seriesExpired', 'seriesRenewal', 'seriesCancelled', 'seriesOffered', 'airlineLeft', 'airlineApproach']);
+export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'noAtc', 'atcLost', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock', 'seriesExpired', 'seriesRenewal', 'seriesCancelled', 'seriesOffered', 'airlineLeft', 'airlineApproach', 'fuelShort', 'flightGrounded', 'fuelOrdered', 'fireGrace']);
 
 export function parseEvent(code: string): { name: string; args: Record<string, string> } {
   const parts = code.split('|');
@@ -48,6 +48,14 @@ export function alertText(code: string): { text: string; tone: 'info' | 'warn' }
       return { text: tFormat('alert.flightRefused', { type: args.type ?? '', reason: reasonText(args) }), tone: 'warn' };
     case 'flightDiverted':
       return { text: tFormat('alert.flightDiverted', { type: args.type ?? '', reason: reasonText(args) }), tone: 'warn' };
+    case 'fuelShort':
+      return { text: tFormat('alert.fuelShort', { type: args.type ?? '' }), tone: 'warn' };
+    case 'flightGrounded':
+      return { text: tFormat('alert.flightGrounded', { type: args.type ?? '' }), tone: 'warn' };
+    case 'fuelOrdered':
+      return { text: tFormat('alert.fuelOrdered', { n: args.n ?? '' }), tone: 'info' };
+    case 'fireGrace':
+      return { text: tFormat('alert.fireGrace', { needed: args.needed ?? '', available: args.available ?? '', days: args.days ?? '' }), tone: 'warn' };
     case 'flightLost':
       return { text: tFormat('alert.flightLost' as StringKey, { type: args.type ?? '' }), tone: 'warn' };
     default:

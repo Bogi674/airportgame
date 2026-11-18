@@ -72,6 +72,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `trig.ts` | deterministic `sinLut`, `cosLut`, `atan2Det` |
 | `roadGraph.ts` | service road graph, depot footprint and exit, stand road anchors, depot routes and lane polylines (T60) |
 | `trailer.ts` | towed cart kinematics and off tracking |
+| `fireCover.ts` | fire station category, needed category per length, airport fire cover (T65) |
 | `ghost.ts` | preview shapes the controller hands the renderer |
 | `site.ts`, `snapshot.ts`, `protocol.ts` | site payload, snapshot layout, worker messages |
 

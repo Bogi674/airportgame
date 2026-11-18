@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. Phase 1 is done (2026-11-17). T60 is done (2026-11-18, the ground handling depot came with it). T64 is done too. The next task is **T65** (supporting buildings). Run the `grill-me` skill and write the spec first.
+2. Phase 1 is done (2026-11-17). T60 is done (2026-11-18, the ground handling depot came with it). T64 and T65 are done too. The next task is **T63** (turnaround task lists); it also makes vehicles part of saves. T43 waits for T73 of phase 3b. Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
@@ -37,7 +37,7 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 
 ## 3. What is built (2026-11-18)
 
-A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 19.
+A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 20.
 
 | Area | Built |
 | --- | --- |
@@ -49,7 +49,7 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model |
 | Passengers | Departing cohorts by profile, walking graph, service nodes and queues, journey from curb to boarding, people atlas with 30 recipes, density, queue and walking distance overlays |
 | Flights | A destination network of 80 generated airports per seed, airlines that sign with flight series on fixed weekdays, a weekly planner with day tabs where one drop places a series on all its days, an auto planner, airline satisfaction with cancellations, renewals and new airlines approaching as stars grow, flights board, general aviation arriving on its own |
-| Ground handling | A ground handling depot that stores the fleet (24 vehicles each, a starter set on build) and service roads the player draws, joined to the road strips of contact stands, with hold lines where they cross a taxiway. Vehicles leave the depot, drive the road keeping right and giving way at junctions and to aircraft at crossings, take stand paths that never cross the aircraft to door positions from data, and drive home. Tractors tow 1 to 4 carts by stand size. A commercial stand with no road from a depot turns around 25 percent slower and shows an amber badge. Aircraft stop with the nose gear on their stop line. A fixed turnaround time per role |
+| Ground handling | A ground handling depot that stores the fleet (24 vehicles each, a starter set on build) and service roads the player draws, joined to the road strips of contact stands, with hold lines where they cross a taxiway. Vehicles leave the depot, drive the road keeping right and giving way at junctions and to aircraft at crossings, take stand paths that never cross the aircraft to door positions from data, and drive home. Tractors tow 1 to 4 carts by stand size. A commercial stand with no road from a depot turns around 25 percent slower and shows an amber badge. Supporting buildings: a fuel farm with tanker deliveries that sells fuel and holds flights it cannot fuel, a fire station whose vehicles set the fire category that airline types need after a 7 day grace, a catering unit that sends its own trucks, and a staff center, cleaning depot and maintenance workshop that wait for later tasks. Aircraft stop with the nose gear on their stop line. A fixed turnaround time per role |
 | Business | Seven generated airline slots with rating gates, contracts and fees, stars from passenger and airline experience, daily ledger, one term loan, shop rent, ratings, weather events (rain, fog, strong wind) |
 | UI | Main menu, new game, top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
 

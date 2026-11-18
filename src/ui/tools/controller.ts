@@ -1,7 +1,7 @@
 import { apronContains, touches } from '@shared/apronGeom';
 import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standHeading, standRowPricing, type RemovePlan } from '@shared/apronPricing';
 import { AIRFIELD, BUSINESS, GROUND, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
-import { depotRect, roadSnapPoints } from '@shared/roadGraph';
+import { buildingRect, depotRect, roadSnapPoints } from '@shared/roadGraph';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { ACCEPT_GA, codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
 import {
@@ -37,7 +37,7 @@ import { gridById, gridsFor, snapToGrid, type ConstructionGrid } from '@shared/c
 import { towerBuildCost } from '@shared/towerBudget';
 import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { formatMoney, formatNumber } from '../format';
-import { tFormat, type StringKey } from '../strings';
+import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
 import { fixtureEdit, footprintRect, isTwoCell, nextFixtureRot } from './fixtureRot';
@@ -164,6 +164,10 @@ export class ToolController {
     if (kind === 'depot') {
       const d = af.depots?.find((x) => x.id === id);
       return d ? [{ k: 'poly', pts: depotRect(d) }] : [];
+    }
+    if (kind === 'building') {
+      const b = af.buildings?.find((x) => x.id === id);
+      return b ? [{ k: 'poly', pts: buildingRect(b) }] : [];
     }
     if (kind === 'road') {
       const r = af.roads?.find((x) => x.id === id);
@@ -621,6 +625,9 @@ export class ToolController {
       case 'depot':
         this.previewDepot(p, mods);
         break;
+      case 'building':
+        this.previewBuilding(p, mods);
+        break;
       case 'terminal':
         this.previewTerminal(p, mods);
         break;
@@ -706,6 +713,12 @@ export class ToolController {
       case 'depot':
         this.commitDepot(p, mods);
         break;
+      case 'building': {
+        const q = this.placeAt(p, mods);
+        const st2 = useToolStore.getState();
+        this.deps.send({ type: 'buildBuilding', kind: st2.buildingKind, x: q.x, y: q.y, headingDeg: st2.depotHeading });
+        break;
+      }
       case 'terminal':
         this.finishTerminal(p);
         break;
@@ -779,7 +792,7 @@ export class ToolController {
       st.set({ apronMode: st.apronMode === 'rect' ? 'polygon' : 'rect' });
       return true;
     }
-    if ((e.key === 'r' || e.key === 'R') && st.tool === 'depot' && !e.ctrlKey && !e.metaKey) {
+    if ((e.key === 'r' || e.key === 'R') && (st.tool === 'depot' || st.tool === 'building') && !e.ctrlKey && !e.metaKey) {
       st.set({ depotHeading: (st.depotHeading + 90) % 360 });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
@@ -1908,6 +1921,28 @@ export class ToolController {
     );
   }
 
+  /** Ghost of a supporting building: its footprint and look with the doors on the heading side, and its cost. */
+  private previewBuilding(p: Pt, mods: Mods): void {
+    const q = this.placeAt(p, mods);
+    const st = useToolStore.getState();
+    const b = { id: -1, cost: GROUND.buildings[st.buildingKind].cost, kind: st.buildingKind, x: q.x, y: q.y, headingDeg: st.depotHeading };
+    const rect = buildingRect(b);
+    let problem = this.landProblem({ polygon: rect });
+    if (!problem && towerBlocked(this.af, rect)) problem = { code: 'depotOnPavement' };
+    if (!problem && (this.af.depots ?? []).some((o) => towersOverlap(rect, depotRect(o)))) problem = { code: 'onDepot' };
+    if (!problem && (this.af.buildings ?? []).some((o) => towersOverlap(rect, buildingRect(o)))) problem = { code: 'onBuilding' };
+    this.show(
+      {
+        valid: problem === null,
+        shapes: [{ k: 'poly', pts: rect }],
+        preview: { buildings: [b] },
+        label: { x: q.x, y: q.y, text: tFormat('ghost.building', { name: tDynamic(`building.${st.buildingKind}`), cost: formatMoney(b.cost) }) },
+      },
+      problem,
+      'hint.building',
+    );
+  }
+
   private commitDepot(p: Pt, mods: Mods): void {
     const q = this.placeAt(p, mods);
     this.deps.send({ type: 'buildDepot', x: q.x, y: q.y, headingDeg: useToolStore.getState().depotHeading });
@@ -2110,7 +2145,7 @@ export class ToolController {
     } else if (hit.kind === 'apron') {
       const a = af.aprons.find((x) => x.id === hit.id);
       if (a) shapes.push({ k: 'poly', pts: a.polygon });
-    } else if (hit.kind === 'tower' || hit.kind === 'road' || hit.kind === 'depot') {
+    } else if (hit.kind === 'tower' || hit.kind === 'road' || hit.kind === 'depot' || hit.kind === 'building') {
       shapes.push(...this.shapesFor(hit.kind, hit.id));
     } else {
       const s = af.stands.find((x) => x.id === hit.id);

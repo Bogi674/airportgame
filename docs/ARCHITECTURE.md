@@ -444,6 +444,12 @@ Record every architectural choice with a date and one line of reason.
   * The crew leaves 600 game seconds before the end of the turnaround (a third of a short one). The QA found 150 s too short on large stands; a turnaround waiting on its crew belongs to T63.
   * Draw order is unchanged and matches section 3 of `docs/ART_AND_ASSETS.md`: markings, shadows, every vehicle, then aircraft; bridges join above aircraft in T66.
 
+* 2026-11-18 T65 supporting buildings (user answers of 2026-11-18):
+  * Fuel farm, catering unit, fire station, staff center, cleaning depot and maintenance workshop are `Building` records with a kind, placed like the depot (door side by heading, multiple of 90) and priced from D19 to D22 in `ground.json`. Each pays 0.05 percent of its cost per game day as upkeep.
+  * Fire (`src/shared/fireCover.ts`): a station's category follows its vehicles per the section 10 table (1 vehicle category 6, 2 category 7, 3 category 10), it covers a runway when both ends are within 3 000 m (180 s at 60 km/h, straight line), and the airport category is the weakest runway's best cover. Airline flights over the category are refused at spawn once `fireGraceUntil` has passed; a new game and a migrated save each get 7 days. Traffic keeps the category as derived state, refreshed daily, after edits and on restore.
+  * Fuel: liters per type are proposals in `ground.json` (`fuel.upliftL`) under the user's choice of a fixed value per type. With no farm, fuel stays outside the game as before, so old saves keep flying. With a farm an airline flight draws its liters at docking (sold at 1.0), owes the rest in `Traffic.fuelOwed` (saved and hashed) and holds at the end of its turnaround until a tanker fills the farm; after 60 minutes it is reported grounded once. Every game hour tankers are ordered (at 0.8, landing two hours later) when stock and inbound fall under a quarter of capacity, enough to fill it. A `fuel` ledger category was appended; older ledgers pad it with zero.
+  * The catering unit holds 6 trucks and sends them by road to stands it reaches, through a second route set in `RoadNet` (route index stand count plus stand); without one, catering trucks still come from a depot. Staff center, cleaning depot and workshop have no effect until T63, T68 and T50. Save version 20.
+
 ## 13. Known limits
 
 Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.

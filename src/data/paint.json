@@ -73,5 +73,12 @@
     "apronM": 6,
     "ridgeWidthM": 0.6,
     "outlinePx": 0.9
+  },
+  "building": {
+    "roof": { "fuelFarm": "#b9b6ad", "catering": "#8a9a7b", "fire": "#b8473c", "staff": "#8b8fb0", "cleaning": "#6f9aa3", "workshop": "#8c8070" },
+    "tank": "#e3e6ea",
+    "tankEdge": "#8f969d",
+    "tankFill": 0.42,
+    "doorCount": 2
   }
 }

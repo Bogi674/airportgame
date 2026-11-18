@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { GROUND } from '@data/index';
+import { GROUND, GSE_INDEX } from '@data/index';
+import { buildingDoor, depotExit } from '@shared/roadGraph';
 import { airportFireCategory, neededCategory, stationCategory } from '@shared/fireCover';
 import { LEDGER_CATEGORIES, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { Sim } from '@sim/sim';
@@ -112,5 +113,29 @@ describe('fuel farm (T65)', () => {
       return p.history[p.history.length - 1][LEDGER_CATEGORIES.indexOf('upkeep')];
     };
     expect(upkeepAfterDay(false) - upkeepAfterDay(true)).toBeCloseTo(GROUND.buildings.staff.cost * GROUND.buildingUpkeepShare, -1);
+  });
+});
+
+describe('catering unit (T65)', () => {
+  it('sends its own catering trucks by road, and they go home there', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim, { standsPerRow: 4 });
+    expect(run(sim, { type: 'buildBuilding', kind: 'catering', x: FARM.x, y: FARM.y, headingDeg: 90 })).toEqual([]);
+    const unit = sim.airfield.data.buildings!.find((b) => b.kind === 'catering')!;
+    const door = buildingDoor(unit);
+    const exit = depotExit(sim.airfield.data.depots![0]);
+    expect(run(sim, { type: 'buildRoad', points: [door, { x: 3800, y: door.y }, { x: 3800, y: exit.y }] })).toEqual([]);
+    expect(sim.roads.standRoad[sim.roads.standCount]).toBe(1);
+    run(sim, { type: 'testArrival', typeIdx: idx('a320neo'), inTicks: 0, turnTicks: 30000 });
+    let fromUnit = false;
+    for (let t = 0; t < 40000 && sim.traffic.completedFlights === 0; t++) {
+      sim.step();
+      for (let v = 0; v < 1024; v++) {
+        if (sim.gse.active[v] === 1 && sim.gse.kind[v] === GSE_INDEX.catering && Math.hypot(sim.gse.x[v] - door.x, sim.gse.y[v] - door.y) < 10) fromUnit = true;
+      }
+    }
+    expect(fromUnit).toBe(true);
+    for (let t = 0; t < 10000 && sim.gse.count > 0; t++) sim.step();
+    expect(sim.gse.count).toBe(0);
   });
 });

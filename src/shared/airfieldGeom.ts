@@ -1,5 +1,5 @@
 import { BUSINESS, GROUND } from '@data/index';
-import { depotRect } from './roadGraph';
+import { buildingRect, depotRect } from './roadGraph';
 import { apronContains } from '@shared/apronGeom';
 import { compassVector, towerRect, type AirfieldPayload, type Runway } from './airfield';
 import { standBox } from './clearance';
@@ -59,7 +59,7 @@ export function runwayFrame(r: Runway, x: number, y: number): { s: number; later
   return { s, lateral };
 }
 
-export type PickKind = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower' | 'road' | 'depot';
+export type PickKind = 'runway' | 'taxiway' | 'apron' | 'stand' | 'tower' | 'road' | 'depot' | 'building';
 export interface Pick {
   kind: PickKind;
   id: number;
@@ -82,6 +82,7 @@ export function pickObject(af: AirfieldPayload, x: number, y: number, tol: numbe
     if (inside) consider('tower', tw.id, 0, -1200);
   }
   for (const d of af.depots ?? []) if (pointInPolygon(x, y, depotRect(d))) consider('depot', d.id, 0, -1100);
+  for (const b of af.buildings ?? []) if (pointInPolygon(x, y, buildingRect(b))) consider('building', b.id, 0, -1100);
   for (const r of af.roads ?? []) {
     let d = Infinity;
     for (let i = 1; i < r.points.length; i++) d = Math.min(d, distToSegment(x, y, r.points[i - 1].x, r.points[i - 1].y, r.points[i].x, r.points[i].y));

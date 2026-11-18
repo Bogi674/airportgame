@@ -138,6 +138,13 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
           <rect x="44" y="48" width="8" height="12" fill="#3f4046" />
         </Scene>
       );
+    case 'fuelFarm':
+      return (
+        <Scene bg="#6f7f55">
+          <rect x="18" y="6" width="60" height="48" fill="#b9b6ad" stroke="#1b1b1b" stroke-width="0.8" />
+          {[[33, 18], [63, 18], [33, 42], [63, 42]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="9" fill="#e3e6ea" stroke="#8f969d" stroke-width="1" />)}
+        </Scene>
+      );
     case 'road':
       return (
         <Scene bg="#6f7f55">

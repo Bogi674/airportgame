@@ -1,4 +1,4 @@
-import type { Depot, Runway, ServiceRoad, Stand, Tower } from './airfield';
+import type { Building, Depot, Runway, ServiceRoad, Stand, Tower } from './airfield';
 import type { Pt } from './geom';
 
 /** Translucent preview shapes drawn over the map while a build tool is active. All in meters. */
@@ -29,6 +29,7 @@ export interface GhostPreview {
   /** A service road being drawn and a depot being placed (T60). */
   roads?: ServiceRoad[];
   depots?: Depot[];
+  buildings?: Building[];
 }
 
 export interface Ghost {

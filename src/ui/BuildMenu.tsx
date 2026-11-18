@@ -1,4 +1,5 @@
 import { BUSINESS, GROUND, GSE } from '@data/index';
+import { BUILDING_KINDS } from '@shared/airfield';
 import { FIXTURE_KEYS } from '@shared/business';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
@@ -172,6 +173,17 @@ export const CATEGORIES: Category[] = [
           { id: 'depot', thumb: 'depot', icon: 'handling', price: GROUND.depot.cost, run: (s) => s.set({ tool: 'depot' }), active: (s) => s.tool === 'depot' },
           { id: 'road', thumb: 'road', icon: 'taxiway', run: (s) => s.set({ tool: 'road' }), active: (s) => s.tool === 'road' },
         ],
+      },
+      {
+        id: 'services',
+        items: BUILDING_KINDS.map((kind) => ({
+          id: kind,
+          thumb: kind === 'fuelFarm' ? 'fuelFarm' : 'depot',
+          icon: 'handling' as IconName,
+          price: GROUND.buildings[kind].cost,
+          run: (s: ToolState) => s.set({ tool: 'building', buildingKind: kind }),
+          active: (s: ToolState) => s.tool === 'building' && s.buildingKind === kind,
+        })),
       },
       { id: 'baggage', items: [gse('tractor'), gse('cart'), gse('beltloader')] },
       { id: 'fuel', items: [gse('refueller'), gse('dispenser')] },

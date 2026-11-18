@@ -323,6 +323,14 @@ export const paintSchema = z.strictObject({
     holdWidthM: positive,
     minScale: positive,
   }),
+  /** Supporting building look (T65): roof color per kind, fuel tanks, doors. */
+  building: z.strictObject({
+    roof: z.strictObject({ fuelFarm: hexColor, catering: hexColor, fire: hexColor, staff: hexColor, cleaning: hexColor, workshop: hexColor }),
+    tank: hexColor,
+    tankEdge: hexColor,
+    tankFill: positive,
+    doorCount: z.number().int().positive(),
+  }),
   /** Ground handling depot look (T60). */
   depot: z.strictObject({
     colors: z.strictObject({ apron: hexColor, wall: hexColor, roof: hexColor, ridge: hexColor, door: hexColor, outline: hexColor, shadow: z.string() }),

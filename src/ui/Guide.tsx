@@ -18,6 +18,7 @@ export function Guide() {
     { key: 'guide.stand', done: af.stands.length > 0 },
     { key: 'guide.terminal', done: terminalReady },
     { key: 'guide.atc', done: af.runways.length > 0 && (af.towers?.length ?? 0) > 0 },
+    { key: 'guide.fire', done: (b?.fireCategory ?? 0) > 0 },
     { key: 'guide.depot', done: (af.depots?.length ?? 0) > 0 && (af.roads?.length ?? 0) > 0 },
     { key: 'guide.airline', done: !!b && b.airlines.some((a) => a.signed) },
   ];

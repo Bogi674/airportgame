@@ -1,5 +1,6 @@
 import { AIRFIELD, BUSINESS, GROUND, SURFACE_SPEC } from '@data/index';
 import { standsReached } from '@shared/roadGraph';
+import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
 import { FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
@@ -271,6 +272,43 @@ export function ObjectPanel({ send }: Props) {
           style="margin-top:8px"
           onClick={() => {
             send({ type: 'demolishTerminal', id });
+            useToolStore.getState().set({ selection: null });
+          }}
+        >
+          {t('inspector.demolish')}
+        </button>
+      </div>
+    );
+  }
+  if (kind === 'building') {
+    const b = af.buildings?.find((x) => x.id === id);
+    if (!b) return null;
+    const m3 = (l: number): string => formatNumber(Math.round(l / 1000));
+    return (
+      <div
+        data-testid="object-panel"
+        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+      >
+        <div style="font-weight:600">{tDynamic(`building.${b.kind}`)}</div>
+        <div data-testid="building-upkeep">{tFormat('inspector.upkeep', { cost: formatMoney(Math.round(b.cost * GROUND.buildingUpkeepShare)) })}</div>
+        {b.kind === 'fire' && (
+          <>
+            <div data-testid="fire-vehicles">{tFormat('inspector.fireVehicles', { n: b.fireVehicles ?? 0, max: GROUND.fire.maxVehicles, cat: stationCategory(b) })}</div>
+            <div data-testid="fire-airport">{tFormat('inspector.fireAirport', { cat: biz?.fireCategory ?? 0 })}</div>
+            {(biz?.fireGraceDays ?? 0) > 0 && <div style="color:var(--warn)">{tFormat('inspector.fireGrace', { days: biz?.fireGraceDays ?? 0 })}</div>}
+            <button data-testid="fire-buy" disabled={(b.fireVehicles ?? 0) >= GROUND.fire.maxVehicles} onClick={() => send({ type: 'buyFireVehicle', id })}>
+              {tFormat('inspector.fireBuy', { cost: formatMoney(GROUND.fire.vehicleCost) })}
+            </button>
+          </>
+        )}
+        {b.kind === 'fuelFarm' && <div data-testid="fuel-stock">{tFormat('inspector.fuelStock', { stock: m3(biz?.fuelStockL ?? 0), cap: m3(biz?.fuelCapacityL ?? 0), inbound: m3(biz?.fuelInboundL ?? 0) })}</div>}
+        {b.kind === 'catering' && <div>{tFormat('inspector.cateringTrucks', { n: GROUND.catering.trucks })}</div>}
+        {(b.kind === 'staff' || b.kind === 'cleaning' || b.kind === 'workshop') && <div style="color:var(--muted);font-size:11px">{t('inspector.buildingLater')}</div>}
+        <button
+          data-testid="demolish"
+          style="margin-top:6px"
+          onClick={() => {
+            send({ type: 'demolish', kind: 'building', id });
             useToolStore.getState().set({ selection: null });
           }}
         >

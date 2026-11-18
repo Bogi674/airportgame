@@ -1,9 +1,10 @@
+import type { BuildingKind } from '@shared/airfield';
 import { create } from 'zustand';
 import type { Approach, CodeLetter, StandSize, StandType, Surface } from '@shared/airfield';
 import type { Problem } from '@shared/validate';
 import type { FixtureRot } from '../tools/fixtureRot';
 
-export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'demolish';
+export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish';
 
 export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
@@ -14,7 +15,7 @@ export type SnapMode = 'grid' | 'free';
  * The tools that place on the construction grid (task T42, R3). The runway
  * and taxiway tools use it as their lowest priority snap, after their own node, end and segment snaps.
  */
-export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'apronRemove', 'apronExtend', 'stands', 'gaBlock', 'terminal', 'tower', 'road', 'depot'];
+export const GRID_TOOLS: readonly Tool[] = ['runway', 'taxiway', 'taxilane', 'apron', 'apronRemove', 'apronExtend', 'stands', 'gaBlock', 'terminal', 'tower', 'road', 'depot', 'building'];
 
 /** Snap mode of one tool: grid unless the player switched that tool to free. */
 export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): SnapMode {
@@ -22,7 +23,7 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
 }
 
 export interface Selection {
-  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower' | 'road' | 'depot';
+  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower' | 'road' | 'depot' | 'building';
   id: number;
 }
 
@@ -57,6 +58,8 @@ interface ToolState {
   towerLevel: number;
   /** Depot tool: compass heading of the door side, a multiple of 90, turned with R. */
   depotHeading: number;
+  /** Building tool: which supporting building to place (T65). */
+  buildingKind: BuildingKind;
   /** Rotation of stand rows, GA blocks and new terminals in degrees, relative to the nearest runway (or the site axis). */
   rowHeading: number;
   /** Where the confirm or cancel popup is shown on screen, or null. */
@@ -106,6 +109,7 @@ export const useToolStore = create<ToolState>((set) => ({
   gaCount: 6,
   towerLevel: 1,
   depotHeading: 0,
+  buildingKind: 'fuelFarm',
   rowHeading: 0,
   confirmAt: null,
   tSub: 'foundation',

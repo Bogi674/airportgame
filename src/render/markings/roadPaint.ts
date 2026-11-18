@@ -1,5 +1,5 @@
 import { GROUND, PAINT } from '@data/index';
-import type { AirfieldPayload, Depot, ServiceRoad } from '@shared/airfield';
+import type { AirfieldPayload, Building, Depot, ServiceRoad } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
 import { buildRoadGraph, depotExit, headingVec } from '@shared/roadGraph';
 
@@ -16,6 +16,7 @@ export interface RoadWindow {
 
 const RP = PAINT.road;
 const DP = PAINT.depot;
+const BP = PAINT.building;
 const HALF = GROUND.road.widthM / 2;
 
 const lineM = (w: RoadWindow, meters: number, minPx: number): number => Math.max(meters, minPx / w.scale);
@@ -130,6 +131,72 @@ function offsetLine(pts: readonly Pt[], d: number): Pt[] {
     out.push({ x: pts[i].x + nx * d * k, y: pts[i].y + ny * d * k });
   }
   return out;
+}
+
+/**
+ * Supporting buildings (T65): the depot's shed with a roof in the kind's color and doors on the door side,
+ * and for a fuel farm a bunded yard with its round tanks instead of a shed.
+ */
+export function paintBuildings(ctx: Ctx, buildings: readonly Building[], w: RoadWindow): void {
+  for (const b of buildings) {
+    if (!nearWindow([b], w, 80)) continue;
+    const spec = GROUND.buildings[b.kind];
+    const f = headingVec(b.headingDeg);
+    const r = { x: -f.y, y: f.x };
+    const hw = spec.widthM / 2;
+    const hd = spec.depthM / 2;
+    const at = (across: number, along: number): Pt => ({ x: b.x + r.x * across + f.x * along, y: b.y + r.y * across + f.y * along });
+    const quad = (a: number, c: number, e: number, g: number): Pt[] => [at(a, e), at(c, e), at(c, g), at(a, g)];
+    const fill = (pts: Pt[], color: string): void => {
+      ctx.fillStyle = color;
+      polyline(ctx, pts);
+      ctx.closePath();
+      ctx.fill();
+    };
+    const roof = BP.roof[b.kind];
+    ctx.strokeStyle = DP.colors.outline;
+    ctx.lineWidth = lineM(w, 0.1, DP.outlinePx);
+    if (b.kind === 'fuelFarm') {
+      // The bunded yard, then the tanks in a two by two grid with shadows.
+      fill(quad(-hw, hw, -hd, hd), roof);
+      polyline(ctx, quad(-hw, hw, -hd, hd));
+      ctx.closePath();
+      ctx.stroke();
+      const rad = Math.min(hw, hd) * BP.tankFill * 0.5;
+      for (const [cx, cy] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]] as const) {
+        const c = at(cx * hw, cy * hd);
+        ctx.fillStyle = DP.colors.shadow;
+        ctx.beginPath();
+        ctx.arc(c.x + DP.shadowOffsetM, c.y + DP.shadowOffsetM, rad, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = BP.tank;
+        ctx.strokeStyle = BP.tankEdge;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, rad, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      continue;
+    }
+    const front = hd - DP.apronM;
+    fill(quad(-hw, hw, front, hd), DP.colors.apron);
+    ctx.save();
+    ctx.translate(DP.shadowOffsetM, DP.shadowOffsetM);
+    fill(quad(-hw, hw, -hd, front), DP.colors.shadow);
+    ctx.restore();
+    fill(quad(-hw, hw, -hd, front), roof);
+    const n = BP.doorCount;
+    const pitch = (2 * hw) / n;
+    const doorW = Math.min(DP.doorWidthM, pitch * 0.7);
+    for (let i = 0; i < n; i++) {
+      const c = -hw + pitch * (i + 0.5);
+      fill(quad(c - doorW / 2, c + doorW / 2, front - DP.doorDepthM, front), DP.colors.door);
+    }
+    ctx.strokeStyle = DP.colors.outline;
+    polyline(ctx, quad(-hw, hw, -hd, front));
+    ctx.closePath();
+    ctx.stroke();
+  }
 }
 
 /** Ground handling depots: forecourt at the door side, the shed with a ridged roof, roller doors and a shadow. */

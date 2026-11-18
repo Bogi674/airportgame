@@ -1,0 +1,177 @@
+{
+ "buy": [
+  [
+   2880,
+   4880,
+   6400,
+   6000
+  ]
+ ],
+ "commands": [
+  {
+   "type": "buildRunway",
+   "x": 3000,
+   "y": 5000,
+   "headingDeg": 90,
+   "lengthM": 2600,
+   "code": "C",
+   "approach": "precision",
+   "surface": "asphalt",
+   "tier": 2
+  },
+  {
+   "type": "buildParallelTaxiway",
+   "runwayId": 1,
+   "side": "right",
+   "offsetM": 190,
+   "code": "C",
+   "connectors": 4,
+   "surface": "asphalt",
+   "tier": 2
+  },
+  {
+   "type": "buildApron",
+   "polygon": [
+    {
+     "x": 3800,
+     "y": 5260
+    },
+    {
+     "x": 4200,
+     "y": 5260
+    },
+    {
+     "x": 4200,
+     "y": 5400
+    },
+    {
+     "x": 3800,
+     "y": 5400
+    }
+   ],
+   "surface": "concrete",
+   "tier": 2
+  },
+  {
+   "type": "buildStands",
+   "x": 4100,
+   "y": 5330,
+   "headingDeg": 180,
+   "count": 3,
+   "spacingM": 45,
+   "standType": "remote",
+   "size": "medium"
+  },
+  {
+   "type": "buildTower",
+   "x": 2700,
+   "y": 4800,
+   "level": 5
+  },
+  {
+   "type": "buildDepot",
+   "x": 3775,
+   "y": 5343.9,
+   "headingDeg": 90
+  },
+  {
+   "type": "buildRoad",
+   "points": [
+    {
+     "x": 3799,
+     "y": 5343.9
+    },
+    {
+     "x": 4010,
+     "y": 5343.9
+    },
+    {
+     "x": 4055,
+     "y": 5343.9
+    },
+    {
+     "x": 4100,
+     "y": 5343.9
+    },
+    {
+     "x": 4230,
+     "y": 5343.9
+    },
+    {
+     "x": 4230,
+     "y": 5120
+    }
+   ]
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "fuelFarm",
+   "x": 3650,
+   "y": 5470,
+   "headingDeg": 90
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "catering",
+   "x": 3720,
+   "y": 5470,
+   "headingDeg": 90
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "fire",
+   "x": 3650,
+   "y": 5260,
+   "headingDeg": 90
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "staff",
+   "x": 3580,
+   "y": 5470,
+   "headingDeg": 0
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "cleaning",
+   "x": 3580,
+   "y": 5360,
+   "headingDeg": 0
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "workshop",
+   "x": 3580,
+   "y": 5260,
+   "headingDeg": 0
+  }
+ ],
+ "camera": {
+  "x": 3680,
+  "y": 5370,
+  "zoom": 2.6
+ },
+ "hideUi": true,
+ "actions": [
+  {
+   "expect": {
+    "path": "airfield.buildings.length",
+    "equals": 6
+   }
+  },
+  {
+   "wait": 3000
+  },
+  {
+   "shot": "buildings",
+   "clip": {
+    "w": 1000,
+    "h": 700
+   }
+  }
+ ],
+ "report": [
+  "airfield.buildings.length",
+  "cash"
+ ]
+}

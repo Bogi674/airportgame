@@ -49,7 +49,7 @@ describe('ground vehicles', () => {
     const sim = ownedSim();
     buildTestAirport(sim, { standsPerRow: 4 });
     const exit = depotExit(sim.airfield.data.depots![0]);
-    expect(sim.roads.standRoad.every((r) => r === 1)).toBe(true);
+    expect(sim.roads.standRoad.slice(0, sim.roads.standCount).every((r) => r === 1)).toBe(true);
     run(sim, { type: 'testArrival', typeIdx: idx('a320neo'), inTicks: 0, turnTicks: 3000 });
     let fromDepot = false;
     let carts = 0;
