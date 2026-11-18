@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { FIXTURE_FOOTPRINT, FIXTURE_KEYS, FLOOR, footprintOf, type TerminalGrid } from '@shared/business';
-import { cellIndex, ensureCells, fixtureAnchor, fixtureCells, newGrid, planEdit } from '@shared/terminalOps';
+import { BUSINESS } from '@data/index';
+import { FIXTURE_FOOTPRINT, FIXTURE_KEYS, FLOOR, WALL, footprintOf, type TerminalGrid } from '@shared/business';
+import { cellIndex, ensureCells, fixtureAnchor, fixtureCells, newGrid, planEdit, type TerminalEdit } from '@shared/terminalOps';
 import type { AirfieldPayload } from '@shared/airfield';
 import type { BuildContext } from '@shared/validate';
 
@@ -51,5 +52,47 @@ describe('footprint helpers', () => {
     expect(plan.problem).toBeNull();
     plan.apply();
     for (const c of cells) expect(g.fixture[c]).toBe(0);
+  });
+});
+
+describe('placement of zoning fixtures', () => {
+  const env = { ctx: {} as BuildContext, af: {} as AirfieldPayload, others: [] as TerminalGrid[] };
+  const id = (k: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.indexOf(k) + 1;
+  const floor = (): TerminalGrid => {
+    const g = newGrid(1, 0, 0, 0);
+    ensureCells(g, 0, 0, 32, 32);
+    g.floor.fill(FLOOR.Tile);
+    return g;
+  };
+  const edit = (g: TerminalGrid, e: Partial<TerminalEdit> & Pick<TerminalEdit, 'op' | 'variant'>) => planEdit(g, { x0: 4, y0: 4, x1: 5, y1: 5, ...e }, env);
+
+  it('covers 1 by 3 cells for security exit level 2 and prices level 3', () => {
+    const g = floor();
+    const p = edit(g, { op: 'fixture', variant: id('securityExit'), rot: 0, level: 2 });
+    expect(p.problem).toBeNull();
+    p.apply();
+    const anchor = cellIndex(g, 4, 4);
+    expect(fixtureCells(g, anchor).length).toBe(3);
+    expect(g.fixtureLevel[cellIndex(g, 4, 6)]).toBe(2);
+    expect(g.fixtureOff[cellIndex(g, 4, 6)]).toBe(2 << 4);
+    const p3 = edit(floor(), { op: 'fixture', variant: id('securityExit'), level: 3 });
+    expect(p3.cost).toBe(60000);
+    expect(p3.cost).toBe(BUSINESS.fixtureCosts['securityExit.revolving']);
+  });
+
+  it('flips the mode of a passport desk and refuses an empty rect', () => {
+    const g = floor();
+    edit(g, { op: 'fixture', variant: id('passport') }).apply();
+    expect(edit(g, { op: 'mode', variant: 1, x0: 0, y0: 0, x1: 2, y1: 2 }).problem).not.toBeNull();
+    const p = edit(g, { op: 'mode', variant: 1 });
+    expect(p.problem).toBeNull();
+    p.apply();
+    expect(g.fixtureMode[cellIndex(g, 4, 4)]).toBe(1);
+  });
+
+  it('prices a staff door per edge', () => {
+    const g = floor();
+    const p = edit(g, { op: 'wall', variant: WALL.StaffDoor, x0: 4, y0: 4, x1: 7, y1: 4 });
+    expect(p.cost).toBe(3 * BUSINESS.terminal.staffDoorPerEdge);
   });
 });
