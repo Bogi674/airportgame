@@ -10,6 +10,8 @@ const profile = z.strictObject({
   spend: z.number().nonnegative(),
   bagsPerPax: z.number().nonnegative(),
   mix: z.number().nonnegative(),
+  /** Weights for group sizes 1 to maxGroup, index 0 is size 1 (docs/DESIGN_REVISION_4.md D24). */
+  groupSize: z.array(z.number().int().nonnegative()),
 });
 
 export const profilesSchema = z
@@ -41,6 +43,13 @@ export const profilesSchema = z
     const spiral = (2 * d.walkSample.dwellRingCells + 1) ** 2;
     if (d.walkSample.dwellTries > spiral) {
       ctx.addIssue({ code: 'custom', message: 'walkSample.dwellTries is above the spiral size' });
+    }
+    for (const k of PROFILE_KEYS) {
+      const weights = d.profiles[k].groupSize;
+      const total = weights.reduce((acc, w) => acc + w, 0);
+      if (weights.length !== d.maxGroup || total <= 0) {
+        ctx.addIssue({ code: 'custom', message: `profiles.${k}.groupSize needs maxGroup weights with a positive sum` });
+      }
     }
   });
 

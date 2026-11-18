@@ -6,6 +6,7 @@ import gseJson from './gse.json';
 import groundJson from './ground.json';
 import paintJson from './paint.json';
 import peopleJson from './people.json';
+import needsJson from './needs.json';
 import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
 import standSizesJson from './stand_sizes.json';
@@ -21,6 +22,7 @@ import {
   groundSchema,
   paintSchema,
   peopleSchema,
+  needsSchema,
   profilesSchema,
   spritesSchema,
   standAccessSchema,
@@ -31,6 +33,7 @@ import {
   type BaggageData,
   type BusinessData,
   type MarketData,
+  type NeedsData,
   type GseData,
   type GroundData,
   type PaintData,
@@ -59,6 +62,8 @@ export const PAINT: PaintData = paintSchema.parse(paintJson);
 export const PEOPLE: PeopleData = peopleSchema.parse(peopleJson);
 /** Passenger profiles, shared sizing and boarding rules. */
 export const PROFILES: ProfilesData = profilesSchema.parse(profilesJson);
+/** Passenger needs, wants, group factors and satisfaction terms (T67). */
+export const NEEDS: NeedsData = needsSchema.parse(needsJson);
 /** Aircraft sprite tiers, cache limit and liveries. */
 export const SPRITES: SpritesData = spritesSchema.parse(spritesJson);
 const STAND_DATA: StandSizesData = standSizesSchema.parse(standSizesJson);

@@ -1,0 +1,32 @@
+{
+  "note": "Passenger needs, wants and satisfaction (docs/DESIGN_REVISION_4.md 6.2 and 6.3, D24 to D27, proposals of T67). Game hours and minutes are calendar time.",
+  "needs": {
+    "note": "Hours until a need falls due, the fixtures that meet it, visit minutes and spend share.",
+    "hunger": { "thresholdH": 3, "fixtures": ["quickFood", "cafe"], "visitMin": 20, "spendShare": 0.4 },
+    "thirst": { "thresholdH": 2, "fixtures": ["cafe", "convenience"], "visitMin": 10, "spendShare": 0.15 },
+    "toilet": { "thresholdH": 2.5, "fixtures": ["toilet"], "visitMin": 0, "spendShare": 0 },
+    "rest": { "thresholdH": 0.667, "fixtures": ["seating"], "visitMin": 20, "spendShare": 0 }
+  },
+  "factor": { "min": 0.7, "max": 1.3 },
+  "shop": {
+    "note": "Shop wants: threshold, visit minutes, spend share, favourite count and the shop categories.",
+    "threshold": 0.5,
+    "visitMin": 15,
+    "spendShare": 0.6,
+    "favourites": 2,
+    "categories": ["convenience", "quickFood", "cafe", "dutyFree", "booksGifts", "pharmacy"]
+  },
+  "budget": { "min": 0.5, "max": 1.5 },
+  "gateLeadMin": { "min": 15, "max": 40 },
+  "mobility": { "share": 0.03, "slowFactor": 0.7 },
+  "satisfaction": {
+    "note": "Satisfaction terms per passenger, from a start score. Points per unit of each term. The ring keeps windowDays days.",
+    "start": 100,
+    "queuePerMin": 1,
+    "walkComfortM": 300,
+    "walkPerM": 0.02,
+    "unmetPerHour": 10,
+    "missedPenalty": 40,
+    "windowDays": 30
+  }
+}

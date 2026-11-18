@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
+import needsJson from '../src/data/needs.json';
 import profilesJson from '../src/data/profiles.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
 import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
+import { needsSchema } from '../src/data/schemas/needs';
 import { profilesSchema } from '../src/data/schemas/profiles';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
@@ -116,6 +118,36 @@ describe('people sample spacing', () => {
   it('rejects dwellTries above the spiral size', () => {
     const bad = structuredClone(profilesJson);
     bad.walkSample.dwellTries = 50;
+    expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('passenger needs and group sizes', () => {
+  it('needs.json validates', () => {
+    expect(needsSchema.safeParse(needsJson).success).toBe(true);
+  });
+
+  it('factor with min above max fails', () => {
+    const bad = structuredClone(needsJson);
+    bad.factor = { min: 1.3, max: 0.7 };
+    expect(needsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('an unknown fixture name fails', () => {
+    const bad = structuredClone(needsJson);
+    bad.needs.hunger.fixtures = ['pizzaHut'];
+    expect(needsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a groupSize with 5 weights fails when maxGroup is 6', () => {
+    const bad = structuredClone(profilesJson);
+    bad.profiles.business.groupSize = [1, 2, 3, 4, 5];
+    expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a groupSize with all zero weights fails', () => {
+    const bad = structuredClone(profilesJson);
+    bad.profiles.crew.groupSize = [0, 0, 0, 0, 0, 0];
     expect(profilesSchema.safeParse(bad).success).toBe(false);
   });
 });
