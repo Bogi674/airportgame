@@ -338,3 +338,12 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Jet bridges while only floor 0 can be built | Bridges wait for T51. T66 ships stairs and bus bay, hydrant pit and fixed ground power now; jet bridge access types 1 to 4 stay unbuildable until multi floor terminals exist |
 | What the stand inspector assigns | The gate desk only. Check in stays airline wide. A stand with no gate desk falls back to the nearest one and shows a warning. The baggage bay comes from T43 and the carousel follows the bay |
 | Bus bay (access type 5) | A stand within 150 m of its gate desk boards by stairs. A farther stand needs a bus bay, and boarding then waits for a depot bus. Without a bus bay a far stand boards 25 percent slower and an alert asks for a bus bay |
+
+## 2026-11-18 phase 3 run: T54, T75, T67, T20, T68
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| How to run phase 3 | Two parallel tracks first: T54 then T67 on the cohort store, and T75 zoning beside it. Once both land, T20 and T68 run in parallel. T78 stays parked |
+| How a flight is domestic or international | Per destination: each generated destination carries a seeded flag, the international share lives in data (35 percent proposed). A flight is international when its destination is |
+| Values marked Confirm and missing numbers | Every Confirm value of `docs/TERMINAL_ZONING.md` is accepted as written. Numbers for T67 needs and T68 shifts that no doc gives are proposed by the orchestrator in data files, listed here per task and reported for review |
+| Saves and stress | Save version bumps with a migration are approved for every task that needs one. A stress regression or a broken 4 ms medium budget stops the run for the owner; no baseline update without asking |

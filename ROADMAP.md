@@ -122,7 +122,7 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
-| T54 | People walk and dwell along routes with spacing (needs a from node in the cohort store and a save migration) |  |  | todo |
+| T54 | People walk and dwell along routes with spacing (needs a from node in the cohort store and a save migration) |  |  | doing |
 | T67 | Individuals inside cohorts: traits, needs evaluated at decision points, sub cohorts, satisfaction per member rolled up to the airport rating, the stress scenario with 20 000 cohorts and 40 000 people under the 4 ms medium budget (section 6.1 to 6.3) | T17, T18 | T54 | todo |
 | T20 | Arrival journey with immigration (passport control or automated gate in arrival mode), baggage claim and the customs channel (`docs/TERMINAL_ZONING.md` section 3) |  | T67, T43, T75 | todo |
 | T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | todo |
@@ -137,7 +137,7 @@ Goal: the terminal looks and plays like the kit sheets: every fixture and prop d
 | --- | --- | --- | --- | --- |
 | T73 | Fixture sprite baker: port `fixture_ops.py` to `src/render/sprites/fixtureSprite.ts`, lazy loaded sprite packs, tiers, shadows per rotation, airline livery, chunk cache; today's check in, kiosk, bag drop, security, passport, gate desk, seating and toilet fixtures drawn from the kit |  |  | done 2a746e8 bece34b ad1a020. Security keeps its block until T74 gives it the kit footprint |
 | T74 | Fixture levels 1 to 3 for check in, security, passport control and gate desk: level per fixture in the grid and saves, in place upgrade through works, inspector upgrade button, values from the catalog | T44 fixture part | T73 | todo |
-| T75 | Zoning revision: international zone, transition fixtures with direction, security exit in three levels, automated passport gate, customs channel, staff door wall type, breach validation in the walking graph, zones overlay with badges |  | T73 | todo |
+| T75 | Zoning revision: international zone, transition fixtures with direction, security exit in three levels, automated passport gate, customs channel, staff door wall type, breach validation in the walking graph, zones overlay with badges |  | T73 | doing |
 | T76 | Props on a 0.5 m sub grid: seating, lounge, washroom, decoration, vending, screens, service, office and back of house items from the catalog, with comfort, ambience, wayfinding, charging, washroom capacity and staff room effects |  | T73 | todo |
 | T77 | Circulation and back of house: escalators, stairs, elevators and travelators placed and drawn, travelators speed walking on one floor, janitor room as the cleaners' base; vertical links wait for T51 |  | T76 | todo |
 
