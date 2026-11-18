@@ -219,6 +219,8 @@ export class Business {
   boarded: ((f: number) => number) | null = null;
   /** Called with the index of a terminal grid after it is demolished, set by the sim. */
   gridRemoved: ((index: number) => void) | null = null;
+  /** Called with the building id at the end of every successful terminal edit or demolition, set by the sim. */
+  onGridEdited: ((building: number) => void) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -383,22 +385,43 @@ export class Business {
       const wg = buildWalkGraph(grid);
       this.walkGraphs.push(wg);
       this.serviceNodes.push(buildServiceNodes(grid, wg));
-    } else if (cellCount(grid) > 0) {
-      const i = this.grids.indexOf(grid);
-      this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(edit.x0, edit.x1), Math.min(edit.y0, edit.y1), Math.max(edit.x0, edit.x1), Math.max(edit.y0, edit.y1));
-      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!);
     }
+    const id = grid.id;
     if (cellCount(grid) === 0) {
       const i = this.grids.indexOf(grid);
       this.grids.splice(i, 1);
       this.gridRemoved?.(i);
       this.walkGraphs.splice(i, 1);
       this.serviceNodes.splice(i, 1);
+      this.bumpTerminals();
+    } else if (fresh) {
+      this.bumpTerminals();
+    } else {
+      this.refreshGrid(id, edit.x0, edit.y0, edit.x1, edit.y1);
     }
+    this.onGridEdited?.(id);
+    return null;
+  }
+
+  /**
+   * Rebuilds the derived data of one building after its cells changed inside the rectangle (corners in any order):
+   * the walking graph, the service nodes and the terminal counts.
+   */
+  refreshGrid(building: number, x0: number, y0: number, x1: number, y1: number): void {
+    const i = this.grids.findIndex((g) => g.id === building);
+    if (i < 0) return;
+    const grid = this.grids[i]!;
+    if (cellCount(grid) > 0) {
+      this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1));
+      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!);
+    }
+    this.bumpTerminals();
+  }
+
+  private bumpTerminals(): void {
     this.walkVersion++;
     this.serviceVersion++;
     this.refreshTerminals();
-    return null;
   }
 
   demolishTerminal(id: number): string | null {
@@ -412,6 +435,7 @@ export class Business {
     this.walkVersion++;
     this.serviceVersion++;
     this.refreshTerminals();
+    this.onGridEdited?.(id);
     return null;
   }
 

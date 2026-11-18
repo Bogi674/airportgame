@@ -66,6 +66,11 @@ export function rampCell(spec: BagNodeSpec, dir: 'in' | 'out'): Cell | null {
   return dir === 'in' ? toLogical(spec, F.carousel.in[0], F.carousel.in[1]) : null;
 }
 
+/** Cell where a drop point sends bags: local (0, -1) of the anchor in the frame of its rotation. */
+export function dropOutCell(anchorX: number, anchorY: number, rot: 0 | 1 | 2 | 3): Cell {
+  return toLogical({ kind: 'machine', cx: anchorX, cy: anchorY, rot, widthCells: 0 }, 0, -1);
+}
+
 /** The truck side of a bay: the cells of row v = d - 1 and the outward step B. */
 export function truckEdge(spec: BagNodeSpec): { cells: Cell[]; out: Cell } {
   const size = nodeSize(spec);

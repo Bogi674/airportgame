@@ -118,6 +118,26 @@ export class BaggageNetwork {
     else if (node.kind === 'machine') this.ruleD(node);
   }
 
+  /** Adds a node without running any rule, for loading a saved network. */
+  insertRaw(node: BagNode): void {
+    const at = this.nodes.findIndex((n) => n.id >= node.id);
+    if (at >= 0 && this.nodes[at].id === node.id) {
+      this.nodes[at] = node;
+    } else {
+      this.nodes.splice(at < 0 ? this.nodes.length : at, 0, node);
+    }
+  }
+
+  /** Nodes in id order. */
+  nodeList(): readonly BagNode[] {
+    return this.nodes;
+  }
+
+  /** Links in insertion order. */
+  linkList(): readonly BagLink[] {
+    return this.links;
+  }
+
   /** Creates a link between two nodes. Automatic rules use it with mode auto; the player uses manual. */
   link(srcId: number, dstId: number, mode: LinkMode = 'auto'): BagLink | null {
     const a = this.node(srcId);

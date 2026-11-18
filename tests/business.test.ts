@@ -583,7 +583,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(22);
+    expect(SAVE_VERSION).toBe(23);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;

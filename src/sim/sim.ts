@@ -17,6 +17,7 @@ import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
 import { Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
+import { Baggage, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
@@ -43,6 +44,8 @@ export class Sim {
   readonly traffic: Traffic;
   readonly business: Business;
   readonly cohorts: Cohorts;
+  /** Baggage nodes and their automatic link network, one per building (T43). */
+  readonly baggage: Baggage;
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -115,6 +118,12 @@ export class Sim {
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
+    this.baggage = new Baggage(this.business, {
+      getCash: (): number => this.cash,
+      book: (amount: number): void => this.book('construction', amount),
+      standExists: (id: number): boolean => this.airfield.data.stands.some((s) => s.id === id),
+    });
+    this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
     const businessPushback = this.traffic.hooks?.pushback;
     const businessDocked = this.traffic.hooks?.docked;
     this.traffic.hooks = {
@@ -338,6 +347,18 @@ export class Sim {
         break;
       case 'demolishTerminal':
         this.report(this.business.demolishTerminal(cmd.id));
+        break;
+      case 'placeBaggageNode':
+        this.report(this.baggage.place(cmd));
+        break;
+      case 'removeBaggageNode':
+        this.report(this.baggage.remove(cmd.id));
+        break;
+      case 'setStandBay':
+        this.report(this.baggage.setStandBay(cmd.standId, cmd.bayId));
+        break;
+      case 'fixBaggageNode':
+        this.report(this.baggage.fix(cmd.id));
         break;
       case 'signAirline':
         this.report(this.business.signAirline(cmd.airlineId, cmd.sign));
@@ -585,6 +606,7 @@ export class Sim {
       airfield: this.airfield.saveState(),
       traffic: this.traffic.saveState(),
       business: this.business.saveState(),
+      baggage: this.baggage.saveState(),
       cohorts: this.cohorts.saveState(),
       vehicles: this.gse.saveState(),
       turnarounds: this.turns.saveState(),
@@ -608,6 +630,7 @@ export class Sim {
     this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
+    this.baggage.loadState(save.baggage as BaggageSave | undefined);
     this.roadSeen.fill(-1);
     this.syncRoads(true);
     this.gse.loadState(save.vehicles);
@@ -638,6 +661,7 @@ export class Sim {
     h = this.airfield.hash(h);
     h = this.traffic.hash(h);
     h = this.business.hash(h);
+    h = this.baggage.hash(h);
     h = this.cohorts.hash(h);
     h = this.gse.hash(h);
     h = this.turns.hash(h);

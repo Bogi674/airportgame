@@ -14,5 +14,6 @@
   "lateBagHoldMin": 15,
   "missingBagWeight": 0.5,
   "linkCostPerM": 150,
-  "linkUpkeepPctPerYear": 2
+  "linkUpkeepPctPerYear": 2,
+  "costs": { "machine": 90000, "bayPerCell": 15000, "carousel": 60000 }
 }

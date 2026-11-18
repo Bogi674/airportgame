@@ -32,6 +32,7 @@ export const baggageSchema = z.strictObject({
   missingBagWeight: positive,
   linkCostPerM: positive,
   linkUpkeepPctPerYear: positive,
+  costs: z.strictObject({ machine: positive, bayPerCell: positive, carousel: positive }),
 });
 
 export type BaggageData = z.infer<typeof baggageSchema>;

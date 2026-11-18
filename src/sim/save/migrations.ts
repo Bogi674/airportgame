@@ -5,7 +5,7 @@ import { packTyped, unpackTyped } from './pack';
 import { GROUND } from '@data/index';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -28,6 +28,8 @@ export interface SaveData {
   vehicles?: unknown;
   /** Turnaround task lists, since version 21 (T63). */
   turnarounds?: unknown;
+  /** Baggage network, since version 23 (T43). */
+  baggage?: unknown;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -194,5 +196,7 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 21) save.version = 21;
   // Version 21 to 22: flights carry a stable serial (T43). Traffic derives serials for saves without them.
   if (save.version < 22) save.version = 22;
+  // Version 22 to 23: the baggage network is saved (T43). Older saves have no baggage key and get drop points from their grids on load.
+  if (save.version < 23) save.version = 23;
   return save as SaveData;
 }

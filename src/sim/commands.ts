@@ -65,6 +65,11 @@ export type Command =
   /** level is the floor index and defaults to 0, the only floor that can be built for now. */
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; level?: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
+  /** Baggage network (T43): place a node on a building grid, remove it, assign a stand to a bay (bayId -1 unassigns), or rerun the link rule of a node. */
+  | { type: 'placeBaggageNode'; building: number; kind: 'machine' | 'bay' | 'carousel'; cx: number; cy: number; rot: 0 | 1 | 2 | 3; widthCells: number }
+  | { type: 'removeBaggageNode'; id: number }
+  | { type: 'setStandBay'; standId: number; bayId: number }
+  | { type: 'fixBaggageNode'; id: number }
   | { type: 'signAirline'; airlineId: number; sign: boolean }
   /** Weekly planner (T61): place a flight series on a stand at an arrival minute of the day, on all its operating days. */
   | { type: 'placeSeries'; seriesId: number; standId: number; minute: number }
