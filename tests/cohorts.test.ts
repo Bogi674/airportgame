@@ -742,6 +742,36 @@ describe('snapshot sample of cohort positions', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
+  it('a sample from resumed trails equals one from fresh caches', () => {
+    const a = terminalSim();
+    const b = terminalSim();
+    scheduleLong(a);
+    scheduleLong(b);
+    expect(stepToMidJourney(a, RUN_TICKS)).toBe(true);
+    expect(stepToMidJourney(b, RUN_TICKS)).toBe(true);
+    const va = createSnapshotViews(createSnapshotBuffer());
+    const vb = createSnapshotViews(createSnapshotBuffer());
+    for (let round = 0; round < 30; round++) {
+      for (let t = 0; t < 5; t++) {
+        a.step();
+        b.step();
+      }
+      a.writeSnapshot(va);
+    }
+    a.writeSnapshot(va);
+    b.writeSnapshot(vb);
+    const n = va.header[SnapHeader.PeopleCount]!;
+    expect(n).toBeGreaterThan(0);
+    expect(vb.header[SnapHeader.PeopleCount]).toBe(n);
+    for (let i = 0; i < n; i++) {
+      expect(vb.peopleX[i]).toBe(va.peopleX[i]);
+      expect(vb.peopleY[i]).toBe(va.peopleY[i]);
+      expect(vb.peopleHeading[i]).toBe(va.peopleHeading[i]);
+      expect(vb.peopleId[i]).toBe(va.peopleId[i]);
+      expect(vb.peopleMode[i]).toBe(va.peopleMode[i]);
+    }
+  });
+
   it('a save without cohort state still samples shared queues 1.9 m apart', () => {
     const built = terminalSim();
     const data = JSON.parse(JSON.stringify(built.serialize())) as Record<string, unknown>;

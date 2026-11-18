@@ -168,6 +168,9 @@ export class Cohorts {
   private sampleCaches: WalkCache[] = [];
   private sampleCacheVersion = -1;
   private readonly route = new Float64Array(ROUTE_OUT);
+  /** Per slot: last route node a walker was resumed from and the length walked up to it. Derived, never saved or hashed. */
+  private trailNode = new Int32Array(this.cap).fill(-1);
+  private trailAt = new Float64Array(this.cap);
   /** World position written by toWorld. */
   private readonly world = new Float64Array(2);
   /** Axes and heading of the grid being sampled. */
@@ -316,6 +319,7 @@ export class Cohorts {
     if (!stale) return;
     this.sampleCaches = wgs.map((wg) => newWalkCache(wg.nodeCount));
     this.sampleCacheVersion = this.business.walkVersion;
+    this.trailNode.fill(-1, 0, this.hi);
   }
 
   /** World position in metres of the centred logical point (lx, ly) of a grid, left in this.world. */
@@ -423,7 +427,13 @@ export class Cohorts {
         const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
         if (from < 0 || to < 0) continue;
         const s = Math.max(0, ((tick - this.walkStart[c]!) * WALK_SPEED[this.profile[c]!]!) / TICKS_PER_SECOND);
-        if (routePoint(wg, cache, from, 0, to, s, this.route) !== 1) continue;
+        const resume = this.trailNode[c]! >= 0 && this.trailAt[c]! <= s;
+        const r = resume
+          ? routePoint(wg, cache, this.trailNode[c]!, this.trailAt[c]!, to, s, this.route)
+          : routePoint(wg, cache, from, 0, to, s, this.route);
+        if (r !== 1) continue;
+        this.trailNode[c] = this.route[4]!;
+        this.trailAt[c] = this.route[5]!;
         const ex = this.route[2]!;
         const ey = this.route[3]!;
         const sx = Math.abs(ex) >= Math.abs(ey) ? Math.sign(ex) : 0;
@@ -713,6 +723,7 @@ export class Cohorts {
     const t = this.table(g);
     this.node[c] = node;
     this.stage[c] = stage;
+    this.trailNode[c] = -1;
     const to = t ? t.walkNode[node] : -1;
     this.setRoute(g, c, from, to);
     const dist = this.business.walkDistance(this.gridId(g), from, to);
@@ -804,6 +815,7 @@ export class Cohorts {
   loadState(s: CohortsSave | undefined): void {
     this.ensureOccupancy();
     this.sampleCacheVersion = -1;
+    this.trailNode.fill(-1);
     if (!s) {
       this.generated = 0;
       this.boarded = 0;

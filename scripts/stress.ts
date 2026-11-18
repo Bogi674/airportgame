@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Sim } from '../src/sim/sim';
+import { createSnapshotBuffer, createSnapshotViews } from '../src/shared/snapshot';
 import { buildTestAirport } from '../tests/helpers';
 import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../src/sim/terminal/walkGraph';
 import { originFor, type TerminalEdit } from '../src/shared/terminalOps';
@@ -157,6 +158,9 @@ function runScenario(s: Scenario): Record<string, Stat> {
 
   let peak = 0;
   let peakHi = 0;
+  const views = createSnapshotViews(createSnapshotBuffer());
+  let snapNs = 0n;
+  let snapCount = 0;
   for (let t = 0; t < ticks; t++) {
     if (sim.traffic.count > peak) peak = sim.traffic.count;
     if (sim.cohorts.hi > peakHi) peakHi = sim.cohorts.hi;
@@ -170,7 +174,14 @@ function runScenario(s: Scenario): Record<string, Stat> {
     }
     sim.endTick();
     total[t] = Number(tickNs) / 1e6;
+    if (t % 10 === 0) {
+      const t0 = process.hrtime.bigint();
+      sim.writeSnapshot(views);
+      snapNs += process.hrtime.bigint() - t0;
+      snapCount++;
+    }
   }
+  console.log(`  snapshot ${(Number(snapNs) / 1e6 / snapCount).toFixed(3)} ms mean over ${snapCount} writes (info, not budgeted)`);
 
   if (s.cohortTerminal) {
     const co = sim.cohorts;
