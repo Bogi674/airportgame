@@ -371,6 +371,12 @@ export class Gse {
       this.waited[v] = 0;
     }
     this.releasePassed(v);
+    const s0 = this.rStand[v];
+    // Home: a returning vehicle drives into the depot once its front reaches the door.
+    if (this.state[v] === RoadOut && k === roads.outStart[s0] + roads.outLen[s0] - 1 && d <= GSE[this.kind[v]].lengthM / 2) {
+      this.free(v);
+      return;
+    }
     const step = Math.max(roads.ptStep[k > 0 ? k - 1 : k], SLOW_STEP_M);
     if (d <= step) {
       this.x[v] = roads.ptX[k];
@@ -461,7 +467,16 @@ export class Gse {
     return true;
   }
 
-  /** Frees the leg to the stand when this vehicle holds it, and lets the crew member that docked before it go. */
+  /** Takes the leg between the stand and its road point for a vehicle that goes home by road. False while another holds it. */
+  private takeFront(v: number): boolean {
+    const a = this.owner[v];
+    if (this.rStand[v] < 0 || a < 0) return true;
+    if (this.front[a] >= 0 && this.front[a] !== v) return false;
+    this.front[a] = v;
+    return true;
+  }
+
+  /** Frees the leg between the stand and its road point when this vehicle holds it. */
   private leaveFront(v: number): void {
     const a = this.owner[v];
     if (a >= 0 && this.front[a] === v) this.front[a] = -1;
@@ -483,13 +498,15 @@ export class Gse {
       this.x[v] = tx;
       this.y[v] = ty;
       if (leaving) {
+        // At the waiting point the vehicle takes the leg to the road before it drives onto the road line.
         if (useOut) {
           if (this.ti[v] === this.outN[v] - 1) this.endLeave(v);
-          else this.ti[v]++;
+          else if (this.ti[v] !== this.outN[v] - 2 || this.takeFront(v)) this.ti[v]++;
         } else if (this.ti[v] === 0) this.endLeave(v);
-        else this.ti[v]--;
-      } else if (this.ti[v] === 0) {
-        this.leaveFront(v);
+        else if (this.ti[v] !== 1 || this.takeFront(v)) this.ti[v]--;
+      } else if (this.ti[v] <= 1) {
+        // On the leg from the road line to the waiting point; the leg is free once the vehicle is in the box.
+        if (this.ti[v] === 1) this.leaveFront(v);
         this.ti[v]++;
       } else if (this.ti[v] === this.wpN[v] - 1) {
         this.state[v] = Work;
@@ -674,15 +691,21 @@ export class Gse {
     };
     // The stand path starts at the stand's road point, level with the staging point: ahead of the nose, outside the span.
     // Long vehicles wait deeper inside the box, so no part of them pokes onto the road.
-    const roadLy = this.roadLy(a, s, noseX, noseY, c, sn) + GSE[kind].lengthM / 2;
+    // The stand path starts on the road line level with the staging point, so the vehicle never cuts across in front
+    // of the nose, then turns into the box to its waiting point, deeper for long vehicles, and on to the dock.
+    this.roadLines(a, s, noseX, noseY, c, sn, this.lines);
+    const roadLy = this.lines[0];
+    const waitLy = this.lines[1] + GSE[kind].lengthM / 2;
     toWorld(pathX[pk * MAX_WP], roadLy, this.wpX, this.wpY, 0);
-    for (let i = 0; i < n; i++) toWorld(pathX[pk * MAX_WP + i], pathY[pk * MAX_WP + i], this.wpX, this.wpY, i + 1);
-    this.wpN[v] = n + 1;
+    toWorld(pathX[pk * MAX_WP], waitLy, this.wpX, this.wpY, 1);
+    for (let i = 0; i < n; i++) toWorld(pathX[pk * MAX_WP + i], pathY[pk * MAX_WP + i], this.wpX, this.wpY, i + 2);
+    this.wpN[v] = n + 2;
     if (kind === TRACTOR) {
       const m = trainOutN[type];
-      toWorld(trainOutX[type * MAX_WP + m - 1], roadLy, this.outX, this.outY, m);
+      toWorld(trainOutX[type * MAX_WP + m - 1], waitLy, this.outX, this.outY, m);
+      toWorld(trainOutX[type * MAX_WP + m - 1], roadLy, this.outX, this.outY, m + 1);
       for (let i = 0; i < m; i++) toWorld(trainOutX[type * MAX_WP + i], trainOutY[type * MAX_WP + i], this.outX, this.outY, i);
-      this.outN[v] = m + 1;
+      this.outN[v] = m + 2;
     }
     this.kind[v] = kind;
     this.owner[v] = a;
@@ -691,11 +714,10 @@ export class Gse {
     if (routed) {
       this.rStand[v] = s;
       this.rVer[v] = roads!.version;
-      this.ri[v] = roads!.inStart[s] + 1;
       this.out[kind]++;
-      this.x[v] = roads!.ptX[roads!.inStart[s]];
-      this.y[v] = roads!.ptY[roads!.inStart[s]];
-      this.heading[v] = atan2Det(roads!.ptY[this.ri[v]] - this.y[v], roads!.ptX[this.ri[v]] - this.x[v]);
+      // The vehicle, and its train, start just outside the depot door, so no part of them is in the building.
+      const trainM = GSE[kind].lengthM + carts * (GSE[CART].lengthM + GROUND.train.hitchGapM);
+      this.placeAlong(v, roads!, roads!.inStart[s], roads!.inStart[s] + roads!.inLen[s], trainM);
       this.state[v] = RoadIn;
     } else {
       this.ti[v] = 1;
@@ -706,6 +728,27 @@ export class Gse {
     }
     if (carts > 0) this.hitchCarts(v, routed ? Math.min(carts, host!.owned(CART) - this.out[CART]) : carts, routed);
     return v;
+  }
+
+  /** Puts a vehicle the given distance along a lane from its first point, heading along it, with ri on the next point. */
+  private placeAlong(v: number, roads: RoadNet, from: number, end: number, distM: number): void {
+    let left = distM;
+    let k = from;
+    while (k + 1 < end) {
+      const dx = roads.ptX[k + 1] - roads.ptX[k];
+      const dy = roads.ptY[k + 1] - roads.ptY[k];
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len >= left || k + 2 === end) {
+        const f = len > 0 ? Math.min(1, left / len) : 0;
+        this.x[v] = roads.ptX[k] + dx * f;
+        this.y[v] = roads.ptY[k] + dy * f;
+        this.heading[v] = atan2Det(dy, dx);
+        this.ri[v] = k + 1;
+        return;
+      }
+      left -= len;
+      k++;
+    }
   }
 
   /** Hangs carts behind a tractor in a straight line along its heading. */
@@ -732,17 +775,25 @@ export class Gse {
     }
   }
 
-  /** Aircraft frame station of the stand's road point: the stand connection point, or just ahead of the nose with no stand. */
-  private roadLy(a: number, s: number, noseX: number, noseY: number, c: number, sn: number): number {
+  /**
+   * Aircraft frame stations of the stand's road line (the connection point) and of its waiting line, just inside
+   * the stand's top edge so a vehicle waiting there is off the road. With no connection point both sit ahead of the nose.
+   */
+  private roadLines(a: number, s: number, noseX: number, noseY: number, c: number, sn: number, out: Float64Array): void {
     const roads = this.host?.roads;
     if (roads && s >= 0 && s < roads.graph.standConn.length && roads.graph.standConn[s] >= 0) {
       const n = roads.graph.standConn[s];
-      // Inside the stand box, just short of its top edge, so a vehicle waiting there is off the road.
-      const ly = -((roads.graph.nodeX[n] - noseX) * c + (roads.graph.nodeY[n] - noseY) * sn) + roads.connDepthM[s] + STAND_EDGE_IN_M;
-      if (ly < 0) return ly;
+      const conn = -((roads.graph.nodeX[n] - noseX) * c + (roads.graph.nodeY[n] - noseY) * sn);
+      if (conn < 0) {
+        out[0] = conn;
+        out[1] = conn + roads.connDepthM[s] + STAND_EDGE_IN_M;
+        return;
+      }
     }
-    return -Math.max(8, AIRCRAFT[this.traffic.type[a]].dimensions.lengthM * 0.15);
+    out[0] = out[1] = -Math.max(8, AIRCRAFT[this.traffic.type[a]].dimensions.lengthM * 0.15);
   }
+
+  private readonly lines = new Float64Array(2);
 
   /** Queues the crew of a turnaround and sends in the first vehicle on each side. Carts come with the tractor. */
   private spawnCrew(a: number): void {

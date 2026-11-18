@@ -64,6 +64,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `apronGeom.ts`, `clip.ts` | apron merge and cut through polygon-clipping |
 | `obstacles.ts` | approach and transitional surfaces |
 | `clearance.ts` | wingtip envelope clash check |
+| `aircraftFootprint.ts` | aircraft hard and overhead footprints, vehicle clash checks and the full apron scene check `apronCheck` (T64) |
 | `turnPad.ts` | turn pad polygon and curve |
 | `surfaceRules.ts` | surface costs, works days, runway works days |
 | `terminalOps.ts`, `terminalRooms.ts` | terminal grid edits and room validation |

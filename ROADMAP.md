@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. Phase 1 is done (2026-11-17). T60 is done (2026-11-18, the ground handling depot came with it). The next task is **T64** (footprints, keep out zones, collision test). Run the `grill-me` skill and write the spec first.
+2. Phase 1 is done (2026-11-17). T60 is done (2026-11-18, the ground handling depot came with it). T64 is done too. The next task is **T65** (supporting buildings). Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.

@@ -436,6 +436,14 @@ Record every architectural choice with a date and one line of reason.
   * Tractors tow 1 to 4 carts by stand size (user). Carts follow the hitch exactly (`src/shared/trailer.ts`, tested against the analytic off tracking of every cart). The train comes round the tail and docks along the fuselage facing the nose, outboard of every dock beside it, and leaves forward and out, never back through its carts. The tractor dock in `gse.json` is now `along`.
   * Vehicles still never change aircraft timing, so they stay out of saves and the hash; T63 makes them state when the task list waits on them. Save version 19 adds roads and depots and empties the fleet of older saves (user).
 
+* 2026-11-18 T64 collision QA:
+  * `apronCheck` in `src/shared/aircraftFootprint.ts` ports `check` of `gse.py` whole: hard footprints with the 0.5 m clearance and 0.8 m2 for docking vehicles, overhead parts lower than the vehicle, buildings and bridges as solids, and the 0.3 m gap between vehicles, skipping the carts of one train. `tests/apronCollision.test.ts` runs it on every tick that something moved, over a full turnaround of each type on its own stand size plus the largest type each size takes, with depot, road and tower in the scene.
+  * The push back tug counts as a docking vehicle (`gse.json`), since it couples to the nose gear.
+  * Vehicles leave and enter the depot clear of the building: a crew or train starts its route just outside the door, and a returning vehicle goes in once its front reaches the door.
+  * A stand path starts on the road line level with the staging point, then turns into the box to a waiting point that sits deeper for long vehicles, so nothing cuts across in front of the nose. One vehicle at a time uses the leg from the road line to the waiting point.
+  * The crew leaves 600 game seconds before the end of the turnaround (a third of a short one). The QA found 150 s too short on large stands; a turnaround waiting on its crew belongs to T63.
+  * Draw order is unchanged and matches section 3 of `docs/ART_AND_ASSETS.md`: markings, shadows, every vehicle, then aircraft; bridges join above aircraft in T66.
+
 ## 13. Known limits
 
 Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.

@@ -38,6 +38,6 @@
   "hitchGapM": 0.6
  },
  "vehicleGapM": 2,
- "crewClearLeadS": 150,
+ "crewClearLeadS": 600,
  "trainLateralExtraM": 1.5
 }

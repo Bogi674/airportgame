@@ -9,7 +9,7 @@
    "lengthM": 5.8,
    "widthM": 2.5,
    "heightM": 1.9,
-   "docks": false,
+   "docks": true,
    "articulated": false,
    "towedBy": null
   },

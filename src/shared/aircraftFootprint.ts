@@ -366,3 +366,57 @@ export function toAircraftLocal(poly: Poly, cx: number, cy: number, headingCos: 
     };
   });
 }
+
+/** An aircraft in an apron scene: its boundary in its own frame, its nose tip and unit heading in the world. */
+export interface SceneAircraft {
+  boundary: AircraftBoundary;
+  noseX: number;
+  noseY: number;
+  cos: number;
+  sin: number;
+  /** Radius around the nose beyond which no part reaches, to skip far vehicles. */
+  reachM: number;
+}
+
+/** A vehicle in an apron scene, its footprint in world meters. Vehicles sharing a train id are coupled and never checked against each other. */
+export interface SceneVehicle {
+  poly: Poly;
+  heightM: number;
+  docks: boolean;
+  label: string;
+  train: number;
+}
+
+/**
+ * The full apron scene check of `docs/ART_AND_ASSETS.md` section 12, a port of `check` in
+ * `docs/reference/sprite-prototypes/gse.py` (T64): no vehicle in an aircraft hard footprint (docking
+ * vehicles may overlap 0.8 m2), none under an overhead part lower than itself, none overlapping a
+ * building or bridge (`solids`, convex, world meters), and no two vehicles within 0.3 m. Returns every
+ * failure as a message, empty when the scene passes.
+ */
+export function apronCheck(aircraft: readonly SceneAircraft[], vehicles: readonly SceneVehicle[], solids: readonly Poly[], clearanceM = 0.5, gapM = 0.3, dockTolM2 = 0.8): string[] {
+  const errors: string[] = [];
+  for (const v of vehicles) {
+    for (const a of aircraft) {
+      let near = false;
+      for (const p of v.poly) if ((p.x - a.noseX) ** 2 + (p.y - a.noseY) ** 2 <= a.reachM * a.reachM) near = true;
+      if (!near) continue;
+      const local = toAircraftLocal(v.poly, a.noseX, a.noseY, a.cos, a.sin);
+      const clash = footprintClash(a.boundary.hard, a.boundary.over, { poly: local, heightM: v.heightM, docks: v.docks }, clearanceM, dockTolM2);
+      if (clash) errors.push(`${v.label}: ${clash}`);
+    }
+    for (const s of solids) {
+      // The hull puts the solid in the clipper's winding, whichever way its corners were listed.
+      if (shoelaceArea(clipToConvex(v.poly, bufferedHull(s, 0))) > 0.01) errors.push(`${v.label} overlaps a building or bridge`);
+    }
+  }
+  for (let i = 0; i < vehicles.length; i++) {
+    for (let j = i + 1; j < vehicles.length; j++) {
+      const a = vehicles[i];
+      const b = vehicles[j];
+      if (a.train === b.train) continue;
+      if (vehiclesTouch(a, b, gapM)) errors.push(`${a.label} touches ${b.label}`);
+    }
+  }
+  return errors;
+}
