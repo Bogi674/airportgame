@@ -330,3 +330,10 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Where fixture sprites are baked | Main thread, lazily, cached per asset, tier, rotation and livery |
 | Kit asset for fixtures without a level | Level 1 of the family; `seating` draws `bench.beam3`, `toilet` draws `washroom.wcStall` |
 | Late bags | The departure waits up to 15 minutes past its slot for its bags, owned by the airport, then leaves. Each missed bag is logged as mishandled and lowers passenger satisfaction with weight 0.5 per bag |
+
+## 2026-11-18 T66 stand upgrades and assignments
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| Jet bridges while only floor 0 can be built | Bridges wait for T51. T66 ships stairs and bus bay, hydrant pit and fixed ground power now; jet bridge access types 1 to 4 stay unbuildable until multi floor terminals exist |
+| What the stand inspector assigns | The gate desk only. Check in stays airline wide. A stand with no gate desk falls back to the nearest one and shows a warning. The baggage bay comes from T43 and the carousel follows the bay |
