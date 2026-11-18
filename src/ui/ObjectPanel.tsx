@@ -1,5 +1,5 @@
 import { AIRFIELD, BUSINESS, GROUND, GSE_INDEX, STAND_ACCESS, SURFACE_SPEC } from '@data/index';
-import { deskOptions, standWarnings } from './standInspector';
+import { bagNodeNumber, bayOptions, deskOptions, standBagState, standWarnings } from './standInspector';
 import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
@@ -310,6 +310,109 @@ function StandAccess({ stand, index, send }: { stand: Stand; index: number; send
           {t(`inspector.stand.warn.${w}`)}
         </div>
       ))}
+      <StandBaggage stand={stand} index={index} send={send} />
+    </div>
+  );
+}
+
+/** Baggage bay choice of a commercial stand, its arrival carousel and the warnings that follow (T43). */
+function StandBaggage({ stand, index, send }: { stand: Stand; index: number; send(cmd: Command): void }) {
+  const info = useGameStore((s) => s.business?.baggage);
+  const bays = info?.bays ?? [];
+  const bayId = info?.standBay[index] ?? -1;
+  const state = standBagState({ commercial: (stand.accepts & ACCEPT_COMMERCIAL) !== 0, bayId, bays });
+  if (!state.visible) return null;
+  const options = bayOptions(bays);
+  const now = options.find((o) => o.id === bayId);
+  const nodes = info?.nodes ?? [];
+  const select = (id: number): void => useToolStore.getState().set({ tool: 'select', selection: { kind: 'bagNode', id } });
+  return (
+    <div style="display:grid;gap:4px" data-testid="stand-baggage">
+      <label style="display:flex;justify-content:space-between;gap:6px">
+        {t('inspector.stand.bay')}
+        <select data-testid="stand-bay" value={String(bayId)} onChange={(e) => send({ type: 'setStandBay', standId: stand.id, bayId: Number((e.target as HTMLSelectElement).value) })}>
+          <option value="-1">{t('inspector.stand.bayNone')}</option>
+          {options.map((o) => (
+            <option key={o.id} value={String(o.id)}>
+              {tFormat('inspector.stand.bayOption', { n: o.number, building: o.building, used: o.used, total: o.total })}
+            </option>
+          ))}
+        </select>
+      </label>
+      {now && state.carousel !== null && (
+        <div style="color:var(--muted);font-size:11px" data-testid="stand-carousel">
+          {tFormat('inspector.stand.carousel', { n: bagNodeNumber(nodes, state.carousel) })}
+        </div>
+      )}
+      {now && state.warning === 'bayNoCarousel' && (
+        <div style="color:var(--warn)" data-testid="stand-warn-bayNoCarousel">
+          {tFormat('inspector.stand.bayNoCarousel', { n: now.number })}
+        </div>
+      )}
+      {now && (
+        <button data-testid="stand-bay-select" onClick={() => select(now.id)}>
+          {t('inspector.stand.selectBay')}
+        </button>
+      )}
+      {state.warning === 'noBay' && (
+        <div style="color:var(--warn)" data-testid="stand-warn-noBay">
+          {t('inspector.stand.warn.noBay')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Panel of a selected baggage node: buffer, read only connections, warnings, Fix automatically and Remove. */
+function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
+  const info = useGameStore((s) => s.business?.baggage);
+  const nodes = info?.nodes ?? [];
+  const node = nodes.find((n) => n.id === id);
+  if (!node) return null;
+  const label = (other: number): { kind: string; n: number } => {
+    const o = nodes.find((x) => x.id === other);
+    return { kind: o ? t(`inspector.bag.kind.${o.kind}`) : '', n: bagNodeNumber(nodes, other) };
+  };
+  return (
+    <div data-testid="bag-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+      <div style="font-weight:600">{t(`inspector.bag.kind.${node.kind}`)}</div>
+      <div style="color:var(--muted);font-size:11px" data-testid="bag-id">
+        {tFormat('inspector.bag.id', { id: node.id })}
+      </div>
+      <div data-testid="bag-buffer">{tFormat('inspector.bag.buffer', { held: node.held, capacity: node.capacity })}</div>
+      <div class="section" style="margin:4px 0 2px">{t('inspector.bag.connections')}</div>
+      {node.links.length === 0 && <div style="color:var(--muted)">{t('inspector.bag.none')}</div>}
+      {node.links.map((l) => {
+        const outgoing = l.from === node.id;
+        const other = label(outgoing ? l.to : l.from);
+        return (
+          <div key={`${l.from}:${l.to}`} data-testid="bag-link" style="display:flex;justify-content:space-between">
+            <span>{tFormat(outgoing ? 'inspector.bag.to' : 'inspector.bag.from', other)}</span>
+            <span style="color:var(--muted)">{t(l.mode === 'auto' ? 'inspector.bag.auto' : 'inspector.bag.manual')}</span>
+          </div>
+        );
+      })}
+      {node.warnings.map((w) => (
+        <div key={w} style="color:var(--warn)" data-testid={`bag-warn-${w}`}>
+          {t(`inspector.bag.warn.${w}`)}
+        </div>
+      ))}
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button data-testid="bag-fix" onClick={() => send({ type: 'fixBaggageNode', id })}>
+          {t('inspector.bag.fix')}
+        </button>
+        {node.kind !== 'drop' && (
+          <button
+            data-testid="bag-remove"
+            onClick={() => {
+              send({ type: 'removeBaggageNode', id });
+              useToolStore.getState().set({ selection: null });
+            }}
+          >
+            {t('inspector.bag.remove')}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -321,6 +424,7 @@ export function ObjectPanel({ send }: Props) {
   const biz = useGameStore((st) => st.business);
   if (!selection) return null;
   const { kind, id } = selection;
+  if (kind === 'bagNode') return <BagNodePanel id={id} send={send} />;
   if (kind === 'terminal') {
     const term = biz?.terminals.find((x) => x.id === id);
     if (!biz || !term) return null;

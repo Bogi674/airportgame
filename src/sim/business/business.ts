@@ -977,7 +977,7 @@ export class Business {
     return out;
   }
 
-  payload(tick: number): BusinessPayload {
+  payload(tick: number): Omit<BusinessPayload, 'baggage'> {
     const stands = this.airfield.data.stands;
     return {
       board: this.board(tick),

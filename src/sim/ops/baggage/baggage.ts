@@ -1,6 +1,6 @@
 import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { FIXTURE_KEYS, FIXTURE_ZONES, TICKS_PER_MINUTE, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { bagKey, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
@@ -369,6 +369,52 @@ export class Baggage {
     const out: BagWarning[] = [];
     for (const n of this.nets) out.push(...n.net.warnings());
     return out;
+  }
+
+  /**
+   * Read only facts for the inspectors, built at payload cadence. It scans the batch store and the networks and changes nothing,
+   * so it never touches the state hash. `standIds` is the stand order of the airfield.
+   */
+  inspect(standIds: readonly number[]): BaggageInfo {
+    const nodes: BagNodeInfo[] = [];
+    const bays: BaggageInfo['bays'] = [];
+    const sorted = this.recs.slice().sort((a, b) => a.id - b.id);
+    for (const rec of sorted) {
+      const net = this.netOf(rec.building);
+      if (net === null) continue;
+      const node = net.nodeList().find((n) => n.id === rec.id);
+      const links = net
+        .linkList()
+        .filter((l) => l.src === rec.id || l.dst === rec.id)
+        .map((l) => ({ from: l.src, to: l.dst, mode: l.mode }));
+      const warnings = net
+        .warnings()
+        .filter((w) => w.id === rec.id)
+        .map((w) => w.code);
+      const cells: [number, number][] = rec.spec === null ? [[rec.cell[0], rec.cell[1]]] : nodeCells(rec.spec).map(([x, y]): [number, number] => [x, y]);
+      nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec.kind), links, warnings });
+      if (rec.kind === 'bay' && rec.spec !== null) {
+        bays.push({ id: rec.id, building: rec.building, slots: Math.floor((rec.spec.widthCells * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM), stands: node ? node.stands.slice() : [], carousel: net.carouselOf(rec.id) });
+      }
+    }
+    return { standBay: standIds.map((id) => this.bayOfStand(id) ?? -1), bays, nodes };
+  }
+
+  private capacityOf(kind: BagNodeKind): number {
+    if (kind === 'drop') return BAGGAGE.dropPoint.bufferBags;
+    if (kind === 'machine') return BAGGAGE.screeningMachine.bufferBags;
+    if (kind === 'bay') return BAGGAGE.bay.bufferBags;
+    return BAGGAGE.carousel.capacityBags;
+  }
+
+  /** Bags a node holds right now, counted straight from the batch store. */
+  private heldAt(rec: BagNodeRec): number {
+    if (rec.kind === 'drop') return this.dropBags(rec.id);
+    if (rec.kind === 'carousel') return this.carouselHeld(rec.id);
+    const stage = rec.kind === 'machine' ? BagStage.Queue : BagStage.Bay;
+    let n = 0;
+    for (let b = 0; b < this.hi; b++) if (this.stage[b] === stage && this.node[b] === rec.id) n += this.count[b];
+    return n;
   }
 
   bayOfStand(standId: number): number | null {

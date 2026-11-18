@@ -22,6 +22,7 @@ import { windBand, type SitePayload } from '@shared/site';
 import { WALL, type TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
+import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
 import { planFor, smoothCorners } from '@render/markings/taxiPlan';
@@ -158,6 +159,14 @@ export class ToolController {
       if (!g) return [];
       const b = floorBounds(g);
       return b ? [{ k: 'poly', pts: rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1) }] : [];
+    }
+    if (kind === 'bagNode') {
+      const node = useGameStore.getState().business?.baggage.nodes.find((x) => x.id === id);
+      const g = node ? useGameStore.getState().terminalGrids.find((x) => x.id === node.building) : undefined;
+      if (!node || !g) return [];
+      const xs = node.cells.map((c) => c[0]);
+      const ys = node.cells.map((c) => c[1]);
+      return [{ k: 'poly', pts: rectWorld(g, Math.min(...xs), Math.min(...ys), Math.max(...xs) + 1, Math.max(...ys) + 1) }];
     }
     if (kind === 'tower') {
       const tw = af.towers?.find((x) => x.id === id);
@@ -733,7 +742,8 @@ export class ToolController {
       case 'select': {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
         const term = hit ? null : this.terminalAt(p);
-        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : term ? { kind: 'terminal', id: term } : null });
+        const bag = hit ? null : this.bagNodeAt(p);
+        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null });
         break;
       }
     }
@@ -1997,6 +2007,18 @@ export class ToolController {
     if (t && t.ox === o.ox && t.oy === o.oy && t.headingDeg === heading) return t;
     this.tTemp = newGrid(-1, o.ox, o.oy, heading);
     return this.tTemp;
+  }
+
+  /** Id of the baggage node under the point, from the derived node cells of the business payload. */
+  private bagNodeAt(p: Pt): number | null {
+    const st = useGameStore.getState();
+    const nodes = st.business?.baggage.nodes ?? [];
+    for (const g of st.terminalGrids) {
+      const c = cellAtWorld(g, p.x, p.y);
+      const node = bagNodeAt(nodes, g.id, c.cx, c.cy);
+      if (node) return node.id;
+    }
+    return null;
   }
 
   private terminalAt(p: Pt): number | null {

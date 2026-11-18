@@ -26,7 +26,7 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
 }
 
 export interface Selection {
-  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'tower' | 'road' | 'depot' | 'building';
+  kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'bagNode' | 'tower' | 'road' | 'depot' | 'building';
   id: number;
 }
 

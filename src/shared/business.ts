@@ -235,6 +235,46 @@ export interface BoardRow {
   startMin: number;
 }
 
+/** A link of the baggage network as the inspector lists it. */
+export interface BagLinkInfo {
+  from: number;
+  to: number;
+  mode: 'auto' | 'manual';
+}
+
+export type BagWarningCode = 'dropNoMachine' | 'machineNoBay' | 'bayNoCarousel';
+
+export interface BagNodeInfo {
+  id: number;
+  kind: 'drop' | 'machine' | 'bay' | 'carousel';
+  building: number;
+  /** Logical cells the node covers, for picking it with the select tool. */
+  cells: [number, number][];
+  /** Bags held now and the buffer size from data. */
+  held: number;
+  capacity: number;
+  /** Every link that starts or ends at this node. */
+  links: BagLinkInfo[];
+  warnings: BagWarningCode[];
+}
+
+export interface BagBayInfo {
+  id: number;
+  building: number;
+  slots: number;
+  /** Ids of the stands assigned to this bay. */
+  stands: number[];
+  /** Carousel the bay feeds, null when it has none. */
+  carousel: number | null;
+}
+
+export interface BaggageInfo {
+  /** Per stand, indexed like airfield.data.stands: the bay id, -1 when none. */
+  standBay: number[];
+  bays: BagBayInfo[];
+  nodes: BagNodeInfo[];
+}
+
 export interface BusinessPayload {
   board: BoardRow[];
   /** Flight series of every signed airline (T61). */
@@ -255,6 +295,8 @@ export interface BusinessPayload {
   standGate: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: farther from its gate desk than the stairs walk limit (T66). */
   standFar: number[];
+  /** Derived baggage network facts for the inspectors (T43). Filled by the sim, never part of the saved state. */
+  baggage: BaggageInfo;
   /** Landings plus takeoffs the tower allows per rolling hour across every runway, 0 without a tower. */
   movementBudget: number;
   /** Four numbers per flight that holds a stand (Scheduled, Inbound or OnGround): stand id, flight, start and end in absolute game minutes. Uncapped, the numbers the stand rule compares. */

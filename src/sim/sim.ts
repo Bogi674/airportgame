@@ -19,7 +19,7 @@ import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, type CohortsSave } from './cohorts/cohorts';
 import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
-import { ATC_MIN_CELLS, TICKS_PER_DAY, type LedgerCategory, type TerminalGrid } from '@shared/business';
+import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
 import { foldInts, foldU32, HASH_INIT } from './hash';
@@ -535,13 +535,13 @@ export class Sim {
   }
 
   /** The business payload when it or the airfield changed or ten game minutes passed, otherwise null. */
-  takeBusiness(): ReturnType<Business['payload']> | null {
+  takeBusiness(): BusinessPayload | null {
     const afVersion = this.airfield.data.version;
     if (this.business.version === this.businessSent && afVersion === this.businessAirfield && this.tick - this.businessSentTick < 6000) return null;
     this.businessSent = this.business.version;
     this.businessAirfield = afVersion;
     this.businessSentTick = this.tick;
-    return this.business.payload(this.tick);
+    return { ...this.business.payload(this.tick), baggage: this.baggage.inspect(this.airfield.data.stands.map((st) => st.id)) };
   }
 
   /** Copies of the terminal grids when they changed since the last call, otherwise null. */
