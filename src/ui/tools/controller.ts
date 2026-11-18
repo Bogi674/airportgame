@@ -21,7 +21,7 @@ import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@share
 import { windBand, type SitePayload } from '@shared/site';
 import type { TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
-import { cellAtWorld, cellIndex, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
+import { cellAtWorld, cellIndex, fixtureAnchor, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
@@ -743,7 +743,8 @@ export class ToolController {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
         const term = hit ? null : this.terminalAt(p);
         const bag = hit ? null : this.bagNodeAt(p);
-        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null });
+        const fixturePick = term !== null && bag === null ? this.fixtureAt(p, term) : null;
+        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null, fixturePick });
         break;
       }
     }
@@ -2022,6 +2023,16 @@ export class ToolController {
       if (node) return node.id;
     }
     return null;
+  }
+
+  /** The anchor cell of the fixture under the pointer in one terminal, or null when that cell holds no fixture. */
+  private fixtureAt(p: Pt, building: number): { building: number; x: number; y: number } | null {
+    const g = useGameStore.getState().terminalGrids.find((x) => x.id === building);
+    if (!g) return null;
+    const c = cellAtWorld(g, p.x, p.y);
+    const anchor = fixtureAnchor(g, cellIndex(g, c.cx, c.cy));
+    if (anchor < 0) return null;
+    return { building, x: g.x0 + (anchor % g.w), y: g.y0 + Math.floor(anchor / g.w) };
   }
 
   private terminalAt(p: Pt): number | null {

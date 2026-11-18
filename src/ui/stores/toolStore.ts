@@ -95,6 +95,8 @@ interface ToolState {
   snapMode: Partial<Record<Tool, SnapMode>>;
   /** True while Alt is held, so the context bar shows the live snap mode. */
   altHeld: boolean;
+  /** Fixture picked by the select tool inside a terminal: the anchor cell in logical cells, or null. */
+  fixturePick: { building: number; x: number; y: number } | null;
   /** What the active tool wants the player to do next. */
   hint: string | null;
   /** Why the preview is invalid, with the parcels to buy when land is the problem. */
@@ -146,6 +148,7 @@ export const useToolStore = create<ToolState>((set) => ({
   gridId: null,
   snapMode: {},
   altHeld: false,
+  fixturePick: null,
   hint: null,
   problem: null,
   buy: null,

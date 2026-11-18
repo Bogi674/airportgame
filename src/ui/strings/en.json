@@ -805,6 +805,7 @@
   "terminal.arrivals": "Arrivals {arr} per game hour",
   "terminal.leased": "{n} shops leased",
   "inspector.terminalHint": "Use the terminal tool to add or change anything.",
+  "inspector.level": "Level {n}",
   "notice.terminalBounds": "That is outside the terminal's building area (320 m square).",
   "notice.terminalTooLarge": "That area is too large for one edit.",
   "notice.terminalNeedsFoundation": "There is no foundation there. Lay a foundation first.",
