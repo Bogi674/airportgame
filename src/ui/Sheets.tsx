@@ -65,6 +65,29 @@ function FinanceSheet({ send }: Props) {
         <span>{t('top.rating')}: {formatNumber(b.rating)}</span>
         <span>{b.paxToday} pax, {b.flightsToday} flights today, {b.lostPaxToday} lost</span>
       </div>
+      {b.paxDay.length > 0 && (
+        <div data-testid="pax-satisfaction" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
+          <span>
+            {tFormat('finance.paxSat', {
+              sat: formatNumber(b.paxDay[0]!),
+              queue: formatNumber(b.paxDay[1]!),
+              walk: formatNumber(b.paxDay[2]!),
+              unmet: formatNumber(b.paxDay[3]!),
+              missed: formatNumber(b.paxDay[4]!),
+            })}
+          </span>
+          <span>
+            {tFormat('finance.paxVisits', {
+              hunger: formatNumber(b.paxDay[5]!),
+              thirst: formatNumber(b.paxDay[6]!),
+              toilet: formatNumber(b.paxDay[7]!),
+              rest: formatNumber(b.paxDay[8]!),
+              shop: formatNumber(b.paxDay[9]!),
+              spend: formatMoney(b.paxDay[10]!),
+            })}
+          </span>
+        </div>
+      )}
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <button data-testid="take-loan" disabled={canBorrow < loanStep} onClick={() => send({ type: 'takeLoan', amount: loanStep })}>
           {tFormat('finance.take', { amount: formatMoney(loanStep) })}

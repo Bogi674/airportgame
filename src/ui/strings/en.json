@@ -599,6 +599,8 @@
   "finance.take": "Borrow {amount}",
   "finance.repay": "Repay {amount}",
   "finance.staff": "Staff {n}",
+  "finance.paxSat": "Passenger satisfaction {sat}. Per passenger: queues minus {queue}, walking minus {walk}, unmet needs minus {unmet}, missed flights minus {missed}",
+  "finance.paxVisits": "Visits yesterday: food {hunger}, drinks {thirst}, toilets {toilet}, seats {rest}, shops {shop}. Visitor spend {spend}",
   "finance.cat.construction": "Construction",
   "finance.cat.land": "Land",
   "finance.cat.landing": "Landing fees",

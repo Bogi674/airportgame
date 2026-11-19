@@ -237,6 +237,8 @@ export class Business {
   bagDayReset: (() => void) | null = null;
   /** Closes the day of passenger satisfaction and returns the mean over the trailing 30 days, 0 to 100, or -1 with no passenger rated. Set by the sim (T67). */
   closePax: (() => number) | null = null;
+  /** Last closed day of passengers, see BusinessPayload.paxDay. Set by the sim (T67). */
+  paxDay: (() => number[]) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -990,6 +992,7 @@ export class Business {
       stars: this.stars(),
       paxScore: Math.round(this.paxScore * 100),
       airlineScore: Math.round(this.airlineScore * 100),
+      paxDay: this.paxDay?.() ?? [],
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
       gateDesks: this.deskList().map((d) => ({ building: d.building, x: d.x, y: d.y })),

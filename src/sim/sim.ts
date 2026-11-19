@@ -17,7 +17,7 @@ import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
 import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
-import { Cohorts, type CohortsSave } from './cohorts/cohorts';
+import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
 import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -30,6 +30,20 @@ import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 /** Subsystems in execution order. The stress tool times each one separately. */
 const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'baggage', 'flights', 'aircraft', 'vehicles'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
+
+/**
+ * The last closed passenger day as the finance sheet shows it (BusinessPayload.paxDay), read from the DAY counters
+ * of cohorts.ts. Empty while no passenger was rated, which is the case right after a restore until the next daily close.
+ */
+function paxDayNumbers(day: Float64Array): number[] {
+  const rated = day[DAY.SatCount]!;
+  if (rated <= 0) return [];
+  const round = (v: number): number => Math.round(v * 10) / 10;
+  const out = [DAY.SatSum, DAY.PenQueue, DAY.PenWalk, DAY.PenUnmet, DAY.PenMissed].map((k) => round(day[k]! / rated));
+  for (let k = DAY.Visits0; k < DAY.Spend; k++) out.push(round(day[k]!));
+  out.push(round(day[DAY.Spend]!));
+  return out;
+}
 
 /**
  * The simulation core. Pure TypeScript with no DOM and no wall clock, so the same seed
@@ -126,6 +140,7 @@ export class Sim {
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
     this.business.closePax = () => this.cohorts.closeDay();
+    this.business.paxDay = () => paxDayNumbers(this.cohorts.lastDay);
     this.baggage = new Baggage(this.business, {
       getCash: (): number => this.cash,
       book: (amount: number): void => this.book('construction', amount),

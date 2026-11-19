@@ -334,6 +334,8 @@ export interface BusinessPayload {
   stars: number;
   paxScore: number;
   airlineScore: number;
+  /** Last closed day per rated passenger: satisfaction, queue, walk, unmet need and missed flight points, then visits per need (hunger, thirst, toilet, rest, shop) and visitor spend. Derived, never saved. */
+  paxDay: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a taxi node reaches the stand. */
   standLinked: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a contact stand has a terminal in reach, others are 1. */

@@ -136,7 +136,7 @@ const fixtureId = (name: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.
 const NEED_KIND_A = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[0]!)));
 const NEED_KIND_B = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[1] ?? NEEDS.needs[k].fixtures[0]!)));
 /** Counters of the current day: visits per need, visitor spend, the satisfaction of passengers rated today and their number, then the penalty points taken by cause. */
-const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, Count: NEED_COUNT + 7 } as const;
+export const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, Count: NEED_COUNT + 7 } as const;
 const SAT = NEEDS.satisfaction;
 const SECONDS_PER_MINUTE = 60;
 const HOURS_PER_LEVEL = 1000;

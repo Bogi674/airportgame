@@ -825,3 +825,21 @@ describe('departure revenue', () => {
     expect(sim.business.payload(sim.traffic.nowTick).flightsToday).toBe(flights + 1);
   });
 });
+
+describe('passenger day for the finance sheet (T67)', () => {
+  it('after a day with boarded cohorts the payload lists eleven numbers, the first a satisfaction from 0 to 100', () => {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2, seating: 0, toilet: 0 })).toEqual([]);
+    expect(sim.business.payload(sim.traffic.nowTick).paxDay).toEqual([]);
+    sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 6000, -1);
+    for (let t = 0; t < 16000 && sim.cohorts.boarded === 0; t++) sim.step();
+    expect(sim.cohorts.boarded).toBeGreaterThan(0);
+    (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(sim.tick + TICKS_PER_DAY);
+    const day = sim.business.payload(sim.traffic.nowTick).paxDay;
+    expect(day).toHaveLength(11);
+    expect(day[0]).toBeGreaterThanOrEqual(0);
+    expect(day[0]).toBeLessThanOrEqual(100);
+  });
+});
