@@ -12,7 +12,6 @@ Bugs passed with notice or skipped as minor (see the bug triage rule in `CLAUDE.
 * T73: security keeps its 2 by 2 m block because the kit lane is 16 by 4 m. Implication: security looks like the old block until T74 gives it the kit footprint.
 * T43: bays do not test their truck edge against the service road graph and tractors do not drive between bay slots and stands; loading uses the existing tractor dock at the aircraft. Implication: a bay far from any road still works. Moved to T78.
 * T43: legacy belt fixtures keep counting for arrival capacity instead of becoming carousel anchors on load, because a carousel needs 11 by 2 free cells. Implication: old saves keep working without carousels; the migration is in T78.
-* T43: screening machines need no security officer until staff exist (T68). Implication: machines never halt for lack of staff.
 * T66: through stands now draw the zebra walkway and bus bay only with the bus bay upgrade, and remote stands no longer draw the bus box by default. Implication: the stand scene baselines change again (see the T72 entry).
 * T54: queued cohorts keep the queue slots from the earlier people sample, so at a busy security lane a few figures overlap the lane block and the wall line. Implication: a visible clump at security until queue slots follow the kit lane footprint (T74).
 * T54: tests/walkRebuild.test.ts "builds and updates a stress terminal within the time budget" can time out when two full test runs share the machine. Implication: none on play; it passes alone.

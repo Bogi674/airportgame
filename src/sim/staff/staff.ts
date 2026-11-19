@@ -1,9 +1,9 @@
 import { STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
-import { fixtureKey, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, fixtureKey, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { cornerWorld } from '@shared/terminalOps';
 import type { Business } from '../business/business';
-import type { Baggage } from '../ops/baggage/baggage';
+import type { Baggage, BagNodeRec } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { breakJitterMin, staffSeed, staffSkill } from './staffTraits';
@@ -18,6 +18,8 @@ type SavedArray = Uint8Array | Int16Array | Int32Array | Uint32Array;
 type SlotCtor = { new (buffer: ArrayBuffer): SavedArray; BYTES_PER_ELEMENT: number };
 
 const SHIFTS = STAFF.shifts.startsH.length;
+const MACHINE_KIND = FIXTURE_KEYS.indexOf('screeningMachine') + 1;
+const MACHINE_STATION = STAFF.stations.screeningMachine!;
 
 /** Index of the shift running at the tick. Before the first start hour the last shift of the previous day runs. */
 export function shiftAt(tick: number): number {
@@ -132,8 +134,8 @@ export class Staff {
   curbY = new Float64Array(0);
   /** Station index by `gridId|x|y|kind`, built at rebuild only. */
   private readonly stationOf = new Map<string, number>();
-  /** serviceVersion, terminalVersion and grid count the stations were built from. */
-  private readonly builtFor = new Int32Array(3).fill(-1);
+  /** serviceVersion, terminalVersion, grid count and baggage draw version the stations were built from. */
+  private readonly builtFor = new Int32Array(4).fill(-1);
   /** Seats of each station and shift the pass keeps, and seats already held. Scratch sized at rebuild. */
   private keepSt = new Int32Array(0);
   private heldSt = new Int32Array(0);
@@ -207,6 +209,17 @@ export class Staff {
     return null;
   }
 
+  /** Screening machines of a grid with a spec, by id. */
+  private machinesOf(gridId: number): BagNodeRec[] {
+    return this.baggage.nodesOf(gridId).filter((r) => r.kind === 'machine' && r.spec !== null).sort((a, b) => a.id - b.id);
+  }
+
+  /** True when an officer stands on the screening machine with this record id. */
+  machineOn(id: number): boolean {
+    for (let s = 0; s < this.stCount; s++) if (this.sMachine[s] === id) return this.sPresent[s]! > 0;
+    return false;
+  }
+
   /** Rebuilds the stations when needed and applies the staff on duty to the service nodes. */
   refresh(): void {
     this.rebuildStationsIfStale();
@@ -215,10 +228,11 @@ export class Staff {
 
   private rebuildStationsIfStale(): boolean {
     const b = this.business;
-    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length) return false;
+    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length && this.builtFor[3] === this.baggage.drawVersion()) return false;
     this.builtFor[0] = b.serviceVersion;
     this.builtFor[1] = b.terminalVersion;
     this.builtFor[2] = b.grids.length;
+    this.builtFor[3] = this.baggage.drawVersion();
     this.rebuildStations();
     return true;
   }
@@ -229,6 +243,7 @@ export class Staff {
     for (let gi = 0; gi < b.grids.length; gi++) {
       const sn = b.serviceNodes[gi]!;
       for (let k = 0; k < sn.count; k++) if (sn.staffNeed[k]! > 0) n++;
+      n += this.machinesOf(b.grids[gi]!.id).length;
     }
     this.stCount = n;
     this.sGridIdx = new Int32Array(n);
@@ -265,6 +280,18 @@ export class Staff {
         this.sRole[s] = STAFF_ROLE_KEYS.indexOf(entry.role);
         this.sNeed[s] = entry.need;
         this.stationOf.set(`${g.id}|${sn.lx[k]}|${sn.ly[k]}|${sn.kind[k]}`, s);
+        s++;
+      }
+      for (const rec of this.machinesOf(g.id)) {
+        this.sGridIdx[s] = gi;
+        this.sGridId[s] = g.id;
+        this.sX[s] = rec.cell[0];
+        this.sY[s] = rec.cell[1];
+        this.sKind[s] = MACHINE_KIND;
+        this.sMachine[s] = rec.id;
+        this.sRole[s] = STAFF_ROLE_KEYS.indexOf(MACHINE_STATION.role);
+        this.sNeed[s] = MACHINE_STATION.need;
+        this.stationOf.set(`${g.id}|${rec.cell[0]}|${rec.cell[1]}|${MACHINE_KIND}`, s);
         s++;
       }
       const curb = b.curbNode(gi);

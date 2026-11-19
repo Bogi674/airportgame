@@ -154,6 +154,7 @@ export class Sim {
       },
     }, this.rng);
     this.staff = new Staff(this.business, this.baggage);
+    this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
     this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
     this.business.bagMissingShare = () => this.baggage.missingShare();
     this.business.bagDayReset = () => this.baggage.resetDay();

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Sim } from '../src/sim/sim';
 import { Rng } from '../src/sim/rng';
 import { buildServiceNodes, serviceJoin, serviceUpdate, serviceWait } from '../src/sim/terminal/serviceNodes';
-import { FIXTURE_KEYS } from '@shared/business';
+import { AIRCRAFT } from '@data/aircraft';
+import { FIXTURE_KEYS, WALL } from '@shared/business';
+import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '@shared/terminalOps';
 import { buildTestAirport, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 import { Staff, STAFF_FLAG, STAFF_STATE, type StaffSave } from '../src/sim/staff/staff';
 import { breakJitterMin, staffSeed, staffSkill } from '../src/sim/staff/staffTraits';
@@ -276,5 +278,78 @@ describe('automatic staffing', () => {
       b.step();
     }
     expect(a.stateHash()).toBe(b.stateHash());
+  });
+});
+
+describe('screening machine staffing', () => {
+  type Edit = { op: 'foundation' | 'floor' | 'zone' | 'fixture'; x0: number; y0: number; x1: number; y1: number; variant: number; rot?: 0 | 1 | 2 | 3 };
+
+  /** A hall with a check in desk, a security lane, a staff room with a machine, a carousel and a bay serving the first stand. */
+  function machineLayout(): { sim: Sim; machine: number; checkIn: (bags: number) => number } {
+    const { ox, oy } = originFor(3960, 5440, 90);
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    const edit = (building: number, e: Edit): string[] => run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e });
+    expect(edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 70, y1: 53, variant: 0 })).toEqual([]);
+    const building = sim.business.grids[0]!.id;
+    expect(edit(building, { op: 'floor', x0: 40, y0: 40, x1: 70, y1: 53, variant: 2 })).toEqual([]);
+    expect(edit(building, { op: 'zone', x0: 40, y0: 46, x1: 60, y1: 53, variant: 4 })).toEqual([]);
+    const g = sim.business.grids[0]!;
+    for (let x = 41; x <= 45; x++) {
+      g.hWall[hEdgeIndex(g, x, 47)] = WALL.Wall;
+      g.hWall[hEdgeIndex(g, x, 50)] = x === 43 ? WALL.Door : WALL.Wall;
+    }
+    for (let y = 47; y <= 49; y++) {
+      g.vWall[vEdgeIndex(g, 41, y)] = WALL.Wall;
+      g.vWall[vEdgeIndex(g, 46, y)] = WALL.Wall;
+    }
+    for (let x = 50; x <= 57; x++) g.hWall[hEdgeIndex(g, x, 53)] = WALL.Wall;
+    expect(edit(building, { op: 'fixture', x0: 60, y0: 41, x1: 61, y1: 42, variant: 1 })).toEqual([]);
+    expect(edit(building, { op: 'fixture', x0: 64, y0: 41, x1: 65, y1: 42, variant: 2, rot: 1 })).toEqual([]);
+    const place = (kind: 'machine' | 'bay' | 'carousel', cx: number, cy: number): void => {
+      expect(run(sim, { type: 'placeBaggageNode', building, kind, cx, cy, rot: 0, widthCells: 4 })).toEqual([]);
+    };
+    place('machine', 42, 48);
+    place('carousel', 42, 42);
+    place('bay', 50, 49);
+    const recs = sim.baggage.nodesOf(building);
+    const bay = recs.find((r) => r.kind === 'bay')!.id;
+    expect(run(sim, { type: 'setStandBay', standId: sim.airfield.data.stands[0]!.id, bayId: bay })).toEqual([]);
+    const machine = recs.find((r) => r.kind === 'machine')!.id;
+    const anchor = cellIndex(g, 60, 41);
+    const a320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+    const checkIn = (bags: number): number => {
+      const t = sim.traffic;
+      const f = t.scheduleArrival(a320, sim.tick + 1, 0, t.turnaroundTicks(a320), 0);
+      t.fStand[f] = sim.airfield.data.stands[0]!.id;
+      sim.baggage.checkIn(building, anchor, t.serialOf(f), bags);
+      return t.serialOf(f);
+    };
+    return { sim, machine, checkIn };
+  }
+
+  it('leaves the batch unscreened while both officers stand on the lane', () => {
+    const l = machineLayout();
+    expect(run(l.sim, { type: 'setStaffCap', role: 1, cap: 2 })).toEqual([]);
+    const lane = stationsOf(l.sim.staff, 'security')[0]!;
+    expect(l.sim.staff.sPresent[lane]).toBe(2);
+    expect(l.sim.staff.machineOn(l.machine)).toBe(false);
+    const serial = l.checkIn(3);
+    for (let t = 0; t < 1500; t++) l.sim.step();
+    expect(l.sim.baggage.bagsOf(serial, 5)).toBe(0);
+    expect(l.sim.baggage.batchCount).toBeGreaterThan(0);
+  });
+
+  it('screens once the pass staffs the machine', () => {
+    const l = machineLayout();
+    expect(run(l.sim, { type: 'setStaffCap', role: 1, cap: -1 })).toEqual([]);
+    expect(l.sim.staff.machineOn(l.machine)).toBe(true);
+    const serial = l.checkIn(3);
+    let reached = false;
+    for (let t = 0; t < 1500 && !reached; t++) {
+      l.sim.step();
+      reached = l.sim.baggage.bagsOf(serial, 5) === 3;
+    }
+    expect(reached).toBe(true);
   });
 });
