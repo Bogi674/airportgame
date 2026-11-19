@@ -544,6 +544,15 @@ export class Renderer {
           const dist = d0.gateDistM[n]!;
           this.fillOverlayCell(g, i, dist === OVERLAY_MAX ? this.overlayMutedFill : ramp[rampIndex(dist, scale)]!);
         }
+      } else if (kind === 'staffing') {
+        // Percent short of the officers a station needs, so a full station is the cool end of the ramp.
+        for (let n = 0; n < d0.stationCell.length; n++) {
+          const i = d0.stationCell[n]!;
+          if (i < 0) continue;
+          const need = d0.stationNeed[n]!;
+          const short = need > 0 ? Math.round((100 * (need - Math.min(need, d0.stationPresent[n]!))) / need) : 0;
+          this.fillOverlayCell(g, i, ramp[rampIndex(short, scale)]!);
+        }
       }
       if (labelled && (kind === 'queue' || kind === 'walk')) this.labelOverlayCells(d0, kind, m, this.overlayLabels[k]!);
     }

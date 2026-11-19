@@ -21,7 +21,7 @@ const UNIT: Record<Exclude<Shown, 'zones'>, StringKey> = {
   density: 'hud.overlay.unitDensity',
   queue: 'hud.overlay.unitWait',
   walk: 'hud.overlay.unitWalk',
-  staffing: 'hud.overlay.unitStaff',
+  staffing: 'hud.overlay.unitShort',
 };
 
 /** Zone swatches of the zones legend: the string of each zone and the theme token of its color. */
