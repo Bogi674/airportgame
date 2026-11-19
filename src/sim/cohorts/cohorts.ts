@@ -135,6 +135,10 @@ const FLAG_AT_VISIT = 4;
 const FLAG_INTL = 8;
 /** An arrival an eGate sent to an officer: it queues at a passport booth only. */
 const FLAG_REFERRED = 16;
+/** An arrival that is done with the baggage claim, so a retry of the next step never claims again. */
+const FLAG_CLAIMED = 32;
+/** An arrival that was served at immigration and is on its way to the next step, so a retry of that step is a wheel stage and never queues again. */
+const FLAG_PASSED = 64;
 const SLOW = NEEDS.mobility.slowFactor;
 /** Cumulative group size weights per profile, normalised to 1. Index 0 is size 1. */
 const GROUP_CUM = PROFILE_ROWS.map((r) => {
@@ -283,6 +287,9 @@ export class Cohorts {
   readonly flActive: Int32Array;
   /** Called with grid id, anchor cell index, flight serial and bag count when a cohort finishes at a check in or bag drop node. Set by the sim (T43). */
   onCheckIn: ((gridId: number, cell: number, serial: number, bags: number) => void) | null = null;
+  /** The baggage side of the claim, set by the sim (T20): when the first bags of a flight reached a carousel and which carousel serves it. */
+  bagLookup: { deliveredAt(serial: number): number; arrivalCarousel(serial: number, out: Int32Array): boolean } | null = null;
+  private readonly carOut = new Int32Array(3);
   private readonly rng: Rng;
   private readonly initialRng: number;
   private readonly arrRng: Rng;
@@ -988,9 +995,18 @@ export class Cohorts {
       case Stage.ToExit:
         this.exitArrival(c);
         break;
+      case Stage.ToClaim:
+        this.stage[c] = Stage.Claim;
+        this.waitStart[c] = this.tick;
+        this.atClaim(c);
+        break;
+      case Stage.Claim:
+        this.atClaim(c);
+        break;
       case Stage.ToImmigration: {
         const t = this.table(g);
-        if (this.node[c]! < 0 || !t) this.toImmigration(g, c);
+        if (this.flags[c]! & FLAG_PASSED) this.afterImmigration(g, c);
+        else if (this.node[c]! < 0 || !t) this.toImmigration(g, c);
         else this.join(g, c, t.kind[this.node[c]!]!, t.kind[this.node[c]!]!, Stage.Immigration);
         break;
       }
@@ -1000,7 +1016,7 @@ export class Cohorts {
   /** The cohort has left the aircraft. */
   private afterDeboard(g: number, c: number): void {
     if (this.flags[c]! & FLAG_INTL) this.toImmigration(g, c);
-    else this.toExit(g, c);
+    else this.toClaim(g, c);
   }
 
   /** Walks an international arrival to the cheapest immigration node. With none it retries, and strands after the limit. */
@@ -1051,12 +1067,79 @@ export class Cohorts {
       this.toImmigration(g, c);
       return;
     }
-    this.flags[c] = this.flags[c]! & ~FLAG_REFERRED;
+    // The cohort leaves the queued stage before the next step, so a retry of that step is an ordinary wheel stage.
+    const wg = this.business.walkGraphs[g]!;
+    const at = t.walkNode[node]!;
+    this.flags[c] = (this.flags[c]! & ~FLAG_REFERRED) | FLAG_PASSED | FLAG_AT_VISIT;
+    this.walkToX[c] = wg.nodeX[at]!;
+    this.walkToY[c] = wg.nodeY[at]!;
+    this.node[c] = -1;
+    this.stage[c] = Stage.ToImmigration;
     this.afterImmigration(g, c);
   }
 
   /** Immigration is done, the cohort stands at its node. */
   private afterImmigration(g: number, c: number): void {
+    this.toClaim(g, c);
+  }
+
+  /** Walks an arrival to the carousel of its stand's bay. Bags missing from the claim, or none to claim, skip it. */
+  private toClaim(g: number, c: number): void {
+    if (this.flags[c]! & FLAG_CLAIMED) {
+      this.afterClaim(g, c);
+      return;
+    }
+    const wg = this.business.walkGraphs[g];
+    const look = this.bagLookup;
+    if (this.bags[c]! === 0) {
+      this.afterClaim(g, c);
+      return;
+    }
+    if (!look || !wg || !look.arrivalCarousel(this.serial[c]!, this.carOut) || this.carOut[0] !== this.gridId(g)) {
+      this.noBags(c);
+      this.afterClaim(g, c);
+      return;
+    }
+    const here = this.hereNode(g, c);
+    const to = nearestNode(wg, cellAt(wg, this.carOut[1]!, this.carOut[2]!));
+    if (here < 0 || to < 0 || !Number.isFinite(this.business.walkDistance(this.gridId(g), here, to))) {
+      this.retryOrStrand(c);
+      return;
+    }
+    this.walkTo(g, c, here, to, Stage.ToClaim);
+  }
+
+  /** The cohort waits at the carousel. It leaves when the first bags of its flight are on it, or gives up after the limit. */
+  private atClaim(c: number): void {
+    if (this.flags[c]! & FLAG_CLAIMED) {
+      this.afterClaim(this.building[c]!, c);
+      return;
+    }
+    if (this.bagLookup !== null && this.bagLookup.deliveredAt(this.serial[c]!) >= 0) this.leaveClaim(c, false);
+    else if (this.tick - this.born[c]! >= ARRIVALS.claim.giveUpMin * TICKS_PER_MINUTE) this.leaveClaim(c, true);
+    else this.schedule(c, this.tick + gameSecondsToTicks(ARRIVALS.claim.pollS));
+  }
+
+  /** Ends the claim wait: the wait over the profile's patience costs points, and a cohort without its bags the missing bag points. */
+  private leaveClaim(c: number, missing: boolean): void {
+    const waited = this.tick - this.waitStart[c]!;
+    this.penalize(c, queuePoints(waited, PROFILE_ROWS[this.profile[c]!]!.patienceS), DAY.PenQueue);
+    this.day[DAY.ClaimWaitS] += (waited * CLOCK_SCALE) / TICKS_PER_SECOND;
+    this.day[DAY.ClaimCount] += 1;
+    this.waitStart[c] = -1;
+    if (missing) this.noBags(c);
+    this.afterClaim(this.building[c]!, c);
+  }
+
+  /** A cohort that did not get its bags: every member loses the missing bag points. */
+  private noBags(c: number): void {
+    this.penalize(c, ARRIVALS.satisfaction.missingBagPoints, DAY.PenMissingBag);
+    this.day[DAY.NoBags] += this.size[c]!;
+  }
+
+  /** The claim is over. Everyone goes on to the curb (customs comes in the next step of T20). */
+  private afterClaim(g: number, c: number): void {
+    this.flags[c] = this.flags[c]! | FLAG_CLAIMED;
     this.toExit(g, c);
   }
 

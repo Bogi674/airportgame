@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
-import { ARRIVALS } from '@data/index';
+import { ARRIVALS, NEEDS, PROFILES } from '@data/index';
 import { Sim } from '@sim/sim';
 import { DAY, Stage } from '@sim/cohorts/cohorts';
 import { FIXTURE_KEYS, TICKS_PER_MINUTE } from '@shared/business';
@@ -314,5 +314,187 @@ describe('immigration (T20 slice 6)', () => {
     dockRoute(home, false);
     runJourney(home);
     expect(co.day[DAY.PenQueue]).toBeGreaterThan(home.cohorts.day[DAY.PenQueue]!);
+  });
+});
+
+/** A flight of airline 0 on stand 0, whose turnaround unloads the bags. Steps until its passengers were counted. */
+function dockAirlineFlight(sim: Sim): { f: number; serial: number } {
+  const t = sim.traffic;
+  const f = t.scheduleArrival(A320, t.nowTick + 1, 0, t.turnaroundTicks(A320), 0);
+  t.fStand[f] = sim.airfield.data.stands[0]!.id;
+  for (let i = 0; i < 8000 && sim.business.flightPaxOf(f) === 0; i++) sim.step();
+  expect(sim.business.flightPaxOf(f)).toBeGreaterThan(0);
+  return { f, serial: t.serialOf(f) };
+}
+
+describe('baggage claim (T20 slice 7)', () => {
+  it('cohorts with bags wait in Claim until the bags are delivered and cohorts without bags never enter it', () => {
+    const sim = arrivalHall({ carousel: true });
+    const { serial } = dockAirlineFlight(sim);
+    const co = sim.cohorts;
+    const slots = arrivalSlots(sim);
+    const hasBags = new Map(slots.map((c) => [c, co.bags[c]! > 0]));
+    expect([...hasBags.values()].some((b) => b)).toBe(true);
+    expect([...hasBags.values()].some((b) => !b)).toBe(true);
+    const was = new Uint8Array(co.cap);
+    const left = new Map<number, number>();
+    const seen = new Set<number>();
+    for (let t = 0; t < 40000 && co.arrActive > 0; t++) {
+      sim.step();
+      for (const c of slots) {
+        const st = co.stage[c]!;
+        if (st === Stage.Claim) seen.add(c);
+        if (was[c] === Stage.Claim && st !== Stage.Claim) left.set(c, sim.tick);
+        was[c] = st;
+      }
+    }
+    expect(co.arrActive).toBe(0);
+    const delivered = sim.baggage.deliveredAt(serial);
+    expect(delivered).toBeGreaterThanOrEqual(0);
+    expect(co.arrExited).toBe(co.arrGenerated);
+    for (const c of slots) expect(seen.has(c), `slot ${c}`).toBe(hasBags.get(c));
+    for (const c of slots.filter((x) => hasBags.get(x))) {
+      expect(left.get(c)!, `slot ${c}`).toBeGreaterThanOrEqual(delivered);
+      expect(left.get(c)!).toBeLessThanOrEqual(Math.max(delivered, co.born[c]!) + gameSecondsToTicks(ARRIVALS.claim.pollS) + 10);
+    }
+    expect(co.day[DAY.NoBags] + co.lastDay[DAY.NoBags]).toBe(0);
+  });
+
+  it('a stand with no bay gives every cohort with bags the missing bag points', () => {
+    const sim = arrivalHall();
+    dockRoute(sim, false);
+    const co = sim.cohorts;
+    let withBags = 0;
+    for (const c of arrivalSlots(sim)) if (co.bags[c]! > 0) withBags += co.size[c]!;
+    expect(withBags).toBeGreaterThan(0);
+    runJourney(sim);
+    expect(co.arrExited).toBe(co.arrGenerated);
+    expect(co.day[DAY.NoBags]).toBe(withBags);
+    expect(co.day[DAY.PenMissingBag]).toBe(ARRIVALS.satisfaction.missingBagPoints * withBags);
+  });
+
+  it('a carousel that never gets the bags makes the cohorts give up at the limit with the missing bag points', () => {
+    const sim = arrivalHall({ carousel: true });
+    dockRoute(sim, false);
+    const co = sim.cohorts;
+    const slots = arrivalSlots(sim);
+    let withBags = 0;
+    for (const c of slots) if (co.bags[c]! > 0) withBags += co.size[c]!;
+    const born = co.born[slots[0]!]!;
+    runJourney(sim);
+    expect(sim.baggage.deliveredAt(sim.traffic.serialOf(0))).toBe(-1);
+    expect(co.arrExited).toBe(co.arrGenerated);
+    expect(co.day[DAY.NoBags]).toBe(withBags);
+    expect(co.day[DAY.PenMissingBag]).toBe(ARRIVALS.satisfaction.missingBagPoints * withBags);
+    expect(sim.tick).toBeGreaterThanOrEqual(born + ARRIVALS.claim.giveUpMin * TICKS_PER_MINUTE);
+  });
+
+  it('a claim wait of 15 game minutes with a patience of 600 seconds costs 5 queue minutes of points', () => {
+    const sim = arrivalHall({ carousel: true });
+    dockRoute(sim, false);
+    const co = sim.cohorts;
+    const c = arrivalSlots(sim)[0]!;
+    co.profile[c] = PROFILE_KEYS.indexOf('business');
+    const before = co.memberSat[c * PROFILES.maxGroup]!;
+    const members = co.size[c]!;
+    const wait = gameSecondsToTicks(900);
+    const queueBefore = co.day[DAY.PenQueue]!;
+    const waitBefore = co.day[DAY.ClaimWaitS]!;
+    const countBefore = co.day[DAY.ClaimCount]!;
+    co.waitStart[c] = sim.tick - wait;
+    co.stage[c] = Stage.Claim;
+    (co as unknown as { leaveClaim(c: number, missing: boolean): void }).leaveClaim(c, false);
+    const points = Math.round(5 * NEEDS.satisfaction.queuePerMin);
+    expect(before - co.memberSat[c * PROFILES.maxGroup]!).toBe(points);
+    expect(co.day[DAY.PenQueue]! - queueBefore).toBe(points * members);
+    expect(co.day[DAY.ClaimWaitS]! - waitBefore).toBeCloseTo(900, -1);
+    expect(co.day[DAY.ClaimCount]! - countBefore).toBe(1);
+  });
+
+  it('saves in the middle of the flow with the delivery rows and restores the same hash', () => {
+    const a = arrivalHall({ carousel: true });
+    const { serial } = dockAirlineFlight(a);
+    for (let t = 0; t < 40000 && a.baggage.deliveredAt(serial) < 0; t++) a.step();
+    expect(a.baggage.deliveredAt(serial)).toBeGreaterThanOrEqual(0);
+    const b = new Sim('GOLDEN-0001', OPTIONS);
+    b.restore(JSON.parse(JSON.stringify(a.serialize())));
+    expect(b.baggage.deliveredAt(serial)).toBe(a.baggage.deliveredAt(serial));
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 2000; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
+});
+
+/** The cohort flag bits of an arrival that is done with immigration, as cohorts.ts sets them. */
+const FLAG_PASSED = 64;
+
+/** An international flight whose arrivals pass immigration, then fail to find their carousel and retry the claim walk. */
+function retryingClaim(): { sim: Sim; c: number } {
+  const sim = arrivalHall({ carousel: true });
+  dockRoute(sim, true);
+  const co = sim.cohorts;
+  const grid = sim.business.grids[0]!.id;
+  for (const c of arrivalSlots(sim)) {
+    co.bags[c] = 1;
+    co.recipeSeed[c] = seedWithReferral(false);
+    co.profile[c] = ADULT;
+  }
+  // A carousel cell outside the hall: the claim walk finds no node, so the step retries on the wheel.
+  co.bagLookup = {
+    deliveredAt: () => -1,
+    arrivalCarousel: (_serial, out) => {
+      out[0] = grid;
+      out[1] = -500;
+      out[2] = -500;
+      return true;
+    },
+  };
+  for (let t = 0; t < 30000; t++) {
+    sim.step();
+    for (let c = 0; c < co.hi; c++) if (co.stage[c] === Stage.ToImmigration && co.flags[c]! & FLAG_PASSED) return { sim, c };
+  }
+  throw new Error('no cohort reached the retry');
+}
+
+describe('immigration retry is a wheel stage (T20 slice 7 review)', () => {
+  it('leaves the queued stage and holds no node while it retries', () => {
+    const { sim, c } = retryingClaim();
+    expect(sim.cohorts.node[c]).toBe(-1);
+    expect(sim.cohorts.stage[c]).toBe(Stage.ToImmigration);
+  });
+
+  it('demolishing the grid during the retry strands the cohort and leaves the free list intact', () => {
+    const { sim } = retryingClaim();
+    const co = sim.cohorts;
+    run(sim, { type: 'demolishTerminal', id: sim.business.grids[0]!.id });
+    expect(co.arrActive).toBe(0);
+    expect(co.arrGenerated).toBe(co.arrExited + co.arrStranded);
+    const seen = new Set<number>();
+    for (let c = co.freeHead; c >= 0; c = co.next[c]!) {
+      expect(seen.has(c)).toBe(false);
+      seen.add(c);
+      expect(co.stage[c]).toBe(Stage.Free);
+    }
+    for (let t = 0; t < 500; t++) sim.step();
+    expect(co.arrActive).toBe(0);
+  });
+
+  it('renumbering the service table during the retry keeps the cohort node free and it strands at the limit', () => {
+    const { sim, c } = retryingClaim();
+    const co = sim.cohorts;
+    const grid = sim.business.grids[0]!;
+    // The check in desk has the lowest cell, so erasing it renumbers every node after it.
+    const nodes = sim.business.serviceNodes[0]!.count;
+    run(sim, { type: 'terminalBuild', building: grid.id, ox: grid.ox, oy: grid.oy, headingDeg: 90, edit: { op: 'erase', x0: 42, y0: 42, x1: 43, y1: 43, variant: 0 } });
+    expect(sim.business.serviceNodes[0]!.count).toBe(nodes - 1);
+    sim.step();
+    expect(co.node[c]).toBe(-1);
+    for (let t = 0; t < 30000 && co.arrActive > 0; t++) sim.step();
+    expect(co.arrActive).toBe(0);
+    expect(co.arrGenerated).toBe(co.arrExited + co.arrStranded);
+    expect(co.arrStranded).toBeGreaterThan(0);
   });
 });

@@ -154,6 +154,7 @@ export class Sim {
     this.business.bagMissingShare = () => this.baggage.missingShare();
     this.business.bagDayReset = () => this.baggage.resetDay();
     this.cohorts.onCheckIn = (gridId, cell, serial, bags) => this.baggage.checkIn(gridId, cell, serial, bags);
+    this.cohorts.bagLookup = this.baggage;
     this.turns.bagsReady = (f) => this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
     this.turns.loaded = (f) => this.baggage.freeFlight(this.traffic.serialOf(f));
     this.turns.unloaded = (f) => this.baggage.unloaded(this.traffic.serialOf(f), this.business.flightPaxOf(f), this.tick);

@@ -73,6 +73,10 @@ export interface BagFlowSave {
   claimedTotal?: number;
   claimWaitSumS?: number;
   claimFlights?: number;
+  /** Per flight serial, the tick its first bags reached a carousel (T20). Absent in saves from before version 31. */
+  deliSerial?: string;
+  deliTick?: string;
+  deliNext?: number;
 }
 
 /**
@@ -172,6 +176,10 @@ export class Baggage {
   private readonly missSerial = new Int32Array(MISS_ROWS);
   private readonly missCount = new Int32Array(MISS_ROWS);
   private missNext = 0;
+  /** Ring of the flights whose first bags reached a carousel: serial and tick, the arrival cohorts' claim signal. Tick -1 for an empty row. */
+  private readonly deliSerial = new Int32Array(MISS_ROWS);
+  private readonly deliTick = new Int32Array(MISS_ROWS).fill(-1);
+  private deliNext = 0;
   private states: NodeState[] = [];
   /** Bumped whenever a record is added or dropped, so the state table and the orphan sweep know to run. */
   private layoutStamp = 0;
@@ -580,6 +588,9 @@ export class Baggage {
         missNext: this.missNext,
         missSerial: packTyped(this.missSerial),
         missCount: packTyped(this.missCount),
+        deliSerial: packTyped(this.deliSerial),
+        deliTick: packTyped(this.deliTick),
+        deliNext: this.deliNext,
       },
       nextId: this.nextId,
       nodes: this.recs.map((r) => ({ id: r.id, kind: r.kind, building: r.building, spec: r.spec ? { ...r.spec } : null, cell: [r.cell[0], r.cell[1]] })),
@@ -648,7 +659,9 @@ export class Baggage {
     }
     acc = foldU32(foldU32(foldU32(acc, this.claimWaitSumS), this.claimFlights), this.claimedTotal);
     for (let r = 0; r < MISS_ROWS; r++) acc = foldU32(foldU32(acc, this.missSerial[r]), this.missCount[r]);
-    return foldU32(acc, this.missNext);
+    acc = foldU32(acc, this.missNext);
+    for (let r = 0; r < MISS_ROWS; r++) acc = foldU32(foldU32(acc, this.deliSerial[r]), this.deliTick[r]);
+    return foldU32(acc, this.deliNext);
   }
 
   private netOf(building: number): BaggageNetwork | null {
@@ -740,6 +753,9 @@ export class Baggage {
     this.missSerial.fill(0);
     this.missCount.fill(0);
     this.missNext = 0;
+    this.deliSerial.fill(0);
+    this.deliTick.fill(-1);
+    this.deliNext = 0;
     this.states = [];
     this.statesStamp = -1;
     this.sweptStamp = -1;
@@ -774,6 +790,9 @@ export class Baggage {
     this.missNext = f.missNext;
     this.missSerial.set(unpackTyped(f.missSerial, Int32Array));
     this.missCount.set(unpackTyped(f.missCount, Int32Array));
+    if (f.deliSerial !== undefined) this.deliSerial.set(unpackTyped(f.deliSerial, Int32Array));
+    if (f.deliTick !== undefined) this.deliTick.set(unpackTyped(f.deliTick, Int32Array));
+    this.deliNext = f.deliNext ?? 0;
   }
 
   /** Rebuilds the machine and bay state table when records changed, keeping each machine's tokens. */
@@ -938,9 +957,45 @@ export class Baggage {
       // An empty carousel takes any batch, so one large batch can always arrive.
       if (held !== 0 && held + this.count[b] > room) continue;
       this.stage[b] = BagStage.Carousel;
+      this.recordDelivery(this.serial[b], tick);
       this.claimWaitSumS += Math.round(((tick - this.born[b]) * CLOCK_SCALE) / DECI_PER_SECOND);
       this.claimFlights++;
     }
+  }
+
+  /** Notes the tick the first bags of a serial reached a carousel. A serial already in the ring keeps its earliest tick. */
+  private recordDelivery(serial: number, tick: number): void {
+    for (let r = 0; r < MISS_ROWS; r++) if (this.deliSerial[r] === serial && this.deliTick[r]! >= 0) return;
+    this.deliSerial[this.deliNext] = serial;
+    this.deliTick[this.deliNext] = tick;
+    this.deliNext = (this.deliNext + 1) % MISS_ROWS;
+  }
+
+  /** The tick the first bags of a flight reached a carousel, -1 when none did or the row was overwritten. */
+  deliveredAt(serial: number): number {
+    for (let r = 0; r < MISS_ROWS; r++) if (this.deliSerial[r] === serial && this.deliTick[r]! >= 0) return this.deliTick[r]!;
+    return -1;
+  }
+
+  /**
+   * The carousel the bay of a flight's stand feeds: its building id and logical cell go to out[0..2]. False when the
+   * stand has no bay or the bay no carousel.
+   */
+  arrivalCarousel(serial: number, out: Int32Array): boolean {
+    const standId = this.host.standOfSerial(serial);
+    if (standId < 0) return false;
+    const bay = this.bayOfStand(standId);
+    const carousel = bay === null ? null : this.carouselOf(bay);
+    if (carousel === null) return false;
+    for (let i = 0; i < this.recs.length; i++) {
+      const rec = this.recs[i]!;
+      if (rec.id !== carousel) continue;
+      out[0] = rec.building;
+      out[1] = rec.cell[0];
+      out[2] = rec.cell[1];
+      return true;
+    }
+    return false;
   }
 
   /** The oldest batch waiting in a bay enters the bay's link to its carousel once the previous one has left it. */

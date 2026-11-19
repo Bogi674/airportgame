@@ -188,6 +188,20 @@ export function buildArrivalTerminal(sim: Sim, o: { eGate?: boolean; passport?: 
   edit(id, { op: 'fixture', x0: 80, y0: 42, x1: 82, y1: 43, variant: 16 });
   edit(id, { op: 'fixture', x0: 80, y0: 57, x1: 82, y1: 58, variant: 16 });
   edit(id, { op: 'fixture', x0: 42, y0: 42, x1: 44, y1: 43, variant: 1 });
+  if (o.carousel) {
+    // A staff room on the south wall holds the bay, and the carousel stands in the public hall (the pattern of the baggage arrival rig).
+    edit(id, { op: 'zone', x0: 62, y0: 54, x1: 70, y1: 60, variant: 4 });
+    for (const [x0, y0, x1, y1] of [[62, 54, 62, 60], [70, 54, 70, 60], [62, 54, 70, 54]] as const) edit(id, { op: 'wall', x0, y0, x1, y1, variant: 1 });
+    const place = (kind: 'bay' | 'carousel', cx: number, cy: number): void => {
+      problems.push(...run(sim, { type: 'placeBaggageNode', building: id, kind, cx, cy, rot: 0, widthCells: 4 }));
+    };
+    place('carousel', 56, 44);
+    place('bay', 64, 56);
+    const bay = sim.baggage.nodesOf(id).find((r) => r.kind === 'bay');
+    const stand = sim.airfield.data.stands[0];
+    if (bay && stand) problems.push(...run(sim, { type: 'setStandBay', standId: stand.id, bayId: bay.id }));
+  }
+  if (o.customs) edit(id, { op: 'fixture', x0: 60, y0: 56, x1: 62, y1: 58, variant: 22 });
   problems.push(...run(sim, { type: 'buildTower', x: 2700, y: 4800, level: 5 }));
   return problems;
 }
