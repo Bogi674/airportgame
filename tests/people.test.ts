@@ -10,6 +10,12 @@ import { PACK_MARGIN_M, packGroup, recipeFootprint } from '../src/render/peopleP
 import { PeopleMotion } from '../src/render/peopleMotion';
 import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, type SnapshotViews } from '../src/shared/snapshot';
 import { FIGURE_FRAME } from '../src/render/peoplePack';
+import { AIRCRAFT } from '@data/aircraft';
+import { Stage } from '@sim/cohorts/cohorts';
+import type { Sim } from '@sim/sim';
+import { ZONE } from '@shared/business';
+import { cellIndex, cornerWorld } from '@shared/terminalOps';
+import { buildArrivalTerminal, buildTestAirport, ownedSim } from './helpers';
 
 const SEED_COUNT = 6000;
 /** Float32 storage of the packed origins and footprints rounds a little, so touching boxes may overlap by this much. */
@@ -315,4 +321,78 @@ describe('people walk frame', () => {
     const motion = new PeopleMotion();
     expect(motion.walkFrame(PEOPLE_MODE.Walking, 50, 99, 4, 1)).toBe((1 + 0) & 3);
   });
+});
+
+describe('arrival people sample (T20)', () => {
+  const A320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+
+  /** Logical cell of a world point of grid 0, from the corner positions of its cells. */
+  function logicalCell(sim: Sim, x: number, y: number): { lx: number; ly: number } {
+    const g = sim.business.grids[0]!;
+    const o = cornerWorld(g, 0, 0);
+    const ex = cornerWorld(g, 1, 0);
+    const ey = cornerWorld(g, 0, 1);
+    const ax = ex.x - o.x;
+    const ay = ex.y - o.y;
+    const bx = ey.x - o.x;
+    const by = ey.y - o.y;
+    const det = ax * by - ay * bx;
+    const dx = x - o.x;
+    const dy = y - o.y;
+    return { lx: Math.floor((dx * by - dy * bx) / det), ly: Math.floor((ax * dy - ay * dx) / det) };
+  }
+
+  it('shows arrival walkers, claim dwellers and immigration queues, on distinct cells, and repeats a sample', () => {
+    const sim = ownedSim();
+    sim.cash = 1_000_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildArrivalTerminal(sim, { carousel: true, customs: true })).toEqual([]);
+    const market = sim.business.market;
+    const dest = market.destinations.find((d) => d.international)!;
+    market.series.push({ id: 9001, airline: 0, dest: dest.id, typeIdx: A320, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 });
+    const t = sim.traffic;
+    const f = t.scheduleArrival(A320, t.nowTick + 1, 0, t.turnaroundTicks(A320), 0, 0, 9001);
+    t.fStand[f] = sim.airfield.data.stands[0]!.id;
+    const g = sim.business.grids[0]!;
+    const wg = sim.business.walkGraphs[0]!;
+    const co = sim.cohorts;
+    const views = createSnapshotViews(createSnapshotBuffer());
+    const again = createSnapshotViews(createSnapshotBuffer());
+    let walkIntl = false;
+    let walkPublic = false;
+    let dwellClaim = false;
+    let queuedPassport = false;
+    for (let tick = 0; tick < 12000; tick++) {
+      sim.step();
+      if (tick % 20 !== 0 || co.arrActive === 0) continue;
+      co.writeSample(views, sim.tick);
+      const n = views.header[SnapHeader.PeopleCount]!;
+      const cells = new Set<number>();
+      for (let i = 0; i < n; i++) {
+        const { lx, ly } = logicalCell(sim, views.peopleX[i]!, views.peopleY[i]!);
+        const cell = cellIndex(g, lx, ly);
+        expect(cells.has(cell), `two entries on cell ${lx},${ly}`).toBe(false);
+        cells.add(cell);
+        const c = views.peopleId[i]!;
+        const st = co.stage[c]!;
+        if (st < Stage.Deboard) continue;
+        const zone = wg.effective[cell]!;
+        if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.International) walkIntl = true;
+        if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.Public) walkPublic = true;
+        if (views.peopleMode[i] === PEOPLE_MODE.Dwelling && st === Stage.Claim && Math.hypot(lx - 56, ly - 44) <= 8) dwellClaim = true;
+        if (views.peopleMode[i] === PEOPLE_MODE.Queued && st === Stage.Immigration && Math.hypot(lx - 72, ly - 52) <= 6) queuedPassport = true;
+      }
+      co.writeSample(again, sim.tick);
+      expect(again.header[SnapHeader.PeopleCount]).toBe(n);
+      expect(Array.from(again.peopleX.subarray(0, n))).toEqual(Array.from(views.peopleX.subarray(0, n)));
+      expect(Array.from(again.peopleY.subarray(0, n))).toEqual(Array.from(views.peopleY.subarray(0, n)));
+      expect(Array.from(again.peopleMode.subarray(0, n))).toEqual(Array.from(views.peopleMode.subarray(0, n)));
+      expect(Array.from(again.peopleId.subarray(0, n))).toEqual(Array.from(views.peopleId.subarray(0, n)));
+      if (walkIntl && walkPublic && dwellClaim && queuedPassport) break;
+    }
+    expect(walkIntl).toBe(true);
+    expect(walkPublic).toBe(true);
+    expect(dwellClaim).toBe(true);
+    expect(queuedPassport).toBe(true);
+  }, 60000);
 });

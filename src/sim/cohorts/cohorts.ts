@@ -475,6 +475,23 @@ export class Cohorts {
     return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs;
   }
 
+  /** True for the stages in which a cohort walks between two walk nodes. */
+  private walking(st: number): boolean {
+    return (
+      st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin ||
+      st === Stage.ToImmigration || st === Stage.ToClaim || st === Stage.ToCustoms || st === Stage.ToExit
+    );
+  }
+
+  /**
+   * The zone rule the sample applies to a stage: 0 any zone, 1 airside (not Public), 2 landside (not Secure).
+   * Arrivals use any zone, since one walk crosses from airside to Public (T20 D14).
+   */
+  private zoneRule(st: number): number {
+    if (this.arriving(st)) return 0;
+    return st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit ? 1 : 2;
+  }
+
   /** True for the stages of an arriving passenger. */
   private arriving(st: number): boolean {
     return st >= Stage.Deboard && st <= Stage.ToExit;
@@ -618,10 +635,10 @@ export class Cohorts {
   }
 
   /** True when a walker may stand at this.world on array cell `cell`: floor, free, in its zone, in its room and clear of other groups. */
-  private clear(views: SnapshotViews, grid: TerminalGrid, wg: WalkGraph, cell: number, airside: boolean, room: number): boolean {
+  private clear(views: SnapshotViews, grid: TerminalGrid, wg: WalkGraph, cell: number, rule: number, room: number): boolean {
     if (cell < 0 || wg.cellMain[cell]! < 0 || grid.fixture[cell] !== 0 || this.occupied[cell] !== 0) return false;
     const zone = grid.zone[cell];
-    if (airside ? zone === ZONE.Public : zone === ZONE.Secure) return false;
+    if (rule === 1 ? zone === ZONE.Public : rule === 2 && zone === ZONE.Secure) return false;
     if (room >= 0) {
       const node = nearestNode(wg, cell);
       if (node < 0 || wg.nodeRoom[node] !== room) return false;
@@ -711,7 +728,7 @@ export class Cohorts {
       for (let c = 0; c < this.hi && n < cap; c++) {
         const st = this.stage[c]!;
         if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
-        if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate && st !== Stage.ToVisit && st !== Stage.Rejoin) continue;
+        if (!this.walking(st)) continue;
         const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
         const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
         if (from < 0 || to < 0) continue;
@@ -730,14 +747,14 @@ export class Cohorts {
         const px = this.route[0]!;
         const py = this.route[1]!;
         const room = nearestNodeRoom(wg, cellAt(wg, Math.floor(px), Math.floor(py)));
-        const airside = st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin;
+        const rule = this.zoneRule(st);
         for (let l = 0; l < LANES.length; l++) {
           const off = LANES[l]! * LANE;
           const qx = px - sy * off;
           const qy = py + sx * off;
           this.toWorld(grid, qx, qy);
           const cellIdx = cellAt(wg, Math.floor(qx), Math.floor(qy));
-          if (!this.clear(views, grid, wg, cellIdx, airside, room)) continue;
+          if (!this.clear(views, grid, wg, cellIdx, rule, room)) continue;
           this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, cellIdx);
           n++;
           break;
@@ -746,10 +763,10 @@ export class Cohorts {
       for (let c = 0; c < this.hi && n < cap; c++) {
         const st = this.stage[c]!;
         if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
-        const airside = st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit;
-        const dwelling = st === Stage.Airside || st === Stage.Visit;
+        const rule = this.zoneRule(st);
+        const dwelling = st === Stage.Airside || st === Stage.Visit || st === Stage.Claim || st === Stage.CustomsRed;
         if (!dwelling) {
-          if (st !== Stage.ToCheckIn && st !== Stage.ToSecurity && st !== Stage.ToGate && st !== Stage.ToVisit && st !== Stage.Rejoin) continue;
+          if (!this.walking(st)) continue;
           const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
           const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
           if (from < 0 || to < 0) continue;
@@ -769,7 +786,7 @@ export class Cohorts {
           const dy = SPIRAL[2 * i + 1]!;
           this.toWorld(grid, ax + dx + 0.5, ay + dy + 0.5);
           const cellIdx = cellAt(wg, ax + dx, ay + dy);
-          if (!this.clear(views, grid, wg, cellIdx, airside, room)) continue;
+          if (!this.clear(views, grid, wg, cellIdx, rule, room)) continue;
           const fx = i === 0 ? 0 : dwelling ? dx : -dx;
           const fy = i === 0 ? -1 : dwelling ? dy : -dy;
           this.put(views, n, c, fx, fy, PEOPLE_MODE.Dwelling, cellIdx);
