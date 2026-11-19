@@ -4,12 +4,14 @@ import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
 import needsJson from '../src/data/needs.json';
 import profilesJson from '../src/data/profiles.json';
+import peopleJson from '../src/data/people.json';
 import staffJson from '../src/data/staff.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
-import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
+import { AIRFIELD, PEOPLE, STAFF, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
 import { needsSchema } from '../src/data/schemas/needs';
+import { peopleSchema } from '../src/data/schemas/people';
 import { profilesSchema } from '../src/data/schemas/profiles';
 import { staffSchema } from '../src/data/schemas/staff';
 
@@ -186,5 +188,27 @@ describe('airport staff', () => {
   it('an unknown fixture key in stations fails', () => {
     const bad = { ...structuredClone(staffJson), stations: { ...staffJson.stations, pizzaHut: { role: 'agent', need: 1 } } };
     expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('staff recipes in people.json', () => {
+  it('validates with 16 staff recipes', () => {
+    expect(peopleSchema.safeParse(peopleJson).success).toBe(true);
+    expect(PEOPLE.staff).toHaveLength(16);
+  });
+
+  it('has every role sprite id among the staff recipes', () => {
+    for (const role of [STAFF.roles.agent, STAFF.roles.security, STAFF.roles.border]) {
+      for (const id of role.sprites) {
+        expect(id).toBeGreaterThanOrEqual(1);
+        expect(id).toBeLessThanOrEqual(PEOPLE.staff.length);
+      }
+    }
+  });
+
+  it('rejects a staff recipe with epaulettes 5', () => {
+    const bad = structuredClone(peopleJson) as { staff: { epaulettes?: number }[] };
+    bad.staff[0]!.epaulettes = 5;
+    expect(peopleSchema.safeParse(bad).success).toBe(false);
   });
 });
