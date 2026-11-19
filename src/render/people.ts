@@ -1,14 +1,13 @@
 import { PEOPLE } from '@data/index';
 import { HEADING_STEPS, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
-import { PeopleAtlasCache, peopleTierForZoom } from './sprites/peopleAtlas';
+import { PeopleAtlasCache, peopleTierForZoom, SHADOW_ROW } from './sprites/peopleAtlas';
 import { PeopleSelection } from './peopleSelect';
 import { packGroup } from './peoplePack';
 import { PeopleMotion } from './peopleMotion';
 
 /** Figures outside the visible bounds by more than this margin in meters are skipped. */
 const BOUNDS_MARGIN_M = 1;
-const SHADOW_ROW = PEOPLE.recipes.length;
 /** One group slot per value of the uint8 cohort size. */
 const GROUP_SLOTS = 256;
 

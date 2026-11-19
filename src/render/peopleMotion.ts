@@ -1,6 +1,6 @@
 import { PEOPLE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { PEOPLE_MODE, SnapHeader, type SnapshotViews } from '@shared/snapshot';
+import { PEOPLE_MODE, SnapHeader, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
 import { FIGURE_FRAME } from './peoplePack';
 
 const MAX_GEN = 0x7fffffff;
@@ -12,6 +12,8 @@ const WALK_SPEED = new Float32Array(PROFILE_KEYS.length);
 PROFILE_KEYS.forEach((key, id) => {
   WALK_SPEED[id] = PROFILES.profiles[key].walkSpeed;
 });
+/** Staff walk at the crew speed. */
+const CREW_SPEED = PROFILES.profiles.crew.walkSpeed;
 
 /**
  * Matches people samples between two snapshots by cohort id so a render frame
@@ -82,7 +84,7 @@ export class PeopleMotion {
    */
   walkFrame(mode: number, gameSeconds: number, profile: number, seed: number, member: number): number {
     if (mode !== PEOPLE_MODE.Walking) return FIGURE_FRAME;
-    const speed = profile >= 0 && profile < WALK_SPEED.length ? (WALK_SPEED[profile] ?? 0) : 0;
+    const speed = profile >= STAFF_PROFILE_BASE ? CREW_SPEED : profile >= 0 && profile < WALK_SPEED.length ? (WALK_SPEED[profile] ?? 0) : 0;
     return (Math.floor((gameSeconds * speed) / STRIDE_M) + member + (seed & 3)) & 3;
   }
 }

@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import peopleJson from '../src/data/people.json';
 import { PEOPLE } from '../src/data/index';
 import { peopleSchema } from '../src/data/schemas/people';
-import { RECIPE_COUNT, memberHash, pickRecipe } from '../src/render/sprites/peopleRecipes';
+import { RECIPE_COUNT, memberHash, pickRecipe, staffRecipe } from '../src/render/sprites/peopleRecipes';
 import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/peopleShapes';
 import { peopleTierForZoom } from '../src/render/sprites/peopleAtlas';
 import { PeopleSelection } from '../src/render/peopleSelect';
 import { PACK_MARGIN_M, packGroup, recipeFootprint } from '../src/render/peoplePack';
 import { PeopleMotion } from '../src/render/peopleMotion';
-import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, type SnapshotViews } from '../src/shared/snapshot';
+import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, STAFF_PROFILE_BASE, type SnapshotViews } from '../src/shared/snapshot';
 import { FIGURE_FRAME } from '../src/render/peoplePack';
 
 const SEED_COUNT = 6000;
@@ -313,6 +313,35 @@ describe('people walk frame', () => {
 
   it('uses only seed and member for a profile out of range', () => {
     const motion = new PeopleMotion();
-    expect(motion.walkFrame(PEOPLE_MODE.Walking, 50, 99, 4, 1)).toBe((1 + 0) & 3);
+    expect(motion.walkFrame(PEOPLE_MODE.Walking, 50, 20, 4, 1)).toBe((1 + 0) & 3);
+  });
+});
+
+describe('staff figures', () => {
+  it('picks the staff row of a role from its sprite ids', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      expect([30, 31]).toContain(staffRecipe(1, seed));
+      expect(staffRecipe(0, seed)).toBe(34);
+      expect(staffRecipe(9, seed)).toBe(34);
+    }
+  });
+
+  it('packs one staff figure centred on its footprint', () => {
+    const x = new Float32Array(256);
+    const y = new Float32Array(256);
+    const recipe = new Uint8Array(256);
+    const fp = new Float32Array(4);
+    expect(packGroup(STAFF_PROFILE_BASE + 2, 7, 1, x, y, recipe)).toBe(1);
+    expect(recipe[0]).toBe(33);
+    recipeFootprint(33, fp);
+    expect(x[0]! + (fp[0]! + fp[2]!) / 2).toBeCloseTo(0, 5);
+    expect(y[0]! + (fp[1]! + fp[3]!) / 2).toBeCloseTo(0, 5);
+  });
+
+  it('steps the gait of a walking staff entry with time', () => {
+    const motion = new PeopleMotion();
+    const frames = new Set<number>();
+    for (let t = 0; t < 40; t++) frames.add(motion.walkFrame(PEOPLE_MODE.Walking, t * 0.1, STAFF_PROFILE_BASE, 0, 0));
+    expect(frames.size).toBe(4);
   });
 });
