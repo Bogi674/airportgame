@@ -1,0 +1,23 @@
+{
+ "version": 1,
+ "note": "Airport staff as individuals (docs/DESIGN_REVISION_4.md 6.4, T68 proposals). Minutes and hours are game time.",
+ "capacity": 4096,
+ "stepMin": 1, "passEveryMin": 60, "sampleCap": 300,
+ "roles": {
+  "note": "Saved index order, append only. sprites: staff recipe ids of people.json.",
+  "agent": { "wagePerDay": 130, "sprites": [5] },
+  "security": { "wagePerDay": 130, "sprites": [1, 2] },
+  "border": { "wagePerDay": 130, "sprites": [4] }
+ },
+ "stations": {
+  "note": "Fixture key: role and officers on duty.",
+  "checkIn": { "role": "agent", "need": 1 }, "bagDrop": { "role": "agent", "need": 1 }, "gateDesk": { "role": "agent", "need": 1 },
+  "security": { "role": "security", "need": 2 }, "screeningMachine": { "role": "security", "need": 1 },
+  "passport": { "role": "border", "need": 1 }, "customs": { "role": "border", "need": 1 }
+ },
+ "shifts": { "note": "Start hours of the three shifts, length in hours, clock in or out minutes, longest wait for a relief past the shift end.", "startsH": [6, 14, 22], "lengthH": 8, "changeMin": 10, "overtimeMaxMin": 60 },
+ "breaks": { "note": "One break per shift: due afterMin plus 0 to jitterMin after the shift start, lengthMin at the staff center, reliefWaitMin before leaving without a relief, tiredSkill without a staff center.", "afterMin": 240, "jitterMin": 60, "lengthMin": 30, "reliefWaitMin": 30, "tiredSkill": 0.8 },
+ "skill": { "min": 0.9, "max": 1.1 },
+ "reliefShare": 0.2,
+ "operator": { "note": "Where on duty staff stand: metres behind the fixture anchor centre, away from the queue, and side spacing.", "backM": 0.7, "spacingM": 0.8 }
+}

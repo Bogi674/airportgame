@@ -4,12 +4,14 @@ import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
 import needsJson from '../src/data/needs.json';
 import profilesJson from '../src/data/profiles.json';
+import staffJson from '../src/data/staff.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
 import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
 import { needsSchema } from '../src/data/schemas/needs';
 import { profilesSchema } from '../src/data/schemas/profiles';
+import { staffSchema } from '../src/data/schemas/staff';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -149,5 +151,40 @@ describe('passenger needs and group sizes', () => {
     const bad = structuredClone(profilesJson);
     bad.profiles.crew.groupSize = [0, 0, 0, 0, 0, 0];
     expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('airport staff', () => {
+  it('staff.json validates', () => {
+    expect(staffSchema.safeParse(staffJson).success).toBe(true);
+  });
+
+  it('a station with role pilot fails', () => {
+    const bad = structuredClone(staffJson);
+    (bad.stations.checkIn as { role: string }).role = 'pilot';
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a station with need 0 fails', () => {
+    const bad = structuredClone(staffJson);
+    bad.stations.gateDesk.need = 0;
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('skill min above max fails', () => {
+    const bad = structuredClone(staffJson);
+    bad.skill = { min: 1.2, max: 1.1 };
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('two shift starts fail', () => {
+    const bad = structuredClone(staffJson);
+    bad.shifts.startsH = [6, 14] as unknown as typeof bad.shifts.startsH;
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('an unknown fixture key in stations fails', () => {
+    const bad = { ...structuredClone(staffJson), stations: { ...staffJson.stations, pizzaHut: { role: 'agent', need: 1 } } };
+    expect(staffSchema.safeParse(bad).success).toBe(false);
   });
 });
