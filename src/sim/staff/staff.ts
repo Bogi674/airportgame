@@ -1,8 +1,12 @@
 import { STAFF } from '@data/index';
-import { STAFF_ROLE_COUNT } from '@data/schemas/staff';
+import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
+import { fixtureKey } from '@shared/business';
+import { cornerWorld } from '@shared/terminalOps';
+import type { Business } from '../business/business';
+import type { Baggage } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
-import { staffSeed } from './staffTraits';
+import { staffSeed, staffSkill } from './staffTraits';
 
 /** Life cycle state of a staff slot. Saved values, append only. */
 export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation: 4, OnDuty: 5, Leaving: 6, CommuteHome: 7, ClockOut: 8, Break: 9, Standby: 10 } as const;
@@ -76,6 +80,44 @@ export class Staff {
     this.covering, this.wake, this.breakAt, this.walkStart, this.walkFromX, this.walkFromY, this.walkToX, this.walkToY,
   ];
 
+  /** Station table, derived from the service nodes and rebuilt when they change. Never saved. */
+  stCount = 0;
+  /** Index into Business.grids of each station. */
+  sGridIdx = new Int32Array(0);
+  /** Id of the grid of each station. */
+  sGridId = new Int32Array(0);
+  /** Logical cell of each station. */
+  sX = new Int16Array(0);
+  sY = new Int16Array(0);
+  /** Fixture id of each station. */
+  sKind = new Uint8Array(0);
+  /** Service node of each station, -1 for none. */
+  sNode = new Int32Array(0);
+  /** Baggage record id of each station, -1 for none. */
+  sMachine = new Int32Array(0);
+  /** Role id of each station. */
+  sRole = new Uint8Array(0);
+  /** Officers each station needs. */
+  sNeed = new Uint8Array(0);
+  /** Officers on duty at each station. */
+  sPresent = new Uint8Array(0);
+  /** Summed skill of the officers on duty at each station. */
+  sSkill = new Float64Array(0);
+  /** Walk node of the curb door of each grid, -1 for none. */
+  curbNode = new Int32Array(0);
+  /** World point of the curb door of each grid. */
+  curbX = new Float64Array(0);
+  curbY = new Float64Array(0);
+  /** Station index by `gridId|x|y|kind`, built at rebuild only. */
+  private readonly stationOf = new Map<string, number>();
+  /** serviceVersion, terminalVersion and grid count the stations were built from. */
+  private readonly builtFor = new Int32Array(3).fill(-1);
+
+  constructor(
+    readonly business: Business,
+    readonly baggage: Baggage,
+  ) {}
+
   /** Saved arrays by name. */
   private slotArrays(): Record<string, SavedArray> {
     return {
@@ -115,6 +157,97 @@ export class Staff {
    */
   update(tick: number): void {
     void tick;
+  }
+
+  /** Rebuilds the stations when needed and applies the staff on duty to the service nodes. */
+  refresh(): void {
+    this.rebuildStationsIfStale();
+    this.applyPresence();
+  }
+
+  private rebuildStationsIfStale(): void {
+    const b = this.business;
+    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length) return;
+    this.builtFor[0] = b.serviceVersion;
+    this.builtFor[1] = b.terminalVersion;
+    this.builtFor[2] = b.grids.length;
+    this.rebuildStations();
+  }
+
+  private rebuildStations(): void {
+    const b = this.business;
+    let n = 0;
+    for (let gi = 0; gi < b.grids.length; gi++) {
+      const sn = b.serviceNodes[gi]!;
+      for (let k = 0; k < sn.count; k++) if (sn.staffNeed[k]! > 0) n++;
+    }
+    this.stCount = n;
+    this.sGridIdx = new Int32Array(n);
+    this.sGridId = new Int32Array(n);
+    this.sX = new Int16Array(n);
+    this.sY = new Int16Array(n);
+    this.sKind = new Uint8Array(n);
+    this.sNode = new Int32Array(n).fill(-1);
+    this.sMachine = new Int32Array(n).fill(-1);
+    this.sRole = new Uint8Array(n);
+    this.sNeed = new Uint8Array(n);
+    this.sPresent = new Uint8Array(n);
+    this.sSkill = new Float64Array(n);
+    this.curbNode = new Int32Array(b.grids.length).fill(-1);
+    this.curbX = new Float64Array(b.grids.length);
+    this.curbY = new Float64Array(b.grids.length);
+    this.stationOf.clear();
+    let s = 0;
+    for (let gi = 0; gi < b.grids.length; gi++) {
+      const g = b.grids[gi]!;
+      const sn = b.serviceNodes[gi]!;
+      for (let k = 0; k < sn.count; k++) {
+        if (sn.staffNeed[k]! === 0) continue;
+        const entry = STAFF.stations[fixtureKey(sn.kind[k]!)];
+        if (entry === undefined) continue;
+        this.sGridIdx[s] = gi;
+        this.sGridId[s] = g.id;
+        this.sX[s] = sn.lx[k]!;
+        this.sY[s] = sn.ly[k]!;
+        this.sKind[s] = sn.kind[k]!;
+        this.sNode[s] = k;
+        this.sRole[s] = STAFF_ROLE_KEYS.indexOf(entry.role);
+        this.sNeed[s] = entry.need;
+        this.stationOf.set(`${g.id}|${sn.lx[k]}|${sn.ly[k]}|${sn.kind[k]}`, s);
+        s++;
+      }
+      const curb = b.curbNode(gi);
+      this.curbNode[gi] = curb;
+      if (curb >= 0) {
+        const c = b.walkGraphs[gi]!.nodeCell[curb]!;
+        const x = c % g.w;
+        const p = cornerWorld(g, g.x0 + x + 0.5, g.y0 + (c - x) / g.w + 0.5);
+        this.curbX[gi] = p.x;
+        this.curbY[gi] = p.y;
+      }
+    }
+    for (let m = 0; m < this.hi; m++) {
+      this.stIdx[m] = this.state[m] === STAFF_STATE.Free ? -1 : (this.stationOf.get(`${this.stGrid[m]}|${this.stX[m]}|${this.stY[m]}|${this.stKind[m]}`) ?? -1);
+    }
+  }
+
+  /** Counts the staff on duty per station and sets the staff factor of each service node. */
+  private applyPresence(): void {
+    this.sPresent.fill(0);
+    this.sSkill.fill(0);
+    for (let m = 0; m < this.hi; m++) {
+      const s = this.stIdx[m]!;
+      if (this.state[m] !== STAFF_STATE.OnDuty || s < 0) continue;
+      this.sPresent[s]++;
+      this.sSkill[s] += staffSkill(this.seed[m]!) * ((this.flags[m]! & STAFF_FLAG.Tired) !== 0 ? STAFF.breaks.tiredSkill : 1);
+    }
+    for (let s = 0; s < this.stCount; s++) {
+      const node = this.sNode[s]!;
+      if (node < 0) continue;
+      const table = this.business.serviceNodes[this.sGridIdx[s]!]!;
+      table.staffPresent[node] = this.sPresent[s]!;
+      table.staffFactor[node] = this.sPresent[s]! > 0 ? this.sSkill[s]! / this.sNeed[s]! : 0;
+    }
   }
 
   /** Allocates a slot for a new member in state Off, or returns -1 at capacity. */

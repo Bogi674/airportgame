@@ -1,4 +1,4 @@
-import { BUSINESS } from '@data/index';
+import { BUSINESS, STAFF } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
@@ -75,6 +75,12 @@ export interface ServiceNodes {
   active: number;
   /** 1 while the node may not start a new service, set by the baggage back pressure. Derived, not saved. */
   blocked: Uint8Array;
+  /** Officers the node needs to serve at full speed, 0 when it needs none. Derived from the staff data, not saved. */
+  staffNeed: Uint8Array;
+  /** Officers on duty at the node. Derived, set by the staff store, not saved. */
+  staffPresent: Uint8Array;
+  /** Service speed factor of the staff on the node, 1 for nodes that need no staff. Derived, not saved. */
+  staffFactor: Float32Array;
 }
 
 /** Module timing for a service key. Every service key carries both values in the data. */
@@ -182,6 +188,9 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     evictedCount: 0,
     active: 0,
     blocked: new Uint8Array(count),
+    staffNeed: new Uint8Array(count),
+    staffPresent: new Uint8Array(count),
+    staffFactor: new Float32Array(count).fill(1),
   };
 
   for (let k = 0; k < count; k++) {
@@ -196,6 +205,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     nodes.ly[k] = g.y0 + (c - x) / g.w;
     nodes.servers[k] = t.servers;
     nodes.meanS[k] = t.meanS;
+    nodes.staffNeed[k] = STAFF.stations[key]?.need ?? 0;
     const cells = queueCells(g, wg.access, wg.effective, c, reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
     nodes.qCellOffset[k] = cellX.length;
@@ -243,6 +253,8 @@ export function rebuildServiceNodes(prev: ServiceNodes, g: TerminalGrid, wg: Wal
     next.serving[k] = prev.serving[p]!;
     next.servingSize[k] = prev.servingSize[p]!;
     next.blocked[k] = prev.blocked[p]!;
+    next.staffPresent[k] = prev.staffPresent[p]!;
+    next.staffFactor[k] = prev.staffFactor[p]!;
     next.qHead[k] = prev.qHead[p]!;
     next.qCount[k] = prev.qCount[p]!;
     for (let s = 0; s < prev.slots; s++) {
@@ -351,7 +363,7 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
         sn.serving[k] = -1;
         sn.active -= 1;
       }
-      if (sn.qCount[k] === 0 || sn.blocked[k] === 1) break;
+      if (sn.qCount[k] === 0 || sn.blocked[k] === 1 || sn.staffFactor[k] === 0) break;
       const slot = k * sn.slots + sn.qHead[k];
       const size = sn.qSize[slot];
       sn.qHead[k] = (sn.qHead[k] + 1) % sn.slots;
@@ -361,7 +373,7 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
       const f = lognormalDraw(rng, sigma, s2);
       sn.serving[k] = sn.qCohort[slot];
       sn.servingSize[k] = size;
-      sn.busyUntil[k] = start + gameSecondsToTicks((size * sn.meanS[k] * f) / sn.servers[k]);
+      sn.busyUntil[k] = start + gameSecondsToTicks((size * sn.meanS[k] * f) / (sn.servers[k] * sn.staffFactor[k]));
     }
   }
 }
@@ -374,7 +386,9 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
 export function serviceWait(sn: ServiceNodes, node: number, tick: number): number {
   if (node < 0 || node >= sn.count) return Infinity;
   const left = sn.serving[node] >= 0 ? (Math.max(0, sn.busyUntil[node] - tick) * CLOCK_SCALE) / 10 : 0;
-  return left + (sn.queueLen[node] * sn.meanS[node]) / sn.servers[node];
+  const rate = sn.servers[node] * sn.staffFactor[node];
+  if (rate === 0) return Infinity;
+  return left + (sn.queueLen[node] * sn.meanS[node]) / rate;
 }
 
 /** The queue state of a service table as saved. Grid derived arrays are not saved, they come from the grid. */
