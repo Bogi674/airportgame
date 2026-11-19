@@ -82,6 +82,7 @@ const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 const TOILET = FIXTURE_KEYS.indexOf('toilet') + 1;
 const PASSPORT = FIXTURE_KEYS.indexOf('passport') + 1;
 const EGATE = FIXTURE_KEYS.indexOf('eGate') + 1;
+const CUSTOMS = FIXTURE_KEYS.indexOf('customs') + 1;
 
 /** Side step of a sampled walker in cells, the squared least gap between drawn groups in metres, and the lanes tried in order. */
 const LANE = PROFILES.walkSample.laneOffsetCells;
@@ -811,7 +812,7 @@ export class Cohorts {
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate || (st === Stage.ToVisit && this.visitNeed[c] === NEED_TOILET)) this.node[c] = -1;
-      else if (st === Stage.ToImmigration) {
+      else if (st === Stage.ToImmigration || st === Stage.ToCustoms) {
         this.node[c] = -1;
         this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
         this.keepAnchor(c);
@@ -872,6 +873,10 @@ export class Cohorts {
       this.stage[c] = Stage.ToImmigration;
       this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
       this.keepAnchor(c);
+    } else if (st === Stage.Customs) {
+      this.stage[c] = Stage.ToCustoms;
+      this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+      this.keepAnchor(c);
     } else return;
     this.node[c] = -1;
     this.waitStart[c] = -1;
@@ -918,6 +923,10 @@ export class Cohorts {
     }
     if (st === Stage.Immigration) {
       this.finishImmigration(g, c, t);
+      return;
+    }
+    if (st === Stage.Customs) {
+      this.finishCustoms(g, c, t);
       return;
     }
     if (st === Stage.Security) {
@@ -1002,6 +1011,15 @@ export class Cohorts {
         break;
       case Stage.Claim:
         this.atClaim(c);
+        break;
+      case Stage.ToCustoms: {
+        const t = this.table(g);
+        if (this.node[c]! < 0 || !t) this.toCustoms(g, c);
+        else this.join(g, c, CUSTOMS, CUSTOMS, Stage.Customs);
+        break;
+      }
+      case Stage.CustomsRed:
+        this.toExit(g, c);
         break;
       case Stage.ToImmigration: {
         const t = this.table(g);
@@ -1137,10 +1155,38 @@ export class Cohorts {
     this.day[DAY.NoBags] += this.size[c]!;
   }
 
-  /** The claim is over. Everyone goes on to the curb (customs comes in the next step of T20). */
+  /** The claim is over. International cohorts pass customs, the others go to the curb. */
   private afterClaim(g: number, c: number): void {
     this.flags[c] = this.flags[c]! | FLAG_CLAIMED;
-    this.toExit(g, c);
+    if (this.flags[c]! & FLAG_INTL) this.toCustoms(g, c);
+    else this.toExit(g, c);
+  }
+
+  /** Walks an international arrival to the cheapest customs node of its grid. A grid with none skips customs. */
+  private toCustoms(g: number, c: number): void {
+    const here = this.hereNode(g, c);
+    const n = this.pickNode(g, CUSTOMS, CUSTOMS, here, c);
+    if (n < 0) this.toExit(g, c);
+    else this.walk(g, c, n, here, Stage.ToCustoms);
+  }
+
+  /**
+   * An arrival was served at customs. It leaves the queued stage first, so a retry of the next step is a wheel stage.
+   * A cohort whose recipe seed draws red stands the red channel time before it goes on.
+   */
+  private finishCustoms(g: number, c: number, t: ServiceNodes): void {
+    const wg = this.business.walkGraphs[g]!;
+    const at = t.walkNode[this.node[c]!]!;
+    this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+    this.walkToX[c] = wg.nodeX[at]!;
+    this.walkToY[c] = wg.nodeY[at]!;
+    this.node[c] = -1;
+    this.stage[c] = Stage.CustomsRed;
+    if (traitU(this.recipeSeed[c]!, COHORT_DRAW.Red) < ARRIVALS.service.customs.redShare) {
+      this.schedule(c, this.tick + gameSecondsToTicks(ARRIVALS.service.customs.redServiceSeconds));
+    } else {
+      this.toExit(g, c);
+    }
   }
 
   /** Walks an arrival from where it stands to the curb. With no curb or no way there it retries, and strands after the limit. */

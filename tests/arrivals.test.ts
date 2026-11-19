@@ -498,3 +498,143 @@ describe('immigration retry is a wheel stage (T20 slice 7 review)', () => {
     expect(co.arrStranded).toBeGreaterThan(0);
   });
 });
+
+/** Stages each slot passed through, in order, while the journey runs. */
+function stageSequences(sim: Sim, ticks: number, each?: (t: number) => void): number[][] {
+  const co = sim.cohorts;
+  const seq: number[][] = Array.from({ length: co.cap }, () => []);
+  for (let t = 0; t < ticks && co.arrActive > 0; t++) {
+    sim.step();
+    for (let c = 0; c < co.hi; c++) {
+      const st = co.stage[c]!;
+      const list = seq[c]!;
+      if (st >= Stage.Deboard && list[list.length - 1] !== st) list.push(st);
+    }
+    each?.(t);
+  }
+  return seq;
+}
+
+/** A hall with a carousel and customs, an international airline flight on stand 0 and a domestic one on stand 1. */
+function twoFlights(): Sim {
+  const sim = arrivalHall({ carousel: true, customs: true });
+  const market = sim.business.market;
+  const dest = market.destinations.find((d) => d.international)!;
+  market.series.push({ id: 9001, airline: 0, dest: dest.id, typeIdx: A320, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 });
+  const t = sim.traffic;
+  const intl = t.scheduleArrival(A320, t.nowTick + 1, 0, t.turnaroundTicks(A320), 0, 0, 9001);
+  t.fStand[intl] = sim.airfield.data.stands[0]!.id;
+  const home = t.scheduleArrival(A320, t.nowTick + 1, 0, t.turnaroundTicks(A320), 0);
+  t.fStand[home] = sim.airfield.data.stands[1]!.id;
+  return sim;
+}
+
+/** A recipe seed whose red channel draw is below (red) or above the customs share. */
+function seedWithRed(red: boolean): number {
+  for (let seed = 1; ; seed++) if ((traitU(seed, COHORT_DRAW.Red) < ARRIVALS.service.customs.redShare) === red) return seed;
+}
+
+describe('customs (T20 slice 8)', () => {
+  it('international cohorts queue at customs after the claim and domestic ones never do', () => {
+    const sim = arrivalHall({ carousel: true, customs: true });
+    dockRoute(sim, true);
+    const slots = arrivalSlots(sim);
+    const seq = stageSequences(sim, 30000, () => undefined);
+    for (const c of slots) {
+      const list = seq[c]!;
+      expect(list, `slot ${c}`).toContain(Stage.Customs);
+      expect(list.indexOf(Stage.Customs), `slot ${c}`).toBeGreaterThan(list.indexOf(Stage.Immigration));
+      if (list.includes(Stage.Claim)) expect(list.indexOf(Stage.Customs)).toBeGreaterThan(list.indexOf(Stage.Claim));
+    }
+    expect(sim.cohorts.arrExited).toBe(sim.cohorts.arrGenerated);
+
+    const home = arrivalHall({ carousel: true, customs: true });
+    dockRoute(home, false);
+    const homeSeq = stageSequences(home, 30000);
+    for (let c = 0; c < home.cohorts.cap; c++) {
+      expect(homeSeq[c]).not.toContain(Stage.Customs);
+      expect(homeSeq[c]).not.toContain(Stage.ToCustoms);
+    }
+  }, 30000);
+
+  it('draws the red channel for about 5 percent of 2000 seeds and a red cohort stands 120 game seconds', () => {
+    let red = 0;
+    for (let i = 1; i <= 2000; i++) if (traitU(Math.imul(i, 2654435761) >>> 0, COHORT_DRAW.Red) < ARRIVALS.service.customs.redShare) red++;
+    expect(Math.abs(red / 2000 - ARRIVALS.service.customs.redShare)).toBeLessThan(0.02);
+
+    const sim = arrivalHall({ carousel: true, customs: true });
+    dockRoute(sim, true);
+    const co = sim.cohorts;
+    const slots = arrivalSlots(sim);
+    for (const c of slots) {
+      co.recipeSeed[c] = seedWithRed(c === slots[0]);
+      co.bags[c] = 0;
+    }
+    let from = -1;
+    let to = -1;
+    for (let t = 0; t < 30000 && to < 0; t++) {
+      sim.step();
+      if (from < 0 && co.stage[slots[0]!] === Stage.CustomsRed) from = sim.tick;
+      if (from >= 0 && co.stage[slots[0]!] === Stage.ToExit) to = sim.tick;
+    }
+    expect(from).toBeGreaterThanOrEqual(0);
+    const stood = gameSecondsToTicks(ARRIVALS.service.customs.redServiceSeconds);
+    expect(to - from).toBeGreaterThanOrEqual(stood);
+    expect(to - from).toBeLessThanOrEqual(stood + 10);
+  }, 30000);
+
+  it('with no customs fixture the international cohorts exit straight after the claim', () => {
+    const sim = arrivalHall({ carousel: true });
+    dockRoute(sim, true);
+    const seq = stageSequences(sim, 30000);
+    for (const list of seq) {
+      expect(list).not.toContain(Stage.Customs);
+      expect(list).not.toContain(Stage.ToCustoms);
+    }
+    expect(sim.cohorts.arrExited).toBe(sim.cohorts.arrGenerated);
+  }, 30000);
+
+  it('two sims from one seed with both flights stay equal, pass immigration, claim and customs, and conserve over 8000 ticks', () => {
+    const a = twoFlights();
+    const b = twoFlights();
+    const seen = new Set<number>();
+    for (let t = 0; t < 8000; t++) {
+      a.step();
+      b.step();
+      for (let c = 0; c < a.cohorts.hi; c++) seen.add(a.cohorts.stage[c]!);
+      if (t % 50 === 0) {
+        const co = a.cohorts;
+        expect(co.arrGenerated).toBe(co.arrExited + co.arrStranded + co.arrActive);
+        expect(co.generated).toBe(co.boarded + co.missed + co.active);
+      }
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (const st of [Stage.Immigration, Stage.Claim, Stage.Customs]) expect(seen.has(st), `stage ${st}`).toBe(true);
+    expect(a.cohorts.arrGenerated).toBeGreaterThan(0);
+  }, 30000);
+
+  it('restores a save with a cohort queued at immigration and one waiting at claim to the same hash 2000 ticks later', () => {
+    const a = twoFlights();
+    const co = a.cohorts;
+    let found = false;
+    for (let t = 0; t < 20000 && !found; t++) {
+      a.step();
+      let queued = false;
+      let claiming = false;
+      for (let c = 0; c < co.hi; c++) {
+        if (co.stage[c] === Stage.Immigration) queued = true;
+        if (co.stage[c] === Stage.Claim) claiming = true;
+      }
+      found = queued && claiming;
+    }
+    expect(found).toBe(true);
+    const b = new Sim('GOLDEN-0001', OPTIONS);
+    b.restore(JSON.parse(JSON.stringify(a.serialize())));
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 2000; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  }, 30000);
+});
