@@ -153,7 +153,7 @@ export class Sim {
         return f < 0 ? -2 : this.traffic.fStand[f];
       },
     }, this.rng);
-    this.staff = new Staff(this.business, this.baggage);
+    this.staff = new Staff(this.business, this.baggage, this.airfield);
     this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
     this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
     this.business.bagMissingShare = () => this.baggage.missingShare();

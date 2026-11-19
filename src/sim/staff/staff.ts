@@ -1,7 +1,11 @@
-import { STAFF } from '@data/index';
+import { PROFILES, STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
 import { FIXTURE_KEYS, fixtureKey, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
-import { cornerWorld } from '@shared/terminalOps';
+import { AUD } from '@shared/terminalZones';
+import { gameSecondsToTicks } from '@shared/time';
+import { cellIndex, cornerWorld } from '@shared/terminalOps';
+import type { Airfield } from '../airfield/airfield';
+import { nearestNode, walkDistance } from '../terminal/walkDistance';
 import type { Business } from '../business/business';
 import type { Baggage, BagNodeRec } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
@@ -20,6 +24,13 @@ type SlotCtor = { new (buffer: ArrayBuffer): SavedArray; BYTES_PER_ELEMENT: numb
 const SHIFTS = STAFF.shifts.startsH.length;
 const MACHINE_KIND = FIXTURE_KEYS.indexOf('screeningMachine') + 1;
 const MACHINE_STATION = STAFF.stations.screeningMachine!;
+const CREW_SPEED_MPS = PROFILES.profiles.crew.walkSpeed;
+const CHANGE_TICKS = STAFF.shifts.changeMin * TICKS_PER_MINUTE;
+const SHIFT_TICKS = STAFF.shifts.lengthH * 60 * TICKS_PER_MINUTE;
+const OVERTIME_TICKS = STAFF.shifts.overtimeMaxMin * TICKS_PER_MINUTE;
+const STEP_TICKS = STAFF.stepMin * TICKS_PER_MINUTE;
+/** walkStart value of a member sent home because its station could not be reached. */
+const WALK_UNREACHABLE = -2;
 
 /** Index of the shift running at the tick. Before the first start hour the last shift of the previous day runs. */
 export function shiftAt(tick: number): number {
@@ -85,15 +96,15 @@ export class Staff {
   readonly wake = new Int32Array(this.cap);
   /** Tick of the next break, -1 none. */
   readonly breakAt = new Int32Array(this.cap);
-  /** Tick the current walk started, -1 none. */
+  /** Tick the current walk started, -1 none, -2 while the member is sent home from a station it cannot reach. */
   readonly walkStart = new Int32Array(this.cap);
-  /** Start x of the current walk, in meters. */
+  /** Start x of the current walk, in logical cells. */
   readonly walkFromX = new Int16Array(this.cap);
-  /** Start y of the current walk, in meters. */
+  /** Start y of the current walk, in logical cells. */
   readonly walkFromY = new Int16Array(this.cap);
-  /** End x of the current walk, in meters. */
+  /** End x of the current walk, in logical cells. */
   readonly walkToX = new Int16Array(this.cap);
-  /** End y of the current walk, in meters. */
+  /** End y of the current walk, in logical cells. */
   readonly walkToY = new Int16Array(this.cap);
   /** Derived, not saved: index of the station of the member, -1 none. */
   readonly stIdx = new Int32Array(this.cap).fill(-1);
@@ -148,9 +159,14 @@ export class Staff {
   /** Set when a cap changed, so the next update runs a staffing pass. */
   private capsDirty = false;
 
+  /** Clock ins and clock outs counted per staff center building id, -1 without a center. For tests and sheets, not saved or hashed. */
+  readonly clockIns = new Map<number, number>();
+  readonly clockOuts = new Map<number, number>();
+
   constructor(
     readonly business: Business,
     readonly baggage: Baggage,
+    readonly airfield: Airfield,
   ) {}
 
   /** Saved arrays by name. */
@@ -197,6 +213,7 @@ export class Staff {
       this.capsDirty = false;
       this.staffPass(tick);
     }
+    if (tick % STEP_TICKS === 0) this.stateStep(tick);
     this.applyPresence();
   }
 
@@ -416,17 +433,239 @@ export class Staff {
       if (this.state[m] !== STAFF_STATE.Off) continue;
       if (sh === run) {
         this.state[m] = station >= 0 ? STAFF_STATE.OnDuty : STAFF_STATE.Standby;
-        this.home[m] = -1;
+        this.home[m] = this.homeOf(station >= 0 ? this.sGridIdx[station]! : 0);
         this.breakAt[m] = shiftStartTick(tick, sh) + (STAFF.breaks.afterMin + breakJitterMin(this.seed[m]!)) * TICKS_PER_MINUTE;
-        this.wake[m] = tick + STAFF.stepMin * TICKS_PER_MINUTE;
+        this.wake[m] = tick + STEP_TICKS;
       } else {
-        this.wake[m] = tick;
+        this.plan(m, tick);
       }
     }
     for (let m = 0; m < this.hi; m++) {
       if (this.role[m] !== r || this.stIdx[m]! >= 0 || (this.flags[m]! & STAFF_FLAG.Relief) !== 0) continue;
       if (this.state[m] === STAFF_STATE.Off || this.state[m] === STAFF_STATE.Standby) this.free(m);
     }
+  }
+
+  /** Id of the staff center nearest by straight line to the curb of a grid, ties to the lowest id, -1 when there is none. */
+  homeOf(gridIdx: number): number {
+    const buildings = this.airfield.data.buildings ?? [];
+    const cx = this.curbX[gridIdx] ?? 0;
+    const cy = this.curbY[gridIdx] ?? 0;
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < buildings.length; i++) {
+      const b = buildings[i]!;
+      if (b.kind !== 'staff') continue;
+      const d = Math.hypot(b.x - cx, b.y - cy);
+      if (d < bestD || (d === bestD && b.id < best)) {
+        bestD = d;
+        best = b.id;
+      }
+    }
+    return best;
+  }
+
+  /** Ticks to travel between a staff center and the curb of a grid, 0 without a center or when it is gone. */
+  private commuteTicks(home: number, gridIdx: number): number {
+    if (home < 0) return 0;
+    const buildings = this.airfield.data.buildings ?? [];
+    for (let i = 0; i < buildings.length; i++) {
+      const b = buildings[i]!;
+      if (b.id !== home) continue;
+      const d = Math.hypot(b.x - (this.curbX[gridIdx] ?? 0), b.y - (this.curbY[gridIdx] ?? 0));
+      return gameSecondsToTicks(Math.ceil(d / CREW_SPEED_MPS));
+    }
+    return 0;
+  }
+
+  /** Ticks a member walks between two walk nodes of a grid, Infinity when the staff cannot get there. */
+  private walkTicks(gridIdx: number, fromNode: number, toNode: number): number {
+    const wg = this.business.walkGraphs[gridIdx];
+    if (!wg || fromNode < 0 || toNode < 0) return Infinity;
+    const d = walkDistance(wg, fromNode, toNode, AUD.Staff);
+    return d === Infinity ? Infinity : gameSecondsToTicks(Math.ceil(d / CREW_SPEED_MPS));
+  }
+
+  /** Grid index a member works in: its station's grid, the first grid for a relief. */
+  private gridOf(m: number): number {
+    const s = this.stIdx[m]!;
+    return s >= 0 ? this.sGridIdx[s]! : 0;
+  }
+
+  /** Walk node of the station of a member in its grid, -1 when it has none. */
+  private stationNode(m: number): number {
+    const s = this.stIdx[m]!;
+    const g = s >= 0 ? this.business.grids[this.sGridIdx[s]!] : undefined;
+    const wg = s >= 0 ? this.business.walkGraphs[this.sGridIdx[s]!] : undefined;
+    if (!g || !wg) return -1;
+    return nearestNode(wg, cellIndex(g, this.sX[s]!, this.sY[s]!));
+  }
+
+  /** End tick of the shift instance a member of `sh` serves at `tick`, counting an early arrival for the next instance. */
+  private dutyEnd(tick: number, sh: number): number {
+    const start = shiftStartTick(tick, sh);
+    const end = start + SHIFT_TICKS;
+    if (tick < end) return end;
+    return start + TICKS_PER_DAY - tick < tick - end ? end + TICKS_PER_DAY : end;
+  }
+
+  /** Sets the wake of an Off member to clock in early enough to stand on its station at the start of its next shift. */
+  private plan(m: number, tick: number, skipNow = false): void {
+    const sh = this.shift[m]!;
+    if (!skipNow && shiftAt(tick) === sh && tick < shiftEndTick(tick, sh) - 60 * TICKS_PER_MINUTE) {
+      this.wake[m] = tick;
+      return;
+    }
+    const gi = this.gridOf(m);
+    let lead = CHANGE_TICKS + this.commuteTicks(this.homeOf(gi), gi);
+    const walk = this.walkTicks(gi, this.business.curbNode(gi), this.stationNode(m));
+    if (walk !== Infinity) lead += walk;
+    this.wake[m] = Math.max(tick, shiftStartTick(tick, sh) + TICKS_PER_DAY - lead);
+  }
+
+  /** Records a walk between the curb and the station of a member, in logical cells. Leaves the record alone without both. */
+  private setWalk(m: number, tick: number, fromCurb: boolean): void {
+    const gi = this.gridOf(m);
+    const g = this.business.grids[gi];
+    const wg = this.business.walkGraphs[gi];
+    const curb = this.business.curbNode(gi);
+    const s = this.stIdx[m]!;
+    if (!g || !wg || curb < 0 || s < 0) return;
+    const c = wg.nodeCell[curb]!;
+    const cx = g.x0 + (c % g.w);
+    const cy = g.y0 + Math.floor(c / g.w);
+    this.walkFromX[m] = fromCurb ? cx : this.sX[s]!;
+    this.walkFromY[m] = fromCurb ? cy : this.sY[s]!;
+    this.walkToX[m] = fromCurb ? this.sX[s]! : cx;
+    this.walkToY[m] = fromCurb ? this.sY[s]! : cy;
+    this.walkStart[m] = tick;
+  }
+
+  private count(map: Map<number, number>, home: number): void {
+    map.set(home, (map.get(home) ?? 0) + 1);
+  }
+
+  /** Sends an on duty member to the curb: a walk record and then the commute home. */
+  private startLeaving(m: number, tick: number): void {
+    this.state[m] = STAFF_STATE.Leaving;
+    this.walkStart[m] = -1;
+    const gi = this.gridOf(m);
+    const walk = this.walkTicks(gi, this.stationNode(m), this.business.curbNode(gi));
+    this.setWalk(m, tick, false);
+    this.wake[m] = tick + (walk === Infinity ? 0 : walk);
+  }
+
+  /** Sends a member whose station cannot be reached home, to plan for its next shift. */
+  private sendHome(m: number, tick: number): void {
+    this.state[m] = STAFF_STATE.CommuteHome;
+    this.walkStart[m] = WALK_UNREACHABLE;
+    this.wake[m] = tick + this.commuteTicks(this.home[m]!, this.gridOf(m));
+  }
+
+  /** Advances every member whose wake tick has come by one state, in slot order. */
+  private stateStep(tick: number): void {
+    for (let m = 0; m < this.hi; m++) {
+      if (this.state[m] === STAFF_STATE.Free || this.wake[m]! > tick) continue;
+      const sh = this.shift[m]!;
+      const gi = this.gridOf(m);
+      switch (this.state[m]) {
+        case STAFF_STATE.Off:
+          if (this.stIdx[m]! < 0 && (this.flags[m]! & STAFF_FLAG.Relief) === 0) {
+            this.free(m);
+            break;
+          }
+          this.home[m] = this.homeOf(gi);
+          this.count(this.clockIns, this.home[m]!);
+          this.flags[m] &= ~(STAFF_FLAG.Tired | STAFF_FLAG.BreakDone);
+          this.state[m] = STAFF_STATE.ClockIn;
+          this.wake[m] = tick + CHANGE_TICKS;
+          break;
+        case STAFF_STATE.ClockIn:
+          if ((this.flags[m]! & STAFF_FLAG.Relief) !== 0) {
+            this.state[m] = STAFF_STATE.Standby;
+            this.wake[m] = this.dutyEnd(tick, sh);
+          } else {
+            this.state[m] = STAFF_STATE.Commute;
+            this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+          }
+          break;
+        case STAFF_STATE.Commute: {
+          const walk = this.walkTicks(gi, this.business.curbNode(gi), this.stationNode(m));
+          if (walk === Infinity) {
+            this.sendHome(m, tick);
+            break;
+          }
+          this.state[m] = STAFF_STATE.ToStation;
+          this.setWalk(m, tick, true);
+          this.wake[m] = tick + walk;
+          break;
+        }
+        case STAFF_STATE.ToStation:
+          this.arrive(m, tick);
+          break;
+        case STAFF_STATE.OnDuty: {
+          const end = this.dutyEnd(tick, sh);
+          if (tick >= end + OVERTIME_TICKS) this.startLeaving(m, tick);
+          else this.wake[m] = tick >= end ? end + OVERTIME_TICKS : end;
+          break;
+        }
+        case STAFF_STATE.Leaving:
+          this.walkStart[m] = -1;
+          this.state[m] = STAFF_STATE.CommuteHome;
+          this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+          break;
+        case STAFF_STATE.CommuteHome:
+          this.state[m] = STAFF_STATE.ClockOut;
+          this.wake[m] = tick + CHANGE_TICKS;
+          break;
+        case STAFF_STATE.ClockOut: {
+          const unreachable = this.walkStart[m] === WALK_UNREACHABLE;
+          this.count(this.clockOuts, this.home[m]!);
+          this.covering[m] = -1;
+          this.walkStart[m] = -1;
+          if (this.stIdx[m]! < 0 && (this.flags[m]! & STAFF_FLAG.Relief) === 0) {
+            this.free(m);
+            break;
+          }
+          this.state[m] = STAFF_STATE.Off;
+          this.plan(m, tick, unreachable);
+          break;
+        }
+        case STAFF_STATE.Standby:
+          if (tick >= this.dutyEnd(tick, sh)) {
+            this.state[m] = STAFF_STATE.ClockOut;
+            this.wake[m] = tick + CHANGE_TICKS;
+          } else {
+            this.wake[m] = this.dutyEnd(tick, sh);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /** A member reaches its station: it takes over, and the member it replaces leaves. */
+  private arrive(m: number, tick: number): void {
+    const s = this.stIdx[m]!;
+    if (s < 0) {
+      this.sendHome(m, tick);
+      return;
+    }
+    const sh = this.shift[m]!;
+    const end = this.dutyEnd(tick, sh);
+    this.state[m] = STAFF_STATE.OnDuty;
+    this.walkStart[m] = -1;
+    if ((this.flags[m]! & STAFF_FLAG.BreakDone) === 0) this.breakAt[m] = end - SHIFT_TICKS + (STAFF.breaks.afterMin + breakJitterMin(this.seed[m]!)) * TICKS_PER_MINUTE;
+    for (let o = 0; o < this.hi; o++) {
+      if (o === m || this.state[o] !== STAFF_STATE.OnDuty || this.stIdx[o] !== s) continue;
+      if (this.shift[o] !== sh || this.covering[o] === m) {
+        this.startLeaving(o, tick);
+        break;
+      }
+    }
+    const breakDue = (this.flags[m]! & STAFF_FLAG.BreakDone) === 0 ? this.breakAt[m]! : end;
+    this.wake[m] = Math.min(breakDue, end);
   }
 
   /** Counts the staff on duty per station and sets the staff factor of each service node. */

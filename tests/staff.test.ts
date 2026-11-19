@@ -11,7 +11,7 @@ import { breakJitterMin, staffSeed, staffSkill } from '../src/sim/staff/staffTra
 
 const freshStaff = (): Staff => {
   const sim = new Sim('STAFF-0001', OPTIONS);
-  return new Staff(sim.business, sim.baggage);
+  return new Staff(sim.business, sim.baggage, sim.airfield);
 };
 
 describe('staff store', () => {
