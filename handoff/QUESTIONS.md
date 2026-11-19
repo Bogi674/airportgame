@@ -359,3 +359,16 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Reduced mobility | 3 percent of members, walking at 0.7 speed |
 | Satisfaction | queue costs 1 point per game minute over patience; walking costs 0.02 per m beyond 300 m; an unmet need costs 10 per hour; a missed flight costs 40 |
 | Scope | needs act only airside (retail window, GAME_DESIGN section 8); flight delay and facility bonuses stay in their own rating parts; travel class and price sensitivity move to T32 |
+
+### T20 proposed values (orchestrator, for the user's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| International share | 0.35 of destinations, seeded per destination (owner answer) |
+| Immigration | passport desk 45 s; eGate 20 s, 1 server, 8 percent referred to an officer, families with children under 12 use desks |
+| Customs | 8 s with 2 servers; 5 percent sent to the red channel for 120 s |
+| Deboarding | doors open 180 s after docking; 2.5 s per passenger per door; remote stand bus delay 480 s until bus trips exist; far stands without a bus bay reuse the 0.25 boarding slowdown |
+| Baggage claim | checked every 30 s; passengers give up after 45 min; missing bags cost 20 points per member |
+| Stranded | after 60 min, costing 40 points per member |
+| Scope | security exits stay walk through with no queue; international departures through passport control and security exit throughput become new roadmap rows |
+| Default for Q1 | an international flight at an airport with no international gate desk uses the domestic route, skips immigration and customs, and the player gets a notice; the alternative (passengers lost) is one branch in arrivalEntry |

@@ -124,7 +124,7 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 | --- | --- | --- | --- | --- |
 | T54 | People walk and dwell along routes with spacing (needs a from node in the cohort store and a save migration) |  |  | done (a1cfacb, 447a52d, e99916b, 249af37, eae575b, 43ea83e, a70cf08, f04ae5f) |
 | T67 | Individuals inside cohorts: traits, needs evaluated at decision points, sub cohorts, satisfaction per member rolled up to the airport rating, the stress scenario with 20 000 cohorts and 40 000 people under the 4 ms medium budget (section 6.1 to 6.3) | T17, T18 | T54 | done (481bbbf, 4e49b2e, cc9cf61, 91a82d5, b01dce2, 5044c11, 89a81fb, c3b2713, eea142f) |
-| T20 | Arrival journey with immigration (passport control or automated gate in arrival mode), baggage claim and the customs channel (`docs/TERMINAL_ZONING.md` section 3) |  | T67, T43, T75 | todo |
+| T20 | Arrival journey with immigration (passport control or automated gate in arrival mode), baggage claim and the customs channel (`docs/TERMINAL_ZONING.md` section 3) |  | T67, T43, T75 | doing |
 | T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | todo |
 
 Exit: a passenger who gets hungry leaves the group, visits a shop and rejoins at the gate, arriving passengers collect bags and leave, staff change shifts at the staff center, and the rating reacts to all of it.
