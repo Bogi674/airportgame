@@ -372,3 +372,15 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Stranded | after 60 min, costing 40 points per member |
 | Scope | security exits stay walk through with no queue; international departures through passport control and security exit throughput become new roadmap rows |
 | Default for Q1 | an international flight at an airport with no international gate desk uses the domestic route, skips immigration and customs, and the player gets a notice; the alternative (passengers lost) is one branch in arrivalEntry |
+
+### T68 proposed values (orchestrator, for the user's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| Shifts | start 06:00, 14:00 and 22:00, 8 h each; clock in and out 10 min; an unrelieved worker stays at most 60 min past shift end |
+| Breaks | one per shift, due 240 min after shift start plus 0 to 60 min, 30 min long; waits up to 30 min for relief; skill 0.8 without a break |
+| Staff | skill 0.9 to 1.1; relief pool 0.2 of the on duty need; per station: check in 1, bag drop 1, gate desk 1, security 2, passport 1, customs 1, screening machine 1; wage 130 per role per day (existing fee); walk 1.5 m/s (existing crew speed) |
+| Sim | store capacity 4 096, state step 1 min, staffing pass every 60 min |
+| Render | 300 staff figures in the snapshot, passenger sample cap 3 000 to 2 700; staff stand 0.7 m behind the desk, 0.8 m apart |
+| Default for Q1 | with no staff center, staff clock in and out at the curb door, skip their break and work at 0.8 skill; the alternative (no staffed desk opens without a staff center) would break existing saves |
+| Scope | apron crews, cleaners, staffed security exits, morale and training move to a new roadmap row at close |
