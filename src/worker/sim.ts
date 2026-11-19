@@ -75,7 +75,7 @@ function postBusinessIfDirty(): void {
 }
 
 function blankOverlay(): OverlayData {
-  return { building: 0, w: 0, h: 0, density: new Uint16Array(0), nodeCell: new Int32Array(0), nodeQueue: new Uint16Array(0), nodeWaitS: new Uint16Array(0), gateCell: new Int32Array(0), gateDistM: new Uint16Array(0) };
+  return { building: 0, w: 0, h: 0, density: new Uint16Array(0), nodeCell: new Int32Array(0), nodeQueue: new Uint16Array(0), nodeWaitS: new Uint16Array(0), gateCell: new Int32Array(0), gateDistM: new Uint16Array(0), stationCell: new Int32Array(0), stationNeed: new Uint8Array(0), stationPresent: new Uint8Array(0) };
 }
 
 /** A copy of an overlay that owns its arrays, so the scratch buffers stay in the worker. */
@@ -90,6 +90,9 @@ function copyOverlay(o: OverlayData): OverlayData {
     nodeWaitS: o.nodeWaitS.slice(),
     gateCell: o.gateCell.slice(),
     gateDistM: o.gateDistM.slice(),
+    stationCell: o.stationCell.slice(),
+    stationNeed: o.stationNeed.slice(),
+    stationPresent: o.stationPresent.slice(),
   };
 }
 

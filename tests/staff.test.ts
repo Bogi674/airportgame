@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '../src/sim/sim';
+import type { OverlayData } from '@shared/overlay';
 import { Rng } from '../src/sim/rng';
 import { buildServiceNodes, serviceJoin, serviceUpdate, serviceWait } from '../src/sim/terminal/serviceNodes';
 import { AIRCRAFT } from '@data/aircraft';
@@ -377,5 +378,34 @@ describe('staff wages and payload', () => {
     expect(p.staffing[0]!.needed).toBe(3);
     expect(p.staffing[0]!.wagePerDay).toBe(130);
     expect(p.staff).toBe(Math.round(sim.business.staffCount() - sim.business.stationPositions()) + 21);
+  });
+});
+
+describe('staffing coverage overlay data', () => {
+  const blank = (): OverlayData => ({
+    building: 0, w: 0, h: 0, density: new Uint16Array(0), nodeCell: new Int32Array(0), nodeQueue: new Uint16Array(0), nodeWaitS: new Uint16Array(0),
+    gateCell: new Int32Array(0), gateDistM: new Uint16Array(0), stationCell: new Int32Array(0), stationNeed: new Uint8Array(0), stationPresent: new Uint8Array(0),
+  });
+
+  it('lists every station with its need and the present count of its service node', () => {
+    const sim = terminalSim();
+    const o = sim.overlayData(0, blank());
+    expect(Array.from(o.stationNeed).sort()).toEqual([1, 1, 1, 2]);
+    const sn = sim.business.serviceNodes[0]!;
+    for (let i = 0; i < o.stationCell.length; i++) {
+      const node = Array.from(sn.cell).indexOf(o.stationCell[i]!);
+      expect(node).toBeGreaterThanOrEqual(0);
+      expect(o.stationPresent[i]).toBe(sn.staffPresent[node]);
+      expect(o.stationPresent[i]).toBe(o.stationNeed[i]);
+    }
+  });
+
+  it('shows one of two officers on a capped security lane', () => {
+    const sim = terminalSim();
+    expect(run(sim, { type: 'setStaffCap', role: 1, cap: 1 })).toEqual([]);
+    const o = sim.overlayData(0, blank());
+    const lane = Array.from(o.stationNeed).indexOf(2);
+    expect(lane).toBeGreaterThanOrEqual(0);
+    expect(o.stationPresent[lane]).toBe(1);
   });
 });

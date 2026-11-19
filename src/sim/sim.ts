@@ -600,7 +600,9 @@ export class Sim {
 
   /** Read only overlay of one terminal building at the current tick. Changes no sim state. */
   overlayData(gridIndex: number, out: OverlayData): OverlayData {
-    return this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
+    const o = this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
+    this.staff.fillCoverage(o, gridIndex);
+    return o;
   }
 
   /** True once per airfield change. */

@@ -3,6 +3,7 @@ import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type StaffRow, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
 import { gameSecondsToTicks } from '@shared/time';
+import type { OverlayData } from '@shared/overlay';
 import { cellIndex, cornerWorld } from '@shared/terminalOps';
 import type { Airfield } from '../airfield/airfield';
 import { HEADING_STEPS, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
@@ -966,6 +967,24 @@ export class Staff {
       n++;
     }
     views.header[SnapHeader.PeopleCount] = n;
+  }
+
+  /** Fills the staffing coverage of one grid into an overlay: one entry per station, in station order. Changes no sim state. */
+  fillCoverage(out: OverlayData, gridIdx: number): void {
+    const grid = this.business.grids[gridIdx];
+    let count = 0;
+    for (let s = 0; s < this.stCount; s++) if (this.sGridIdx[s] === gridIdx) count++;
+    out.stationCell = out.stationCell.length === count ? out.stationCell : new Int32Array(count);
+    out.stationNeed = out.stationNeed.length === count ? out.stationNeed : new Uint8Array(count);
+    out.stationPresent = out.stationPresent.length === count ? out.stationPresent : new Uint8Array(count);
+    let k = 0;
+    for (let s = 0; s < this.stCount; s++) {
+      if (this.sGridIdx[s] !== gridIdx) continue;
+      out.stationCell[k] = grid ? cellIndex(grid, this.sX[s]!, this.sY[s]!) : -1;
+      out.stationNeed[k] = this.sNeed[s]!;
+      out.stationPresent[k] = this.sPresent[s]!;
+      k++;
+    }
   }
 
   /** Wages of every hired member per game day. */
