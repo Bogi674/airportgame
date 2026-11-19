@@ -129,6 +129,58 @@ describe('saves', () => {
     expect(d.stateHash()).toBe(c.stateHash());
   });
 
+  it('a version 26 save with cohorts and a security lane migrates through all three steps to the current version', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2 })).toEqual([]);
+    sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 6000, -1);
+    for (let t = 0; t < 400; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as {
+      version: number;
+      business: { grids: Record<string, string>[] };
+      cohorts: { hi: number; arrays: Record<string, string> };
+    };
+    data.version = 26;
+    const securityId = FIXTURE_KEYS.indexOf('security') + 1;
+    const lanes: { grid: number; cell: number }[] = [];
+    data.business.grids.forEach((sg, k) => {
+      const fixture = unpackTyped(sg.fixture!, Uint8Array);
+      const rot = unpackTyped(sg.fixtureRot!, Uint8Array);
+      for (let i = 0; i < fixture.length; i++) {
+        if (fixture[i] !== securityId) continue;
+        rot[i] = 0;
+        lanes.push({ grid: k, cell: i });
+      }
+      sg.fixtureRot = packTyped(rot);
+      delete sg.fixtureOff;
+      delete sg.fixtureLevel;
+      delete sg.fixtureMode;
+    });
+    expect(lanes.length).toBeGreaterThan(0);
+    for (const k of ['walkStart', 'needTick', 'parent', 'waitStart', 'target', 'visitNeed', 'memberSeed', 'memberNeed', 'memberSat']) delete data.cohorts.arrays[k];
+    const out = migrate(data) as unknown as typeof data;
+    expect(out.version).toBe(SAVE_VERSION);
+    const walkStart = unpackTyped(out.cohorts.arrays.walkStart!, Int32Array);
+    expect(walkStart.length).toBe(out.cohorts.hi);
+    expect(walkStart.every((v) => v === -1)).toBe(true);
+    for (const { grid, cell } of lanes) {
+      const sg = out.business.grids[grid]!;
+      const rot = unpackTyped(sg.fixtureRot!, Uint8Array);
+      expect(rot[cell]).toBeGreaterThanOrEqual(1);
+      expect(rot[cell]).toBeLessThanOrEqual(4);
+      expect(unpackTyped(sg.fixtureOff!, Uint8Array).length).toBe(rot.length);
+      expect(unpackTyped(sg.fixtureLevel!, Uint8Array)[cell]).toBe(1);
+      expect(unpackTyped(sg.fixtureMode!, Uint8Array)[cell]).toBe(0);
+    }
+    const seeds = unpackTyped(out.cohorts.arrays.memberSeed!, Uint32Array);
+    const recipe = unpackTyped(out.cohorts.arrays.recipeSeed!, Uint32Array);
+    expect(seeds[0]).toBe(memberSeedOf(recipe[0]!, 0));
+    expect(unpackTyped(out.cohorts.arrays.parent!, Int32Array)[0]).toBe(-1);
+    const c = new Sim(sim.seed, OPTIONS);
+    c.restore(out);
+    expect(c.cohorts.hi).toBe(out.cohorts.hi);
+  });
+
   it('a version 13 save migrates to the current version and restores with the GA clock at zero', () => {
     const sim = prepared();
     for (let t = 0; t < 300; t++) sim.step();

@@ -25,6 +25,20 @@ export interface WalkCache {
   heapPos: Int32Array;
 }
 
+/**
+ * A walk cache whose rows run toward their node: row k holds the distance from every node to the row's target.
+ * It carries the reverse edges of the graph it was built for, so it is valid until the graph is rebuilt.
+ */
+export interface SampleCache extends WalkCache {
+  /** Reverse adjacency in CSR form: node v lists the edges that lead into it. */
+  revStart: Int32Array;
+  /** Per reverse edge: the node the edge leaves. */
+  revFrom: Int32Array;
+  revLen: Float32Array;
+  /** Per reverse edge: the AUD mask of the forward edge. */
+  revMask: Uint8Array;
+}
+
 /** An empty cache for a graph of nodeCount nodes, with one row per cached source. */
 export function newWalkCache(nodeCount: number): WalkCache {
   const sources = BUSINESS.terminal.walk.cacheSources;
@@ -38,6 +52,28 @@ export function newWalkCache(nodeCount: number): WalkCache {
     heap: new Int32Array(nodeCount),
     heapPos: new Int32Array(nodeCount),
   };
+}
+
+/** A cache for the people sample over wg: rows are distances toward the target, over the reverse edges of wg. */
+export function newSampleCache(wg: WalkGraph): SampleCache {
+  const n = wg.nodeCount;
+  const m = wg.edgeTo.length;
+  const revStart = new Int32Array(n + 1);
+  for (let e = 0; e < m; e++) revStart[wg.edgeTo[e]! + 1]! += 1;
+  for (let i = 1; i <= n; i++) revStart[i]! += revStart[i - 1]!;
+  const cursor = revStart.slice(0, n);
+  const revFrom = new Int32Array(m);
+  const revLen = new Float32Array(m);
+  const revMask = new Uint8Array(m);
+  for (let u = 0; u < n; u++) {
+    for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
+      const k = cursor[wg.edgeTo[e]!]!++;
+      revFrom[k] = u;
+      revLen[k] = wg.edgeLen[e]!;
+      revMask[k] = wg.edgeMask[e]!;
+    }
+  }
+  return { ...newWalkCache(n), revStart, revFrom, revLen, revMask };
 }
 
 /** True when heap entry a must sit above entry b: smaller distance first, then smaller id. */
@@ -83,9 +119,11 @@ function siftDown(cache: WalkCache, i: number, size: number): void {
   pos[node] = k;
 }
 
-/** Fills row from the Dijkstra distances out of source, over the walk graph edges. */
-function fillRow(wg: WalkGraph, cache: WalkCache, aud: number, source: number, row: number): void {
-  const n = wg.nodeCount;
+/**
+ * Fills row from the Dijkstra distances out of source, over the edges of the CSR (start, to, len, mask) that the
+ * audience may take. Over the forward edges the row is the distance from source, over the reverse edges the distance to it.
+ */
+function fillRow(n: number, start: Int32Array, to: Int32Array, len: Float32Array, mask: Uint8Array, cache: WalkCache, aud: number, source: number, row: number): void {
   const dist = cache.dist;
   const pos = cache.heapPos;
   dist.fill(Infinity);
@@ -103,11 +141,11 @@ function fillRow(wg: WalkGraph, cache: WalkCache, aud: number, source: number, r
       siftDown(cache, 0, size);
     }
     const du = dist[u]!;
-    for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
+    for (let e = start[u]!; e < start[u + 1]!; e++) {
       // Edges this audience may not take, such as a staff door for passengers or the wrong way through a transition, are not in the layer.
-      if ((wg.edgeMask[e]! & aud) === 0) continue;
-      const v = wg.edgeTo[e]!;
-      const dv = du + wg.edgeLen[e]!;
+      if ((mask[e]! & aud) === 0) continue;
+      const v = to[e]!;
+      const dv = du + len[e]!;
       if (dv >= dist[v]!) continue;
       dist[v] = dv;
       if (pos[v]! >= 0) {
@@ -124,8 +162,8 @@ function fillRow(wg: WalkGraph, cache: WalkCache, aud: number, source: number, r
   for (let v = 0; v < n; v++) cache.rows[base + v] = dist[v]!;
 }
 
-/** The row that holds the distances from source, filling it first when it is not cached. */
-function rowFor(wg: WalkGraph, cache: WalkCache, aud: number, source: number): number {
+/** The row that holds the distances from source over the CSR arrays (start, to, len, mask), filling it first when it is not cached. */
+function rowFor(n: number, start: Int32Array, to: Int32Array, len: Float32Array, mask: Uint8Array, cache: WalkCache, aud: number, source: number): number {
   let row = cache.sourceRow[source]!;
   if (row < 0) {
     row = cache.rowSource.indexOf(-1);
@@ -138,19 +176,20 @@ function rowFor(wg: WalkGraph, cache: WalkCache, aud: number, source: number): n
     }
     cache.rowSource[row] = source;
     cache.sourceRow[source] = row;
-    fillRow(wg, cache, aud, source, row);
+    fillRow(n, start, to, len, mask, cache, aud, source, row);
   }
   cache.rowStamp[row] = ++cache.clock;
   return row;
 }
 
 /**
- * Offset into cache.rows of the row that holds every node's distance to target, filling it when needed.
- * -1 unless target is an integer node id. rows[base + v] is the distance from v to target.
+ * Offset into cache.rows of the row that holds every node's distance to target for passengers, filling it when needed.
+ * -1 unless target is an integer node id. rows[base + v] is the distance from v to target, found over the reverse
+ * edges, so a one way edge counts only in its own direction.
  */
-export function distanceRowIn(wg: WalkGraph, cache: WalkCache, target: number): number {
+export function distanceRowIn(wg: WalkGraph, cache: SampleCache, target: number): number {
   if (!Number.isInteger(target) || target < 0 || target >= wg.nodeCount) return -1;
-  return rowFor(wg, cache, AUD.Pax, target) * wg.nodeCount;
+  return rowFor(wg.nodeCount, cache.revStart, cache.revFrom, cache.revLen, cache.revMask, cache, AUD.Pax, target) * wg.nodeCount;
 }
 
 /**
@@ -185,7 +224,7 @@ export function walkDistance(wg: WalkGraph, from: number, to: number, aud: numbe
   if (from === to) return 0;
   // Any audience other than staff uses the passenger rows, so callers pass AUD.Pax or AUD.Staff only.
   const cache = aud === AUD.Staff ? wg.staffCache : wg.cache;
-  const row = rowFor(wg, cache, aud, from);
+  const row = rowFor(n, wg.edgeStart, wg.edgeTo, wg.edgeLen, wg.edgeMask, cache, aud, from);
   return cache.rows[row * n + to]!;
 }
 

@@ -11,7 +11,7 @@ import { FlState, type Traffic } from '../ops/traffic';
 import type { ServiceNodes } from '../terminal/serviceNodes';
 import { SIDE, buildVisitPoints, findPoint, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
-import { distanceRowIn, nearestNode, newWalkCache, type WalkCache } from '../terminal/walkDistance';
+import { distanceRowIn, nearestNode, newSampleCache, type SampleCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
 import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, writeTraits } from './traits';
@@ -225,7 +225,7 @@ export class Cohorts {
   /** One mark per cell of the grid being sampled, 1 once a figure stands there in the current sample. */
   private occupied = new Int32Array(0);
   /** Sample caches of the walk rows, one per grid. Derived, never saved or hashed. */
-  private sampleCaches: WalkCache[] = [];
+  private sampleCaches: SampleCache[] = [];
   private sampleCacheVersion = -1;
   /** Visit points per grid. Derived from the grids, never saved or hashed. */
   private visitTables: VisitPoints[] = [];
@@ -444,7 +444,7 @@ export class Cohorts {
     let stale = this.sampleCacheVersion !== this.business.walkVersion || this.sampleCaches.length !== wgs.length;
     for (let g = 0; !stale && g < wgs.length; g++) stale = this.sampleCaches[g]!.sourceRow.length !== wgs[g]!.nodeCount;
     if (!stale) return;
-    this.sampleCaches = wgs.map((wg) => newWalkCache(wg.nodeCount));
+    this.sampleCaches = wgs.map((wg) => newSampleCache(wg));
     this.sampleCacheVersion = this.business.walkVersion;
     this.trailNode.fill(-1, 0, this.hi);
   }

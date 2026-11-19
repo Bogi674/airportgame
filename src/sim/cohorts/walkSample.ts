@@ -1,5 +1,5 @@
 import type { WalkGraph } from '../terminal/walkGraph';
-import { distanceRowIn, nextEdge, type WalkCache } from '../terminal/walkDistance';
+import { distanceRowIn, nextEdge, type SampleCache } from '../terminal/walkDistance';
 
 /** Length of the out array of routePoint. */
 export const ROUTE_OUT = 6;
@@ -18,7 +18,7 @@ export function cellAt(wg: WalkGraph, lx: number, ly: number): number {
  * (cell centre), the cell step of the edge in use, and the last node passed with the length walked up to it.
  * Returns 1 while on the way, 0 at the target, -1 when there is no route.
  */
-export function routePoint(wg: WalkGraph, cache: WalkCache, from: number, walked: number, to: number, s: number, out: Float64Array): number {
+export function routePoint(wg: WalkGraph, cache: SampleCache, from: number, walked: number, to: number, s: number, out: Float64Array): number {
   const n = wg.nodeCount;
   if (!Number.isInteger(from) || from < 0 || from >= n) return -1;
   const base = distanceRowIn(wg, cache, to);
