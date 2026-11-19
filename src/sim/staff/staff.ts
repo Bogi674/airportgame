@@ -163,6 +163,8 @@ export class Staff {
   private capsDirty = false;
   /** Counts hires and releases, so the payload version moves when the roster changes. Not saved. */
   private churn = 0;
+  /** True when a member state, a placement or the station set changed since the last applyPresence. Not saved. */
+  private presenceDirty = true;
   private churnSeen = 0;
 
   /** Clock ins and clock outs counted per staff center building id, -1 without a center. For tests and sheets, not saved or hashed. */
@@ -201,6 +203,7 @@ export class Staff {
     this.builtFor.fill(-1);
     this.churn = 0;
     this.churnSeen = 0;
+    this.presenceDirty = true;
     if (!s) return;
     const slots = this.slotArrays();
     for (const k of Object.keys(slots)) {
@@ -222,7 +225,7 @@ export class Staff {
       this.staffPass(tick);
     }
     if (tick % STEP_TICKS === 0) this.stateStep(tick);
-    this.applyPresence();
+    if (this.presenceDirty) this.applyPresence();
     if (this.churn !== this.churnSeen || tick % HOUR_TICKS === 0) {
       this.churnSeen = this.churn;
       this.business.version++;
@@ -253,6 +256,7 @@ export class Staff {
   /** Rebuilds the stations when needed and applies the staff on duty to the service nodes. */
   refresh(): void {
     this.rebuildStationsIfStale();
+    this.presenceDirty = true;
     this.applyPresence();
   }
 
@@ -268,6 +272,7 @@ export class Staff {
   }
 
   private rebuildStations(): void {
+    this.presenceDirty = true;
     const b = this.business;
     let n = 0;
     for (let gi = 0; gi < b.grids.length; gi++) {
@@ -374,6 +379,7 @@ export class Staff {
    * cap. Positions fill the running shift first. A pass with nothing changed changes nothing.
    */
   private staffPass(tick: number): void {
+    this.presenceDirty = true;
     const run = shiftAt(tick);
     this.keepSt.fill(0);
     this.heldSt.fill(0);
@@ -582,6 +588,7 @@ export class Staff {
   private stateStep(tick: number): void {
     for (let m = 0; m < this.hi; m++) {
       if (this.state[m] === STAFF_STATE.Free || this.wake[m]! > tick) continue;
+      this.presenceDirty = true;
       const sh = this.shift[m]!;
       const gi = this.gridOf(m);
       switch (this.state[m]) {
@@ -743,6 +750,7 @@ export class Staff {
 
   /** Counts the staff on duty per station and sets the staff factor of each service node. */
   private applyPresence(): void {
+    this.presenceDirty = false;
     this.sPresent.fill(0);
     this.sSkill.fill(0);
     for (let m = 0; m < this.hi; m++) {
@@ -774,6 +782,7 @@ export class Staff {
       s = this.hi++;
     }
     this.churn++;
+    this.presenceDirty = true;
     this.seed[s] = staffSeed(this.serial++);
     this.role[s] = role;
     this.shift[s] = shift;
@@ -800,6 +809,7 @@ export class Staff {
   free(s: number): void {
     this.endCover(s);
     this.churn++;
+    this.presenceDirty = true;
     this.state[s] = STAFF_STATE.Free;
     this.stGrid[s] = -1;
     this.covering[s] = -1;

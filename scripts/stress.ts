@@ -12,6 +12,7 @@ import { createSnapshotBuffer, createSnapshotViews } from '../src/shared/snapsho
 import { buildTestAirport } from '../tests/helpers';
 import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../src/sim/terminal/walkGraph';
 import { originFor, type TerminalEdit } from '../src/shared/terminalOps';
+import { STAFF_STATE } from '../src/sim/staff/staff';
 
 const TICKS = 20_000;
 const BASELINE_PATH = fileURLToPath(new URL('../perf-baseline.json', import.meta.url));
@@ -223,6 +224,9 @@ function runScenario(s: Scenario): Record<string, Stat> {
   let peakHi = 0;
   let peakLive = 0;
   let peakPeople = 0;
+  let peakHired = 0;
+  let peakOnDuty = 0;
+  const hasTerminal = Boolean(s.bigTerminal || s.cohortTerminal || s.peopleTerminal);
   const views = createSnapshotViews(createSnapshotBuffer());
   let snapNs = 0n;
   let snapCount = 0;
@@ -235,6 +239,15 @@ function runScenario(s: Scenario): Record<string, Stat> {
       for (let c = 0; c < sim.cohorts.hi; c++) if (sim.cohorts.stage[c] !== 0) live++;
       if (live > peakLive) peakLive = live;
       if (sim.cohorts.active > peakPeople) peakPeople = sim.cohorts.active;
+    }
+    // Staff are counted outside the timed section too, every 500 ticks.
+    if (hasTerminal && t % 500 === 0) {
+      const st = sim.staff;
+      const hired = st.hired(0) + st.hired(1) + st.hired(2);
+      if (hired > peakHired) peakHired = hired;
+      let onDuty = 0;
+      for (let m = 0; m < st.hi; m++) if (st.state[m] === STAFF_STATE.OnDuty) onDuty++;
+      if (onDuty > peakOnDuty) peakOnDuty = onDuty;
     }
     let tickNs = 0n;
     for (let i = 0; i < n; i++) {
@@ -264,6 +277,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     console.log(`  people peak ${peakLive} cohorts, ${peakPeople} people`);
     peopleReport[s.name] = { cohorts: peakLive, people: peakPeople };
   }
+  if (hasTerminal) console.log(`  staff peak ${peakHired} hired, ${peakOnDuty} on duty`);
   peakCounts[s.name] = peak;
   peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.divertedFlights} diverted, ${sim.traffic.deadlocks} deadlocks${s.bigTerminal ? `, terminal ${(sim.business.terminals[0]?.cells ?? 0) * 4} m2` : ''}`;
   const out: Record<string, Stat> = {};
