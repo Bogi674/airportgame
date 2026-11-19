@@ -39,6 +39,7 @@
   "parcel.days": "{n} game days",
   "notice.insufficientFunds": "Not enough cash. This costs {cost}.",
   "notice.parcelNotForSale": "Protected land is not for sale.",
+  "notice.badStaffCap": "That staff cap is not valid.",
   "map.compass": "Face north",
   "map.align": "Align view to ideal runway heading",
   "map.fit": "Zoom to fit",

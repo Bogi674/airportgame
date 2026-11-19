@@ -478,6 +478,9 @@ export class Sim {
       case 'setAirlineFee':
         this.business.setFee(cmd.airlineId, cmd.level);
         break;
+      case 'setStaffCap':
+        this.report(this.staff.setCap(cmd.role, cmd.cap));
+        break;
       case 'takeLoan':
         this.report(this.business.takeLoan(cmd.amount));
         break;

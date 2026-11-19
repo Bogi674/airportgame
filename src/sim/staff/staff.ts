@@ -1,12 +1,12 @@
 import { STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
-import { fixtureKey } from '@shared/business';
+import { fixtureKey, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { cornerWorld } from '@shared/terminalOps';
 import type { Business } from '../business/business';
 import type { Baggage } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
-import { staffSeed, staffSkill } from './staffTraits';
+import { breakJitterMin, staffSeed, staffSkill } from './staffTraits';
 
 /** Life cycle state of a staff slot. Saved values, append only. */
 export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation: 4, OnDuty: 5, Leaving: 6, CommuteHome: 7, ClockOut: 8, Break: 9, Standby: 10 } as const;
@@ -16,6 +16,28 @@ export const STAFF_FLAG = { Tired: 1, BreakDone: 2, OnBreak: 4, Relief: 8 } as c
 
 type SavedArray = Uint8Array | Int16Array | Int32Array | Uint32Array;
 type SlotCtor = { new (buffer: ArrayBuffer): SavedArray; BYTES_PER_ELEMENT: number };
+
+const SHIFTS = STAFF.shifts.startsH.length;
+
+/** Index of the shift running at the tick. Before the first start hour the last shift of the previous day runs. */
+export function shiftAt(tick: number): number {
+  const minute = minuteOfDay(tick);
+  let run = SHIFTS - 1;
+  for (let sh = 0; sh < SHIFTS; sh++) if (STAFF.shifts.startsH[sh]! * 60 <= minute) run = sh;
+  return run;
+}
+
+/** Tick the running or latest instance of shift `sh` started, at or before `tick`. */
+export function shiftStartTick(tick: number, sh: number): number {
+  const clock = (tick + START_MINUTE * TICKS_PER_MINUTE) % TICKS_PER_DAY;
+  const since = (clock - STAFF.shifts.startsH[sh]! * 60 * TICKS_PER_MINUTE + TICKS_PER_DAY) % TICKS_PER_DAY;
+  return tick - since;
+}
+
+/** Tick the instance of shift `sh` that started at or before `tick` ends. */
+export function shiftEndTick(tick: number, sh: number): number {
+  return shiftStartTick(tick, sh) + STAFF.shifts.lengthH * 60 * TICKS_PER_MINUTE;
+}
 
 /** Saved form of the staff store. */
 export interface StaffSave {
@@ -112,6 +134,17 @@ export class Staff {
   private readonly stationOf = new Map<string, number>();
   /** serviceVersion, terminalVersion and grid count the stations were built from. */
   private readonly builtFor = new Int32Array(3).fill(-1);
+  /** Seats of each station and shift the pass keeps, and seats already held. Scratch sized at rebuild. */
+  private keepSt = new Int32Array(0);
+  private heldSt = new Int32Array(0);
+  /** The same for the relief seats of each role and shift. */
+  private readonly keepRelief = new Int32Array(STAFF_ROLE_COUNT * SHIFTS);
+  private readonly heldRelief = new Int32Array(STAFF_ROLE_COUNT * SHIFTS);
+  /** Station and seat within it found by the last seatOf call. */
+  private seatStation = -1;
+  private seatInStation = 0;
+  /** Set when a cap changed, so the next update runs a staffing pass. */
+  private capsDirty = false;
 
   constructor(
     readonly business: Business,
@@ -141,6 +174,7 @@ export class Staff {
     this.serial = 0;
     this.caps.fill(-1);
     this.stIdx.fill(-1);
+    this.builtFor.fill(-1);
     if (!s) return;
     const slots = this.slotArrays();
     for (const k of Object.keys(slots)) {
@@ -156,7 +190,21 @@ export class Staff {
    * Runs in subsystem 3 before the business, so service factors follow the staff state of the same tick (spec decision 18).
    */
   update(tick: number): void {
-    void tick;
+    const changed = this.rebuildStationsIfStale();
+    if (changed || this.capsDirty || tick % (STAFF.passEveryMin * TICKS_PER_MINUTE) === 0) {
+      this.capsDirty = false;
+      this.staffPass(tick);
+    }
+    this.applyPresence();
+  }
+
+  /** Caps the hired staff of a role, -1 for no cap. Returns a problem code or null. */
+  setCap(role: number, cap: number): string | null {
+    if (!Number.isInteger(role) || role < 0 || role >= STAFF_ROLE_COUNT) return 'badStaffCap';
+    if (!Number.isInteger(cap) || cap < -1 || cap > STAFF.capacity) return 'badStaffCap';
+    this.caps[role] = cap;
+    this.capsDirty = true;
+    return null;
   }
 
   /** Rebuilds the stations when needed and applies the staff on duty to the service nodes. */
@@ -165,13 +213,14 @@ export class Staff {
     this.applyPresence();
   }
 
-  private rebuildStationsIfStale(): void {
+  private rebuildStationsIfStale(): boolean {
     const b = this.business;
-    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length) return;
+    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length) return false;
     this.builtFor[0] = b.serviceVersion;
     this.builtFor[1] = b.terminalVersion;
     this.builtFor[2] = b.grids.length;
     this.rebuildStations();
+    return true;
   }
 
   private rebuildStations(): void {
@@ -193,6 +242,8 @@ export class Staff {
     this.sNeed = new Uint8Array(n);
     this.sPresent = new Uint8Array(n);
     this.sSkill = new Float64Array(n);
+    this.keepSt = new Int32Array(n * SHIFTS);
+    this.heldSt = new Int32Array(n * SHIFTS);
     this.curbNode = new Int32Array(b.grids.length).fill(-1);
     this.curbX = new Float64Array(b.grids.length);
     this.curbY = new Float64Array(b.grids.length);
@@ -228,6 +279,126 @@ export class Staff {
     }
     for (let m = 0; m < this.hi; m++) {
       this.stIdx[m] = this.state[m] === STAFF_STATE.Free ? -1 : (this.stationOf.get(`${this.stGrid[m]}|${this.stX[m]}|${this.stY[m]}|${this.stKind[m]}`) ?? -1);
+    }
+  }
+
+  /** Sets seatStation and seatInStation for seat `q` of the stations of a role, counted in station order. */
+  private seatOf(role: number, q: number): void {
+    let left = q;
+    for (let s = 0; s < this.stCount; s++) {
+      if (this.sRole[s] !== role) continue;
+      if (left < this.sNeed[s]!) {
+        this.seatStation = s;
+        this.seatInStation = left;
+        return;
+      }
+      left -= this.sNeed[s]!;
+    }
+    this.seatStation = -1;
+  }
+
+  /** Lowest member of a role that holds no position, of shift `sh` or of any shift when `sh` is -1 and then only Off ones. */
+  private findUnplaced(role: number, sh: number): number {
+    for (let m = 0; m < this.hi; m++) {
+      if (this.role[m] !== role || this.state[m] === STAFF_STATE.Free || this.stIdx[m]! >= 0 || (this.flags[m]! & STAFF_FLAG.Relief) !== 0) continue;
+      if (sh >= 0 ? this.shift[m] === sh : this.state[m] === STAFF_STATE.Off) return m;
+    }
+    return -1;
+  }
+
+  private unplace(m: number): void {
+    this.stGrid[m] = -1;
+    this.stIdx[m] = -1;
+    this.flags[m] &= ~STAFF_FLAG.Relief;
+  }
+
+  /**
+   * Hires, places and releases staff so every role holds the positions its stations need on all shifts, within the player
+   * cap. Positions fill the running shift first. A pass with nothing changed changes nothing.
+   */
+  private staffPass(tick: number): void {
+    const run = shiftAt(tick);
+    this.keepSt.fill(0);
+    this.heldSt.fill(0);
+    this.keepRelief.fill(0);
+    this.heldRelief.fill(0);
+    for (let r = 0; r < STAFF_ROLE_COUNT; r++) this.passRole(tick, r, run);
+  }
+
+  private passRole(tick: number, r: number, run: number): void {
+    let need = 0;
+    for (let s = 0; s < this.stCount; s++) if (this.sRole[s] === r) need += this.sNeed[s]!;
+    const relief = need > 0 ? Math.ceil(STAFF.reliefShare * need) : 0;
+    const block = need + relief;
+    const all = SHIFTS * block;
+    const allowed = this.caps[r]! < 0 ? all : Math.min(all, this.caps[r]!);
+    for (let p = 0; p < allowed; p++) {
+      const i = Math.floor(p / block);
+      const sh = (run + i) % SHIFTS;
+      const q = p - i * block;
+      if (q < need) {
+        this.seatOf(r, q);
+        this.keepSt[this.seatStation * SHIFTS + sh]++;
+      } else {
+        this.keepRelief[r * SHIFTS + sh]++;
+      }
+    }
+    for (let m = 0; m < this.hi; m++) {
+      if (this.role[m] !== r || this.state[m] === STAFF_STATE.Free) continue;
+      const s = this.stIdx[m]!;
+      const sh = this.shift[m]!;
+      if (s >= 0) {
+        if (this.heldSt[s * SHIFTS + sh]! < this.keepSt[s * SHIFTS + sh]!) this.heldSt[s * SHIFTS + sh]++;
+        else this.unplace(m);
+      } else if ((this.flags[m]! & STAFF_FLAG.Relief) !== 0) {
+        if (this.heldRelief[r * SHIFTS + sh]! < this.keepRelief[r * SHIFTS + sh]!) this.heldRelief[r * SHIFTS + sh]++;
+        else this.unplace(m);
+      } else {
+        this.stGrid[m] = -1;
+      }
+    }
+    for (let p = 0; p < allowed; p++) {
+      const i = Math.floor(p / block);
+      const sh = (run + i) % SHIFTS;
+      const q = p - i * block;
+      let station = -1;
+      if (q < need) {
+        this.seatOf(r, q);
+        station = this.seatStation;
+        if (this.seatInStation < this.heldSt[station * SHIFTS + sh]!) continue;
+      } else if (q - need < this.heldRelief[r * SHIFTS + sh]!) {
+        continue;
+      }
+      let m = this.findUnplaced(r, sh);
+      if (m < 0) m = this.findUnplaced(r, -1);
+      if (m < 0) m = this.alloc(r, sh);
+      if (m < 0) break;
+      this.shift[m] = sh;
+      if (station >= 0) {
+        this.stGrid[m] = this.sGridId[station]!;
+        this.stX[m] = this.sX[station]!;
+        this.stY[m] = this.sY[station]!;
+        this.stKind[m] = this.sKind[station]!;
+        this.stIdx[m] = station;
+        this.flags[m] &= ~STAFF_FLAG.Relief;
+      } else {
+        this.stGrid[m] = -1;
+        this.stIdx[m] = -1;
+        this.flags[m] |= STAFF_FLAG.Relief;
+      }
+      if (this.state[m] !== STAFF_STATE.Off) continue;
+      if (sh === run) {
+        this.state[m] = station >= 0 ? STAFF_STATE.OnDuty : STAFF_STATE.Standby;
+        this.home[m] = -1;
+        this.breakAt[m] = shiftStartTick(tick, sh) + (STAFF.breaks.afterMin + breakJitterMin(this.seed[m]!)) * TICKS_PER_MINUTE;
+        this.wake[m] = tick + STAFF.stepMin * TICKS_PER_MINUTE;
+      } else {
+        this.wake[m] = tick;
+      }
+    }
+    for (let m = 0; m < this.hi; m++) {
+      if (this.role[m] !== r || this.stIdx[m]! >= 0 || (this.flags[m]! & STAFF_FLAG.Relief) !== 0) continue;
+      if (this.state[m] === STAFF_STATE.Off || this.state[m] === STAFF_STATE.Standby) this.free(m);
     }
   }
 

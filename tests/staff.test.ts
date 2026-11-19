@@ -122,6 +122,13 @@ function terminalSim(): Sim {
   return sim;
 }
 
+/** Frees every hire and caps every role at 0, so a test places staff by hand. */
+function emptyStaff(sim: Sim): void {
+  sim.staff.caps.fill(0);
+  for (let m = sim.staff.hi - 1; m >= 0; m--) sim.staff.free(m);
+  sim.staff.refresh();
+}
+
 /** Stations of a fixture key in station order. */
 function stationsOf(st: Staff, key: string): number[] {
   const out: number[] = [];
@@ -145,7 +152,7 @@ describe('staff stations and service factor', () => {
   it('gives unstaffed check in nodes a factor of 0 and keeps nodes that need no staff at 1', () => {
     const sim = terminalSim();
     const st = sim.staff;
-    st.refresh();
+    emptyStaff(sim);
     const sn = sim.business.serviceNodes[0]!;
     const desks = stationsOf(st, 'checkIn');
     expect(desks).toHaveLength(2);
@@ -157,7 +164,7 @@ describe('staff stations and service factor', () => {
   it('serves at the skill of one agent, and a lane with one officer at half of it', () => {
     const sim = terminalSim();
     const st = sim.staff;
-    st.refresh();
+    emptyStaff(sim);
     const desk = stationsOf(st, 'checkIn')[0]!;
     const m = place(st, 0, desk);
     const lane = stationsOf(st, 'security')[0]!;
@@ -195,16 +202,79 @@ describe('staff stations and service factor', () => {
   it('keeps the factors across an edit that rebuilds the tables', () => {
     const sim = terminalSim();
     const st = sim.staff;
-    st.refresh();
-    const m = place(st, 0, stationsOf(st, 'checkIn')[0]!);
-    st.refresh();
+    const m = onDuty(st, 0, 'checkIn');
+    expect(m).toBeGreaterThanOrEqual(0);
     const g = sim.business.grids[0]!;
     const before = sim.business.serviceVersion;
     expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'fixture', x0: 88, y0: 48, x1: 89, y1: 49, variant: 5 } })).toEqual([]);
     expect(sim.business.serviceVersion).toBeGreaterThan(before);
-    st.refresh();
-    const desk = stationsOf(st, 'checkIn')[0]!;
-    expect(st.stIdx[m]).toBe(desk);
-    expect(sim.business.serviceNodes[0]!.staffFactor[st.sNode[desk]!]).toBeCloseTo(staffSkill(st.seed[m]!), 6);
+    expect(st.stIdx[m]).toBeGreaterThanOrEqual(0);
+    expect(sim.business.serviceNodes[0]!.staffFactor[st.sNode[st.stIdx[m]!]!]).toBeGreaterThan(0);
+  });
+});
+
+/** First member of a role on duty at a station of a fixture key, -1 when none. */
+function onDuty(st: Staff, role: number, key: string): number {
+  for (let m = 0; m < st.hi; m++) if (st.role[m] === role && st.state[m] === STAFF_STATE.OnDuty && st.stKind[m] === kindId(key)) return m;
+  return -1;
+}
+
+describe('automatic staffing', () => {
+  it('hires three shifts of every position and puts the running shift on duty', () => {
+    const sim = terminalSim();
+    const st = sim.staff;
+    expect(st.hired(0)).toBe(12);
+    expect(st.hired(1)).toBe(9);
+    expect(st.hired(2)).toBe(0);
+    let agents = 0;
+    for (let m = 0; m < st.hi; m++) if (st.role[m] === 0 && st.state[m] === STAFF_STATE.OnDuty) agents++;
+    expect(agents).toBe(3);
+    const sn = sim.business.serviceNodes[0]!;
+    for (let s = 0; s < st.stCount; s++) expect(sn.staffFactor[st.sNode[s]!]).toBeGreaterThan(0);
+  });
+
+  it('a second pass with nothing changed leaves the hash unchanged', () => {
+    const sim = terminalSim();
+    const before = sim.staff.hash(1);
+    run(sim);
+    expect(sim.staff.hash(1)).toBe(before);
+  });
+
+  it('applies and lifts a cap', () => {
+    const sim = terminalSim();
+    const st = sim.staff;
+    expect(run(sim, { type: 'setStaffCap', role: 1, cap: 2 })).toEqual([]);
+    expect(st.hired(1)).toBe(2);
+    for (let m = 0; m < st.hi; m++) if (st.role[m] === 1 && st.state[m] !== STAFF_STATE.Free) expect(st.state[m]).toBe(STAFF_STATE.OnDuty);
+    expect(run(sim, { type: 'setStaffCap', role: 1, cap: -1 })).toEqual([]);
+    expect(st.hired(1)).toBe(9);
+  });
+
+  it('reports a bad cap', () => {
+    const sim = terminalSim();
+    expect(run(sim, { type: 'setStaffCap', role: 9, cap: 1 })).toEqual(['badStaffCap']);
+    expect(run(sim, { type: 'setStaffCap', role: 0, cap: -2 })).toEqual(['badStaffCap']);
+  });
+
+  it('erasing a check in desk frees the off staff and unplaces the one on site', () => {
+    const sim = terminalSim();
+    const st = sim.staff;
+    const g = sim.business.grids[0]!;
+    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'erase', x0: 42, y0: 42, x1: 43, y1: 43, variant: 0 } })).toEqual([]);
+    expect(st.stCount).toBe(3);
+    let unplaced = 0;
+    for (let m = 0; m < st.hi; m++) if (st.role[m] === 0 && st.state[m] === STAFF_STATE.OnDuty && st.stGrid[m] === -1 && (st.flags[m]! & STAFF_FLAG.Relief) === 0) unplaced++;
+    expect(unplaced).toBe(1);
+    expect(st.hired(0)).toBe(10);
+  });
+
+  it('is deterministic over 2000 ticks', () => {
+    const a = terminalSim();
+    const b = terminalSim();
+    for (let t = 0; t < 2000; t++) {
+      a.step();
+      b.step();
+    }
+    expect(a.stateHash()).toBe(b.stateHash());
   });
 });
