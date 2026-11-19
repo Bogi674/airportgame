@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AIRCRAFT } from '@data/aircraft';
 import { STAFF } from '@data/index';
 import { FIXTURE_KEYS, TICKS_PER_MINUTE } from '@shared/business';
 import type { Sim } from '@sim/sim';
@@ -11,10 +12,10 @@ const HOUR = 60 * TICKS_PER_MINUTE;
 /** The game starts at 06:00, so a clock time is this many hours past tick 0. */
 const at = (hour: number, minute = 0): number => (hour - 6) * HOUR + minute * TICKS_PER_MINUTE;
 
-function shiftSim(o: { center?: boolean; closedDesk?: boolean } = {}): { sim: Sim; center: number } {
+function shiftSim(o: { center?: boolean; closedDesk?: boolean; perHour?: number } = {}): { sim: Sim; center: number } {
   const sim = ownedSim();
   buildTestAirport(sim);
-  expect(run(sim, { type: 'setTestTraffic', perHour: 0, turnScale: 1 })).toEqual([]);
+  expect(run(sim, { type: 'setTestTraffic', perHour: o.perHour ?? 0, turnScale: 1 })).toEqual([]);
   if (o.center !== false) expect(buildTestStaffCenter(sim)).toEqual([]);
   expect(buildTestTerminal(sim, { checkIn: 2, security: 1, gateDesk: 1 })).toEqual([]);
   if (o.closedDesk) {
@@ -192,4 +193,94 @@ describe('breaks', () => {
     expect(st.stIdx[relief]).toBe(-1);
     for (let r = 0; r < st.hi; r++) expect(st.covering[r]).not.toBe(m);
   }, 120_000);
+});
+
+describe('phase exit', () => {
+  it('keeps every station staffed through the 14:00 shift change and counts the rosters', () => {
+    const { sim, center } = shiftSim({ perHour: 4 });
+    runTo(sim, at(13, 30));
+    const st = sim.staff;
+    const roster = (shift: number): number => membersOf(st, shift).length;
+    const insBefore = st.clockIns.get(center) ?? 0;
+    const outsBefore = st.clockOuts.get(center) ?? 0;
+    const next = roster(1);
+    const last = roster(0);
+    for (let t = at(13, 30); t < at(14, 30); t += TICKS_PER_MINUTE) {
+      runTo(sim, t);
+      for (let s = 0; s < st.stCount; s++) expect(st.sPresent[s]).toBeGreaterThanOrEqual(1);
+    }
+    runTo(sim, at(14, 45));
+    for (let s = 0; s < st.stCount; s++) expect(st.sPresent[s]).toBe(st.sNeed[s]);
+    for (let m = 0; m < st.hi; m++) if (st.state[m] === STAFF_STATE.OnDuty) expect(st.shift[m]).toBe(1);
+    expect((st.clockIns.get(center) ?? 0) - insBefore).toBe(next);
+    expect((st.clockOuts.get(center) ?? 0) - outsBefore).toBe(last);
+  }, 120_000);
+
+  const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+
+  /** A small terminal with four arrivals of an A320 neo spread over the first day, security staffed under `cap` officers (-1 for no cap). */
+  function trafficSim(cap: number): Sim {
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    expect(buildTestStaffCenter(sim)).toEqual([]);
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 1, gateDesk: 2 })).toEqual([]);
+    run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+    if (cap >= 0) expect(run(sim, { type: 'setStaffCap', role: 1, cap })).toEqual([]);
+    for (let i = 0; i < 4; i++) expect(sim.traffic.scheduleArrival(WIDE, sim.traffic.nowTick + 100 + i * 3000, 0, 6000, -1)).toBeGreaterThanOrEqual(0);
+    return sim;
+  }
+
+  // Long on purpose (PITFALLS 18): the only test that runs to the first daily close, two sims of 54 001 ticks on a small terminal.
+  it('lets no passenger through an unstaffed security lane and drops satisfaction and rating', () => {
+    const open = trafficSim(-1);
+    const shut = trafficSim(0);
+    runTo(open, 54_001);
+    runTo(shut, 54_001);
+    expect(open.cohorts.boarded).toBeGreaterThan(0);
+    expect(shut.cohorts.boarded).toBe(0);
+    expect(shut.business.satisfaction).toBeLessThan(open.business.satisfaction);
+    expect(shut.business.rating).toBeLessThan(open.business.rating);
+  }, 300_000);
+
+  it('serves at half the skill with one officer on a lane that needs two, and queues build up', () => {
+    const open = trafficSim(-1);
+    const one = trafficSim(1);
+    const laneOf = (sim: Sim): number => {
+      const sn = sim.business.serviceNodes[0]!;
+      for (let k = 0; k < sn.count; k++) if (sn.kind[k] === FIXTURE_KEYS.indexOf('security') + 1) return k;
+      return -1;
+    };
+    let queueOpen = 0;
+    let queueOne = 0;
+    for (let t = 0; t < 6000; t++) {
+      open.step();
+      one.step();
+      queueOpen = Math.max(queueOpen, open.business.serviceNodes[0]!.queueLen[laneOf(open)]!);
+      queueOne = Math.max(queueOne, one.business.serviceNodes[0]!.queueLen[laneOf(one)]!);
+    }
+    const st = one.staff;
+    let officer = -1;
+    for (let m = 0; m < st.hi; m++) if (st.role[m] === 1 && st.state[m] === STAFF_STATE.OnDuty && st.stIdx[m]! >= 0) officer = m;
+    expect(officer).toBeGreaterThanOrEqual(0);
+    expect(one.business.serviceNodes[0]!.staffFactor[laneOf(one)]).toBeCloseTo(staffSkill(st.seed[officer]!) / 2, 5);
+    expect(queueOne).toBeGreaterThan(queueOpen);
+  }, 120_000);
+
+  it('is deterministic across the shift change, also across a save taken mid handover', () => {
+    const a = shiftSim({ perHour: 4 }).sim;
+    const b = shiftSim({ perHour: 4 }).sim;
+    runTo(a, 26_000);
+    runTo(b, 26_000);
+    expect(a.stateHash()).toBe(b.stateHash());
+    const c = shiftSim({ perHour: 4 }).sim;
+    runTo(c, at(14) - 5 * TICKS_PER_MINUTE);
+    const copy = new SimClass(c.seed, OPTIONS);
+    copy.restore(JSON.parse(JSON.stringify(c.serialize())));
+    expect(copy.stateHash()).toBe(c.stateHash());
+    for (let t = 0; t < 2000; t++) {
+      c.step();
+      copy.step();
+    }
+    expect(copy.stateHash()).toBe(c.stateHash());
+  }, 240_000);
 });
