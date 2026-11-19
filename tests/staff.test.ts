@@ -3,7 +3,7 @@ import { Sim } from '../src/sim/sim';
 import { Rng } from '../src/sim/rng';
 import { buildServiceNodes, serviceJoin, serviceUpdate, serviceWait } from '../src/sim/terminal/serviceNodes';
 import { AIRCRAFT } from '@data/aircraft';
-import { FIXTURE_KEYS, WALL } from '@shared/business';
+import { FIXTURE_KEYS, LEDGER_CATEGORIES, WALL } from '@shared/business';
 import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '@shared/terminalOps';
 import { buildTestAirport, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 import { Staff, STAFF_FLAG, STAFF_STATE, type StaffSave } from '../src/sim/staff/staff';
@@ -351,5 +351,31 @@ describe('screening machine staffing', () => {
       reached = l.sim.baggage.bagsOf(serial, 5) === 3;
     }
     expect(reached).toBe(true);
+  });
+});
+
+describe('staff wages and payload', () => {
+  it('charges the legacy remainder plus one wage per hired member at the day close', () => {
+    const sim = terminalSim();
+    const st = sim.staff;
+    const hired = st.hired(0) + st.hired(1) + st.hired(2);
+    expect(hired).toBe(21);
+    const remainder = sim.business.staffCount() - sim.business.stationPositions();
+    while (sim.tick < 18 * 60 * 50 + 50) sim.step();
+    const p = sim.business.payload(sim.tick);
+    const wages = p.history[0]![LEDGER_CATEGORIES.indexOf('wages')]!;
+    expect(wages).toBe(-(Math.round(remainder * 130) + hired * 130));
+  }, 120_000);
+
+  it('lists three staffing rows with the hired agents', () => {
+    const sim = terminalSim();
+    const p = sim.business.payload(sim.tick);
+    expect(p.staffing).toHaveLength(3);
+    expect(p.staffing[0]!.hired).toBe(12);
+    expect(p.staffing[1]!.hired).toBe(9);
+    expect(p.staffing[0]!.onDuty).toBe(3);
+    expect(p.staffing[0]!.needed).toBe(3);
+    expect(p.staffing[0]!.wagePerDay).toBe(130);
+    expect(p.staff).toBe(Math.round(sim.business.staffCount() - sim.business.stationPositions()) + 21);
   });
 });

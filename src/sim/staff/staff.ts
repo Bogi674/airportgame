@@ -1,6 +1,6 @@
 import { PROFILES, STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
-import { FIXTURE_KEYS, fixtureKey, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, fixtureKey, type StaffRow, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
 import { gameSecondsToTicks } from '@shared/time';
 import { cellIndex, cornerWorld } from '@shared/terminalOps';
@@ -28,6 +28,7 @@ const CREW_SPEED_MPS = PROFILES.profiles.crew.walkSpeed;
 const CHANGE_TICKS = STAFF.shifts.changeMin * TICKS_PER_MINUTE;
 const SHIFT_TICKS = STAFF.shifts.lengthH * 60 * TICKS_PER_MINUTE;
 const OVERTIME_TICKS = STAFF.shifts.overtimeMaxMin * TICKS_PER_MINUTE;
+const HOUR_TICKS = 60 * TICKS_PER_MINUTE;
 const STEP_TICKS = STAFF.stepMin * TICKS_PER_MINUTE;
 const BREAK_TICKS = Math.ceil(STAFF.breaks.lengthMin * TICKS_PER_MINUTE);
 const RELIEF_WAIT_TICKS = Math.ceil(STAFF.breaks.reliefWaitMin * TICKS_PER_MINUTE);
@@ -160,6 +161,9 @@ export class Staff {
   private seatInStation = 0;
   /** Set when a cap changed, so the next update runs a staffing pass. */
   private capsDirty = false;
+  /** Counts hires and releases, so the payload version moves when the roster changes. Not saved. */
+  private churn = 0;
+  private churnSeen = 0;
 
   /** Clock ins and clock outs counted per staff center building id, -1 without a center. For tests and sheets, not saved or hashed. */
   readonly clockIns = new Map<number, number>();
@@ -195,6 +199,8 @@ export class Staff {
     this.caps.fill(-1);
     this.stIdx.fill(-1);
     this.builtFor.fill(-1);
+    this.churn = 0;
+    this.churnSeen = 0;
     if (!s) return;
     const slots = this.slotArrays();
     for (const k of Object.keys(slots)) {
@@ -217,6 +223,10 @@ export class Staff {
     }
     if (tick % STEP_TICKS === 0) this.stateStep(tick);
     this.applyPresence();
+    if (this.churn !== this.churnSeen || tick % HOUR_TICKS === 0) {
+      this.churnSeen = this.churn;
+      this.business.version++;
+    }
   }
 
   /** Caps the hired staff of a role, -1 for no cap. Returns a problem code or null. */
@@ -225,6 +235,7 @@ export class Staff {
     if (!Number.isInteger(cap) || cap < -1 || cap > STAFF.capacity) return 'badStaffCap';
     this.caps[role] = cap;
     this.capsDirty = true;
+    this.business.version++;
     return null;
   }
 
@@ -762,6 +773,7 @@ export class Staff {
       if (this.hi >= this.cap) return -1;
       s = this.hi++;
     }
+    this.churn++;
     this.seed[s] = staffSeed(this.serial++);
     this.role[s] = role;
     this.shift[s] = shift;
@@ -787,6 +799,7 @@ export class Staff {
   /** Releases a slot and trims `hi` past trailing free slots. */
   free(s: number): void {
     this.endCover(s);
+    this.churn++;
     this.state[s] = STAFF_STATE.Free;
     this.stGrid[s] = -1;
     this.covering[s] = -1;
@@ -817,6 +830,34 @@ export class Staff {
     let n = 0;
     for (let s = 0; s < this.hi; s++) if (this.role[s] === role && this.state[s] !== STAFF_STATE.Free) n++;
     return n;
+  }
+
+  /** Wages of every hired member per game day. */
+  wagesPerDay(): number {
+    let sum = 0;
+    for (let s = 0; s < this.hi; s++) if (this.state[s] !== STAFF_STATE.Free) sum += STAFF.roles[STAFF_ROLE_KEYS[this.role[s]!]!].wagePerDay;
+    return sum;
+  }
+
+  /** The staffing table: one row per role. */
+  rows(): StaffRow[] {
+    const out: StaffRow[] = [];
+    for (let r = 0; r < STAFF_ROLE_COUNT; r++) {
+      let hired = 0;
+      let onDuty = 0;
+      let away = 0;
+      for (let s = 0; s < this.hi; s++) {
+        if (this.role[s] !== r || this.state[s] === STAFF_STATE.Free) continue;
+        hired++;
+        const st = this.state[s];
+        if (st === STAFF_STATE.OnDuty) onDuty++;
+        else if (st !== STAFF_STATE.Off) away++;
+      }
+      let needed = 0;
+      for (let s = 0; s < this.stCount; s++) if (this.sRole[s] === r) needed += this.sNeed[s]!;
+      out.push({ role: r, hired, onDuty, away, needed, cap: this.caps[r]!, wagePerDay: STAFF.roles[STAFF_ROLE_KEYS[r]!].wagePerDay });
+    }
+    return out;
   }
 
   /** Folds the saved state into a running hash. */
