@@ -3,12 +3,16 @@ import type { ZodType } from 'zod';
 import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
 import needsJson from '../src/data/needs.json';
+import arrivalsJson from '../src/data/arrivals.json';
+import marketJson from '../src/data/market.json';
 import profilesJson from '../src/data/profiles.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
 import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
 import { needsSchema } from '../src/data/schemas/needs';
+import { arrivalsSchema } from '../src/data/schemas/arrivals';
+import { marketSchema } from '../src/data/schemas/market';
 import { profilesSchema } from '../src/data/schemas/profiles';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
@@ -149,5 +153,35 @@ describe('passenger needs and group sizes', () => {
     const bad = structuredClone(profilesJson);
     bad.profiles.crew.groupSize = [0, 0, 0, 0, 0, 0];
     expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('arrival journey values', () => {
+  it('arrivals.json validates', () => {
+    expect(arrivalsSchema.safeParse(arrivalsJson).success).toBe(true);
+  });
+
+  it('a negative doorOpenS fails', () => {
+    const bad = structuredClone(arrivalsJson);
+    bad.doorOpenS = -1;
+    expect(arrivalsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a redShare above 1 fails', () => {
+    const bad = structuredClone(arrivalsJson);
+    bad.service.customs.redShare = 1.5;
+    expect(arrivalsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('an unknown profile in noGateProfiles fails', () => {
+    const bad = structuredClone(arrivalsJson);
+    bad.service.eGate.noGateProfiles = ['pilot'];
+    expect(arrivalsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('market.json without internationalShare fails', () => {
+    const bad = structuredClone(marketJson);
+    delete (bad.destinations as Partial<typeof marketJson.destinations>).internationalShare;
+    expect(marketSchema.safeParse(bad).success).toBe(false);
   });
 });

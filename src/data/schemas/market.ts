@@ -13,6 +13,8 @@ export const marketSchema = z
         maxKm: z.number().positive(),
         minSize: z.number().int().positive(),
         maxSize: z.number().int().positive(),
+        /** Share of generated destinations that flights reach as international (T20). */
+        internationalShare: z.number().min(0).max(1),
         regions: z.array(z.string()).length(6),
         syllables: z.object({ start: z.array(z.string()).min(8), middle: z.array(z.string()).min(2), end: z.array(z.string()).min(8) }).strict(),
       })
