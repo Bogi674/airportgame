@@ -2,7 +2,7 @@ import { NEEDS, PROFILES } from '@data/index';
 import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
-import { CLOCK_SCALE } from '@shared/time';
+import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import type { Business } from '../business/business';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
@@ -58,6 +58,7 @@ const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
 const BAG_DROP = FIXTURE_KEYS.indexOf('bagDrop') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
+const TOILET = FIXTURE_KEYS.indexOf('toilet') + 1;
 
 /** Side step of a sampled walker in cells, the squared least gap between drawn groups in metres, and the lanes tried in order. */
 const LANE = PROFILES.walkSample.laneOffsetCells;
@@ -325,6 +326,11 @@ export class Cohorts {
     return (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin);
   }
 
+  /** True for the stages in which a cohort waits in a service queue, off the timer wheel. */
+  private queued(st: number): boolean {
+    return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue;
+  }
+
   /** Group size for a uniform float: the first size whose cumulative weight exceeds it. */
   private pickSize(p: number, u: number): number {
     const cum = GROUP_CUM[p]!;
@@ -384,7 +390,7 @@ export class Cohorts {
       const n = this.size[c];
       this.missed += n;
       this.active -= n;
-      if (st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate) {
+      if (this.queued(st)) {
         this.stage[c] = Stage.Missed;
       } else {
         this.unlink(c);
@@ -426,7 +432,7 @@ export class Cohorts {
       this.flActive[f] -= n;
       if (st === Stage.ToGate || st === Stage.Gate) this.flGate[f] -= n;
       // Queued passengers are not on the wheel, the rest are.
-      if (st !== Stage.CheckIn && st !== Stage.Security && st !== Stage.Gate) this.unlink(c);
+      if (!this.queued(st)) this.unlink(c);
       this.free(c);
     }
   }
@@ -649,7 +655,7 @@ export class Cohorts {
     this.ensureOccupancy();
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
-      if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate) this.node[c] = -1;
+      if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate || (st === Stage.ToVisit && this.visitNeed[c] === NEED_TOILET)) this.node[c] = -1;
     }
     this.rebuildVisitTables();
     this.seenVersion = this.business.serviceVersion;
@@ -701,8 +707,10 @@ export class Cohorts {
     if (st === Stage.CheckIn) this.stage[c] = Stage.ToCheckIn;
     else if (st === Stage.Security) this.stage[c] = Stage.ToSecurity;
     else if (st === Stage.Gate) this.stage[c] = Stage.ToGate;
+    else if (st === Stage.VisitQueue) this.stage[c] = Stage.ToVisit;
     else return;
     this.node[c] = -1;
+    this.waitStart[c] = -1;
     this.schedule(c, this.tick + STEP);
   }
 
@@ -715,7 +723,7 @@ export class Cohorts {
         const c = t.doneCohort[k];
         if (this.building[c] !== g) continue;
         const st = this.stage[c];
-        if (st !== Stage.CheckIn && st !== Stage.Security && st !== Stage.Gate && st !== Stage.Missed) continue;
+        if (!this.queued(st) && st !== Stage.Missed) continue;
         // Node indices can renumber after an edit, so the done node is the one to trust.
         this.node[c] = t.doneNode[k];
         this.finish(g, c, st, t);
@@ -730,6 +738,14 @@ export class Cohorts {
     }
     if (st === Stage.Gate) {
       this.board(c);
+      return;
+    }
+    if (st === Stage.VisitQueue) {
+      // Levels are brought up to date first, so the reset starts the toilet need over from now.
+      this.bringNeeds(c);
+      this.recordVisit(c);
+      this.resetNeed(c, NEED_TOILET);
+      this.afterVisit(g, c);
       return;
     }
     if (st === Stage.Security) {
@@ -788,7 +804,8 @@ export class Cohorts {
         if (!this.decide(g, c)) this.toGate(g, c);
         break;
       case Stage.ToVisit:
-        this.arriveVisit(g, c);
+        if (this.visitNeed[c] === NEED_TOILET) this.toToilet(g, c);
+        else this.arriveVisit(g, c);
         break;
       case Stage.Visit:
         this.bringNeeds(c);
@@ -811,8 +828,10 @@ export class Cohorts {
       else this.walk(g, c, n, from, this.stage[c]);
       return;
     }
-    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c])) this.stage[c] = queued;
-    else this.schedule(c, this.tick + JOIN_RETRY_TICKS);
+    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c])) {
+      this.stage[c] = queued;
+      this.waitStart[c] = this.tick;
+    } else this.schedule(c, this.tick + JOIN_RETRY_TICKS);
   }
 
   /** Airside passengers walk to a gate desk once the flight is on the ground. The flight's gate count rises only on the first walk. */
@@ -853,10 +872,11 @@ export class Cohorts {
     return this.business.curbNode(g);
   }
 
-  /** Cheapest node of a grid with one of two fixture kinds and queue room, by walk time plus wait. -1 when none. */
-  private pickNode(g: number, kindA: number, kindB: number, fromWalk: number, c: number): number {
+  /** Cheapest node of a grid with one of two fixture kinds and queue room, by walk time plus wait. -1 when none. With skipPublic, nodes on public ground are left out. */
+  private pickNode(g: number, kindA: number, kindB: number, fromWalk: number, c: number, skipPublic = false): number {
     const t = this.table(g);
     if (!t) return -1;
+    const zones = skipPublic ? this.business.walkGraphs[g]?.effective : undefined;
     const id = this.gridId(g);
     const speed = this.speed(c);
     let best = -1;
@@ -865,6 +885,7 @@ export class Cohorts {
     for (let n = 0; n < t.count; n++) {
       const k = t.kind[n];
       if ((k !== kindA && k !== kindB) || t.queueCap[n] <= 0) continue;
+      if (zones && zones[t.cell[n]!] === ZONE.Public) continue;
       const cost = this.business.walkDistance(id, fromWalk, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick) / CLOCK_SCALE;
       if (cost < bestCost) {
         bestCost = cost;
@@ -947,7 +968,7 @@ export class Cohorts {
         }
       }
     }
-    if (need < 0 || need === NEED_TOILET) return false;
+    if (need < 0) return false;
     const vp = this.visitTable(g);
     if (!vp) return false;
     writeTraits(this.memberSeed[b + lead]!, this.profile[c]!, this.traits);
@@ -958,26 +979,41 @@ export class Cohorts {
     const id = this.gridId(g);
     const speed = this.speed(c);
     let point = -1;
+    let toilet = -1;
     let bestSeconds = Infinity;
-    // Ascending scan with a strict comparison, so ties go to the lowest point and an infinite walk never wins.
-    for (let p = 0; p < vp.count; p++) {
-      const kind = vp.kind[p]!;
-      if ((kind !== kindA && kind !== kindB) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
-      const seconds = this.business.walkDistance(id, here, vp.walkNode[p]!) / speed;
-      if (seconds < bestSeconds) {
-        bestSeconds = seconds;
-        point = p;
+    let visitTicks = NEED_VISIT_MIN[need]! * TICKS_PER_MINUTE;
+    if (need === NEED_TOILET) {
+      // A toilet node off public ground, with the queue wait and one service as the time spent there.
+      toilet = this.pickNode(g, TOILET, TOILET, here, c, true);
+      if (toilet < 0) return false;
+      const t = this.table(g)!;
+      bestSeconds = this.business.walkDistance(id, here, t.walkNode[toilet]!) / speed;
+      visitTicks = gameSecondsToTicks(this.business.serviceWait(id, toilet, this.tick) + t.meanS[toilet]!);
+    } else {
+      // Ascending scan with a strict comparison, so ties go to the lowest point and an infinite walk never wins.
+      for (let p = 0; p < vp.count; p++) {
+        const kind = vp.kind[p]!;
+        if ((kind !== kindA && kind !== kindB) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
+        const seconds = this.business.walkDistance(id, here, vp.walkNode[p]!) / speed;
+        if (seconds < bestSeconds) {
+          bestSeconds = seconds;
+          point = p;
+        }
       }
+      if (point < 0) return false;
     }
-    if (point < 0) return false;
     const f = this.flight[c]!;
     const walkTicks = Math.ceil(bestSeconds * TICKS_PER_SECOND);
     const departure = this.traffic.fEta[f]! + this.traffic.fTurn[f]!;
-    if (walkTicks * 2 + NEED_VISIT_MIN[need]! * TICKS_PER_MINUTE > departure - gateLeadMin * TICKS_PER_MINUTE - this.tick) return false;
+    if (walkTicks * 2 + visitTicks > departure - gateLeadMin * TICKS_PER_MINUTE - this.tick) return false;
     const v = this.splitMovers(c, need, lead);
     if (v < 0) return false;
-    this.target[v] = vp.cell[point]!;
     this.visitNeed[v] = need;
+    if (toilet >= 0) {
+      this.walk(g, v, toilet, here, Stage.ToVisit);
+      return true;
+    }
+    this.target[v] = vp.cell[point]!;
     this.walkTo(g, v, here, vp.walkNode[point]!, Stage.ToVisit);
     return true;
   }
@@ -1027,6 +1063,18 @@ export class Cohorts {
     this.syncFlags(v);
     this.syncSat(v);
     return v;
+  }
+
+  /** A cohort on its way to a toilet joins the queue of its node. After an edit it picks a node again, and gives up when there is none. */
+  private toToilet(g: number, c: number): void {
+    if (this.node[c]! < 0) {
+      const from = this.hereNode(g, c);
+      const n = this.pickNode(g, TOILET, TOILET, from, c, true);
+      if (n < 0) this.afterVisit(g, c);
+      else this.walk(g, c, n, from, Stage.ToVisit);
+      return;
+    }
+    this.join(g, c, TOILET, TOILET, Stage.VisitQueue);
   }
 
   /** The cohort reached its visit point. It stays for the visit time, or ends the visit when an edit removed the point. */
