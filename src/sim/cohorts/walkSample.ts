@@ -1,3 +1,4 @@
+import { AUD } from '@shared/terminalZones';
 import type { WalkGraph } from '../terminal/walkGraph';
 import { distanceRowIn, nextEdge, type SampleCache } from '../terminal/walkDistance';
 
@@ -16,12 +17,12 @@ export function cellAt(wg: WalkGraph, lx: number, ly: number): number {
  * row of `to`. `walked` is the route length already covered when `from` was reached, so a caller can resume
  * from a node of an earlier call. Writes [x, y, ex, ey, node, walked] to out: the point in logical cell units
  * (cell centre), the cell step of the edge in use, and the last node passed with the length walked up to it.
- * Returns 1 while on the way, 0 at the target, -1 when there is no route.
+ * Returns 1 while on the way, 0 at the target, -1 when there is no route. `aud` picks the audience whose edges may be used.
  */
-export function routePoint(wg: WalkGraph, cache: SampleCache, from: number, walked: number, to: number, s: number, out: Float64Array): number {
+export function routePoint(wg: WalkGraph, cache: SampleCache, from: number, walked: number, to: number, s: number, out: Float64Array, aud: number = AUD.Pax): number {
   const n = wg.nodeCount;
   if (!Number.isInteger(from) || from < 0 || from >= n) return -1;
-  const base = distanceRowIn(wg, cache, to);
+  const base = distanceRowIn(wg, cache, to, aud);
   if (base < 0 || cache.rows[base + from] === Infinity) return -1;
   let acc = walked;
   let u = from;
@@ -29,7 +30,7 @@ export function routePoint(wg: WalkGraph, cache: SampleCache, from: number, walk
   let ey = 0;
   for (let hops = 0; u !== to; hops++) {
     if (hops >= n) return -1;
-    const e = nextEdge(wg, cache.rows, base, u);
+    const e = nextEdge(wg, cache.rows, base, u, aud);
     if (e < 0) return -1;
     const v = wg.edgeTo[e]!;
     const len = wg.edgeLen[e]!;

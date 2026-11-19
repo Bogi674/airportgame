@@ -1,11 +1,14 @@
 import { PROFILES, STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
-import { FIXTURE_KEYS, fixtureKey, type StaffRow, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type StaffRow, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
 import { gameSecondsToTicks } from '@shared/time';
 import { cellIndex, cornerWorld } from '@shared/terminalOps';
 import type { Airfield } from '../airfield/airfield';
-import { nearestNode, walkDistance } from '../terminal/walkDistance';
+import { HEADING_STEPS, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
+import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
+import { nearestNode, newSampleCache, walkDistance, type SampleCache } from '../terminal/walkDistance';
+import { ROUTE_OUT, cellAt, routePoint } from '../cohorts/walkSample';
 import type { Business } from '../business/business';
 import type { Baggage, BagNodeRec } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
@@ -25,6 +28,8 @@ const SHIFTS = STAFF.shifts.startsH.length;
 const MACHINE_KIND = FIXTURE_KEYS.indexOf('screeningMachine') + 1;
 const MACHINE_STATION = STAFF.stations.screeningMachine!;
 const CREW_SPEED_MPS = PROFILES.profiles.crew.walkSpeed;
+const DEG = Math.PI / 180;
+const TICKS_PER_SECOND = 10;
 const CHANGE_TICKS = STAFF.shifts.changeMin * TICKS_PER_MINUTE;
 const SHIFT_TICKS = STAFF.shifts.lengthH * 60 * TICKS_PER_MINUTE;
 const OVERTIME_TICKS = STAFF.shifts.overtimeMaxMin * TICKS_PER_MINUTE;
@@ -161,6 +166,18 @@ export class Staff {
   private seatInStation = 0;
   /** Set when a cap changed, so the next update runs a staffing pass. */
   private capsDirty = false;
+  /** Walk row caches of the staff audience per grid, for the people sample. Derived, never saved or hashed. */
+  private sampleCaches: SampleCache[] = [];
+  private sampleCacheVersion = -1;
+  /** Last node passed and the route length walked to it, per slot, so a sample resumes its route. Derived. */
+  private readonly trailNode = new Int32Array(STAFF.capacity).fill(-1);
+  private readonly trailAt = new Float64Array(STAFF.capacity);
+  /** walkStart of the walk the trail belongs to. */
+  private readonly trailWalk = new Int32Array(STAFF.capacity).fill(-1);
+  /** Members of each station met so far by the sample, to spread them sideways. Scratch sized at rebuild. */
+  private sSeen = new Int32Array(0);
+  private readonly route = new Float64Array(ROUTE_OUT);
+  private readonly world = new Float64Array(2);
   /** Counts hires and releases, so the payload version moves when the roster changes. Not saved. */
   private churn = 0;
   /** True when a member state, a placement or the station set changed since the last applyPresence. Not saved. */
@@ -292,6 +309,7 @@ export class Staff {
     this.sNeed = new Uint8Array(n);
     this.sPresent = new Uint8Array(n);
     this.sSkill = new Float64Array(n);
+    this.sSeen = new Int32Array(n);
     this.keepSt = new Int32Array(n * SHIFTS);
     this.heldSt = new Int32Array(n * SHIFTS);
     this.curbNode = new Int32Array(b.grids.length).fill(-1);
@@ -840,6 +858,114 @@ export class Staff {
     let n = 0;
     for (let s = 0; s < this.hi; s++) if (this.role[s] === role && this.state[s] !== STAFF_STATE.Free) n++;
     return n;
+  }
+
+  /** Rebuilds the staff walk row caches when the walk graphs changed. Allocates only then. */
+  private ensureSampleCaches(): void {
+    const wgs = this.business.walkGraphs;
+    let stale = this.sampleCacheVersion !== this.business.walkVersion || this.sampleCaches.length !== wgs.length;
+    for (let g = 0; !stale && g < wgs.length; g++) stale = this.sampleCaches[g]!.sourceRow.length !== wgs[g]!.nodeCount;
+    if (!stale) return;
+    this.sampleCaches = wgs.map((wg) => newSampleCache(wg));
+    this.sampleCacheVersion = this.business.walkVersion;
+    this.trailNode.fill(-1);
+  }
+
+  /** Writes one staff entry n at this.world, facing the grid step (ex, ey), and counts it. */
+  private putSample(views: SnapshotViews, n: number, m: number, axA: number, ex: number, ey: number, mode: number): void {
+    views.peopleX[n] = this.world[0]!;
+    views.peopleY[n] = this.world[1]!;
+    views.peopleProfile[n] = STAFF_PROFILE_BASE + this.role[m]!;
+    views.peopleSize[n] = 1;
+    views.peopleSeed[n] = this.seed[m]!;
+    views.peopleHeading[n] = Math.round(((axA + atan2Det(ey, ex)) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
+    views.peopleId[n] = STAFF_ID_BASE + m;
+    views.peopleMode[n] = mode;
+  }
+
+  /**
+   * Adds the staff to the people sample after the cohorts: members on duty stand behind their desk, away from the queue,
+   * and members walking between the curb and their station are placed on the staff route by the time walked. Reads only,
+   * the sim state does not change, and only the derived caches and trails are written.
+   */
+  writeSample(views: SnapshotViews, tick: number): void {
+    this.ensureSampleCaches();
+    const grids = this.business.grids;
+    let n = views.header[SnapHeader.PeopleCount]!;
+    const cap = Math.min(SNAPSHOT_PEOPLE_CAPACITY, n + STAFF.sampleCap);
+    this.sSeen.fill(0);
+    for (let m = 0; m < this.hi && n < cap; m++) {
+      const state = this.state[m]!;
+      const s = this.stIdx[m]!;
+      if (state === STAFF_STATE.OnDuty && s >= 0) {
+        const gi = this.sGridIdx[s]!;
+        const grid = grids[gi];
+        if (!grid) continue;
+        const axA = grid.headingDeg * DEG;
+        const ux = sinLut(axA);
+        const uy = -cosLut(axA);
+        // The step toward the first queue cell of the station's service node, snapped to its dominant grid axis.
+        let sx = 0;
+        let sy = 0;
+        const node = this.sNode[s]!;
+        const table = node >= 0 ? this.business.serviceNodes[gi] : undefined;
+        if (table && table.qCellLen[node]! > 0) {
+          const first = table.qCellOffset[node]!;
+          const dx = table.qCellX[first]! - table.lx[node]!;
+          const dy = table.qCellY[first]! - table.ly[node]!;
+          sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
+          sy = sx === 0 ? Math.sign(dy) : 0;
+        }
+        const back = STAFF.operator.backM / TERMINAL_CELL_M;
+        const k = this.sSeen[s]!++;
+        const side = ((k - (this.sNeed[s]! - 1) / 2) * STAFF.operator.spacingM) / TERMINAL_CELL_M;
+        // Sideways is the step turned a quarter, (1, 0) for a station with no queue cell.
+        const px = sx === 0 && sy === 0 ? 1 : -sy;
+        const py = sx === 0 && sy === 0 ? 0 : sx;
+        const lx = this.sX[s]! + 0.5 - sx * back + px * side;
+        const ly = this.sY[s]! + 0.5 - sy * back + py * side;
+        this.world[0] = grid.ox + (ux * lx + -uy * ly) * TERMINAL_CELL_M;
+        this.world[1] = grid.oy + (uy * lx + ux * ly) * TERMINAL_CELL_M;
+        this.putSample(views, n, m, axA, sx, sy === 0 && sx === 0 ? -1 : sy, PEOPLE_MODE.Dwelling);
+        n++;
+        continue;
+      }
+      if ((state !== STAFF_STATE.ToStation && state !== STAFF_STATE.Leaving) || this.walkStart[m]! < 0) continue;
+      const gi = this.gridOf(m);
+      const grid = grids[gi];
+      const wg = this.business.walkGraphs[gi];
+      const cache = this.sampleCaches[gi];
+      if (!grid || !wg || !cache) continue;
+      const from = nearestNode(wg, cellAt(wg, this.walkFromX[m]!, this.walkFromY[m]!));
+      const to = nearestNode(wg, cellAt(wg, this.walkToX[m]!, this.walkToY[m]!));
+      if (from < 0 || to < 0) continue;
+      const walked = Math.max(0, ((tick - this.walkStart[m]!) * CREW_SPEED_MPS) / TICKS_PER_SECOND);
+      if (this.trailWalk[m] !== this.walkStart[m]) {
+        this.trailWalk[m] = this.walkStart[m]!;
+        this.trailNode[m] = -1;
+      }
+      const resume = this.trailNode[m]! >= 0 && this.trailAt[m]! <= walked;
+      const r = resume
+        ? routePoint(wg, cache, this.trailNode[m]!, this.trailAt[m]!, to, walked, this.route, AUD.Staff)
+        : routePoint(wg, cache, from, 0, to, walked, this.route, AUD.Staff);
+      if (r !== 1) continue;
+      this.trailNode[m] = this.route[4]!;
+      this.trailAt[m] = this.route[5]!;
+      const ex = this.route[2]!;
+      const ey = this.route[3]!;
+      const sx = Math.abs(ex) >= Math.abs(ey) ? Math.sign(ex) : 0;
+      const sy = sx === 0 ? Math.sign(ey) : 0;
+      const axA = grid.headingDeg * DEG;
+      const ux = sinLut(axA);
+      const uy = -cosLut(axA);
+      const lx = this.route[0]!;
+      const ly = this.route[1]!;
+      this.world[0] = grid.ox + (ux * lx + -uy * ly) * TERMINAL_CELL_M;
+      this.world[1] = grid.oy + (uy * lx + ux * ly) * TERMINAL_CELL_M;
+      this.putSample(views, n, m, axA, sx, sy, PEOPLE_MODE.Walking);
+      n++;
+    }
+    views.header[SnapHeader.PeopleCount] = n;
   }
 
   /** Wages of every hired member per game day. */

@@ -8,7 +8,7 @@ import type { ServiceNodes } from '@sim/terminal/serviceNodes';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
 import { gameSecondsToTicks } from '@shared/time';
-import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
+import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import { cornerWorld } from '@shared/terminalOps';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { nearestNode, walkDistance } from '@sim/terminal/walkDistance';
@@ -557,6 +557,13 @@ function stepToMidJourney(sim: Sim, maxTicks: number): boolean {
   return false;
 }
 
+/** Entries of the people sample that are cohorts. Staff entries (T68) come after them and carry ids from STAFF_ID_BASE. */
+function cohortEntries(views: SnapshotViews): number {
+  const n = views.header[SnapHeader.PeopleCount]!;
+  for (let i = 0; i < n; i++) if (views.peopleId[i]! >= STAFF_ID_BASE) return i;
+  return n;
+}
+
 describe('snapshot sample of cohort positions', () => {
   it('samples queued cohorts inside the terminal bounds', () => {
     const sim = terminalSim();
@@ -564,7 +571,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
     const views = createSnapshotViews(createSnapshotBuffer());
     sim.writeSnapshot(views);
-    const n = views.header[SnapHeader.PeopleCount]!;
+    const n = cohortEntries(views);
     expect(n).toBeGreaterThan(0);
     expect(n).toBeLessThanOrEqual(Math.min(PROFILES.sampleCap, SNAPSHOT_PEOPLE_CAPACITY));
     const g = sim.business.grids[0]!;
@@ -604,7 +611,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(stepToSharedQueues(sim, RUN_TICKS * 4)).toBe(true);
     const views = createSnapshotViews(createSnapshotBuffer());
     sim.writeSnapshot(views);
-    const n = views.header[SnapHeader.PeopleCount]!;
+    const n = cohortEntries(views);
     expect(n).toBeGreaterThanOrEqual(3);
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
@@ -651,7 +658,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
     const views = createSnapshotViews(createSnapshotBuffer());
     sim.writeSnapshot(views);
-    const n = views.header[SnapHeader.PeopleCount]!;
+    const n = cohortEntries(views);
     let walkers = 0;
     const ids = new Set<number>();
     for (let i = 0; i < n; i++) {
@@ -694,7 +701,7 @@ describe('snapshot sample of cohort positions', () => {
     for (let t = 0; t < RUN_TICKS && id < 0; t++) {
       sim.step();
       sim.writeSnapshot(views);
-      for (let i = 0; i < views.header[SnapHeader.PeopleCount]!; i++) {
+      for (let i = 0; i < cohortEntries(views); i++) {
         if (views.peopleMode[i] !== 1) continue;
         const c = views.peopleId[i]!;
         const from = nearestNode(wg, cellAt(wg, sim.cohorts.walkFromX[c]!, sim.cohorts.walkFromY[c]!));
@@ -711,7 +718,7 @@ describe('snapshot sample of cohort positions', () => {
     sim.writeSnapshot(views);
     expect([Stage.ToCheckIn, Stage.ToSecurity, Stage.ToGate]).toContain(sim.cohorts.stage[id]);
     let d1 = -1;
-    for (let i = 0; i < views.header[SnapHeader.PeopleCount]!; i++) {
+    for (let i = 0; i < cohortEntries(views); i++) {
       if (views.peopleId[i] === id) d1 = remaining(views.peopleX[i]!, views.peopleY[i]!, id);
     }
     expect(d1).toBeGreaterThanOrEqual(0);
@@ -729,7 +736,7 @@ describe('snapshot sample of cohort positions', () => {
       if (sim.tick % 10 !== 0) continue;
       sim.writeSnapshot(views);
       const ids = new Set<number>();
-      for (let i = 0; i < views.header[SnapHeader.PeopleCount]!; i++) {
+      for (let i = 0; i < cohortEntries(views); i++) {
         const c = views.peopleId[i]!;
         expect(ids.has(c)).toBe(false);
         ids.add(c);
@@ -783,7 +790,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(stepToSharedQueues(sim, RUN_TICKS * 4)).toBe(true);
     const views = createSnapshotViews(createSnapshotBuffer());
     sim.writeSnapshot(views);
-    const n = views.header[SnapHeader.PeopleCount]!;
+    const n = cohortEntries(views);
     expect(n).toBeGreaterThanOrEqual(2);
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
@@ -800,7 +807,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
     const views = createSnapshotViews(createSnapshotBuffer());
     sim.writeSnapshot(views);
-    const n = views.header[SnapHeader.PeopleCount]!;
+    const n = cohortEntries(views);
     let checked = 0;
     for (const g of sim.business.grids) {
       const t = sim.business.serviceTable(g.id);
