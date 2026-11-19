@@ -155,3 +155,39 @@ export function buildTestControlRoom(sim: Sim): string[] {
     run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: e });
   return [...edit({ op: 'zone', x0: 88, y0: 48, x1: 90, y1: 50, variant: 4 }), ...edit({ op: 'fixture', x0: 88, y0: 48, x1: 90, y1: 50, variant: 12 })];
 }
+
+/**
+ * A hall for the arrival journey (T20): a public hall with a curb door on the south wall, a secure hall and an
+ * international hall on the east side, behind a wall with a security lane, a security exit, a passport booth and an
+ * eGate, the last two in arrival mode. Gate desks stand in the secure and in the international hall. Returns
+ * problems, empty on success.
+ */
+export function buildArrivalTerminal(sim: Sim, o: { eGate?: boolean; passport?: boolean; customs?: boolean; carousel?: boolean } = {}): string[] {
+  const { ox, oy } = originFor(3960, 5440, 90);
+  const problems: string[] = [];
+  const edit = (building: number, e: { op: 'foundation' | 'floor' | 'wall' | 'fixture' | 'zone'; x0: number; y0: number; x1: number; y1: number; variant: number; rot?: 0 | 1 | 2 | 3; level?: number; mode?: number }): void => {
+    problems.push(...run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e }));
+  };
+  edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 60, variant: 0 });
+  const id = sim.business.grids[sim.business.grids.length - 1]?.id ?? 1;
+  edit(id, { op: 'floor', x0: 40, y0: 40, x1: 100, y1: 60, variant: 2 });
+  edit(id, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
+  edit(id, { op: 'wall', x0: 40, y0: 60, x1: 100, y1: 60, variant: 1 });
+  edit(id, { op: 'wall', x0: 50, y0: 60, x1: 52, y1: 60, variant: 3 });
+  edit(id, { op: 'foundation', x0: 48, y0: 60, x1: 54, y1: 61, variant: 0 });
+  edit(id, { op: 'floor', x0: 48, y0: 60, x1: 54, y1: 61, variant: 2 });
+  edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 50, variant: 3 });
+  edit(id, { op: 'zone', x0: 72, y0: 50, x1: 100, y1: 60, variant: 5 });
+  // The dividing wall leaves one edge open at each fixture row.
+  for (const [y0, y1] of [[40, 42], [43, 47], [48, 52], [53, 55], [56, 60]] as const) edit(id, { op: 'wall', x0: 72, y0, x1: 72, y1, variant: 1 });
+  edit(id, { op: 'wall', x0: 72, y0: 50, x1: 100, y1: 50, variant: 1 });
+  edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 43, variant: 2, rot: 1 });
+  edit(id, { op: 'fixture', x0: 72, y0: 47, x1: 73, y1: 48, variant: 20, rot: 3, level: 1 });
+  if (o.passport !== false) edit(id, { op: 'fixture', x0: 72, y0: 52, x1: 73, y1: 53, variant: 15, rot: 3, mode: 1 });
+  if (o.eGate !== false) edit(id, { op: 'fixture', x0: 72, y0: 55, x1: 73, y1: 56, variant: 21, rot: 3, mode: 1 });
+  edit(id, { op: 'fixture', x0: 80, y0: 42, x1: 82, y1: 43, variant: 16 });
+  edit(id, { op: 'fixture', x0: 80, y0: 57, x1: 82, y1: 58, variant: 16 });
+  edit(id, { op: 'fixture', x0: 42, y0: 42, x1: 44, y1: 43, variant: 1 });
+  problems.push(...run(sim, { type: 'buildTower', x: 2700, y: 4800, level: 5 }));
+  return problems;
+}

@@ -29,6 +29,9 @@ export function traitU(seed: number, k: number): number {
   return mix32((seed + Math.imul(k + 1, 0x85ebca6b)) >>> 0) / 4294967296;
 }
 
+/** Cohort level draws of the arrival journey (T20): pure draws from the recipe seed through traitU, in slots past the member trait slots. */
+export const COHORT_DRAW = { Referral: 10, Red: 11 } as const;
+
 /** Slots of the trait vector. Slots 0 to 3 are the need factors of hunger, thirst, toilet and rest. */
 export const TRAIT = { Hunger: 0, Thirst: 1, Toilet: 2, Rest: 3, Desire: 4, Budget: 5, Fav1: 6, Fav2: 7, GateLeadMin: 8, Slow: 9 } as const;
 export const TRAIT_COUNT = 10;

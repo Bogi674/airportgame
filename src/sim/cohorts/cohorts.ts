@@ -15,7 +15,7 @@ import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newSampleCache, type SampleCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
 import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
-import { TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, writeTraits } from './traits';
+import { COHORT_DRAW, TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, traitU, writeTraits } from './traits';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
@@ -80,6 +80,8 @@ const BAG_DROP = FIXTURE_KEYS.indexOf('bagDrop') + 1;
 const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const GATE_DESK = FIXTURE_KEYS.indexOf('gateDesk') + 1;
 const TOILET = FIXTURE_KEYS.indexOf('toilet') + 1;
+const PASSPORT = FIXTURE_KEYS.indexOf('passport') + 1;
+const EGATE = FIXTURE_KEYS.indexOf('eGate') + 1;
 
 /** Side step of a sampled walker in cells, the squared least gap between drawn groups in metres, and the lanes tried in order. */
 const LANE = PROFILES.walkSample.laneOffsetCells;
@@ -104,6 +106,8 @@ const DWELL_TRIES = Math.min(PROFILES.walkSample.dwellTries, SPIRAL.length / 2);
 const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
 /** Walk speed in metres per second, by profile id. */
 const WALK_SPEED = Float32Array.from(PROFILE_ROWS, (r) => r.walkSpeed);
+/** 1 for the profiles that never use an automated passport gate, by profile id. */
+const NO_GATE = Uint8Array.from(PROFILE_KEYS, (k) => (ARRIVALS.service.eGate.noGateProfiles.includes(k) ? 1 : 0));
 /** Cumulative profile mix, so one uniform float picks a profile in a fixed order. */
 const MIX_CUM = (() => {
   const out = new Float64Array(PROFILE_ROWS.length);
@@ -129,6 +133,8 @@ export const FLAG_SLOW = 2;
 const FLAG_AT_VISIT = 4;
 /** Arrival cohort of an international flight. */
 const FLAG_INTL = 8;
+/** An arrival an eGate sent to an officer: it queues at a passport booth only. */
+const FLAG_REFERRED = 16;
 const SLOW = NEEDS.mobility.slowFactor;
 /** Cumulative group size weights per profile, normalised to 1. Index 0 is size 1. */
 const GROUP_CUM = PROFILE_ROWS.map((r) => {
@@ -798,6 +804,11 @@ export class Cohorts {
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate || (st === Stage.ToVisit && this.visitNeed[c] === NEED_TOILET)) this.node[c] = -1;
+      else if (st === Stage.ToImmigration) {
+        this.node[c] = -1;
+        this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+        this.keepAnchor(c);
+      }
     }
     this.rebuildVisitTables();
     this.seenVersion = this.business.serviceVersion;
@@ -850,7 +861,11 @@ export class Cohorts {
     else if (st === Stage.Security) this.stage[c] = Stage.ToSecurity;
     else if (st === Stage.Gate) this.stage[c] = Stage.ToGate;
     else if (st === Stage.VisitQueue) this.stage[c] = Stage.ToVisit;
-    else return;
+    else if (st === Stage.Immigration) {
+      this.stage[c] = Stage.ToImmigration;
+      this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+      this.keepAnchor(c);
+    } else return;
     this.node[c] = -1;
     this.waitStart[c] = -1;
     this.schedule(c, this.tick + STEP);
@@ -892,6 +907,10 @@ export class Cohorts {
       this.recordVisit(c);
       this.resetNeed(c, NEED_TOILET);
       this.afterVisit(g, c);
+      return;
+    }
+    if (st === Stage.Immigration) {
+      this.finishImmigration(g, c, t);
       return;
     }
     if (st === Stage.Security) {
@@ -969,11 +988,75 @@ export class Cohorts {
       case Stage.ToExit:
         this.exitArrival(c);
         break;
+      case Stage.ToImmigration: {
+        const t = this.table(g);
+        if (this.node[c]! < 0 || !t) this.toImmigration(g, c);
+        else this.join(g, c, t.kind[this.node[c]!]!, t.kind[this.node[c]!]!, Stage.Immigration);
+        break;
+      }
     }
   }
 
   /** The cohort has left the aircraft. */
   private afterDeboard(g: number, c: number): void {
+    if (this.flags[c]! & FLAG_INTL) this.toImmigration(g, c);
+    else this.toExit(g, c);
+  }
+
+  /** Walks an international arrival to the cheapest immigration node. With none it retries, and strands after the limit. */
+  private toImmigration(g: number, c: number): void {
+    const here = this.hereNode(g, c);
+    const n = this.pickImmigration(g, here, c);
+    if (n < 0) this.retryOrStrand(c);
+    else this.walk(g, c, n, here, Stage.ToImmigration);
+  }
+
+  /**
+   * Cheapest passport booth or automated gate set to arrival mode, by walk time plus wait. Families and referred
+   * cohorts skip the gates. Ascending scan with a strict comparison, as pickNode does. -1 when none.
+   */
+  private pickImmigration(g: number, from: number, c: number): number {
+    const t = this.table(g);
+    const grid = this.business.grids[g];
+    if (!t || !grid) return -1;
+    const id = this.gridId(g);
+    const speed = this.speed(c);
+    const noGate = NO_GATE[this.profile[c]!] === 1 || (this.flags[c]! & FLAG_REFERRED) !== 0;
+    let best = -1;
+    let bestCost = Infinity;
+    for (let n = 0; n < t.count; n++) {
+      const k = t.kind[n];
+      if ((k !== PASSPORT && k !== EGATE) || t.queueCap[n] <= 0 || grid.fixtureMode[t.cell[n]!] !== 1) continue;
+      if (k === EGATE && noGate) continue;
+      const cost = this.business.walkDistance(id, from, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick) / CLOCK_SCALE;
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = n;
+      }
+    }
+    return best;
+  }
+
+  /** An international arrival was served at an immigration node: an eGate may send it to an officer, else it goes on. */
+  private finishImmigration(g: number, c: number, t: ServiceNodes): void {
+    const node = this.node[c]!;
+    if (t.kind[node] === EGATE && !(this.flags[c]! & FLAG_REFERRED) && traitU(this.recipeSeed[c]!, COHORT_DRAW.Referral) < ARRIVALS.service.eGate.referralShare) {
+      const wg = this.business.walkGraphs[g]!;
+      const at = t.walkNode[node]!;
+      this.flags[c] = this.flags[c]! | FLAG_REFERRED | FLAG_AT_VISIT;
+      this.walkToX[c] = wg.nodeX[at]!;
+      this.walkToY[c] = wg.nodeY[at]!;
+      this.node[c] = -1;
+      this.stage[c] = Stage.ToImmigration;
+      this.toImmigration(g, c);
+      return;
+    }
+    this.flags[c] = this.flags[c]! & ~FLAG_REFERRED;
+    this.afterImmigration(g, c);
+  }
+
+  /** Immigration is done, the cohort stands at its node. */
+  private afterImmigration(g: number, c: number): void {
     this.toExit(g, c);
   }
 
@@ -1177,6 +1260,17 @@ export class Cohorts {
       count += this.ringCount[d]!;
     }
     return count > 0 ? sum / count : -1;
+  }
+
+  /**
+   * A cohort that stands at a point it last walked to needs a walk node there. When the node it headed for is gone
+   * (its fixture was removed) it goes back to the point it started that walk from.
+   */
+  private keepAnchor(c: number): void {
+    const wg = this.business.walkGraphs[this.building[c]!];
+    if (!wg || nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!)) >= 0) return;
+    this.walkToX[c] = this.walkFromX[c]!;
+    this.walkToY[c] = this.walkFromY[c]!;
   }
 
   /** Walk node a cohort stands at: its service node, else the point it last walked to, else the curb. */
