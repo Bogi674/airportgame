@@ -1,4 +1,4 @@
-import { BUSINESS } from '@data/index';
+import { ARRIVALS, BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
@@ -7,7 +7,7 @@ import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
 
 /** Fixtures that serve people one at a time. Each anchor of these is a service node. */
-export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet'] as const;
+export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs'] as const;
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
 
 /** fixtureRot below this marks the anchor of a fixture. 5 and up is the tail of a two cell fixture. */
@@ -79,6 +79,7 @@ export interface ServiceNodes {
 
 /** Module timing for a service key. Every service key carries both values in the data. */
 function timing(key: ServiceKey): { servers: number; meanS: number } {
+  if (key === 'eGate' || key === 'customs') return { servers: ARRIVALS.service[key].servers, meanS: ARRIVALS.service[key].serviceSeconds };
   const m = BUSINESS.modules[key];
   if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error(`${key} has no service timing`);
   return { servers: m.servers, meanS: m.serviceSeconds };

@@ -843,3 +843,37 @@ describe('passenger day for the finance sheet (T67)', () => {
     expect(day[0]).toBeLessThanOrEqual(100);
   });
 });
+
+describe('international destinations (T20)', () => {
+  it('about 35 percent of the destinations of three seeds are international', () => {
+    for (const seed of ['GOLDEN-0001', 'GOLDEN-0002', 'GOLDEN-0003']) {
+      const list = ownedSim(seed).business.market.destinations;
+      const share = list.filter((d) => d.international).length / list.length;
+      expect(Math.abs(share - MARKET.destinations.internationalShare), seed).toBeLessThan(0.15);
+    }
+  });
+
+  it('the names and distances of GOLDEN-0001 did not move', () => {
+    const list = ownedSim('GOLDEN-0001').business.market.destinations;
+    expect(list.map((d) => d.name).join('|')).toBe(
+      'Coromont|Fareton|Naredale|Dunhaven|Karorburg|Rosiwick|Torton|Linerholm|Narerford|Calerhaven|Moroholm|Eskilgate|Quenordale|Torehaven|Rosilholm|Corwick|Wenawick|Moremont|Eskwick|Haloford|Brananton|Linaholm|Dunerby|Galburg|Branerfield|Valorstad|Ardanmouth|Rosilton|Ardoby|Linorburg|Morhaven|Torormouth|Corby|Ostaby|Rosastad|Istiford|Belobridge|Galanhaven|Delerdale|Branorwick|Brananburg|Branimouth|Pelilmont|Dunadale|Caliburg|Naroport|Eskilfield|Rosiby|Ardanhaven|Belordale|Delerburg|Branilbridge|Osteby|Farhaven|Galilgate|Istahaven|Moroby|Liniburg|Eskaholm|Delport|Nariford|Calanwick|Linerfield|Karofield|Galadale|Rosport|Halgate|Morivik|Corowick|Delangate|Istmouth|Linilburg|Valiwick|Karburg|Valaburg|Beleport|Eskeholm|Eskibridge|Galbridge|Morilholm',
+    );
+    expect(list.reduce((sum, d) => sum + d.km, 0)).toBe(149159);
+  });
+
+  it('isInternational is false without a series and follows the destination of the series otherwise', () => {
+    const sim = ownedSim();
+    const market = sim.business.market;
+    const type = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+    const plain = sim.traffic.scheduleArrival(type, sim.traffic.nowTick + 100, 0, 600, -1);
+    expect(market.isInternational(plain)).toBe(false);
+    const base = market.series[0] ?? { id: 0, airline: 0, dest: 0, typeIdx: type, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 };
+    const intl = market.destinations.find((d) => d.international)!;
+    const home = market.destinations.find((d) => !d.international)!;
+    market.series.push({ ...base, id: 9001, dest: intl.id }, { ...base, id: 9002, dest: home.id });
+    const a = sim.traffic.scheduleArrival(type, sim.traffic.nowTick + 100, 0, 600, -1, 0, 9001);
+    const b = sim.traffic.scheduleArrival(type, sim.traffic.nowTick + 100, 0, 600, -1, 0, 9002);
+    expect(market.isInternational(a)).toBe(true);
+    expect(market.isInternational(b)).toBe(false);
+  });
+});

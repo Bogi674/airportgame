@@ -231,6 +231,8 @@ export interface Destination {
   size: number;
   /** Index into the region list of market.json. */
   region: number;
+  /** True when flights to it are international (T20). */
+  international: boolean;
 }
 
 /**
