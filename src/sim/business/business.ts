@@ -235,6 +235,8 @@ export class Business {
   /** Share of today's checked bags that were missing, 0 to 1, and the reset after the daily close. Set by the sim (T43). */
   bagMissingShare: (() => number) | null = null;
   bagDayReset: (() => void) | null = null;
+  /** Closes the day of passenger satisfaction and returns the mean over the trailing 30 days, 0 to 100, or -1 with no passenger rated. Set by the sim (T67). */
+  closePax: (() => number) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -730,7 +732,6 @@ export class Business {
       // Only passengers who boarded through the terminal fly. The rest miss the flight.
       const served = Math.min(pax, this.boarded ? this.boarded(f) : 0);
       this.lostToday += pax - served;
-      this.satisfaction += (served / Math.max(1, pax) - this.satisfaction) * 0.1;
       pax = served;
     }
     if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
@@ -791,6 +792,8 @@ export class Business {
       this.history.push(Float64Array.from(this.today));
       if (this.history.length > LEDGER_DAYS) this.history.shift();
       this.today.fill(0);
+      const rated = this.closePax?.() ?? -1;
+      if (rated >= 0) this.satisfaction = rated / 100;
       this.updateRating();
       this.bagDayReset?.();
     }

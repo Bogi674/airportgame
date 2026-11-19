@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { PROFILES } from '@data/index';
 import { FIXTURE_KEYS, ZONE } from '@shared/business';
-import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
+import { Stage, queuePoints, unmetPoints, walkPoints, type Cohorts } from '@sim/cohorts/cohorts';
+import { memberSeedOf, writeTraits, TRAIT_COUNT } from '@sim/cohorts/traits';
+import { TICKS_PER_DAY } from '@shared/business';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { Sim } from '@sim/sim';
 import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+const SMALL = AIRCRAFT.findIndex((a) => a.id === 'atr72_600');
 const QUICK_FOOD = FIXTURE_KEYS.indexOf('quickFood') + 1;
+const CAFE = FIXTURE_KEYS.indexOf('cafe') + 1;
+const THIRST = 1;
 const M = PROFILES.maxGroup;
 const HUNGER = 0;
 const FOOD_X = 88;
@@ -18,16 +23,16 @@ const STARVING = 5000;
 const SUB = 1;
 
 /** A terminal with no seating or toilet and one quick food fixture in the secure hall. */
-function foodSim(seed?: string, withFood = true): Sim {
+function foodSim(seed?: string, withFood = true, desks = { checkIn: 4, security: 2, gateDesk: 2 }, fixture = QUICK_FOOD): Sim {
   const sim = ownedSim(seed);
   buildTestAirport(sim);
-  expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2, seating: 0, toilet: 0 })).toEqual([]);
+  expect(buildTestTerminal(sim, { ...desks, seating: 0, toilet: 0 })).toEqual([]);
   if (withFood) {
     const g = sim.business.grids[0]!;
     const edit = (op: 'zone' | 'fixture', variant: number): string[] =>
       run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op, x0: FOOD_X, y0: FOOD_Y, x1: FOOD_X + 1, y1: FOOD_Y + 1, variant } });
     expect(edit('zone', ZONE.Commercial)).toEqual([]);
-    expect(edit('fixture', QUICK_FOOD)).toEqual([]);
+    expect(edit('fixture', fixture)).toEqual([]);
   }
   return sim;
 }
@@ -61,8 +66,9 @@ function subOf(co: Cohorts, parent: number): number {
 
 describe('needs and sub cohorts', () => {
   /** Runs a foodSim until a group of two or more is airside, makes member 0 starve and returns the group, its size and its new sub cohort. */
-  function splitOff(sim: Sim): { c: number; size: number; v: number } {
-    scheduleLong(sim);
+  function splitOff(sim: Sim, need = HUNGER): { c: number; size: number; v: number } {
+    // The aircraft lands 4000 ticks later than usual, so the group is still airside when the member comes back.
+    expect(sim.traffic.scheduleArrival(WIDE, sim.traffic.nowTick + 4100, 0, 6000, -1)).toBeGreaterThanOrEqual(0);
     const co = sim.cohorts;
     let c = -1;
     for (let t = 0; t < 6000 && c < 0; t++) {
@@ -71,7 +77,7 @@ describe('needs and sub cohorts', () => {
     }
     expect(c).toBeGreaterThanOrEqual(0);
     const size = co.size[c]!;
-    co.memberNeed[c * M * NEED_COUNT + HUNGER] = STARVING;
+    co.memberNeed[c * M * NEED_COUNT + need] = STARVING;
     co.needTick[c] = sim.traffic.nowTick;
     let v = -1;
     for (let t = 0; t < 200 && v < 0; t++) {
@@ -101,7 +107,21 @@ describe('needs and sub cohorts', () => {
     const { c, size, v } = splitOff(sim);
     untilVisitEnds(sim, v);
     expect(co.memberNeed[v * M * NEED_COUNT + HUNGER]).toBe(0);
-    expect(co.day[0]).toBe(1);
+    expect(co.day[HUNGER]).toBe(1);
+    expect(co.stage[v]).toBe(Stage.Rejoin);
+    for (let t = 0; t < 3000 && co.stage[v] !== Stage.Free; t++) sim.step();
+    expect(co.stage[v]).toBe(Stage.Free);
+    expect(co.stage[c]).toBe(Stage.Airside);
+    expect(co.size[c]).toBe(size);
+  });
+
+  it('a thirsty member has a short visit at a cafe and rejoins the group that waited airside', () => {
+    const sim = foodSim(undefined, true, undefined, CAFE);
+    const co = sim.cohorts;
+    const { c, size, v } = splitOff(sim, THIRST);
+    untilVisitEnds(sim, v);
+    expect(co.memberNeed[v * M * NEED_COUNT + THIRST]).toBe(0);
+    expect(co.day[THIRST]).toBe(1);
     expect(co.stage[v]).toBe(Stage.Rejoin);
     for (let t = 0; t < 3000 && co.stage[v] !== Stage.Free; t++) sim.step();
     expect(co.stage[v]).toBe(Stage.Free);
@@ -118,10 +138,18 @@ describe('needs and sub cohorts', () => {
     expect(co.memberNeed[v * M * NEED_COUNT + HUNGER]).toBe(0);
     expect(co.stage[v]).toBe(Stage.Airside);
     const boardedBefore = co.boarded;
-    for (let t = 0; t < 8000 && co.stage[v] !== Stage.Free; t++) sim.step();
+    // The group never takes the member back: while it lives it keeps the size it had without them.
+    let groupSize = size - 1;
+    let boardedWhenFree = -1;
+    for (let t = 0; t < 14000 && co.stage[v] !== Stage.Free; t++) {
+      sim.step();
+      if (co.stage[c] !== Stage.Free) groupSize = co.size[c]!;
+      boardedWhenFree = co.boarded;
+    }
     expect(co.stage[v]).toBe(Stage.Free);
-    expect(co.boarded).toBeGreaterThan(boardedBefore);
-    expect(co.size[c] === size - 1 || co.stage[c] === Stage.Free).toBe(true);
+    expect(groupSize).toBe(size - 1);
+    expect(co.stage[c]).toBe(Stage.Free);
+    expect(boardedWhenFree).toBeGreaterThan(boardedBefore);
     expect(co.generated).toBe(co.boarded + co.missed + co.active);
   });
 
@@ -244,5 +272,139 @@ describe('toilet visits', () => {
     co.onPushback(f);
     expect(co.generated).toBe(co.boarded + co.missed + co.active);
     expect(co.stage[v] === Stage.Missed || co.stage[v] === Stage.Free).toBe(true);
+  });
+});
+
+/** Day counter indexes, as the cohorts store lays them out. */
+const DAY_SAT_SUM = 6;
+const DAY_SAT_COUNT = 7;
+const DAY_PEN_UNMET = 10;
+const DAY_PEN_MISSED = 11;
+
+describe('member satisfaction', () => {
+  it('queue, walk and unmet need points are hand computed', () => {
+    // 15 game minutes is 750 ticks, 900 s, 300 s over a patience of 600 s: 5 minutes at one point each.
+    expect(queuePoints(750, 600)).toBeCloseTo(5, 9);
+    expect(queuePoints(100, 600)).toBe(0);
+    expect(walkPoints(400)).toBeCloseTo(2, 9);
+    expect(walkPoints(250)).toBe(0);
+    // Hunger falls due after 3 game hours at factor 1, so two hours over is 2000 / 3 levels over: 20 points.
+    expect(unmetPoints(1000 + 2000 / 3, 0, 1)).toBeCloseTo(20, 9);
+    expect(unmetPoints(900, 0, 1)).toBe(0);
+  });
+
+  /** A sim stepped once, so that its cohorts exist at the curb, and the first cohort. */
+  function firstCohort(): { sim: Sim; c: number } {
+    const sim = foodSim();
+    scheduleLong(sim);
+    sim.step();
+    expect(sim.cohorts.hi).toBeGreaterThan(0);
+    return { sim, c: 0 };
+  }
+
+  it('a member two game hours over its hunger threshold loses 20 points at boarding', () => {
+    const { sim, c } = firstCohort();
+    const co = sim.cohorts;
+    const traits = new Float64Array(TRAIT_COUNT);
+    writeTraits(memberSeedOf(co.recipeSeed[c]!, 0), co.profile[c]!, traits);
+    co.memberNeed[c * M * NEED_COUNT + HUNGER] = Math.round(1000 + (2000 * traits[HUNGER]!) / 3);
+    // A need tick far ahead means no growth is added before the rating.
+    co.needTick[c] = 2 ** 30;
+    co.rollUp(c, false);
+    expect(co.memberSat[c * M]).toBe(80);
+    expect(co.day[DAY_PEN_UNMET]).toBe(20);
+    expect(co.day[DAY_SAT_COUNT]).toBe(co.size[c]);
+  });
+
+  it('a missed flight costs 40 points per member', () => {
+    const { sim, c } = firstCohort();
+    const co = sim.cohorts;
+    co.needTick[c] = 2 ** 30;
+    co.rollUp(c, true);
+    expect(co.memberSat[c * M]).toBe(60);
+    expect(co.day[DAY_PEN_MISSED]).toBe(40 * co.size[c]!);
+    expect(co.satisfaction[c]).toBe(60);
+  });
+
+  it('the ring drops the first day at the 31st close', () => {
+    const co = foodSim().cohorts;
+    co.day[DAY_SAT_SUM] = 100;
+    co.day[DAY_SAT_COUNT] = 1;
+    expect(co.closeDay()).toBe(100);
+    let mean = 0;
+    for (let d = 0; d < 29; d++) {
+      co.day[DAY_SAT_SUM] = 50;
+      co.day[DAY_SAT_COUNT] = 1;
+      mean = co.closeDay();
+    }
+    expect(mean).toBeGreaterThan(50);
+    co.day[DAY_SAT_SUM] = 50;
+    co.day[DAY_SAT_COUNT] = 1;
+    expect(co.closeDay()).toBe(50);
+    expect(co.lastDay[DAY_SAT_SUM]).toBe(50);
+    expect(co.day[DAY_SAT_SUM]).toBe(0);
+  });
+
+  /** Runs one flight with the starving members forced every 50 ticks, then closes the day. */
+  function dayWithFood(withFood: boolean): Sim {
+    const sim = foodSim('PART-B', withFood, { checkIn: 16, security: 3, gateDesk: 4 });
+    expect(sim.traffic.scheduleArrival(SMALL, sim.traffic.nowTick + 100, 0, 12000, -1)).toBeGreaterThanOrEqual(0);
+    const co = sim.cohorts;
+    // Each group is made hungry once, the first time it is airside.
+    const forced = new Set<number>();
+    for (let t = 0; t < 16000; t++) {
+      sim.step();
+      for (let c = 0; c < co.hi; c++) {
+        if (co.stage[c] !== Stage.Airside || co.size[c]! < 2 || (co.flags[c]! & SUB) !== 0 || forced.has(co.recipeSeed[c]!)) continue;
+        forced.add(co.recipeSeed[c]!);
+        co.memberNeed[c * M * NEED_COUNT + HUNGER] = STARVING;
+        co.needTick[c] = sim.traffic.nowTick;
+      }
+    }
+    expect(forced.size).toBeGreaterThan(0);
+    expect(sim.cohorts.active).toBe(0);
+    expect(sim.cohorts.boarded).toBeGreaterThan(0);
+    const close = sim.business as unknown as { dailyClose(tick: number): void };
+    close.dailyClose(sim.tick + TICKS_PER_DAY);
+    return sim;
+  }
+
+  it('with a quick food fixture the rated satisfaction, the rating input and the pax score are higher', () => {
+    const fed = dayWithFood(true);
+    const hungry = dayWithFood(false);
+    expect(fed.cohorts.lastDay[DAY_PEN_UNMET]).toBeLessThan(hungry.cohorts.lastDay[DAY_PEN_UNMET]!);
+    const mean = (sim: Sim): number => sim.cohorts.lastDay[DAY_SAT_SUM]! / sim.cohorts.lastDay[DAY_SAT_COUNT]!;
+    expect(mean(fed)).toBeGreaterThan(mean(hungry));
+    expect(fed.business.satisfaction).toBeGreaterThan(hungry.business.satisfaction);
+    expect(fed.business.paxScore).toBeGreaterThan(hungry.business.paxScore);
+  });
+
+  it('a save restores the counters and the ring to the same hash', () => {
+    const a = dayWithFood(true);
+    const b = new Sim(a.seed, OPTIONS);
+    b.restore(JSON.parse(JSON.stringify(a.serialize())));
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
+});
+
+describe('restore keeps the cohort clock', () => {
+  it('a pushback in the first tick after a restore rates the same as in the uninterrupted run', () => {
+    const a = foodSim('RESTORE-CLOCK');
+    scheduleLong(a);
+    for (let t = 0; t < 1500; t++) a.step();
+    const b = new Sim(a.seed, OPTIONS);
+    b.restore(JSON.parse(JSON.stringify(a.serialize())));
+    expect(b.stateHash()).toBe(a.stateHash());
+    expect(a.cohorts.active).toBeGreaterThan(0);
+    // The flight leaves while its passengers are still inside, which brings their needs up to date and rates them.
+    a.cohorts.onPushback(0);
+    b.cohorts.onPushback(0);
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 500; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+    expect(a.cohorts.day[DAY_SAT_COUNT]).toBeGreaterThan(0);
   });
 });

@@ -125,6 +125,7 @@ export class Sim {
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
+    this.business.closePax = () => this.cohorts.closeDay();
     this.baggage = new Baggage(this.business, {
       getCash: (): number => this.cash,
       book: (amount: number): void => this.book('construction', amount),
@@ -686,7 +687,7 @@ export class Sim {
     this.syncRoads(true);
     this.gse.loadState(save.vehicles);
     this.turns.loadState(save.turnarounds);
-    this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts);
+    this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;

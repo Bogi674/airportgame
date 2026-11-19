@@ -128,14 +128,36 @@ const LAST_SIZE = PROFILE_ROWS.map((r) => {
 /** Need ids by name, and the per need tables: level of 1 000 is the threshold, visit minutes, spend share and the two fixtures that serve it. */
 const NEED_TOILET = NEED_KEYS.indexOf('toilet');
 const NEED_SHOP = NEED_KEYS.indexOf('shop');
+const NEED_THRESHOLD_H = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : NEEDS.needs[k].thresholdH));
 const NEED_THRESHOLD = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.threshold * 1000 : 1000));
 const NEED_VISIT_MIN = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.visitMin : NEEDS.needs[k].visitMin));
 const NEED_SPEND_SHARE = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.spendShare : NEEDS.needs[k].spendShare));
 const fixtureId = (name: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.indexOf(name) + 1;
 const NEED_KIND_A = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[0]!)));
 const NEED_KIND_B = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[1] ?? NEEDS.needs[k].fixtures[0]!)));
-/** Counters of the current day: visits per need, then visitor spend. */
-const DAY = { Visits0: 0, Spend: NEED_COUNT, Count: NEED_COUNT + 1 } as const;
+/** Counters of the current day: visits per need, visitor spend, the satisfaction of passengers rated today and their number, then the penalty points taken by cause. */
+const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, Count: NEED_COUNT + 7 } as const;
+const SAT = NEEDS.satisfaction;
+const SECONDS_PER_MINUTE = 60;
+const HOURS_PER_LEVEL = 1000;
+
+/** Points a cohort loses for a queue wait: one rate per game minute over the profile's patience. */
+export function queuePoints(waitTicks: number, patienceS: number): number {
+  const waitS = (waitTicks * CLOCK_SCALE) / TICKS_PER_SECOND;
+  return (Math.max(0, waitS - patienceS) / SECONDS_PER_MINUTE) * SAT.queuePerMin;
+}
+
+/** Points lost for a walk leg of `distM` metres: a rate per metre over the comfortable leg. */
+export function walkPoints(distM: number): number {
+  return Math.max(0, distM - SAT.walkComfortM) * SAT.walkPerM;
+}
+
+/** Points lost for a need still over its threshold: a rate per game hour spent over it. Level 1 000 is the threshold. */
+export function unmetPoints(level: number, need: number, factor: number): number {
+  if (level <= HOURS_PER_LEVEL) return 0;
+  const hours = ((level - HOURS_PER_LEVEL) * NEED_THRESHOLD_H[need]!) / (HOURS_PER_LEVEL * factor);
+  return hours * SAT.unmetPerHour;
+}
 
 /** Room id of the walk node nearest to an array cell, -1 when there is none. */
 function nearestNodeRoom(wg: WalkGraph, cell: number): number {
@@ -156,6 +178,11 @@ export interface CohortsSave {
   freeHead: number;
   rng: number;
   arrays: Record<string, string>;
+  /** Day counters, and the ring of the last days of rated passengers. Absent in saves from before version 30. */
+  day?: string;
+  ringSum?: string;
+  ringCount?: string;
+  ringHead?: number;
 }
 
 /**
@@ -233,6 +260,12 @@ export class Cohorts {
   private readonly route = new Float64Array(ROUTE_OUT);
   /** Counters of the current day, layout in DAY. */
   readonly day = new Float64Array(DAY.Count);
+  /** The last closed day, copied from `day` at the daily close. Derived, never saved or hashed. */
+  readonly lastDay = new Float64Array(DAY.Count);
+  /** Ring of the satisfaction sum and the passenger count of the last windowDays days, and the slot written next. */
+  private readonly ringSum = new Float64Array(SAT.windowDays);
+  private readonly ringCount = new Float64Array(SAT.windowDays);
+  private ringHead = 0;
   /** Scratch trait vector of one member. */
   private readonly traits = new Float64Array(TRAIT_COUNT);
   /** Per slot: last route node a walker was resumed from and the length walked up to it. Derived, never saved or hashed. */
@@ -390,6 +423,7 @@ export class Cohorts {
       const n = this.size[c];
       this.missed += n;
       this.active -= n;
+      this.rollUp(c, true);
       if (this.queued(st)) {
         this.stage[c] = Stage.Missed;
       } else {
@@ -429,6 +463,7 @@ export class Cohorts {
       const n = this.size[c];
       this.missed += n;
       this.active -= n;
+      this.rollUp(c, true);
       this.flActive[f] -= n;
       if (st === Stage.ToGate || st === Stage.Gate) this.flGate[f] -= n;
       // Queued passengers are not on the wheel, the rest are.
@@ -726,6 +761,10 @@ export class Cohorts {
         if (!this.queued(st) && st !== Stage.Missed) continue;
         // Node indices can renumber after an edit, so the done node is the one to trust.
         this.node[c] = t.doneNode[k];
+        if (st !== Stage.Missed && this.waitStart[c]! >= 0) {
+          this.penalize(c, queuePoints(this.tick - this.waitStart[c]!, PROFILE_ROWS[this.profile[c]!]!.patienceS), DAY.PenQueue);
+          this.waitStart[c] = -1;
+        }
         this.finish(g, c, st, t);
       }
     }
@@ -777,6 +816,7 @@ export class Cohorts {
     this.active -= n;
     this.flActive[f] -= n;
     this.flGate[f] -= n;
+    this.rollUp(c, false);
     this.free(c);
   }
 
@@ -905,6 +945,7 @@ export class Cohorts {
     const to = t ? t.walkNode[node] : -1;
     this.setRoute(g, c, from, to);
     const dist = this.business.walkDistance(this.gridId(g), from, to);
+    if (Number.isFinite(dist)) this.penalize(c, walkPoints(dist), DAY.PenWalk);
     this.schedule(c, this.tick + Math.max(STEP, Math.ceil((dist / this.speed(c)) * TICKS_PER_SECOND)));
   }
 
@@ -916,8 +957,64 @@ export class Cohorts {
     this.trailNode[c] = -1;
     this.setRoute(g, c, fromWalk, toWalk);
     const dist = this.business.walkDistance(this.gridId(g), fromWalk, toWalk);
+    if (Number.isFinite(dist)) this.penalize(c, walkPoints(dist), DAY.PenWalk);
     const ticks = Number.isFinite(dist) ? Math.ceil((dist / this.speed(c)) * TICKS_PER_SECOND) : RETRY_TICKS;
     this.schedule(c, this.tick + Math.max(STEP, ticks));
+  }
+
+  /** Takes whole points off every live member of a cohort and counts them in day counter `slot`, per member. */
+  private penalize(c: number, points: number, slot: number): void {
+    const p = Math.round(points);
+    if (p <= 0) return;
+    const b = c * M;
+    const n = this.size[c]!;
+    for (let i = 0; i < n; i++) this.memberSat[b + i] = Math.max(0, this.memberSat[b + i]! - p);
+    this.day[slot] += p * n;
+    this.syncSat(c);
+  }
+
+  /**
+   * Rates a cohort as it boards or misses its flight: each need still over its threshold costs points by the hours it
+   * has been over, a missed flight costs its penalty, and every member's satisfaction goes into the day counters.
+   * The one exit point for members, which arrival cohorts reuse.
+   */
+  rollUp(c: number, missed: boolean): void {
+    this.bringNeeds(c);
+    const b = c * M;
+    const n = this.size[c]!;
+    const profile = this.profile[c]!;
+    for (let i = 0; i < n; i++) {
+      writeTraits(this.memberSeed[b + i]!, profile, this.traits);
+      for (let k = 0; k < NEED_SHOP; k++) {
+        const p = Math.round(unmetPoints(this.memberNeed[(b + i) * NEED_COUNT + k]!, k, this.traits[k]!));
+        if (p <= 0) continue;
+        this.memberSat[b + i] = Math.max(0, this.memberSat[b + i]! - p);
+        this.day[DAY.PenUnmet] += p;
+      }
+    }
+    this.syncSat(c);
+    if (missed) this.penalize(c, SAT.missedPenalty, DAY.PenMissed);
+    for (let i = 0; i < n; i++) this.day[DAY.SatSum] += this.memberSat[b + i]!;
+    this.day[DAY.SatCount] += n;
+  }
+
+  /**
+   * Closes the day: its satisfaction sum and passenger count go into the ring, the counters move to `lastDay` and
+   * restart. Returns the mean satisfaction over the ring, or -1 while it holds no passenger.
+   */
+  closeDay(): number {
+    this.ringSum[this.ringHead] = this.day[DAY.SatSum]!;
+    this.ringCount[this.ringHead] = this.day[DAY.SatCount]!;
+    this.ringHead = (this.ringHead + 1) % SAT.windowDays;
+    this.lastDay.set(this.day);
+    this.day.fill(0);
+    let sum = 0;
+    let count = 0;
+    for (let d = 0; d < SAT.windowDays; d++) {
+      sum += this.ringSum[d]!;
+      count += this.ringCount[d]!;
+    }
+    return count > 0 ? sum / count : -1;
   }
 
   /** Walk node a cohort stands at: its service node, else the point it last walked to, else the curb. */
@@ -1008,6 +1105,8 @@ export class Cohorts {
     if (walkTicks * 2 + visitTicks > departure - gateLeadMin * TICKS_PER_MINUTE - this.tick) return false;
     const v = this.splitMovers(c, need, lead);
     if (v < 0) return false;
+    // The members who stay keep their place on the timer wheel, or the group would never wake again.
+    if (v !== c) this.schedule(c, this.tick + STEP);
     this.visitNeed[v] = need;
     if (toilet >= 0) {
       this.walk(g, v, toilet, here, Stage.ToVisit);
@@ -1243,11 +1342,17 @@ export class Cohorts {
     return {
       generated: this.generated, boarded: this.boarded, missed: this.missed, active: this.active,
       hi: this.hi, freeHead: this.freeHead, rng: this.rng.getState(), arrays,
+      day: packTyped(this.day), ringSum: packTyped(this.ringSum), ringCount: packTyped(this.ringCount), ringHead: this.ringHead,
     };
   }
 
-  /** Restores the store from a save. `undefined` (a save from before cohorts) gives an empty store. */
-  loadState(s: CohortsSave | undefined): void {
+  /**
+   * Restores the store from a save. `undefined` (a save from before cohorts) gives an empty store. `lastTick` is the tick
+   * `update` last ran at, one before the saved tick, so commands and the business that run ahead of `update` in the next
+   * tick see the same clock as in an uninterrupted run.
+   */
+  loadState(s: CohortsSave | undefined, lastTick: number): void {
+    this.tick = lastTick;
     this.ensureOccupancy();
     this.sampleCacheVersion = -1;
     this.trailNode.fill(-1);
@@ -1259,6 +1364,10 @@ export class Cohorts {
       this.hi = 0;
       this.freeHead = -1;
       this.rng.setState(this.initialRng);
+      this.day.fill(0);
+      this.ringSum.fill(0);
+      this.ringCount.fill(0);
+      this.ringHead = 0;
       this.wheelHead.fill(-1);
       this.flBoarded.fill(0);
       this.flGate.fill(0);
@@ -1274,6 +1383,13 @@ export class Cohorts {
     this.hi = s.hi;
     this.freeHead = s.freeHead;
     this.rng.setState(s.rng);
+    this.day.fill(0);
+    this.ringSum.fill(0);
+    this.ringCount.fill(0);
+    this.ringHead = s.ringHead ?? 0;
+    if (s.day !== undefined) unpackInto(s.day, this.day, Float64Array);
+    if (s.ringSum !== undefined) unpackInto(s.ringSum, this.ringSum, Float64Array);
+    if (s.ringCount !== undefined) unpackInto(s.ringCount, this.ringCount, Float64Array);
     const slots = this.slotArrays();
     for (const k of Object.keys(slots)) {
       const a = slots[k];
@@ -1327,6 +1443,12 @@ export class Cohorts {
         for (let k = 0; k < NEED_COUNT; k++) acc = foldU32(acc, this.memberNeed[(b + i) * NEED_COUNT + k]);
         acc = foldU32(acc, this.memberSat[b + i]);
       }
+    }
+    for (let k = 0; k < this.day.length; k++) acc = foldU32(acc, Math.round(this.day[k]!) >>> 0);
+    acc = foldU32(acc, this.ringHead);
+    for (let d = 0; d < this.ringSum.length; d++) {
+      acc = foldU32(acc, Math.round(this.ringSum[d]!) >>> 0);
+      acc = foldU32(acc, Math.round(this.ringCount[d]!) >>> 0);
     }
     return acc;
   }

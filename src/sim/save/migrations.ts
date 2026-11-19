@@ -9,7 +9,7 @@ import { FLAG_SLOW } from '../cohorts/cohorts';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 29;
+export const SAVE_VERSION = 30;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -295,5 +295,7 @@ export function migrate(raw: unknown): SaveData {
     }
     save.version = 29;
   }
+  // Version 29 to 30: cohorts save the day counters of passenger satisfaction and its 30 day ring (T67). Older saves start with both empty.
+  if (save.version < 30) save.version = 30;
   return save as SaveData;
 }
