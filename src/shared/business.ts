@@ -284,6 +284,8 @@ export interface BoardRow {
   typeIdx: number;
   /** Arrival in absolute game minutes, unwrapped, as the stand rule compares it. */
   startMin: number;
+  /** True when the flight is international (T20), so its passengers pass immigration and customs. */
+  intl: boolean;
 }
 
 /** A link of the baggage network as the inspector lists it. */
@@ -387,6 +389,8 @@ export interface BusinessPayload {
   serviceSlowdown: number;
   /** Passengers the passport booths can clear per hour. */
   intlCapacity: number;
+  /** Last closed day of the arrival journey: passengers exited, stranded, mean claim wait in game minutes and passengers without their bags. Derived, never saved. */
+  arrDay: number[];
   /** Ledger history, newest day last, one row of LEDGER_CATEGORIES.length numbers per day, plus today. */
   history: number[][];
   today: number[];

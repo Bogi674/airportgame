@@ -65,6 +65,16 @@ function FinanceSheet({ send }: Props) {
         <span>{t('top.rating')}: {formatNumber(b.rating)}</span>
         <span>{b.paxToday} pax, {b.flightsToday} flights today, {b.lostPaxToday} lost</span>
       </div>
+      {b.arrDay.length > 0 && (
+        <div data-testid="arrivals-day" style="margin-bottom:10px;font-size:12px">
+          {tFormat('finance.arrivals', {
+            exited: formatNumber(b.arrDay[0]!),
+            stranded: formatNumber(b.arrDay[1]!),
+            wait: formatNumber(b.arrDay[2]!),
+            noBags: formatNumber(b.arrDay[3]!),
+          })}
+        </div>
+      )}
       {b.paxDay.length > 0 && (
         <div data-testid="pax-satisfaction" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
           <span>
@@ -547,7 +557,7 @@ function FlightsSheet() {
                 <td>{r.type}</td>
                 <td>{tDynamic(`status.${r.status}`)}</td>
                 <td>{r.stand}</td>
-                <td>{r.stageKm > 0 ? `${formatInt(r.stageKm)} km` : ''}</td>
+                <td>{r.stageKm > 0 ? `${formatInt(r.stageKm)} km` : ''}{r.intl ? ` ${t('flights.intl')}` : ''}</td>
                 <td>
                   {eta(r.eta)}
                   {r.delayMin > 0 ? ` (+${r.delayMin})` : ''}

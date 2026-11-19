@@ -239,6 +239,8 @@ export class Business {
   closePax: (() => number) | null = null;
   /** Last closed day of passengers, see BusinessPayload.paxDay. Set by the sim (T67). */
   paxDay: (() => number[]) | null = null;
+  /** Last closed day of the arrival journey, see BusinessPayload.arrDay. Set by the sim (T20). */
+  arrDay: (() => number[]) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -1001,6 +1003,7 @@ export class Business {
         offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
         typeIdx: t.type[i],
         startMin: f >= 0 ? t.fEta[f] / TICKS_PER_MINUTE : 0,
+        intl: f >= 0 && this.market.isInternational(f),
       });
     }
     for (let f = 0; f < 1024 && rows.length < SCHEDULE_ROWS; f++) {
@@ -1023,6 +1026,7 @@ export class Business {
         offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
         typeIdx: t.fType[f],
         startMin: t.fEta[f] / TICKS_PER_MINUTE,
+        intl: this.market.isInternational(f),
       });
     }
     void tick;
@@ -1051,6 +1055,7 @@ export class Business {
       paxScore: Math.round(this.paxScore * 100),
       airlineScore: Math.round(this.airlineScore * 100),
       paxDay: this.paxDay?.() ?? [],
+      arrDay: this.arrDay?.() ?? [],
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
       gateDesks: this.deskList().map((d) => ({ building: d.building, x: d.x, y: d.y })),

@@ -46,6 +46,17 @@ function paxDayNumbers(day: Float64Array): number[] {
 }
 
 /**
+ * The last closed arrival day as the finance sheet shows it (BusinessPayload.arrDay): passengers exited, stranded,
+ * mean claim wait in game minutes and passengers without their bags. Empty while no arrival finished its journey.
+ */
+function arrDayNumbers(day: Float64Array): number[] {
+  if (day[DAY.ArrExited]! + day[DAY.ArrStranded]! <= 0) return [];
+  const round = (v: number): number => Math.round(v * 10) / 10;
+  const wait = day[DAY.ClaimCount]! > 0 ? round(day[DAY.ClaimWaitS]! / day[DAY.ClaimCount]! / 60) : 0;
+  return [day[DAY.ArrExited]!, day[DAY.ArrStranded]!, wait, day[DAY.NoBags]!];
+}
+
+/**
  * The simulation core. Pure TypeScript with no DOM and no wall clock, so the same seed
  * and the same commands always give the same result.
  */
@@ -141,6 +152,7 @@ export class Sim {
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
     this.business.closePax = () => this.cohorts.closeDay();
     this.business.paxDay = () => paxDayNumbers(this.cohorts.lastDay);
+    this.business.arrDay = () => arrDayNumbers(this.cohorts.lastDay);
     this.baggage = new Baggage(this.business, {
       getCash: (): number => this.cash,
       book: (amount: number): void => this.book('construction', amount),
