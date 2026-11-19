@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { TICKS_PER_MINUTE } from '@shared/business';
+import { STAFF } from '@data/index';
+import { FIXTURE_KEYS, TICKS_PER_MINUTE } from '@shared/business';
 import type { Sim } from '@sim/sim';
-import { STAFF_STATE, type Staff } from '@sim/staff/staff';
-import { buildTestAirport, buildTestStaffCenter, buildTestTerminal, ownedSim, run } from './helpers';
+import { STAFF_FLAG, STAFF_STATE, type Staff } from '@sim/staff/staff';
+import { Sim as SimClass } from '@sim/sim';
+import { staffSkill } from '@sim/staff/staffTraits';
+import { buildTestAirport, buildTestStaffCenter, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 
 const HOUR = 60 * TICKS_PER_MINUTE;
 /** The game starts at 06:00, so a clock time is this many hours past tick 0. */
@@ -87,5 +90,106 @@ describe('shift cycle', () => {
       expect(st.state[m]).toBe(STAFF_STATE.Off);
     }
     expect(planned).toBe(1);
+  }, 120_000);
+});
+
+/** The agent on duty at a check in desk with the earliest break. */
+function firstBreaker(sim: Sim): number {
+  const st = sim.staff;
+  const desk = FIXTURE_KEYS.indexOf('checkIn') + 1;
+  let best = -1;
+  for (let m = 0; m < st.hi; m++) {
+    if (st.role[m] !== 0 || st.state[m] !== STAFF_STATE.OnDuty || st.stKind[m] !== desk) continue;
+    if (best < 0 || st.breakAt[m]! < st.breakAt[best]!) best = m;
+  }
+  return best;
+}
+
+describe('breaks', () => {
+  it('keeps a relief on the desk during a break, for exactly the break length, and releases it after', () => {
+    const { sim } = shiftSim();
+    runTo(sim, 60);
+    const st = sim.staff;
+    const m = firstBreaker(sim);
+    expect(m).toBeGreaterThanOrEqual(0);
+    const desk = st.stIdx[m]!;
+    const breakAt = st.breakAt[m]!;
+    runTo(sim, breakAt - 100);
+    let breakTicks = 0;
+    let relief = -1;
+    for (let t = breakAt - 100; t < breakAt + 90 * TICKS_PER_MINUTE; t++) {
+      sim.step();
+      expect(st.sPresent[desk]).toBeGreaterThan(0);
+      if (st.state[m] === STAFF_STATE.Break) breakTicks++;
+      if (relief < 0) for (let r = 0; r < st.hi; r++) if (st.covering[r] === m) relief = r;
+    }
+    expect(breakTicks).toBe(Math.ceil(STAFF.breaks.lengthMin * TICKS_PER_MINUTE));
+    expect(relief).toBeGreaterThanOrEqual(0);
+    expect(st.state[m]).toBe(STAFF_STATE.OnDuty);
+    expect(st.stIdx[m]).toBe(desk);
+    expect(st.state[relief]).toBe(STAFF_STATE.Standby);
+    expect(st.covering[relief]).toBe(-1);
+  }, 120_000);
+
+  it('leaves the desk empty during a break when no relief is staffed', () => {
+    const { sim } = shiftSim();
+    expect(run(sim, { type: 'setStaffCap', role: 0, cap: 3 })).toEqual([]);
+    const st = sim.staff;
+    const m = firstBreaker(sim);
+    expect(m).toBeGreaterThanOrEqual(0);
+    const node = st.sNode[st.stIdx[m]!]!;
+    const sn = sim.business.serviceNodes[0]!;
+    runTo(sim, st.breakAt[m]!);
+    let empty = false;
+    for (let t = 0; t < 120 * TICKS_PER_MINUTE && !empty; t++) {
+      sim.step();
+      empty = st.state[m] === STAFF_STATE.Break && sn.staffFactor[node] === 0;
+    }
+    expect(empty).toBe(true);
+  }, 120_000);
+
+  it('works tired without a staff center', () => {
+    const { sim } = shiftSim({ center: false });
+    runTo(sim, 60);
+    const st = sim.staff;
+    const m = firstBreaker(sim);
+    const node = st.sNode[st.stIdx[m]!]!;
+    runTo(sim, st.breakAt[m]! + 100);
+    expect(st.state[m]).toBe(STAFF_STATE.OnDuty);
+    expect(st.flags[m]! & STAFF_FLAG.Tired).toBe(STAFF_FLAG.Tired);
+    expect(sim.business.serviceNodes[0]!.staffFactor[node]).toBeCloseTo(staffSkill(st.seed[m]!) * STAFF.breaks.tiredSkill, 5);
+  }, 120_000);
+
+  it('restores a save taken during a break to an identical run', () => {
+    const { sim } = shiftSim();
+    runTo(sim, 60);
+    const m = firstBreaker(sim);
+    runTo(sim, sim.staff.breakAt[m]! + 40 * TICKS_PER_MINUTE);
+    expect(sim.staff.state[m]).toBe(STAFF_STATE.Break);
+    const copy = new SimClass(sim.seed, OPTIONS);
+    copy.restore(JSON.parse(JSON.stringify(sim.serialize())));
+    expect(copy.stateHash()).toBe(sim.stateHash());
+    for (let t = 0; t < 2000; t++) {
+      sim.step();
+      copy.step();
+    }
+    expect(copy.stateHash()).toBe(sim.stateHash());
+  }, 120_000);
+
+  it('ends the cover when the member on break is freed, so a reused slot is never covered', () => {
+    const { sim } = shiftSim();
+    runTo(sim, 60);
+    const st = sim.staff;
+    const m = firstBreaker(sim);
+    runTo(sim, st.breakAt[m]! + 100);
+    let relief = -1;
+    for (let r = 0; r < st.hi; r++) if (st.covering[r] === m) relief = r;
+    expect(relief).toBeGreaterThanOrEqual(0);
+    expect(st.state[relief]).toBe(STAFF_STATE.Commute);
+    st.free(m);
+    expect(st.covering[relief]).toBe(-1);
+    expect(st.state[relief]).toBe(STAFF_STATE.Standby);
+    expect(st.stIdx[relief]).toBe(-1);
+    for (let r = 0; r < st.hi; r++) expect(st.covering[r]).not.toBe(m);
   }, 120_000);
 });

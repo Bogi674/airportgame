@@ -29,6 +29,8 @@ const CHANGE_TICKS = STAFF.shifts.changeMin * TICKS_PER_MINUTE;
 const SHIFT_TICKS = STAFF.shifts.lengthH * 60 * TICKS_PER_MINUTE;
 const OVERTIME_TICKS = STAFF.shifts.overtimeMaxMin * TICKS_PER_MINUTE;
 const STEP_TICKS = STAFF.stepMin * TICKS_PER_MINUTE;
+const BREAK_TICKS = Math.ceil(STAFF.breaks.lengthMin * TICKS_PER_MINUTE);
+const RELIEF_WAIT_TICKS = Math.ceil(STAFF.breaks.reliefWaitMin * TICKS_PER_MINUTE);
 /** walkStart value of a member sent home because its station could not be reached. */
 const WALK_UNREACHABLE = -2;
 
@@ -391,7 +393,10 @@ export class Staff {
       if (this.role[m] !== r || this.state[m] === STAFF_STATE.Free) continue;
       const s = this.stIdx[m]!;
       const sh = this.shift[m]!;
-      if (s >= 0) {
+      if ((this.flags[m]! & STAFF_FLAG.Relief) !== 0 && s >= 0) {
+        // A relief standing in for a member on break keeps its copy of the station until the member returns.
+        this.heldRelief[r * SHIFTS + sh]++;
+      } else if (s >= 0) {
         if (this.heldSt[s * SHIFTS + sh]! < this.keepSt[s * SHIFTS + sh]!) this.heldSt[s * SHIFTS + sh]++;
         else this.unplace(m);
       } else if ((this.flags[m]! & STAFF_FLAG.Relief) !== 0) {
@@ -605,8 +610,12 @@ export class Staff {
           break;
         case STAFF_STATE.OnDuty: {
           const end = this.dutyEnd(tick, sh);
+          const breakDone = (this.flags[m]! & STAFF_FLAG.BreakDone) !== 0;
           if (tick >= end + OVERTIME_TICKS) this.startLeaving(m, tick);
-          else this.wake[m] = tick >= end ? end + OVERTIME_TICKS : end;
+          else if (tick >= end) this.wake[m] = end + OVERTIME_TICKS;
+          else if ((this.flags[m]! & STAFF_FLAG.OnBreak) !== 0) this.startLeaving(m, tick);
+          else if (!breakDone && tick >= this.breakAt[m]!) this.beginBreak(m, tick, end);
+          else this.wake[m] = breakDone ? end : Math.min(this.breakAt[m]!, end);
           break;
         }
         case STAFF_STATE.Leaving:
@@ -615,14 +624,40 @@ export class Staff {
           this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
           break;
         case STAFF_STATE.CommuteHome:
-          this.state[m] = STAFF_STATE.ClockOut;
-          this.wake[m] = tick + CHANGE_TICKS;
+          if (this.stIdx[m]! >= 0 && (this.flags[m]! & STAFF_FLAG.Relief) !== 0) {
+            // A relief that stood in goes back to waiting, or home when its shift is over.
+            this.stGrid[m] = -1;
+            this.stIdx[m] = -1;
+            this.covering[m] = -1;
+            this.walkStart[m] = -1;
+            const end = this.dutyEnd(tick, sh);
+            this.state[m] = tick < end ? STAFF_STATE.Standby : STAFF_STATE.ClockOut;
+            this.wake[m] = tick < end ? end : tick + CHANGE_TICKS;
+          } else if ((this.flags[m]! & STAFF_FLAG.OnBreak) !== 0) {
+            this.state[m] = STAFF_STATE.Break;
+            this.wake[m] = tick + BREAK_TICKS;
+          } else {
+            this.state[m] = STAFF_STATE.ClockOut;
+            this.wake[m] = tick + CHANGE_TICKS;
+          }
+          break;
+        case STAFF_STATE.Break:
+          this.flags[m] = (this.flags[m]! & ~STAFF_FLAG.OnBreak) | STAFF_FLAG.BreakDone;
+          if (tick >= this.dutyEnd(tick, sh)) {
+            this.state[m] = STAFF_STATE.ClockOut;
+            this.wake[m] = tick + CHANGE_TICKS;
+          } else {
+            this.state[m] = STAFF_STATE.Commute;
+            this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+          }
           break;
         case STAFF_STATE.ClockOut: {
           const unreachable = this.walkStart[m] === WALK_UNREACHABLE;
           this.count(this.clockOuts, this.home[m]!);
+          this.endCover(m);
           this.covering[m] = -1;
           this.walkStart[m] = -1;
+          this.flags[m] &= ~STAFF_FLAG.OnBreak;
           if (this.stIdx[m]! < 0 && (this.flags[m]! & STAFF_FLAG.Relief) === 0) {
             this.free(m);
             break;
@@ -645,6 +680,33 @@ export class Staff {
     }
   }
 
+  /**
+   * The member's one break of the shift. Without a staff center it is skipped and the member works tired. With one, the
+   * lowest waiting relief of the role and shift is sent to the station and the member waits for it for reliefWaitMin.
+   */
+  private beginBreak(m: number, tick: number, end: number): void {
+    if (this.home[m]! < 0) {
+      this.flags[m] |= STAFF_FLAG.Tired | STAFF_FLAG.BreakDone;
+      this.wake[m] = end;
+      return;
+    }
+    this.flags[m] |= STAFF_FLAG.OnBreak;
+    this.wake[m] = tick + RELIEF_WAIT_TICKS;
+    for (let r = 0; r < this.hi; r++) {
+      if (this.state[r] !== STAFF_STATE.Standby || this.role[r] !== this.role[m] || this.shift[r] !== this.shift[m] || this.covering[r]! >= 0) continue;
+      this.covering[r] = m;
+      this.stGrid[r] = this.stGrid[m]!;
+      this.stX[r] = this.stX[m]!;
+      this.stY[r] = this.stY[m]!;
+      this.stKind[r] = this.stKind[m]!;
+      this.stIdx[r] = this.stIdx[m]!;
+      this.flags[r] |= STAFF_FLAG.BreakDone;
+      this.state[r] = STAFF_STATE.Commute;
+      this.wake[r] = tick + this.commuteTicks(this.home[r]!, this.gridOf(r));
+      return;
+    }
+  }
+
   /** A member reaches its station: it takes over, and the member it replaces leaves. */
   private arrive(m: number, tick: number): void {
     const s = this.stIdx[m]!;
@@ -659,7 +721,7 @@ export class Staff {
     if ((this.flags[m]! & STAFF_FLAG.BreakDone) === 0) this.breakAt[m] = end - SHIFT_TICKS + (STAFF.breaks.afterMin + breakJitterMin(this.seed[m]!)) * TICKS_PER_MINUTE;
     for (let o = 0; o < this.hi; o++) {
       if (o === m || this.state[o] !== STAFF_STATE.OnDuty || this.stIdx[o] !== s) continue;
-      if (this.shift[o] !== sh || this.covering[o] === m) {
+      if (this.shift[o] !== sh || this.covering[o] === m || this.covering[m] === o) {
         this.startLeaving(o, tick);
         break;
       }
@@ -724,11 +786,30 @@ export class Staff {
 
   /** Releases a slot and trims `hi` past trailing free slots. */
   free(s: number): void {
+    this.endCover(s);
     this.state[s] = STAFF_STATE.Free;
     this.stGrid[s] = -1;
     this.covering[s] = -1;
     this.stIdx[s] = -1;
     while (this.hi > 0 && this.state[this.hi - 1] === STAFF_STATE.Free) this.hi--;
+  }
+
+  /**
+   * Ends the cover of every relief standing in for member `s`, so a slot that is freed and reused is never covered. A relief
+   * still on its way goes back to Standby, one already on the station keeps it until its shift ends.
+   */
+  private endCover(s: number): void {
+    for (let r = 0; r < this.hi; r++) {
+      if (this.covering[r] !== s) continue;
+      this.covering[r] = -1;
+      const walking = this.state[r] === STAFF_STATE.ClockIn || this.state[r] === STAFF_STATE.Commute || this.state[r] === STAFF_STATE.ToStation;
+      if (!walking) continue;
+      this.stGrid[r] = -1;
+      this.stIdx[r] = -1;
+      this.walkStart[r] = -1;
+      this.state[r] = STAFF_STATE.Standby;
+      this.wake[r] = 0;
+    }
   }
 
   /** Members of a role that are not free. */
