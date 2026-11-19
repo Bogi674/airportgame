@@ -398,4 +398,15 @@ describe('save 30 to 31 service rows (T20)', () => {
     expect(migrated.version).toBe(SAVE_VERSION);
     expect(JSON.stringify(migrated.business.service)).toBe(service);
   });
+
+  it('a version 30 save whose saved count does not match the grid anchors keeps its table unchanged', () => {
+    const a = withArrivalFixtures();
+    for (let t = 0; t < 200; t++) a.step();
+    const data = JSON.parse(JSON.stringify(a.serialize())) as ServiceData;
+    asVersion30(data);
+    data.business.service[0]!.count += 1;
+    const before = JSON.stringify(data.business.service);
+    migrate(data);
+    expect(JSON.stringify(data.business.service)).toBe(before);
+  });
 });

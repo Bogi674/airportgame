@@ -508,6 +508,13 @@ export class Business {
     return this.deskList().some((d) => d.building === building && d.x === x && d.y === y);
   }
 
+  /** Display number of the stand a flight is assigned to, '0' when it has none. */
+  private standNumberOf(f: number): string {
+    const stands = this.airfield.data.stands;
+    for (let i = 0; i < stands.length; i++) if (stands[i]!.id === this.traffic.fStand[f]) return stands[i]!.number;
+    return '0';
+  }
+
   /** The desk a stand is assigned to while that desk still exists, null when the stand is unknown, has no assignment or the desk is gone. */
   assignedGate(standId: number): GateDesk | null {
     const stand = this.airfield.data.stands.find((s) => s.id === standId);
@@ -587,9 +594,63 @@ export class Business {
     return Math.floor(this.totals.carousel / (F.w * F.d));
   }
 
-  /** Each belt and each carousel adds the belt module capacity. */
-  arrCapacity(): number {
-    return (this.totals.belt + this.carouselCount()) * BUSINESS.modules.belt.capacityPerHour;
+  /** Result of arrivalEntry: grid index, walk node of the entry desk, 1 when the route is international. */
+  readonly entryOut = new Int32Array(3);
+
+  /**
+   * Picks where the passengers of a docked flight enter the terminal (T20 D5) and leaves it in entryOut. An
+   * international flight wants a gate desk in an International zone, a domestic one in a Secure zone; an
+   * international flight with no International desk falls back to a Secure one with entryOut[2] 0 (Q1 default,
+   * the switch is this one branch). False when no gate desk in a grid with a curb can take the flight.
+   */
+  arrivalEntry(f: number): boolean {
+    const stands = this.airfield.data.stands;
+    let desk: GateDesk | null = null;
+    for (let i = 0; i < stands.length; i++) {
+      if (stands[i]!.id === this.traffic.fStand[f]) {
+        desk = this.gateFor(stands[i]!);
+        break;
+      }
+    }
+    const intl = this.market.isInternational(f);
+    if (this.entryInZone(desk, intl ? ZONE.International : ZONE.Secure)) {
+      this.entryOut[2] = intl ? 1 : 0;
+      return true;
+    }
+    if (intl && this.entryInZone(desk, ZONE.Secure)) {
+      this.entryOut[2] = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** Fills entryOut[0..1] with a gate desk whose zone is `want`: the stand's own desk first, then grids and nodes ascending. */
+  private entryInZone(desk: GateDesk | null, want: number): boolean {
+    if (desk) {
+      for (let i = 0; i < this.grids.length; i++) {
+        if (this.grids[i]!.id !== desk.building || this.curbNode(i) < 0) continue;
+        const sn = this.serviceNodes[i]!;
+        for (let n = 0; n < sn.count; n++) {
+          if (sn.lx[n] !== desk.x || sn.ly[n] !== desk.y || fixtureKey(sn.kind[n]!) !== 'gateDesk') continue;
+          if (this.walkGraphs[i]!.effective[sn.cell[n]!] !== want) break;
+          this.entryOut[0] = i;
+          this.entryOut[1] = sn.walkNode[n]!;
+          return true;
+        }
+      }
+    }
+    for (let i = 0; i < this.grids.length; i++) {
+      if (this.curbNode(i) < 0) continue;
+      const sn = this.serviceNodes[i]!;
+      for (let n = 0; n < sn.count; n++) {
+        if (sn.queueCap[n]! <= 0 || fixtureKey(sn.kind[n]!) !== 'gateDesk') continue;
+        if (this.walkGraphs[i]!.effective[sn.cell[n]!] !== want) continue;
+        this.entryOut[0] = i;
+        this.entryOut[1] = sn.walkNode[n]!;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Passengers a flight was served with at docking, 0 for GA and for flights lost to a missing terminal. */
@@ -704,15 +765,12 @@ export class Business {
     this.host.book('landing', Math.round((spec.weights.mtowKg / 1000) * BUSINESS.fees.landingPerTonne * m));
     let pax = ga ? 0 : this.paxFor(f);
     if (!ga && this.needsTerminal(f)) {
-      const cap = this.arrCapacity();
-      if (cap <= 0) {
+      if (!this.arrivalEntry(f)) {
         this.lostToday += pax;
         pax = 0;
-      } else {
-        const sf = Math.min(1, cap / Math.max(1, pax * 3));
-        const served = Math.round(pax * sf);
-        this.lostToday += pax - served;
-        pax = served;
+        this.host.emit(`arrivalNoGate|stand=${this.standNumberOf(f)}`);
+      } else if (this.market.isInternational(f) && this.entryOut[2] === 0) {
+        this.host.emit(`intlNoImmigration|stand=${this.standNumberOf(f)}`);
       }
     }
     if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerArriving * m));
@@ -1027,7 +1085,6 @@ export class Business {
       fireCategory: this.traffic.fireCategory,
       fireGraceDays: Math.max(0, this.fireGraceUntil - this.day),
       serviceSlowdown: this.traffic.serviceSlowdown,
-      arrCapacity: this.arrCapacity(),
       intlCapacity: this.intlCapacity(),
       towerLevel: towerLevelOf(this.airfield.data),
       atcQueue: this.traffic.atcQueueLength(),
