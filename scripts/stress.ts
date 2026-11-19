@@ -53,8 +53,13 @@ function buildBigTerminal(sim: Sim): void {
   if (id < 0) throw new Error('big terminal was not built');
   edit(id, { op: 'floor', x0: 40, y0: 40, x1: 360, y1: 100, variant: 2 });
   edit(id, { op: 'fixture', x0: 50, y0: 44, x1: 110, y1: 45, variant: 1 });
-  edit(id, { op: 'fixture', x0: 150, y0: 60, x1: 170, y1: 61, variant: 2 });
   edit(id, { op: 'zone', x0: 172, y0: 40, x1: 360, y1: 100, variant: 3 });
+  // The secure hall is closed by a wall at x = 172 with two gaps: 20 security lanes flowing east, and a security exit flowing west.
+  edit(id, { op: 'wall', x0: 172, y0: 40, x1: 172, y1: 60, variant: 1 });
+  edit(id, { op: 'wall', x0: 172, y0: 80, x1: 172, y1: 90, variant: 1 });
+  edit(id, { op: 'wall', x0: 172, y0: 92, x1: 172, y1: 100, variant: 1 });
+  edit(id, { op: 'fixture', x0: 172, y0: 60, x1: 173, y1: 80, variant: 2, rot: 1 });
+  edit(id, { op: 'fixture', x0: 172, y0: 91, x1: 173, y1: 92, variant: 20, rot: 3, level: 1 });
   edit(id, { op: 'fixture', x0: 200, y0: 60, x1: 340, y1: 64, variant: 4 });
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 360, y1: 40, variant: 1 });
   sim.step();
@@ -83,9 +88,11 @@ function buildCohortTerminal(sim: Sim): void {
   // The secure hall on the east side, closed by a wall with a six cell opening for the security lanes.
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
   edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
-  edit(id, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 52, variant: 1 });
+  // The wall leaves a gap at rows 50 and 51 for the security exit, which flows west from the secure hall.
+  edit(id, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 50, variant: 1 });
   edit(id, { op: 'fixture', x0: 42, y0: 42, x1: 54, y1: 43, variant: 1 });
-  edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 48, variant: 2 });
+  edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 48, variant: 2, rot: 1 });
+  edit(id, { op: 'fixture', x0: 72, y0: 51, x1: 73, y1: 52, variant: 20, rot: 3, level: 1 });
   edit(id, { op: 'fixture', x0: 76, y0: 44, x1: 84, y1: 45, variant: 16 });
   edit(id, { op: 'fixture', x0: 76, y0: 46, x1: 82, y1: 47, variant: 4 });
   if (sim.business.cohortGrid(0) < 0) throw new Error('cohort terminal has no eligible grid');

@@ -17,7 +17,7 @@ function shopSim(): Sim {
 }
 
 /** Paints a zone and a fixture over a logical cell range of the first grid. */
-function paint(sim: Sim, op: 'zone' | 'fixture' | 'erase', x0: number, y0: number, x1: number, y1: number, variant: number): string[] {
+function paint(sim: Sim, op: 'zone' | 'fixture' | 'erase' | 'removeWall', x0: number, y0: number, x1: number, y1: number, variant: number): string[] {
   const g = sim.business.grids[0]!;
   return run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op, x0, y0, x1, y1, variant } });
 }
@@ -56,6 +56,8 @@ describe('visit points', () => {
 
   it('a commercial area touching a public and a secure cell has no side', () => {
     const sim = shopSim();
+    // Effective zones follow open edges, so the wall between the public and the secure hall opens here.
+    expect(paint(sim, 'removeWall', 72, 48, 72, 49, 1)).toEqual([]);
     expect(paint(sim, 'zone', 70, 48, 72, 49, ZONE.Commercial)).toEqual([]);
     expect(paint(sim, 'fixture', 71, 48, 72, 49, CAFE)).toEqual([]);
     const p = pointAt(sim, 71, 48);

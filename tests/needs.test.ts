@@ -146,7 +146,7 @@ describe('needs and sub cohorts', () => {
 
   it('is deterministic over 2000 ticks with forced hunger', () => {
     const make = (): Sim => {
-      const sim = foodSim('NEEDS');
+      const sim = foodSim('NEEDS2');
       scheduleLong(sim);
       let seenSub = false;
       for (let t = 0; t < 2000; t++) {

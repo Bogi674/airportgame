@@ -2,7 +2,7 @@
 export const OVERLAY_MAX = 65535;
 
 /** The terminal overlay the player picked. One at a time, `none` shows no overlay. */
-export type OverlayKind = 'none' | 'density' | 'queue' | 'walk';
+export type OverlayKind = 'none' | 'density' | 'queue' | 'walk' | 'zones';
 
 /**
  * Read only view of one terminal building for the debug overlays. Density, queue, wait and gate distance are

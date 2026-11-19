@@ -226,6 +226,21 @@ export const CATEGORIES: Category[] = [
       { id: 'facilities', items: [fx('belt', 'belt'), fx('seating', 'seating'), fx('toilet', 'toilet')] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'shops', items: [fx('convenience', 'shop'), fx('quickFood', 'shop'), fx('cafe', 'shop'), fx('dutyFree', 'shop'), fx('booksGifts', 'shop'), fx('pharmacy', 'shop')] },
+      {
+        id: 'transitions',
+        items: [
+          fx('securityExit', 'security'),
+          fx('eGate', 'passport'),
+          fx('customs', 'passport'),
+          {
+            id: 'staffDoor',
+            thumb: 'door',
+            icon: 'door',
+            run: (s) => s.set({ tool: 'terminal', tSub: 'door', doorType: 4, hint: 'hint.terminal.door', problem: null, buy: null }),
+            active: (s) => s.tool === 'terminal' && s.tSub === 'door' && s.doorType === 4,
+          },
+        ],
+      },
     ],
   },
   {
@@ -253,11 +268,11 @@ export const CATEGORIES: Category[] = [
     tabs: [
       {
         id: 'zones',
-        items: [1, 2, 3, 4].map((z) => ({
-          id: ['public', 'commercial', 'secure', 'staff'][z - 1],
-          thumb: ['zonePublic', 'zoneCommercial', 'zoneSecure', 'zoneStaff'][z - 1],
+        items: [1, 2, 3, 4, 5].map((z) => ({
+          id: ['public', 'commercial', 'secure', 'staff', 'international'][z - 1],
+          thumb: ['zonePublic', 'zoneCommercial', 'zoneSecure', 'zoneStaff', 'zoneInternational'][z - 1],
           icon: 'zoning' as IconName,
-          run: (s: ToolState) => s.set({ tool: 'terminal', tSub: 'zone', zoneType: z as 1 | 2 | 3 | 4 }),
+          run: (s: ToolState) => s.set({ tool: 'terminal', tSub: 'zone', zoneType: z as 1 | 2 | 3 | 4 | 5 }),
           active: (s: ToolState) => s.tool === 'terminal' && s.tSub === 'zone' && s.zoneType === z,
         })),
       },

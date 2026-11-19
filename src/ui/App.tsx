@@ -225,17 +225,27 @@ export function App() {
     client.query(id, 'walkGraph', { grid: grid.id });
   }, [renderer, client, store.walkOverlay, selection, store.terminalGrids]);
 
-  // The terminal overlay feed runs only while an overlay is picked.
+  // The terminal overlay feed runs only while a simulated overlay is picked. The zones overlay draws from the grids alone.
   useEffect(() => {
-    client.setOverlaySub(store.overlay !== 'none');
+    client.setOverlaySub(store.overlay === 'density' || store.overlay === 'queue' || store.overlay === 'walk');
   }, [client, store.overlay]);
 
-  // Theme tokens feed the overlay colour ramp. They are read again when the theme attribute changes.
+  // Theme tokens feed the overlay colour ramp and the zone colors. They are read again when the theme attribute changes.
   useEffect(() => {
     if (!renderer) return;
     const readTheme = (): void => {
       const cs = getComputedStyle(document.documentElement);
-      renderer.setOverlayTheme(cs.getPropertyValue('--ok').trim(), cs.getPropertyValue('--warn').trim(), cs.getPropertyValue('--bad').trim(), cs.getPropertyValue('--muted').trim());
+      const token = (name: string): string => cs.getPropertyValue(name).trim();
+      renderer.setOverlayTheme(token('--ok'), token('--warn'), token('--bad'), token('--muted'));
+      renderer.setZoneColors({
+        public: token('--zone-public'),
+        commercial: token('--zone-commercial'),
+        secure: token('--zone-secure'),
+        international: token('--zone-international'),
+        staff: token('--zone-staff'),
+        breach: token('--zone-breach'),
+        badge: token('--zone-badge'),
+      });
     };
     readTheme();
     const observer = new MutationObserver(readTheme);
@@ -243,9 +253,12 @@ export function App() {
     return () => observer.disconnect();
   }, [renderer]);
 
+  // The zones overlay also shows by itself while the zone or door tool of the terminal is active.
+  const zoneTool = useToolStore((s) => s.tool === 'terminal' && (s.tSub === 'zone' || s.tSub === 'door'));
+  const shownOverlay = store.overlay === 'zones' || zoneTool ? 'zones' : store.overlay;
   useEffect(() => {
-    renderer?.setOverlay(store.overlay, store.overlayData, store.terminalGrids);
-  }, [renderer, store.overlay, store.overlayData, store.terminalGrids]);
+    renderer?.setOverlay(shownOverlay, shownOverlay === 'zones' ? null : store.overlayData, store.terminalGrids);
+  }, [renderer, shownOverlay, store.overlayData, store.terminalGrids]);
 
   useEffect(() => {
     renderer?.setSelectedParcel(store.selectedParcel);

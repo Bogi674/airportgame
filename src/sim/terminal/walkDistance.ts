@@ -1,4 +1,5 @@
 import { BUSINESS } from '@data/index';
+import { AUD } from '@shared/terminalZones';
 import type { WalkGraph } from './walkGraph';
 
 /**
@@ -83,7 +84,7 @@ function siftDown(cache: WalkCache, i: number, size: number): void {
 }
 
 /** Fills row from the Dijkstra distances out of source, over the walk graph edges. */
-function fillRow(wg: WalkGraph, cache: WalkCache, source: number, row: number): void {
+function fillRow(wg: WalkGraph, cache: WalkCache, aud: number, source: number, row: number): void {
   const n = wg.nodeCount;
   const dist = cache.dist;
   const pos = cache.heapPos;
@@ -103,6 +104,8 @@ function fillRow(wg: WalkGraph, cache: WalkCache, source: number, row: number): 
     }
     const du = dist[u]!;
     for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
+      // Edges this audience may not take, such as a staff door for passengers or the wrong way through a transition, are not in the layer.
+      if ((wg.edgeMask[e]! & aud) === 0) continue;
       const v = wg.edgeTo[e]!;
       const dv = du + wg.edgeLen[e]!;
       if (dv >= dist[v]!) continue;
@@ -122,7 +125,7 @@ function fillRow(wg: WalkGraph, cache: WalkCache, source: number, row: number): 
 }
 
 /** The row that holds the distances from source, filling it first when it is not cached. */
-function rowFor(wg: WalkGraph, cache: WalkCache, source: number): number {
+function rowFor(wg: WalkGraph, cache: WalkCache, aud: number, source: number): number {
   let row = cache.sourceRow[source]!;
   if (row < 0) {
     row = cache.rowSource.indexOf(-1);
@@ -135,7 +138,7 @@ function rowFor(wg: WalkGraph, cache: WalkCache, source: number): number {
     }
     cache.rowSource[row] = source;
     cache.sourceRow[source] = row;
-    fillRow(wg, cache, source, row);
+    fillRow(wg, cache, aud, source, row);
   }
   cache.rowStamp[row] = ++cache.clock;
   return row;
@@ -147,18 +150,19 @@ function rowFor(wg: WalkGraph, cache: WalkCache, source: number): number {
  */
 export function distanceRowIn(wg: WalkGraph, cache: WalkCache, target: number): number {
   if (!Number.isInteger(target) || target < 0 || target >= wg.nodeCount) return -1;
-  return rowFor(wg, cache, target) * wg.nodeCount;
+  return rowFor(wg, cache, AUD.Pax, target) * wg.nodeCount;
 }
 
 /**
  * The edge out of node u that descends the distance row at base the most: the lowest edge length plus
- * remaining distance among edges that lead closer to the target. -1 when no edge does.
+ * remaining distance among edges that lead closer to the target and that passengers may take. -1 when no edge does.
  */
 export function nextEdge(wg: WalkGraph, rows: Float32Array, base: number, u: number): number {
   const du = rows[base + u]!;
   let best = -1;
   let bestCost = Infinity;
   for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
+    if ((wg.edgeMask[e]! & AUD.Pax) === 0) continue;
     const dv = rows[base + wg.edgeTo[e]!]!;
     if (!(dv < du)) continue;
     const cost = wg.edgeLen[e]! + dv;
@@ -171,17 +175,18 @@ export function nextEdge(wg: WalkGraph, rows: Float32Array, base: number, u: num
 }
 
 /**
- * Walking distance in metres between two walk nodes, or Infinity when either id is not a node or no walk
- * joins them. The row of the smaller id answers, so the result does not depend on what is cached.
+ * Walking distance in metres from walk node from to walk node to, or Infinity when either id is not a node or no walk
+ * joins them for that audience, passengers by default. The graph is directed, so the row of from answers and the
+ * distance back can differ. Passengers and staff each have their own cached rows.
  */
-export function walkDistance(wg: WalkGraph, from: number, to: number): number {
+export function walkDistance(wg: WalkGraph, from: number, to: number, aud: number = AUD.Pax): number {
   const n = wg.nodeCount;
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= n || to >= n) return Infinity;
   if (from === to) return 0;
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-  const row = rowFor(wg, wg.cache, lo);
-  return wg.cache.rows[row * n + hi]!;
+  // Any audience other than staff uses the passenger rows, so callers pass AUD.Pax or AUD.Staff only.
+  const cache = aud === AUD.Staff ? wg.staffCache : wg.cache;
+  const row = rowFor(wg, cache, aud, from);
+  return cache.rows[row * n + to]!;
 }
 
 /**

@@ -26,6 +26,7 @@ import { QualityGovernor, type QualityPreset } from './quality';
 import { vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, chunkSizeM, chunksPerSide, BAND_RASTER_SCALE, CHUNKS_PER_SIDE, type ChunkEntry } from './chunks';
 import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
+import { drawZoneOverlay, type ZoneColors } from './zoneOverlay';
 
 const MAX_BACKING = 4096;
 
@@ -154,6 +155,7 @@ export class Renderer {
   private overlayThemeKey = '';
   /** Fill of unreachable gates, the muted token at the overlay alpha. */
   private overlayMutedFill = '';
+  private zoneColors: ZoneColors | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -320,6 +322,11 @@ export class Renderer {
     this.overlayThemeKey = key;
     this.overlayRamp = buildRamp(ok, warn, bad, OVERLAY_ALPHA);
     this.overlayMutedFill = withAlpha(muted, OVERLAY_ALPHA);
+  }
+
+  /** Theme colors of the zones overlay. */
+  setZoneColors(colors: ZoneColors): void {
+    this.zoneColors = colors;
   }
 
   /**
@@ -503,6 +510,10 @@ export class Renderer {
   private overlayFontDpr = 0;
 
   private drawOverlay(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    if (this.overlayKind === 'zones') {
+      this.drawZoneOverlays(a, b, cc, d, e, f);
+      return;
+    }
     const data = this.overlayData;
     if (!data || this.overlayRamp.length === 0) return;
     const ctx = this.ctx;
@@ -535,6 +546,20 @@ export class Renderer {
         }
       }
       if (labelled && (kind === 'queue' || kind === 'walk')) this.labelOverlayCells(d0, kind, m, this.overlayLabels[k]!);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /** Zones of every overlay grid. The matrix maps logical cells, the zone overlay draws in grid meters, so it is divided by the cell size. */
+  private drawZoneOverlays(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const colors = this.zoneColors;
+    if (!colors) return;
+    const ctx = this.ctx;
+    for (let i = 0; i < this.overlayGrids.length; i++) {
+      const g = this.overlayGrids[i]!;
+      const m = this.overlayMatrixFor(i, a, b, cc, d, e, f);
+      ctx.setTransform(m[0]! / TERMINAL_CELL_M, m[1]! / TERMINAL_CELL_M, m[2]! / TERMINAL_CELL_M, m[3]! / TERMINAL_CELL_M, m[4]!, m[5]!);
+      drawZoneOverlay(ctx, g, colors);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }

@@ -9,7 +9,7 @@ import { SAVE_VERSION } from '@sim/save/migrations';
 import { FlState } from '@sim/ops/traffic';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BuildContext } from '@shared/validate';
-import { cellIndex, ensureCells, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellIndex, ensureCells, fixtureCost, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 describe('service node data', () => {
@@ -49,8 +49,8 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.terminals[0].cells).toBe(cells);
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
     expect(sim.business.arrCapacity()).toBe(2 * 260);
-    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
-    const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
+    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures. The test terminal gained a security exit in a gap of its wall, two edges fewer.
+    const expected = cells * (2000 + 480) + 127 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
     expect(g.cost).toBe(expected);
   });
 
@@ -583,7 +583,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(28);
+    expect(SAVE_VERSION).toBe(29);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -593,7 +593,8 @@ describe('two cell fixture footprints', () => {
     expect(c.business.grids.length).toBeGreaterThan(0);
     for (const g of c.business.grids) {
       expect(g.fixtureRot.length).toBe(g.fixture.length);
-      expect(g.fixtureRot.every((v) => v === 0)).toBe(true);
+      // Only security lanes gain a direction in the version 27 to 28 step (T75). No cell pairs with a tail.
+      expect(g.fixtureRot.every((v, i) => v === 0 || (g.fixture[i] === FIXTURE_KEYS.indexOf('security') + 1 && v <= 4))).toBe(true);
     }
   });
 });
@@ -607,9 +608,9 @@ describe('fixture ids, spans and module data', () => {
     expect(FIXTURE_KEYS.indexOf('gateDesk') + 1).toBe(16);
   });
 
-  it('gives two cell spans to bag drop and gate desk only', () => {
+  it('gives two cell spans to bag drop, gate desk, security exit and customs', () => {
     const twoCell = FIXTURE_KEYS.filter((k) => FIXTURE_SPAN[k] === 2);
-    expect(twoCell).toEqual(['bagDrop', 'gateDesk']);
+    expect(twoCell).toEqual(['bagDrop', 'gateDesk', 'securityExit', 'customs']);
     expect(FIXTURE_KEYS.every((k) => FIXTURE_SPAN[k] === 1 || FIXTURE_SPAN[k] === 2)).toBe(true);
   });
 
