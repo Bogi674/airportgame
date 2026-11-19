@@ -9,6 +9,8 @@ import type { WalkGraph } from './walkGraph';
 /** Fixtures that serve people one at a time. Each anchor of these is a service node. */
 export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs'] as const;
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
+/** Keys before this index existed before save version 31, so the migration needs no hard coded list. */
+export const LEGACY_SERVICE_COUNT = 7;
 
 /** fixtureRot below this marks the anchor of a fixture. 5 and up is the tail of a two cell fixture. */
 const TAIL_ROT = 5;

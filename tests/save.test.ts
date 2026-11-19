@@ -6,6 +6,7 @@ import { packTyped, unpackTyped } from '@sim/save/pack';
 import { FLAG_SLOW } from '@sim/cohorts/cohorts';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '@sim/cohorts/traits';
 import { FIXTURE_KEYS, FLOOR } from '@shared/business';
+import type { ServiceSave } from '@sim/terminal/serviceNodes';
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellIndex, ensureCells, gridOnLevel, newGrid } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
@@ -303,5 +304,98 @@ describe('saves', () => {
     expect(events.filter((e) => e === 'atcLost')).toHaveLength(1);
     expect(c.business.atcOk).toBe(false);
     expect(c.airfield.data.towers).toEqual([]);
+  });
+});
+
+describe('save 30 to 31 service rows (T20)', () => {
+  type ServiceData = { version: number; business: { grids: { fixture: string; fixtureRot: string }[]; service: ServiceSave[] } };
+  const NEW_IDS = [FIXTURE_KEYS.indexOf('eGate') + 1, FIXTURE_KEYS.indexOf('customs') + 1];
+
+  /** A sim with a queue at the check in desks and an eGate and a customs fixture in the public hall. */
+  function withArrivalFixtures(): Sim {
+    const sim = ownedSim();
+    sim.cash = 80_000_000;
+    buildTestAirport(sim, { standsPerRow: 6 });
+    expect(buildTestTerminal(sim, { gateDesk: 2 })).toEqual([]);
+    const id = sim.business.grids[0]!.id;
+    const edit = (x0: number, y0: number, x1: number, y1: number, variant: number): string[] =>
+      run(sim, { type: 'terminalBuild', building: id, ox: sim.business.grids[0]!.ox, oy: sim.business.grids[0]!.oy, headingDeg: 90, edit: { op: 'fixture', x0, y0, x1, y1, variant } });
+    expect(edit(46, 48, 47, 49, NEW_IDS[0]!)).toEqual([]);
+    expect(edit(50, 48, 52, 50, NEW_IDS[1]!)).toEqual([]);
+    run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+    run(sim, { type: 'signAirline', airlineId: 1, sign: true });
+    run(sim, { type: 'setTestTraffic', perHour: 20, turnScale: 0.1 });
+    return sim;
+  }
+
+  /** Rewrites a version 31 save as version 30 by dropping the rows of the eGate and customs anchors. */
+  function asVersion30(data: ServiceData): void {
+    data.version = 30;
+    const fixture = unpackTyped(data.business.grids[0]!.fixture, Uint8Array);
+    const rot = unpackTyped(data.business.grids[0]!.fixtureRot, Uint8Array);
+    const s = data.business.service[0]!;
+    const keep: number[] = [];
+    let node = 0;
+    for (let c = 0; c < fixture.length; c++) {
+      if (rot[c]! >= 5 || !['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs'].includes(FIXTURE_KEYS[fixture[c]! - 1] ?? '')) continue;
+      if (!NEW_IDS.includes(fixture[c]!)) keep.push(node);
+      node++;
+    }
+    const slots = unpackTyped(s.qCohort, Int32Array).length / s.count;
+    const pick = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number): string => {
+      const src = unpackTyped(text, ctor as Int32ArrayConstructor);
+      const out = new ctor(keep.length * per);
+      keep.forEach((from, k) => {
+        for (let j = 0; j < per; j++) out[k * per + j] = src[from * per + j]!;
+      });
+      return packTyped(out);
+    };
+    data.business.service[0] = {
+      ...s,
+      count: keep.length,
+      queueLen: pick(s.queueLen, Int32Array, 1),
+      busyUntil: pick(s.busyUntil, Int32Array, 1),
+      serving: pick(s.serving, Int32Array, 1),
+      servingSize: pick(s.servingSize, Int32Array, 1),
+      qCohort: pick(s.qCohort, Int32Array, slots),
+      qSize: pick(s.qSize, Int32Array, slots),
+      qHead: pick(s.qHead, Uint16Array, 1),
+      qCount: pick(s.qCount, Uint16Array, 1),
+    };
+  }
+
+  it('a version 30 save with an eGate and a customs fixture keeps its queued cohort and the same hash', () => {
+    const a = withArrivalFixtures();
+    for (let t = 0; t < 8000 && a.business.serviceNodes[0]!.active === 0; t++) a.step();
+    expect(a.business.serviceNodes[0]!.active).toBeGreaterThan(0);
+    const data = JSON.parse(JSON.stringify(a.serialize())) as ServiceData;
+    const before = a.business.serviceNodes[0]!;
+    const queued = Array.from(before.qCohort);
+    asVersion30(data);
+    expect(data.business.service[0]!.count).toBe(before.count - 2);
+    const b = new Sim('GOLDEN-0001', OPTIONS);
+    b.restore(data as never);
+    const after = b.business.serviceNodes[0]!;
+    expect(after.count).toBe(before.count);
+    expect(Array.from(after.qCohort)).toEqual(queued);
+    expect(Array.from(after.qCount)).toEqual(Array.from(before.qCount));
+    expect(Array.from(after.serving)).toEqual(Array.from(before.serving));
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 2000; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  });
+
+  it('a version 30 save with no eGate or customs migrates with an identical service block', () => {
+    const sim = prepared();
+    for (let t = 0; t < 500; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as ServiceData;
+    const service = JSON.stringify(data.business.service);
+    data.version = 30;
+    const migrated = migrate(data) as unknown as ServiceData;
+    expect(migrated.version).toBe(SAVE_VERSION);
+    expect(JSON.stringify(migrated.business.service)).toBe(service);
   });
 });

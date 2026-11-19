@@ -6,10 +6,12 @@ import { ROT_STEP } from '@shared/terminalOps';
 import { GROUND, NEEDS, PROFILES } from '@data/index';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { FLAG_SLOW } from '../cohorts/cohorts';
+import { FIXTURE_KEYS } from '@shared/business';
+import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, type ServiceSave } from '../terminal/serviceNodes';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 30;
+export const SAVE_VERSION = 31;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -297,5 +299,63 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 29 to 30: cohorts save the day counters of passenger satisfaction and its 30 day ring (T67). Older saves start with both empty.
   if (save.version < 30) save.version = 30;
+  // Version 30 to 31: the arrival journey (T20). eGate and customs anchors became service nodes, so each saved service table gets an empty row per such anchor, inserted in cell order. Cohorts gain the serial and born slot arrays, the arrival counters and the arrivals rng, and baggage gains the carousel delivery rows; all are optional and start empty.
+  if (save.version < 31) {
+    const biz = (save as { business?: { grids?: { fixture?: string; fixtureRot?: string }[]; service?: ServiceSave[] } }).business;
+    const grids = biz?.grids ?? [];
+    const tables = biz?.service ?? [];
+    for (let i = 0; i < tables.length; i++) {
+      const g = grids[i];
+      if (g?.fixture === undefined || g.fixtureRot === undefined) continue;
+      tables[i] = insertNewServiceRows(tables[i]!, unpackTyped(g.fixture, Uint8Array), unpackTyped(g.fixtureRot, Uint8Array));
+    }
+    save.version = 31;
+  }
   return save as SaveData;
+}
+
+/** Fixture ids of the service keys that existed before save version 31, and of all service keys. */
+const LEGACY_SERVICE_IDS: readonly number[] = SERVICE_KEYS.slice(0, LEGACY_SERVICE_COUNT).map((k) => FIXTURE_KEYS.indexOf(k) + 1);
+const ALL_SERVICE_IDS: readonly number[] = SERVICE_KEYS.map((k) => FIXTURE_KEYS.indexOf(k) + 1);
+/** fixtureRot below this marks the anchor of a fixture, as in serviceNodes. */
+const ANCHOR_ROT_LIMIT = 5;
+
+/**
+ * Rebuilds a version 30 service table for the node set of version 31: the row of every old node moves to its new
+ * index, and each eGate or customs anchor gets an empty row. Both lists are in ascending cell order.
+ */
+function insertNewServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8Array): ServiceSave {
+  const oldIndexOfNew: number[] = [];
+  let oldCount = 0;
+  for (let c = 0; c < fixture.length; c++) {
+    if (rot[c]! >= ANCHOR_ROT_LIMIT) continue;
+    const id = fixture[c]!;
+    if (!ALL_SERVICE_IDS.includes(id)) continue;
+    if (LEGACY_SERVICE_IDS.includes(id)) oldIndexOfNew.push(oldCount++);
+    else oldIndexOfNew.push(-1);
+  }
+  if (oldCount !== old.count || oldIndexOfNew.length === oldCount) return old;
+  const count = oldIndexOfNew.length;
+  const slots = oldCount > 0 ? Math.floor(unpackTyped(old.qCohort, Int32Array).length / oldCount) : 0;
+  const rows = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number, fill: number): string => {
+    const src = unpackTyped(text, ctor as Int32ArrayConstructor);
+    const out = new ctor(count * per).fill(fill);
+    for (let k = 0; k < count; k++) {
+      const from = oldIndexOfNew[k]!;
+      if (from >= 0) for (let j = 0; j < per; j++) out[k * per + j] = src[from * per + j]!;
+    }
+    return packTyped(out);
+  };
+  return {
+    ...old,
+    count,
+    queueLen: rows(old.queueLen, Int32Array, 1, 0),
+    busyUntil: rows(old.busyUntil, Int32Array, 1, 0),
+    serving: rows(old.serving, Int32Array, 1, -1),
+    servingSize: rows(old.servingSize, Int32Array, 1, 0),
+    qCohort: rows(old.qCohort, Int32Array, slots, 0),
+    qSize: rows(old.qSize, Int32Array, slots, 0),
+    qHead: rows(old.qHead, Uint16Array, 1, 0),
+    qCount: rows(old.qCount, Uint16Array, 1, 0),
+  };
 }
