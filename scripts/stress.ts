@@ -223,6 +223,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
   let peakHi = 0;
   let peakLive = 0;
   let peakPeople = 0;
+  let peakArr = 0;
   const views = createSnapshotViews(createSnapshotBuffer());
   let snapNs = 0n;
   let snapCount = 0;
@@ -230,6 +231,9 @@ function runScenario(s: Scenario): Record<string, Stat> {
     if (sim.traffic.count > peak) peak = sim.traffic.count;
     if (sim.cohorts.hi > peakHi) peakHi = sim.cohorts.hi;
     // Counted outside the timed section, and only every 500 ticks, as it scans every slot.
+    if ((s.peopleTerminal || s.cohortTerminal) && t % 500 === 0) {
+      if (sim.cohorts.arrActive > peakArr) peakArr = sim.cohorts.arrActive;
+    }
     if (s.peopleTerminal && t % 500 === 0) {
       let live = 0;
       for (let c = 0; c < sim.cohorts.hi; c++) if (sim.cohorts.stage[c] !== 0) live++;
@@ -259,6 +263,7 @@ function runScenario(s: Scenario): Record<string, Stat> {
     const co = sim.cohorts;
     console.log(`  cohorts ${co.generated} generated, ${co.boarded} boarded, ${co.missed} missed, ${co.active} active, peak hi ${peakHi}`);
     if (co.generated === 0) cohortFailures.push(s.name);
+    console.log(`  arrivals peak ${peakArr} people, exited ${co.arrExited}, stranded ${co.arrStranded}`);
   }
   if (s.peopleTerminal) {
     console.log(`  people peak ${peakLive} cohorts, ${peakPeople} people`);
