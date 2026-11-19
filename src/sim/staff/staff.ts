@@ -1,6 +1,7 @@
 import { STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT } from '@data/schemas/staff';
 import { foldU32 } from '../hash';
+import { packTyped, unpackInto } from '../save/pack';
 import { staffSeed } from './staffTraits';
 
 /** Life cycle state of a staff slot. Saved values, append only. */
@@ -10,6 +11,15 @@ export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation:
 export const STAFF_FLAG = { Tired: 1, BreakDone: 2, OnBreak: 4, Relief: 8 } as const;
 
 type SavedArray = Uint8Array | Int16Array | Int32Array | Uint32Array;
+type SlotCtor = { new (buffer: ArrayBuffer): SavedArray; BYTES_PER_ELEMENT: number };
+
+/** Saved form of the staff store. */
+export interface StaffSave {
+  hi: number;
+  serial: number;
+  caps: string;
+  arrays: Record<string, string>;
+}
 
 /** Individual airport staff as a struct of arrays (T68). Slots are reused lowest first. */
 export class Staff {
@@ -65,6 +75,47 @@ export class Staff {
     this.seed, this.role, this.shift, this.state, this.flags, this.home, this.stGrid, this.stX, this.stY, this.stKind,
     this.covering, this.wake, this.breakAt, this.walkStart, this.walkFromX, this.walkFromY, this.walkToX, this.walkToY,
   ];
+
+  /** Saved arrays by name. */
+  private slotArrays(): Record<string, SavedArray> {
+    return {
+      seed: this.seed, role: this.role, shift: this.shift, state: this.state, flags: this.flags, home: this.home,
+      stGrid: this.stGrid, stX: this.stX, stY: this.stY, stKind: this.stKind, covering: this.covering, wake: this.wake,
+      breakAt: this.breakAt, walkStart: this.walkStart, walkFromX: this.walkFromX, walkFromY: this.walkFromY,
+      walkToX: this.walkToX, walkToY: this.walkToY,
+    };
+  }
+
+  saveState(): StaffSave {
+    const arrays: Record<string, string> = {};
+    const slots = this.slotArrays();
+    for (const k of Object.keys(slots)) arrays[k] = packTyped(slots[k].subarray(0, this.hi));
+    return { hi: this.hi, serial: this.serial, caps: packTyped(this.caps), arrays };
+  }
+
+  /** Restores the store from a save. `undefined` (a save from before staff) gives an empty store. */
+  loadState(s: StaffSave | undefined): void {
+    this.hi = 0;
+    this.serial = 0;
+    this.caps.fill(-1);
+    this.stIdx.fill(-1);
+    if (!s) return;
+    const slots = this.slotArrays();
+    for (const k of Object.keys(slots)) {
+      const a = slots[k];
+      if (s.arrays[k] !== undefined) unpackInto(s.arrays[k], a, a.constructor as SlotCtor);
+    }
+    unpackInto(s.caps, this.caps, Int32Array);
+    this.hi = s.hi;
+    this.serial = s.serial;
+  }
+
+  /**
+   * Runs in subsystem 3 before the business, so service factors follow the staff state of the same tick (spec decision 18).
+   */
+  update(tick: number): void {
+    void tick;
+  }
 
   /** Allocates a slot for a new member in state Off, or returns -1 at capacity. */
   alloc(role: number, shift: number): number {

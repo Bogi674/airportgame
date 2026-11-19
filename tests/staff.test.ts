@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Staff, STAFF_FLAG, STAFF_STATE } from '../src/sim/staff/staff';
+import { Sim } from '../src/sim/sim';
+import { OPTIONS } from './helpers';
+import { Staff, STAFF_FLAG, STAFF_STATE, type StaffSave } from '../src/sim/staff/staff';
 import { breakJitterMin, staffSeed, staffSkill } from '../src/sim/staff/staffTraits';
 
 describe('staff store', () => {
@@ -70,5 +72,35 @@ describe('staff store', () => {
     expect(withX).not.toBe(base);
     st.home[0] = 7;
     expect(st.hash(1)).not.toBe(withX);
+  });
+
+  it('saves and loads into a fresh store with the same hash', () => {
+    const st = new Staff();
+    st.alloc(0, 0);
+    st.alloc(1, 1);
+    st.alloc(2, 2);
+    st.flags[1] |= STAFF_FLAG.Tired;
+    st.stX[2] = -4;
+    st.home[0] = 9;
+    st.caps[1] = 2;
+    const saved = JSON.parse(JSON.stringify(st.saveState())) as StaffSave;
+    const fresh = new Staff();
+    fresh.loadState(saved);
+    expect(fresh.hi).toBe(3);
+    expect(fresh.hash(1)).toBe(st.hash(1));
+    fresh.loadState(undefined);
+    expect(fresh.hi).toBe(0);
+    expect(fresh.caps[1]).toBe(-1);
+  });
+
+  it('a Sim serialize then restore keeps the state hash', () => {
+    const sim = new Sim('STAFF-0001', OPTIONS);
+    for (let t = 0; t < 50; t++) sim.step();
+    sim.staff.alloc(0, 1);
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as unknown;
+    const b = new Sim('STAFF-0001', OPTIONS);
+    b.restore(data);
+    expect(b.stateHash()).toBe(sim.stateHash());
+    expect(b.staff.hi).toBe(1);
   });
 });

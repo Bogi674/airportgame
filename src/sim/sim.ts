@@ -18,6 +18,7 @@ import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
 import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
+import { Staff, type StaffSave } from './staff/staff';
 import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -61,6 +62,8 @@ export class Sim {
   readonly cohorts: Cohorts;
   /** Baggage nodes and their automatic link network, one per building (T43). */
   readonly baggage: Baggage;
+  /** Airport staff as individuals (T68). */
+  readonly staff: Staff;
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -150,6 +153,7 @@ export class Sim {
         return f < 0 ? -2 : this.traffic.fStand[f];
       },
     }, this.rng);
+    this.staff = new Staff();
     this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
     this.business.bagMissingShare = () => this.baggage.missingShare();
     this.business.bagDayReset = () => this.baggage.resetDay();
@@ -237,6 +241,7 @@ export class Sim {
         this.syncAirfield();
         break;
       case 3:
+        this.staff.update(this.tick);
         this.business.update(this.tick);
         break;
       case 4:
@@ -677,6 +682,7 @@ export class Sim {
       cohorts: this.cohorts.saveState(),
       vehicles: this.gse.saveState(),
       turnarounds: this.turns.saveState(),
+      staff: this.staff.saveState(),
     };
     return save;
   }
@@ -703,6 +709,7 @@ export class Sim {
     this.gse.loadState(save.vehicles);
     this.turns.loadState(save.turnarounds);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
+    this.staff.loadState(save.staff as StaffSave | undefined);
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
@@ -733,6 +740,7 @@ export class Sim {
     h = this.cohorts.hash(h);
     h = this.gse.hash(h);
     h = this.turns.hash(h);
+    h = this.staff.hash(h);
     return h;
   }
 

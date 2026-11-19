@@ -304,4 +304,18 @@ describe('saves', () => {
     expect(c.business.atcOk).toBe(false);
     expect(c.airfield.data.towers).toEqual([]);
   });
+
+  it('a version 30 save migrates with no staff field and loads with no staff', () => {
+    const sim = ownedSim();
+    for (let t = 0; t < 20; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; staff?: unknown };
+    data.version = 30;
+    delete data.staff;
+    const out = migrate(data);
+    expect(out.version).toBe(SAVE_VERSION);
+    expect(out.staff).toBeUndefined();
+    const c = new Sim(sim.seed, OPTIONS);
+    c.restore(data);
+    expect(c.staff.hi).toBe(0);
+  });
 });
