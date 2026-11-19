@@ -133,7 +133,7 @@ export function buildOverlayData(
     if (people.building[c] !== index) continue;
     const st = people.stage[c]!;
     let cell = -1;
-    if (st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue) {
+    if (st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs) {
       const node = people.node[c]!;
       if (node >= 0 && node < sn.count) cell = queueCellOf(sn, node, c, out.nodeCell[node]!, grid);
     } else if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.ToGate) {
@@ -146,6 +146,9 @@ export function buildOverlayData(
       // No service node: the walkers and the visitors count at the cell of the node they walk to.
       if (people.walkStart[c]! >= 0) cell = (people.walkToY[c]! - grid.y0) * grid.w + (people.walkToX[c]! - grid.x0);
       else if (firstGate >= 0) cell = out.nodeCell[firstGate]!;
+    } else if (st >= Stage.Deboard) {
+      // Arrivals count at the cell they walk to, the entry desk while they deboard, so the density sums to the people inside.
+      cell = (people.walkToY[c]! - grid.y0) * grid.w + (people.walkToX[c]! - grid.x0);
     } else if (st === Stage.Airside) {
       if (firstGate >= 0) cell = out.nodeCell[firstGate]!;
     } else {

@@ -163,6 +163,7 @@ export class Sim {
       ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }),
       docked: (f) => {
         businessDocked?.(f);
+        this.cohorts.onDocked(f, this.tick, this.dockedBoarding(f));
         this.warnNoRoad(f);
         this.warnFarStand(f);
         this.fuelAtDock(f);
@@ -348,6 +349,13 @@ export class Sim {
     const desk = this.business.gateFor(stand);
     if (!desk || Math.hypot(desk.wx - stand.x, desk.wy - stand.y) <= STAND_ACCESS.stairsWalkLimitM) return BOARDING.near;
     return ((stand.upgrades ?? 0) & STAND_UPGRADE.busBay) !== 0 ? BOARDING.bus : BOARDING.farSlow;
+  }
+
+  /** How the flight at its stand boards, near when it has no stand. */
+  private dockedBoarding(f: number): number {
+    const stands = this.airfield.data.stands;
+    for (let i = 0; i < stands.length; i++) if (stands[i]!.id === this.traffic.fStand[f]) return this.boardingMode(stands[i]!, f);
+    return BOARDING.near;
   }
 
   /** A flight docks at a far stand with no bus bay: boarding runs slower and an alert asks for a bus bay, once a game day per stand. */

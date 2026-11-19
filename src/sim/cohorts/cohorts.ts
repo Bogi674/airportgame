@@ -1,4 +1,4 @@
-import { NEEDS, PROFILES } from '@data/index';
+import { ARRIVALS, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
 import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
@@ -8,6 +8,7 @@ import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
+import { BOARDING } from '../ops/turnaround';
 import type { ServiceNodes } from '../terminal/serviceNodes';
 import { SIDE, buildVisitPoints, findPoint, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
@@ -17,6 +18,7 @@ import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, writeTraits } from './traits';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
+import { AIRCRAFT, standGeometry } from '@data/aircraft';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
 export const Stage = {
@@ -37,6 +39,25 @@ export const Stage = {
   /** A cohort waiting in a toilet queue (T67 slice 7). A queued stage. */
   VisitQueue: 13,
   Rejoin: 14,
+  // Arrival stages (T20): passengers leave the aircraft, walk from the entry desk through the terminal and leave at the curb.
+  /** Waiting for the doors to open and for the cohort's turn to leave the aircraft. */
+  Deboard: 15,
+  /** Walking to an immigration node. */
+  ToImmigration: 16,
+  /** Waiting in an immigration queue or being served (a queued stage). */
+  Immigration: 17,
+  /** Walking to the carousel of the stand's bay. */
+  ToClaim: 18,
+  /** Waiting at the carousel for the bags of the flight. */
+  Claim: 19,
+  /** Walking to a customs node. */
+  ToCustoms: 20,
+  /** Waiting in a customs queue or being served (a queued stage). */
+  Customs: 21,
+  /** Standing in the red channel for the long check. */
+  CustomsRed: 22,
+  /** Walking to the curb. Reaching it ends the journey. */
+  ToExit: 23,
 } as const;
 
 /** Timer wheel buckets and the tick step between bucket visits. */
@@ -106,6 +127,8 @@ const M = PROFILES.maxGroup;
 const FLAG_SUB = 1;
 export const FLAG_SLOW = 2;
 const FLAG_AT_VISIT = 4;
+/** Arrival cohort of an international flight. */
+const FLAG_INTL = 8;
 const SLOW = NEEDS.mobility.slowFactor;
 /** Cumulative group size weights per profile, normalised to 1. Index 0 is size 1. */
 const GROUP_CUM = PROFILE_ROWS.map((r) => {
@@ -135,8 +158,8 @@ const NEED_SPEND_SHARE = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEE
 const fixtureId = (name: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.indexOf(name) + 1;
 const NEED_KIND_A = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[0]!)));
 const NEED_KIND_B = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[1] ?? NEEDS.needs[k].fixtures[0]!)));
-/** Counters of the current day: visits per need, visitor spend, the satisfaction of passengers rated today and their number, then the penalty points taken by cause. */
-export const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, Count: NEED_COUNT + 7 } as const;
+/** Counters of the current day: visits per need, visitor spend, the satisfaction of passengers rated today and their number, then the penalty points taken by cause, then the arrival counters (passengers exited and stranded, claim wait seconds and claims, passengers without bags) and their penalty points. */
+export const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, ArrExited: NEED_COUNT + 7, ArrStranded: NEED_COUNT + 8, ClaimWaitS: NEED_COUNT + 9, ClaimCount: NEED_COUNT + 10, NoBags: NEED_COUNT + 11, PenMissingBag: NEED_COUNT + 12, PenStranded: NEED_COUNT + 13, Count: NEED_COUNT + 14 } as const;
 const SAT = NEEDS.satisfaction;
 const SECONDS_PER_MINUTE = 60;
 const HOURS_PER_LEVEL = 1000;
@@ -183,6 +206,9 @@ export interface CohortsSave {
   ringSum?: string;
   ringCount?: string;
   ringHead?: number;
+  /** Arrival counters [arrGenerated, arrExited, arrStranded, arrActive] and the arrivals rng. Absent in saves from before version 31. */
+  arr?: number[];
+  arrRng?: number;
 }
 
 /**
@@ -215,6 +241,9 @@ export class Cohorts {
   walkStart = new Int32Array(this.cap).fill(-1);
   /** Tick the need levels of the cohort's members were last brought up to date. */
   needTick = new Int32Array(this.cap);
+  /** Stable serial of the flight of an arrival cohort, since flight indexes are reused, and the tick its doors opened. */
+  serial = new Int32Array(this.cap);
+  born = new Int32Array(this.cap);
   /** Main cohort slot a sub cohort came from, -1 for a main cohort. */
   parent = new Int32Array(this.cap).fill(-1);
   /** Tick the cohort joined its current queue, -1 when it is not waiting. */
@@ -238,6 +267,11 @@ export class Cohorts {
   boarded = 0;
   missed = 0;
   active = 0;
+  /** Arriving passengers: generated, left at the curb, stranded and still in the terminal. Passengers, not cohorts. */
+  arrGenerated = 0;
+  arrExited = 0;
+  arrStranded = 0;
+  arrActive = 0;
   readonly flBoarded: Int32Array;
   readonly flGate: Int32Array;
   readonly flActive: Int32Array;
@@ -245,6 +279,8 @@ export class Cohorts {
   onCheckIn: ((gridId: number, cell: number, serial: number, bags: number) => void) | null = null;
   private readonly rng: Rng;
   private readonly initialRng: number;
+  private readonly arrRng: Rng;
+  private readonly initialArrRng: number;
   private readonly business: Business;
   private readonly traffic: Traffic;
   private tick = 0;
@@ -283,6 +319,8 @@ export class Cohorts {
   constructor(rng: Rng, business: Business, traffic: Traffic) {
     this.rng = rng.fork('cohorts');
     this.initialRng = this.rng.getState();
+    this.arrRng = rng.fork('arrivals');
+    this.initialArrRng = this.arrRng.getState();
     this.business = business;
     this.traffic = traffic;
     this.flBoarded = new Int32Array(traffic.fState.length);
@@ -354,6 +392,65 @@ export class Cohorts {
     }
   }
 
+  /**
+   * Generates the arriving cohorts of a flight that just docked (T20 D3, D4). They leave the aircraft one after the
+   * other from doors open, the stagger shared by the door count of the type, stretched at a far stand without a bus and
+   * delayed by the bus ride at a remote one. Drawn from the arrivals stream so the departure draws do not move.
+   */
+  onDocked(f: number, tick: number, boarding: number): void {
+    this.tick = tick;
+    const pax = this.business.flightPaxOf(f);
+    if (pax <= 0 || !this.business.arrivalEntry(f)) return;
+    const g = this.business.entryOut[0]!;
+    const entry = this.business.entryOut[1]!;
+    const intl = this.business.entryOut[2] === 1;
+    const wg = this.business.walkGraphs[g];
+    if (!wg) return;
+    const doors = Math.max(1, standGeometry(AIRCRAFT[this.traffic.fType[f]!]!).doorStationsM.length);
+    const born = tick + gameSecondsToTicks(ARRIVALS.doorOpenS);
+    const per = (ARRIVALS.deboardSecondsPerPax * (boarding === BOARDING.farSlow ? 1 + STAND_ACCESS.farBoardingSlowdown : 1)) / doors;
+    const bus = boarding === BOARDING.bus ? gameSecondsToTicks(ARRIVALS.remoteBusS) : 0;
+    const serial = this.traffic.serialOf(f);
+    let remaining = pax;
+    let ahead = 0;
+    while (remaining > 0) {
+      const c = this.alloc();
+      if (c < 0) break;
+      const p = this.pickProfile(this.arrRng.next());
+      const row = PROFILE_ROWS[p]!;
+      const size = Math.min(remaining, this.pickSize(p, this.arrRng.next()));
+      const release = born + bus + (ahead > 0 ? gameSecondsToTicks(ahead * per) : 0);
+      this.flight[c] = f;
+      this.size[c] = size;
+      this.profile[c] = p;
+      this.building[c] = g;
+      this.bags[c] = Math.round(size * row.bagsPerPax);
+      this.spendBudget[c] = 0;
+      this.satisfaction[c] = PERCENT;
+      this.recipeSeed[c] = Math.floor(this.arrRng.next() * RECIPE_RANGE);
+      this.serial[c] = serial;
+      this.born[c] = born;
+      this.flags[c] = (intl ? FLAG_INTL : 0) | FLAG_AT_VISIT;
+      this.node[c] = -1;
+      this.walkStart[c] = -1;
+      this.parent[c] = -1;
+      this.waitStart[c] = -1;
+      this.target[c] = -1;
+      this.visitNeed[c] = 0;
+      this.walkToX[c] = wg.nodeX[entry]!;
+      this.walkToY[c] = wg.nodeY[entry]!;
+      this.walkFromX[c] = this.walkToX[c]!;
+      this.walkFromY[c] = this.walkToY[c]!;
+      this.initMembers(c, release);
+      this.stage[c] = Stage.Deboard;
+      this.schedule(c, release);
+      this.arrGenerated += size;
+      this.arrActive += size;
+      ahead += size;
+      remaining -= size;
+    }
+  }
+
   /** True for the stages a passenger can be in before boarding or missing the flight. */
   private live(st: number): boolean {
     return (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin);
@@ -361,7 +458,12 @@ export class Cohorts {
 
   /** True for the stages in which a cohort waits in a service queue, off the timer wheel. */
   private queued(st: number): boolean {
-    return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue;
+    return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs;
+  }
+
+  /** True for the stages of an arriving passenger. */
+  private arriving(st: number): boolean {
+    return st >= Stage.Deboard && st <= Stage.ToExit;
   }
 
   /** Group size for a uniform float: the first size whose cumulative weight exceeds it. */
@@ -454,6 +556,11 @@ export class Cohorts {
         continue;
       }
       if (b !== g) continue;
+      if (this.arriving(st)) {
+        if (!this.queued(st)) this.unlink(c);
+        this.strand(c);
+        continue;
+      }
       if (st === Stage.Missed) {
         this.free(c);
         continue;
@@ -856,7 +963,62 @@ export class Cohorts {
       case Stage.Rejoin:
         this.rejoin(c);
         break;
+      case Stage.Deboard:
+        this.afterDeboard(g, c);
+        break;
+      case Stage.ToExit:
+        this.exitArrival(c);
+        break;
     }
+  }
+
+  /** The cohort has left the aircraft. */
+  private afterDeboard(g: number, c: number): void {
+    this.toExit(g, c);
+  }
+
+  /** Walks an arrival from where it stands to the curb. With no curb or no way there it retries, and strands after the limit. */
+  private toExit(g: number, c: number): void {
+    const curb = this.business.curbNode(g);
+    const here = this.hereNode(g, c);
+    if (curb < 0 || here < 0 || !Number.isFinite(this.business.walkDistance(this.gridId(g), here, curb))) {
+      this.retryOrStrand(c);
+      return;
+    }
+    this.walkTo(g, c, here, curb, Stage.ToExit);
+  }
+
+  /** A step with nowhere to go: the same step runs again later, until the stranded limit counted from doors open. */
+  private retryOrStrand(c: number): void {
+    if (this.tick - this.born[c]! >= ARRIVALS.strandedMin * TICKS_PER_MINUTE) this.strand(c);
+    else this.schedule(c, this.tick + RETRY_TICKS);
+  }
+
+  /** An arrival that could not finish its journey takes the stranded points, is rated and freed. The caller has taken it off the wheel. */
+  private strand(c: number): void {
+    const n = this.size[c]!;
+    this.penalize(c, ARRIVALS.satisfaction.strandedPoints, DAY.PenStranded);
+    this.rateArrival(c);
+    this.arrStranded += n;
+    this.day[DAY.ArrStranded] += n;
+    this.arrActive -= n;
+    this.free(c);
+  }
+
+  /** An arrival reached the curb: it is rated and freed. */
+  private exitArrival(c: number): void {
+    const n = this.size[c]!;
+    this.rateArrival(c);
+    this.arrExited += n;
+    this.day[DAY.ArrExited] += n;
+    this.arrActive -= n;
+    this.free(c);
+  }
+
+  /** Rates an arrival cohort. Arrivals have no needs (T20 D3), so the levels are not brought up. */
+  private rateArrival(c: number): void {
+    this.needTick[c] = this.tick;
+    this.rollUp(c, false);
   }
 
   /** A due cohort joins the queue of its node, or walks to a node first when it has none. */
@@ -1316,6 +1478,7 @@ export class Cohorts {
       flags: this.flags, building: this.building, next: this.next,
       walkFromX: this.walkFromX, walkFromY: this.walkFromY, walkToX: this.walkToX, walkToY: this.walkToY, walkStart: this.walkStart,
       needTick: this.needTick, parent: this.parent, waitStart: this.waitStart, target: this.target, visitNeed: this.visitNeed,
+      serial: this.serial, born: this.born,
     };
   }
 
@@ -1343,6 +1506,7 @@ export class Cohorts {
       generated: this.generated, boarded: this.boarded, missed: this.missed, active: this.active,
       hi: this.hi, freeHead: this.freeHead, rng: this.rng.getState(), arrays,
       day: packTyped(this.day), ringSum: packTyped(this.ringSum), ringCount: packTyped(this.ringCount), ringHead: this.ringHead,
+      arr: [this.arrGenerated, this.arrExited, this.arrStranded, this.arrActive], arrRng: this.arrRng.getState(),
     };
   }
 
@@ -1364,6 +1528,11 @@ export class Cohorts {
       this.hi = 0;
       this.freeHead = -1;
       this.rng.setState(this.initialRng);
+      this.arrRng.setState(this.initialArrRng);
+      this.arrGenerated = 0;
+      this.arrExited = 0;
+      this.arrStranded = 0;
+      this.arrActive = 0;
       this.day.fill(0);
       this.ringSum.fill(0);
       this.ringCount.fill(0);
@@ -1383,6 +1552,11 @@ export class Cohorts {
     this.hi = s.hi;
     this.freeHead = s.freeHead;
     this.rng.setState(s.rng);
+    this.arrRng.setState(s.arrRng ?? this.initialArrRng);
+    this.arrGenerated = s.arr?.[0] ?? 0;
+    this.arrExited = s.arr?.[1] ?? 0;
+    this.arrStranded = s.arr?.[2] ?? 0;
+    this.arrActive = s.arr?.[3] ?? 0;
     this.day.fill(0);
     this.ringSum.fill(0);
     this.ringCount.fill(0);
@@ -1435,6 +1609,8 @@ export class Cohorts {
       acc = foldU32(acc, this.waitStart[c]);
       acc = foldU32(acc, this.target[c]);
       acc = foldU32(acc, this.visitNeed[c]);
+      acc = foldU32(acc, this.serial[c]);
+      acc = foldU32(acc, this.born[c]);
       acc = foldU32(acc, this.satisfaction[c]);
       if (this.stage[c] === Stage.Free) continue;
       const b = c * M;
@@ -1446,6 +1622,11 @@ export class Cohorts {
     }
     for (let k = 0; k < this.day.length; k++) acc = foldU32(acc, Math.round(this.day[k]!) >>> 0);
     acc = foldU32(acc, this.ringHead);
+    acc = foldU32(acc, this.arrGenerated);
+    acc = foldU32(acc, this.arrExited);
+    acc = foldU32(acc, this.arrStranded);
+    acc = foldU32(acc, this.arrActive);
+    acc = foldU32(acc, this.arrRng.getState());
     for (let d = 0; d < this.ringSum.length; d++) {
       acc = foldU32(acc, Math.round(this.ringSum[d]!) >>> 0);
       acc = foldU32(acc, Math.round(this.ringCount[d]!) >>> 0);
