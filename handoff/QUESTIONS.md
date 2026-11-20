@@ -384,3 +384,4 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Render | 300 staff figures in the snapshot, passenger sample cap 3 000 to 2 700; staff stand 0.7 m behind the desk, 0.8 m apart |
 | Default for Q1 | with no staff center, staff clock in and out at the curb door, skip their break and work at 0.8 skill; the alternative (no staffed desk opens without a staff center) would break existing saves |
 | Scope | apron crews, cleaners, staffed security exits, morale and training move to a new roadmap row at close |
+| Default for Q2 | when the player cap or the stations shrink, members already on site keep working until their shift ends and are then freed; the alternative (send them home at once) would empty a desk in the middle of a shift |
