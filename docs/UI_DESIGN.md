@@ -148,6 +148,8 @@ Opens when an object is selected and slides closed with Esc.
 
 Airlines, Finance, Staff, Tenants and the Flights board open as sheets from the left covering about half the screen, so the map stays visible. They have their own tabs and tables. Tables are virtualized, sortable and filterable, and rows can be pinned to the map.
 
+The Staff sheet, opened from the admin tab of the staff category, has one row per role (check in and gate agents, security officers, border officers) with hired, on duty, away, needed on duty, the cap and the wage per day, and a total line with the hired count and the daily wages. The cap is Auto (no cap, the stations decide) or a number set with minus and plus; the first press from Auto starts the number at the hired count. Rows are fixed, there is no manual roster.
+
 The flight offers sheet lists each signed airline's rotations for the day, read only, with a stand choice per row and a movements per hour bar against the tower budget. In the stand timeline a flight block is dragged onto a stand row, and that row shows green when the block fits and red when it does not, so the preview matches what the sim accepts. The unassigned lane above the stand rows takes a block dropped on it and returns that flight to automatic.
 
 ### Minimap
