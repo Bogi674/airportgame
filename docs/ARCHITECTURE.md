@@ -156,6 +156,10 @@ The store lives in `src/sim/cohorts/cohorts.ts`. Each cohort carries a `building
 
 Arrival stages (T20) follow Rejoin in the saved order: Deboard 15, ToImmigration 16, Immigration 17 (queued), ToClaim 18, Claim 19, ToCustoms 20, Customs 21 (queued), CustomsRed 22 and ToExit 23. Arrival cohorts are made at docking from the passengers the business counts, walk from the entry desk to the curb, and are rated and counted as `arrExited` or, after `strandedMin` with no way on, `arrStranded`; `arrGenerated = arrExited + arrStranded + arrActive` at every tick. The claim waits for the first delivery of the flight serial to the stand's carousel, see section 12 (2026-11-19, T20).
 
+### Staff
+
+Airport staff are individuals in `src/sim/staff/staff.ts`, a struct of arrays store of 4 096 slots with a seed, role, shift, state, flags, home building, station and break fields, saved with the airport and folded into the state hash. Traits come from the member seed as pure integer hashes (`staffTraits.ts`), never from an rng stream. Stations are derived from the service node tables and the screening machines, and a staffing pass hires three shifts plus a relief pool for them within the player's cap per role. A state machine steps once per game minute: clock in, commute, walk on the staff routes, relieve at the station, break, leave and clock out, at the staff center nearest the curb. Service nodes read the summed skill of the staff present as their speed factor. The staff update runs in the `business` subsystem slot, before the business. See section 12 for the decisions.
+
 ## 9. Rendering pipeline
 
 * Layer order and detail tiers per `docs/ART_AND_ASSETS.md` sections 2 and 3.
@@ -504,6 +508,17 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-19 T20: a cohort evicted from a removed immigration or customs node whose cell has no walk node returns to the start of its last walk (`keepAnchor`), because the curb fallback cannot reach the International hall against the one way edges.
 * 2026-11-19 T20: save version 31 inserts empty service rows for eGate and customs anchors in cell order, so older saved queues keep their nodes. Cohort, baggage and counter additions are optional and start empty.
 * 2026-11-19 T20: the overlay density counts arrivals at their walk target cell, and the people sample uses zone rule 0 (any zone) for arrival stages, since one arrival walk crosses from airside to Public.
+* 2026-11-20 T68: staff live in their own struct of arrays store (`src/sim/staff/staff.ts`) on the cohort pattern, with seeded traits, a free slot list and its own hash and save block, instead of cohort slots, because a staff member lives for days and has a role, a shift and a station that cohorts do not carry.
+* 2026-11-20 T68: stations are derived, never saved: one per service node whose fixture key is in `staff.json` stations, plus one per screening machine with a spec, keyed by `gridId|x|y|kind` so a member keeps its station across edits; they are rebuilt when the service tables, the terminals or the baggage drawing change.
+* 2026-11-20 T68: the service factor of a node is the summed skill of the staff present divided by the need of the station, so one of two officers serves at half speed, and a factor of 0 starts no service and makes `serviceWait` infinite, because an unstaffed desk must stop rather than run free.
+* 2026-11-20 T68: staffing is automatic: a pass fills the positions of every role on three shifts plus a relief pool of 0.2 of the on duty need, running shift first, within the player's cap per role (-1 for none); the pass is idempotent and runs on a station change, a cap change and every hour, so a restored save and an uninterrupted run agree.
+* 2026-11-20 T68: hires for the running shift start on their station at once, other hires stay Off and are planned to clock in early enough to stand on the station at the start of their shift, so a new terminal is staffed on the first tick.
+* 2026-11-20 T68: a shift change is a handover at the station: the arriving member takes over and the member it replaces leaves, so coverage never drops during the change; members clock in and out at the staff center nearest the curb by straight line, with commute and walk times from the crew walk speed.
+* 2026-11-20 T68: each member takes one break per shift with a relief standing on the station; without a staff center the break is skipped and the member works tired at 0.8 skill, and a member whose relief never comes leaves after 30 minutes, so a missing relief shows as an empty desk.
+* 2026-11-20 T68: daily wages are the legacy per fixture remainder, the old count minus the positions that individuals now cover, plus one wage per hired member, so the ledger neither double counts nor drops a desk; `staffCount()` itself is unchanged.
+* 2026-11-20 T68: staff follow the passengers in the people sample with profile byte 32 plus the role and ids from 2^30, within their own cap of 300 figures, and the passenger sample cap fell from 3 000 to 2 700 to keep the 3 000 entry buffer; the snapshot layout is unchanged.
+* 2026-11-20 T68: `Staff.update` runs in subsystem 3 before the business, so the service factors of a tick follow the staff state of the same tick; presence is recomputed only when a member state, a placement or the station set changed.
+* 2026-11-20 T68: save version 32 (31 on its own branch, renumbered when merged after T20) adds the staff block; older saves have no staff and the first pass hires and places the running shift.
 
 ## 13. Known limits
 

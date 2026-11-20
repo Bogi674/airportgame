@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, type ServiceSave } from '../termina
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 31;
+export const SAVE_VERSION = 32;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -36,6 +36,8 @@ export interface SaveData {
   turnarounds?: unknown;
   /** Baggage network, since version 23 (T43). */
   baggage?: unknown;
+  /** Airport staff, since version 31 (T68). */
+  staff?: unknown;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -311,6 +313,8 @@ export function migrate(raw: unknown): SaveData {
     }
     save.version = 31;
   }
+  // Version 31 to 32: airport staff as individuals (T68). Older saves have none; the first staffing pass hires the running shift on its stations.
+  if (save.version < 32) save.version = 32;
   return save as SaveData;
 }
 

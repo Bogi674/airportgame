@@ -328,6 +328,20 @@ export interface BaggageInfo {
   nodes: BagNodeInfo[];
 }
 
+/** One row of the staffing table, per staff role (T68). */
+export interface StaffRow {
+  role: number;
+  hired: number;
+  onDuty: number;
+  /** Hired and not on duty: walking, commuting, on break, waiting as a relief or clocking in or out. */
+  away: number;
+  /** Officers the role's stations need on duty. */
+  needed: number;
+  /** Player cap of hired staff, -1 for none. */
+  cap: number;
+  wagePerDay: number;
+}
+
 export interface BusinessPayload {
   board: BoardRow[];
   /** Flight series of every signed airline (T61). */
@@ -367,6 +381,8 @@ export interface BusinessPayload {
   onTimePct: number;
   loan: number;
   staff: number;
+  /** Hired airport staff per role, see StaffRow. Empty before the staff store exists (T68). */
+  staffing: StaffRow[];
   weather: WeatherKind;
   /** Missing parts that stop flights, keys for the UI checklist. Empty when ready. */
   readiness: string[];

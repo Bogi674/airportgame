@@ -18,6 +18,9 @@ function overlay(p: Partial<OverlayData>): OverlayData {
     nodeWaitS: new Uint16Array(0),
     gateCell: new Int32Array(0),
     gateDistM: new Uint16Array(0),
+    stationCell: new Int32Array(0),
+    stationNeed: new Uint8Array(0),
+    stationPresent: new Uint8Array(0),
     ...p,
   };
 }

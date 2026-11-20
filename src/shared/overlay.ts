@@ -2,7 +2,7 @@
 export const OVERLAY_MAX = 65535;
 
 /** The terminal overlay the player picked. One at a time, `none` shows no overlay. */
-export type OverlayKind = 'none' | 'density' | 'queue' | 'walk' | 'zones';
+export type OverlayKind = 'none' | 'density' | 'queue' | 'walk' | 'zones' | 'staffing';
 
 /**
  * Read only view of one terminal building for the debug overlays. Density, queue, wait and gate distance are
@@ -24,4 +24,10 @@ export interface OverlayData {
   gateCell: Int32Array;
   /** Walking distance in metres from the curb to each gate desk, OVERLAY_MAX when unreachable. */
   gateDistM: Uint16Array;
+  /** Array cell index of each staffed station anchor of the building: service points and screening machines (T68). */
+  stationCell: Int32Array;
+  /** Officers each station needs. */
+  stationNeed: Uint8Array;
+  /** Officers on duty at each station. */
+  stationPresent: Uint8Array;
 }

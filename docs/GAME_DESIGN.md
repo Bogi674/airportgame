@@ -404,6 +404,7 @@ Vehicle rules:
 
 Roles: check in agent, security officer, police, customs and immigration officer, ground handler, baggage handler, marshaller, cleaner, retail staff, firefighter, paramedic, controller, maintenance technician, administrative staff, terminal manager. Airline pilots and cabin crew also walk through.
 
+* Built in T68: three roles, check in and gate agents, security officers and border officers, each with stations (check in, bag drop and gate desk need 1, security lane 2, passport and customs 1, screening machine 1). Three shifts of 8 hours start at 06:00, 14:00 and 22:00, each with a relief pool of 0.2 of its need. Staff are hired automatically within a cap the player sets per role in the Staff sheet. A desk with nobody on it serves no one, and one officer on a lane that needs two serves at half speed. Staff change shifts by handover at the station and clock in and out at the nearest staff center. Each member takes one 30 minute break per shift with a relief; without a staff center the break is skipped and the member works at 0.8 skill. Wages are 130 per hired member per day. A screening machine screens only with an officer on it. A coverage overlay shows each station by the percent short.
 * 3 shifts per day with a roster per role, manual or auto.
 * Group level skill, morale and fatigue. Fatigue raises error rate. Low morale raises sick leave and strike risk.
 * Wages follow a yearly market index. Training raises skill.

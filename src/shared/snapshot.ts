@@ -7,6 +7,10 @@ export const SNAPSHOT_VERSION = 7;
 export const SNAPSHOT_VEHICLE_CAPACITY = 1024;
 export const SNAPSHOT_AIRCRAFT_CAPACITY = 256;
 export const SNAPSHOT_PEOPLE_CAPACITY = 3000;
+/** A people entry with a profile byte at or above this is one staff member of role profile minus the base (T68). Layout unchanged. */
+export const STAFF_PROFILE_BASE = 32;
+/** People ids of staff entries start here, above every cohort slot. */
+export const STAFF_ID_BASE = 1 << 30;
 /** Heading steps in a full turn, for people groups and anything else that snaps to a heading byte. */
 export const HEADING_STEPS = 256;
 /** People sample modes, a value of peopleMode. */

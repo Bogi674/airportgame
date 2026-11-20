@@ -87,6 +87,18 @@ export function buildTestGround(sim: Sim): string[] {
   return problems;
 }
 
+/** A staff center north of the test depot, door side east. Needs buildTestAirport to have laid the stands. Returns problems. */
+export function buildTestStaffCenter(sim: Sim): string[] {
+  const conns = sim.airfield.data.stands.map((s) => standRoadAnchors(s)?.conn).filter((p) => p !== undefined);
+  if (conns.length === 0) return ['noStands'];
+  conns.sort((a, b) => a.x - b.x);
+  const y = conns[0].y;
+  let west = conns[0].x;
+  for (const a of sim.airfield.data.aprons) for (const p of a.polygon) west = Math.min(west, p.x);
+  const x = west - 25;
+  return run(sim, { type: 'buildBuilding', kind: 'staff', x, y: y - GROUND.depot.widthM / 2 - GROUND.buildings.staff.widthM / 2 - 5, headingDeg: 90 });
+}
+
 export interface TerminalOptions {
   checkIn?: number;
   security?: number;

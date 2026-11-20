@@ -1,4 +1,6 @@
-import { PEOPLE } from '@data/index';
+import { PEOPLE, STAFF } from '@data/index';
+import { STAFF_ROLE_KEYS } from '@data/schemas/staff';
+import type { PersonLook } from './peopleShapes';
 
 /** Number of passenger recipes in people.json. */
 export const RECIPE_COUNT = 30;
@@ -46,4 +48,20 @@ export function pickRecipe(profile: number, seed: number, member: number): numbe
     if (roll < (CUMULATIVE[base + recipe] ?? 0)) return recipe;
   }
   return RECIPE_COUNT - 1;
+}
+
+/** First atlas row of the staff recipes, the number of passenger recipes. */
+const STAFF_ROW0 = PEOPLE.recipes.length;
+
+/** Staff recipes as looks the shape code draws: a staff recipe has no weights, so an empty list stands in. */
+export const STAFF_LOOKS: readonly PersonLook[] = PEOPLE.staff.map((r) => ({ ...r, weights: [] }));
+
+/**
+ * Atlas row of the figure of one staff member. The recipe comes from the sprite ids of the role in staff.json, picked by
+ * seed. An unknown role uses role 0.
+ */
+export function staffRecipe(role: number, seed: number): number {
+  const key = STAFF_ROLE_KEYS[Number.isInteger(role) && role >= 0 && role < STAFF_ROLE_KEYS.length ? role : 0]!;
+  const sprites = STAFF.roles[key].sprites;
+  return STAFF_ROW0 + (sprites[seed % sprites.length]! - 1);
 }

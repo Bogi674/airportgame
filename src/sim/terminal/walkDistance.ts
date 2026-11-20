@@ -183,25 +183,25 @@ function rowFor(n: number, start: Int32Array, to: Int32Array, len: Float32Array,
 }
 
 /**
- * Offset into cache.rows of the row that holds every node's distance to target for passengers, filling it when needed.
+ * Offset into cache.rows of the row that holds every node's distance to target for an audience, passengers by default, filling it when needed.
  * -1 unless target is an integer node id. rows[base + v] is the distance from v to target, found over the reverse
  * edges, so a one way edge counts only in its own direction.
  */
-export function distanceRowIn(wg: WalkGraph, cache: SampleCache, target: number): number {
+export function distanceRowIn(wg: WalkGraph, cache: SampleCache, target: number, aud: number = AUD.Pax): number {
   if (!Number.isInteger(target) || target < 0 || target >= wg.nodeCount) return -1;
-  return rowFor(wg.nodeCount, cache.revStart, cache.revFrom, cache.revLen, cache.revMask, cache, AUD.Pax, target) * wg.nodeCount;
+  return rowFor(wg.nodeCount, cache.revStart, cache.revFrom, cache.revLen, cache.revMask, cache, aud, target) * wg.nodeCount;
 }
 
 /**
  * The edge out of node u that descends the distance row at base the most: the lowest edge length plus
- * remaining distance among edges that lead closer to the target and that passengers may take. -1 when no edge does.
+ * remaining distance among edges that lead closer to the target and that the audience may take. -1 when no edge does.
  */
-export function nextEdge(wg: WalkGraph, rows: Float32Array, base: number, u: number): number {
+export function nextEdge(wg: WalkGraph, rows: Float32Array, base: number, u: number, aud: number = AUD.Pax): number {
   const du = rows[base + u]!;
   let best = -1;
   let bestCost = Infinity;
   for (let e = wg.edgeStart[u]!; e < wg.edgeStart[u + 1]!; e++) {
-    if ((wg.edgeMask[e]! & AUD.Pax) === 0) continue;
+    if ((wg.edgeMask[e]! & aud) === 0) continue;
     const dv = rows[base + wg.edgeTo[e]!]!;
     if (!(dv < du)) continue;
     const cost = wg.edgeLen[e]! + dv;

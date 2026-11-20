@@ -227,7 +227,7 @@ export function App() {
 
   // The terminal overlay feed runs only while a simulated overlay is picked. The zones overlay draws from the grids alone.
   useEffect(() => {
-    client.setOverlaySub(store.overlay === 'density' || store.overlay === 'queue' || store.overlay === 'walk');
+    client.setOverlaySub(store.overlay === 'density' || store.overlay === 'queue' || store.overlay === 'walk' || store.overlay === 'staffing');
   }, [client, store.overlay]);
 
   // Theme tokens feed the overlay colour ramp and the zone colors. They are read again when the theme attribute changes.

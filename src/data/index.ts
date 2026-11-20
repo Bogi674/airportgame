@@ -10,6 +10,7 @@ import needsJson from './needs.json';
 import arrivalsJson from './arrivals.json';
 import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
+import staffJson from './staff.json';
 import standSizesJson from './stand_sizes.json';
 import standAccessJson from './stand_access.json';
 import surfacesJson from './surfaces.json';
@@ -27,6 +28,7 @@ import {
   arrivalsSchema,
   profilesSchema,
   spritesSchema,
+  staffSchema,
   standAccessSchema,
   standSizesSchema,
   surfacesSchema,
@@ -43,6 +45,7 @@ import {
   type PeopleData,
   type ProfilesData,
   type SpritesData,
+  type StaffData,
   type StandAccessData,
   type StandSizesData,
   type SurfacesData,
@@ -69,6 +72,8 @@ export const PROFILES: ProfilesData = profilesSchema.parse(profilesJson);
 export const NEEDS: NeedsData = needsSchema.parse(needsJson);
 /** Arrival journey: deboarding, claim, outcomes and arrival service nodes (T20). */
 export const ARRIVALS: ArrivalsData = arrivalsSchema.parse(arrivalsJson);
+/** Staff roles, stations, shifts and breaks (T68). */
+export const STAFF: StaffData = staffSchema.parse(staffJson);
 /** Aircraft sprite tiers, cache limit and liveries. */
 export const SPRITES: SpritesData = spritesSchema.parse(spritesJson);
 const STAND_DATA: StandSizesData = standSizesSchema.parse(standSizesJson);

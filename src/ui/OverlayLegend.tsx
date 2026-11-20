@@ -13,6 +13,7 @@ const NAME: Record<Shown, StringKey> = {
   queue: 'hud.overlay.queue',
   walk: 'hud.overlay.walk',
   zones: 'hud.overlay.zones',
+  staffing: 'hud.overlay.staffing',
 };
 
 /** Units of the ramp overlays. The zones legend has no scale, so it has no unit. */
@@ -20,6 +21,7 @@ const UNIT: Record<Exclude<Shown, 'zones'>, StringKey> = {
   density: 'hud.overlay.unitDensity',
   queue: 'hud.overlay.unitWait',
   walk: 'hud.overlay.unitWalk',
+  staffing: 'hud.overlay.unitShort',
 };
 
 /** Zone swatches of the zones legend: the string of each zone and the theme token of its color. */

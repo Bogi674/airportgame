@@ -140,6 +140,8 @@ export class Baggage {
   private nextId = 1;
   /** True while this class edits the grid itself, so the grid hook does not sync again. */
   private editing = false;
+  /** Set by the sim (T68): false while no officer stands on the machine. */
+  machineStaffed: ((id: number) => boolean) | null = null;
 
   /** Reserved for belt jitter. Nothing draws from it yet, so it never advances and needs no save. */
   readonly rng: Rng;
@@ -881,7 +883,7 @@ export class Baggage {
       const s = this.states[k];
       if (!s.isMachine) continue;
       let head = this.headOf(s.id);
-      if (head < 0 || !this.machineOk(s)) {
+      if (head < 0 || !this.machineOk(s) || (this.machineStaffed !== null && !this.machineStaffed(s.id))) {
         s.tok = 0;
         continue;
       }

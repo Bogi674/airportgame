@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BAGGAGE, BUSINESS, GROUND, MARKET, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
+import { BAGGAGE, BUSINESS, GROUND, MARKET, STAFF, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
 import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
 import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
@@ -28,7 +28,7 @@ import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
+import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type StaffRow } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { Market } from '../market/market';
@@ -237,6 +237,10 @@ export class Business {
   bagDayReset: (() => void) | null = null;
   /** Closes the day of passenger satisfaction and returns the mean over the trailing 30 days, 0 to 100, or -1 with no passenger rated. Set by the sim (T67). */
   closePax: (() => number) | null = null;
+  /** Daily wages of the hired station staff, set by the sim (T68). */
+  staffWages: (() => number) | null = null;
+  /** Staffing table of the payload, set by the sim (T68). */
+  staffRows: (() => StaffRow[]) | null = null;
   /** Last closed day of passengers, see BusinessPayload.paxDay. Set by the sim (T67). */
   paxDay: (() => number[]) | null = null;
   /** Last closed day of the arrival journey, see BusinessPayload.arrDay. Set by the sim (T20). */
@@ -689,6 +693,17 @@ export class Business {
     return Math.round(s);
   }
 
+  /** Staff the legacy per fixture count includes for fixtures that individual staff now cover (T68). */
+  stationPositions(): number {
+    let s = 0;
+    for (const k of Object.keys(STAFF.stations)) {
+      if (k === 'note' || !(k in BUSINESS.modules)) continue;
+      const key = k as keyof typeof BUSINESS.modules;
+      s += this.totals[key] * BUSINESS.modules[key].staff;
+    }
+    return s;
+  }
+
   // Hooks from traffic -------------------------------------------------------
 
   paxFor(f: number): number {
@@ -882,7 +897,7 @@ export class Business {
 
   private chargeDaily(): void {
     const fees = BUSINESS.fees;
-    const wages = Math.round(this.staffCount() * fees.wageStaffPerDay);
+    const wages = Math.round((this.staffCount() - this.stationPositions()) * fees.wageStaffPerDay) + (this.staffWages?.() ?? 0);
     this.host.book('wages', -wages);
     // Upkeep: surface percentage of build cost per year, spread over days.
     let upkeep = 0;
@@ -1047,6 +1062,7 @@ export class Business {
 
   payload(tick: number): Omit<BusinessPayload, 'baggage'> {
     const stands = this.airfield.data.stands;
+    const staffing = this.staffRows?.() ?? [];
     return {
       board: this.board(tick),
       series: this.market.series,
@@ -1079,7 +1095,8 @@ export class Business {
       satisfaction: Math.round(this.satisfaction * 100) / 100,
       onTimePct: Math.round(this.onTime * 100),
       loan: this.loan,
-      staff: this.staffCount(),
+      staff: Math.round(this.staffCount() - this.stationPositions()) + staffing.reduce((n, r) => n + r.hired, 0),
+      staffing,
       weather: this.weather,
       readiness: this.readiness(),
       autoStands: this.traffic.autoStands,
