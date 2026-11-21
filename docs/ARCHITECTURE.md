@@ -519,6 +519,12 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-20 T68: staff follow the passengers in the people sample with profile byte 32 plus the role and ids from 2^30, within their own cap of 300 figures, and the passenger sample cap fell from 3 000 to 2 700 to keep the 3 000 entry buffer; the snapshot layout is unchanged.
 * 2026-11-20 T68: `Staff.update` runs in subsystem 3 before the business, so the service factors of a tick follow the staff state of the same tick; presence is recomputed only when a member state, a placement or the station set changed.
 * 2026-11-20 T68: save version 32 (31 on its own branch, renumbered when merged after T20) adds the staff block; older saves have no staff and the first pass hires and places the running shift.
+* 2026-11-21 T74: level values of check in, security, passport control and gate desk live in `business.json` `fixtureLevels`, copied from the catalog stats with a test that keeps them equal, because the sim must not load the 144 asset catalog with its draw ops.
+* 2026-11-21 T74: the security lane takes the kit footprint [2, 8] at every level, flow along its eight cells; its queue grows from the entry cell at the far end, and landside validation counts a lane as reached only when its exit opens into secure floor.
+* 2026-11-21 T74: save version 33 removes one cell security lanes with a full refund and a load notice (owner's choice), drops their service rows and evicts their cohorts; grids whose lanes already have tail cells are kept unless the save predates version 28, whose step rewrites every lane cell.
+* 2026-11-21 T74: upgrade works live on the terminal grid as a list in logical cells (anchor, kind, target level, done tick, cost), saved and hashed only while they run; a fixture under works leaves its service table so its queue is evicted, and cancelling the works is the undo because terminal edits have no undo stack.
+* 2026-11-21 T74: the premium check in penalty is booked in `DAY.PenQueue` so the day counter layout and the finance sheet stay unchanged, and priority boarding inserts at the queue head with no saved state, so restored queues match an uninterrupted run.
+* 2026-11-21 T74: the security lane sprite is drawn with a 270 degree kit offset because the kit draws lanes flowing along +x, and the terminal painter widens its fixture loops by the largest footprint reach, now seven cells.
 
 ## 13. Known limits
 
