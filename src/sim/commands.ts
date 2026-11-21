@@ -69,6 +69,10 @@ export type Command =
   /** level is the floor index and defaults to 0, the only floor that can be built for now. */
   | { type: 'terminalBuild'; building: number; ox: number; oy: number; headingDeg: number; level?: number; edit: TerminalEdit }
   | { type: 'demolishTerminal'; id: number }
+  /** Starts the works that raise the fixture at a logical cell of a grid one level (T74), paying the price difference. */
+  | { type: 'upgradeFixture'; building: number; x: number; y: number }
+  /** Cancels the upgrade works of the fixture at a logical cell, refunding them; the fixture keeps its level (T74). */
+  | { type: 'cancelFixtureWorks'; building: number; x: number; y: number }
   /** Baggage network (T43): place a node on a building grid, remove it, assign a stand to a bay (bayId -1 unassigns), or rerun the link rule of a node. */
   | { type: 'placeBaggageNode'; building: number; kind: 'machine' | 'bay' | 'carousel'; cx: number; cy: number; rot: 0 | 1 | 2 | 3; widthCells: number }
   | { type: 'removeBaggageNode'; id: number }

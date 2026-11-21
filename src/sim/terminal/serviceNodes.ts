@@ -170,8 +170,10 @@ function queueOrigin(g: TerminalGrid, anchor: number): number {
 export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes {
   const n = g.w * g.h;
   const anchors: number[] = [];
+  // A fixture under upgrade works serves nobody until they finish (T74).
+  const closed = g.works.map((w) => (w.y - g.y0) * g.w + (w.x - g.x0));
   for (let c = 0; c < n; c++) {
-    if (SERVICE_IDS.includes(g.fixture[c]!) && g.fixtureRot[c]! < TAIL_ROT) anchors.push(c);
+    if (SERVICE_IDS.includes(g.fixture[c]!) && g.fixtureRot[c]! < TAIL_ROT && !closed.includes(c)) anchors.push(c);
   }
   const count = anchors.length;
   const slots = BUSINESS.terminal.service.queueSlots;

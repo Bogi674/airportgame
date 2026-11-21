@@ -188,8 +188,24 @@ export interface TerminalGrid {
   leased: Uint8Array;
   /** Money spent on this building, for demolition refunds. */
   cost: number;
+  /** Fixture upgrades under way (T74), in the order they started. */
+  works: FixtureWorks[];
   /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
   bagNodes?: BagDrawNode[];
+}
+
+/** An in place fixture upgrade under way (T74): the fixture serves nobody until doneTick, then takes the new level. */
+export interface FixtureWorks {
+  /** Logical cell of the fixture anchor. */
+  x: number;
+  y: number;
+  /** Fixture id at the anchor when the works started; works on a cell that no longer holds it are dropped. */
+  kind: number;
+  /** Level the fixture takes when the works finish. */
+  level: number;
+  doneTick: number;
+  /** Money paid for the upgrade, refunded when the works are cancelled. */
+  cost: number;
 }
 
 /** A building in the business payload: counts only, the grids travel separately. */

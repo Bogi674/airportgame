@@ -438,6 +438,12 @@ export class Sim {
       case 'demolishTerminal':
         this.report(this.business.demolishTerminal(cmd.id));
         break;
+      case 'upgradeFixture':
+        this.report(this.business.upgradeFixture(cmd.building, cmd.x, cmd.y, this.tick));
+        break;
+      case 'cancelFixtureWorks':
+        this.report(this.business.cancelFixtureWorks(cmd.building, cmd.x, cmd.y));
+        break;
       case 'placeBaggageNode':
         this.report(this.baggage.place(cmd));
         break;
@@ -611,6 +617,7 @@ export class Sim {
       hWall: g.hWall.slice(),
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),
+      works: g.works.map((w) => ({ ...w })),
     }));
   }
 

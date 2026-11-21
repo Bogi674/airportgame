@@ -25,10 +25,11 @@ import {
 } from '@shared/business';
 import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
-import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, fixtureCost, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { worksTicks } from '@shared/surfaceRules';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type StaffRow } from '@shared/business';
+import { GA_LABEL, isLevelKey, isShopFixture, fixtureKey, levelOf, MAX_FIXTURE_LEVEL, TERMINAL_LEVEL_MIN, ZONE, type FixtureWorks, type StaffRow } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { Market } from '../market/market';
@@ -403,6 +404,7 @@ export class Business {
     if (plan.cost > this.host.getCash()) return `insufficientFunds|cost=${plan.cost}`;
     if (plan.cost > 0) this.host.book('construction', -plan.cost);
     plan.apply();
+    dropStaleWorks(grid);
     if (fresh) {
       this.nextTerminalId++;
       this.grids.push(grid);
@@ -425,6 +427,69 @@ export class Business {
     }
     this.onGridEdited?.(id);
     return null;
+  }
+
+  /**
+   * Starts the works that raise the fixture at logical cell (x, y) of a grid one level (T74). The price difference
+   * is paid now; the fixture leaves its service table until the works finish, so its queue finds another fixture.
+   */
+  upgradeFixture(building: number, x: number, y: number, tick: number): string | null {
+    const g = this.grids.find((v) => v.id === building);
+    const cell = g ? cellIndex(g, x, y) : -1;
+    if (!g || cell < 0 || g.fixture[cell] === 0) return 'nothingThere';
+    const anchor = fixtureAnchor(g, cell);
+    const id = g.fixture[anchor]!;
+    if (!isLevelKey(fixtureKey(id))) return 'fixtureNoLevels';
+    const level = levelOf(g.fixtureLevel[anchor]!);
+    if (level >= MAX_FIXTURE_LEVEL) return 'fixtureTopLevel';
+    const at = cellOf(g, anchor);
+    if (g.works.some((w) => w.x === at.x && w.y === at.y)) return 'fixtureWorksRunning';
+    const cost = fixtureCost(id, level + 1) - fixtureCost(id, level);
+    if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
+    this.host.book('construction', -cost);
+    g.cost += cost;
+    g.works.push({ x: at.x, y: at.y, kind: id, level: level + 1, doneTick: tick + worksTicks(BUSINESS.fixtureLevels.worksDays), cost });
+    this.refreshGrid(g.id, at.x, at.y, at.x, at.y);
+    this.onGridEdited?.(g.id);
+    return null;
+  }
+
+  /** Cancels the upgrade works of the fixture at logical cell (x, y): the money comes back and the fixture keeps its level. */
+  cancelFixtureWorks(building: number, x: number, y: number): string | null {
+    const g = this.grids.find((v) => v.id === building);
+    const cell = g ? cellIndex(g, x, y) : -1;
+    if (!g || cell < 0 || g.fixture[cell] === 0) return 'nothingThere';
+    const at = cellOf(g, fixtureAnchor(g, cell));
+    const k = g.works.findIndex((w) => w.x === at.x && w.y === at.y);
+    if (k < 0) return 'fixtureNoWorks';
+    const w = g.works[k]!;
+    g.works.splice(k, 1);
+    this.host.book('construction', w.cost);
+    g.cost -= w.cost;
+    this.refreshGrid(g.id, at.x, at.y, at.x, at.y);
+    this.onGridEdited?.(g.id);
+    return null;
+  }
+
+  /** Finishes the fixture works that are due: the fixture takes its new level on every cell and serves again. */
+  private finishWorks(tick: number): void {
+    for (const g of this.grids) {
+      if (g.works.length === 0) continue;
+      let changed = false;
+      for (let k = 0; k < g.works.length; ) {
+        const w = g.works[k]!;
+        if (w.doneTick > tick) {
+          k++;
+          continue;
+        }
+        g.works.splice(k, 1);
+        const anchor = cellIndex(g, w.x, w.y);
+        for (const c of fixtureCells(g, anchor)) g.fixtureLevel[c] = w.level;
+        this.refreshGrid(g.id, w.x, w.y, w.x, w.y);
+        changed = true;
+      }
+      if (changed) this.onGridEdited?.(g.id);
+    }
   }
 
   /**
@@ -837,6 +902,7 @@ export class Business {
 
   /** Called every tick, cheap. Does its work only on day and hour boundaries. */
   update(tick: number): void {
+    this.finishWorks(tick);
     if (tick % 100 === 0) this.updateServiceLevel();
     if (tick % (60 * TICKS_PER_MINUTE) === 0) this.updateFuel(tick);
     if (tick % 10 === 0) for (let i = 0; i < this.serviceNodes.length; i++) serviceUpdate(this.serviceNodes[i]!, tick, this.serviceRng);
@@ -905,7 +971,7 @@ export class Business {
     for (const r of af.runways) upkeep += (r.cost * SURFACE_SPEC[r.surface].upkeepPct) / 100 / 365;
     for (const t of af.taxiways) upkeep += (t.cost * SURFACE_SPEC[t.surface].upkeepPct) / 100 / 365;
     for (const a of af.aprons) upkeep += (a.cost * SURFACE_SPEC[a.surface].upkeepPct) / 100 / 365;
-    for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
+    for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365 + leveledUpkeep(g);
     for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
     for (const b of af.buildings ?? []) upkeep += b.cost * GROUND.buildingUpkeepShare;
     this.host.book('upkeep', -Math.round(upkeep));
@@ -1213,6 +1279,8 @@ export class Business {
         // Level and mode only hash when they differ from the defaults, so older layouts keep their hash.
         if (g.fixtureLevel[i] > 1 || g.fixtureMode[i] > 0) acc = foldU32(foldU32(acc, g.fixtureLevel[i]), g.fixtureMode[i]);
       }
+      // Works only hash while some run, so layouts without them keep their hash.
+      for (const w of g.works) acc = foldU32(foldU32(foldU32(foldU32(foldU32(foldU32(acc, w.x + 65536), w.y + 65536), w.kind), w.level), w.doneTick), w.cost);
     }
     // Queues only enter the hash once someone waits, so idle games keep their hashes.
     if (this.serviceNodes.some((sn) => sn.active > 0 || sn.evictedCount > 0)) {
@@ -1271,6 +1339,28 @@ interface SavedGrid {
   /** Saves before format 11 have one floor per building, on level 0. */
   building?: number;
   level?: number;
+  /** Fixture works under way, since format 33 (T74). */
+  works?: FixtureWorks[];
+}
+
+/** Daily upkeep of the fixtures of level 2 and 3 of a grid: a share of their build cost (T74). Level 1 pays none. */
+function leveledUpkeep(g: TerminalGrid): number {
+  let sum = 0;
+  for (let i = 0; i < g.fixture.length; i++) {
+    const f = g.fixture[i]!;
+    if (f === 0 || g.fixtureRot[i]! >= 5 || g.fixtureLevel[i]! < 2 || !isLevelKey(fixtureKey(f))) continue;
+    sum += fixtureCost(f, g.fixtureLevel[i]!) * BUSINESS.fixtureLevels.upkeepShare;
+  }
+  return sum;
+}
+
+/** Drops the works whose anchor no longer holds the fixture they started on, after an edit removed or replaced it. */
+function dropStaleWorks(g: TerminalGrid): void {
+  for (let k = g.works.length - 1; k >= 0; k--) {
+    const w = g.works[k]!;
+    const c = cellIndex(g, w.x, w.y);
+    if (c < 0 || g.fixture[c] !== w.kind || g.fixtureRot[c]! >= 5) g.works.splice(k, 1);
+  }
 }
 
 const cellCountOf = (g: TerminalGrid): number => cellCount(g);
@@ -1278,7 +1368,7 @@ const cellCountOf = (g: TerminalGrid): number => cellCount(g);
 const LEGACY_GRID = 160;
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost, works: g.works.map((w) => ({ ...w })) };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
@@ -1301,6 +1391,7 @@ function loadGrid(sg: SavedGrid): TerminalGrid {
   unpackInto(sg.vWall, g.vWall, Uint8Array);
   unpackInto(sg.leased, g.leased, Uint8Array);
   g.cost = sg.cost;
+  g.works = (sg.works ?? []).map((w) => ({ ...w }));
   return g;
 }
 
