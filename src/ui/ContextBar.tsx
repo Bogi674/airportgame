@@ -3,7 +3,7 @@ import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type Airfi
 import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
-import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, isLevelKey } from '@shared/business';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useGameStore } from './stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
@@ -240,6 +240,15 @@ export function ContextBar({ send }: Props) {
             )}
             {s.tSub === 'fixture' && FIXTURE_KEYS[s.fixtureId - 1] === 'securityExit' && (
               <Select label={t('opt.exitLevel')} value={s.fixtureLevel} testId="opt-exitLevel" options={[1, 2, 3].map((l) => ({ v: l, text: tDynamic(`opt.exitLevel.${l}`) }))} onChange={(v) => s.set({ fixtureLevel: v as 1 | 2 | 3 })} />
+            )}
+            {s.tSub === 'fixture' && isLevelKey(FIXTURE_KEYS[s.fixtureId - 1]!) && (
+              <Select
+                label={t('opt.fixtureLevel')}
+                value={s.fixtureLevel}
+                testId="opt-fixtureLevel"
+                options={[1, 2, 3].map((l) => ({ v: l, text: tDynamic(`level.${FIXTURE_KEYS[s.fixtureId - 1]}.${l}`) }))}
+                onChange={(v) => s.set({ fixtureLevel: v as 1 | 2 | 3 })}
+              />
             )}
             {s.tSub === 'fixture' && (FIXTURE_KEYS[s.fixtureId - 1] === 'passport' || FIXTURE_KEYS[s.fixtureId - 1] === 'eGate') && (
               <Select label={t('opt.mode')} value={s.fixtureMode} testId="opt-mode" options={[0, 1].map((m) => ({ v: m, text: tDynamic(`opt.mode.${m}`) }))} onChange={(v) => s.set({ fixtureMode: v as 0 | 1 })} />

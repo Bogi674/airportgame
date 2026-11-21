@@ -91,3 +91,32 @@ test('R turns the bag drop about to be placed, and the placed tail follows', asy
   await expect.poll(placed).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('upgrades a passport booth from the inspector and cancels the works', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startNewGame(page);
+  await layTerminal(page);
+  const send = (cmd: unknown) => page.evaluate((c) => window.__send?.(c), cmd);
+  await send({ type: 'terminalBuild', building: 1, ox: 3880, oy: 5360, headingDeg: 90, edit: { op: 'fixture', x0: 52, y0: 42, x1: 53, y1: 43, variant: 15, rot: 0, level: 1 } });
+  await expect.poll(() => page.evaluate(() => (window.__store?.getState().business?.terminals[0] as unknown as { counts: Record<string, number> } | undefined)?.counts.passport ?? 0)).toBe(1);
+  await focusCamera(page);
+  const box = await page.getByTestId('map').boundingBox();
+  if (!box) throw new Error('no map');
+  // Cell (52, 42) centre in world, then its screen position.
+  const target = await page.evaluate(() => {
+    const out = { x: 0, y: 0 };
+    window.__renderer?.camera.worldToScreen(3985, 5445, out);
+    return out;
+  });
+  await page.getByTestId('tool-select').click();
+  await page.mouse.click(box.x + target.x, box.y + target.y);
+  await expect(page.getByTestId('fixture-level')).toHaveText('Level 1 Desk');
+  const works = () => page.evaluate(() => window.__store?.getState().terminalGrids[0]?.works.length ?? -1);
+  await page.getByTestId('fixture-upgrade').click();
+  await expect.poll(works).toBe(1);
+  await expect(page.getByTestId('fixture-works')).toBeVisible();
+  await page.getByTestId('fixture-cancel-works').click();
+  await expect.poll(works).toBe(0);
+  await expect(page.getByTestId('fixture-upgrade')).toBeVisible();
+  expect(errors).toEqual([]);
+});

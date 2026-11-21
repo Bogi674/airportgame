@@ -3,8 +3,8 @@ import { bagNodeNumber, bayOptions, deskOptions, standBagState, standWarnings } 
 import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
-import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY, fixtureKey, type FixtureKey } from '@shared/business';
-import { cellIndex } from '@shared/terminalOps';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, MAX_FIXTURE_LEVEL, TICKS_PER_DAY, fixtureKey, isLevelKey, levelOf, type FixtureKey, type LevelKey, type TerminalGrid } from '@shared/business';
+import { cellIndex, cellOf, fixtureAnchor, fixtureCost } from '@shared/terminalOps';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
@@ -34,6 +34,50 @@ const MODE_FIXTURE_NAMES: readonly FixtureKey[] = ['passport', 'eGate', 'securit
  * Class, surface and strength of a taxiway, plus reversing it and the tools to extend, trim or cut it.
  * The surface bar shows the price and works time before Apply (docs/DESIGN_REVISION_2.md section 2.5).
  */
+/** Level of a leveled fixture, with the upgrade to the next level or the running works and their cancel (T74). */
+function FixtureLevel({ grid, cell, name, send }: { grid: TerminalGrid; cell: number; name: LevelKey; send(cmd: Command): void }) {
+  const cash = useGameStore((s) => s.cash);
+  const tick = useGameStore((s) => s.tick);
+  const level = levelOf(grid.fixtureLevel[cell]!);
+  const anchor = fixtureAnchor(grid, cell);
+  const at = cellOf(grid, anchor);
+  const works = grid.works.find((w) => w.x === at.x && w.y === at.y);
+  const id = grid.fixture[anchor]!;
+  const next = level + 1;
+  const cost = level < MAX_FIXTURE_LEVEL ? fixtureCost(id, next) - fixtureCost(id, level) : 0;
+  const hours = Math.round(BUSINESS.fixtureLevels.worksDays * 24);
+  return (
+    <div style="display:grid;gap:4px;margin-top:4px" data-testid="fixture-levels">
+      <div data-testid="fixture-level">{tDynamic(`level.${name}.${level}`)}</div>
+      {works ? (
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center">
+          <span data-testid="fixture-works">{tFormat('inspector.fixture.works', { name: tDynamic(`level.${name}.${works.level}`), hours: Math.max(1, Math.ceil(((works.doneTick - tick) * 24) / TICKS_PER_DAY)) })}</span>
+          <button data-testid="fixture-cancel-works" onClick={() => send({ type: 'cancelFixtureWorks', building: grid.id, x: at.x, y: at.y })}>
+            {t('inspector.fixture.cancelWorks')}
+          </button>
+        </div>
+      ) : level >= MAX_FIXTURE_LEVEL ? (
+        <div style="color:var(--muted);font-size:12px">{t('inspector.fixture.topLevel')}</div>
+      ) : (
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center">
+          <span>
+            {tFormat('inspector.fixture.upgrade', { name: tDynamic(`level.${name}.${next}`) })}
+            <span style="color:var(--muted);font-size:11px;display:block">{tFormat('inspector.fixture.upgradeCost', { cost: formatMoney(cost), hours })}</span>
+          </span>
+          <button
+            data-testid="fixture-upgrade"
+            disabled={cash < cost}
+            title={cash < cost ? t('inspector.stand.upgradeNoCash') : undefined}
+            onClick={() => send({ type: 'upgradeFixture', building: grid.id, x: at.x, y: at.y })}
+          >
+            {t('inspector.fixture.upgradeButton')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
   const [code, setCode] = useState<CodeLetter>(x.code);
   const [surface, setSurface] = useState<Surface>(x.surface);
@@ -372,9 +416,15 @@ function StandBaggage({ stand, index, send }: { stand: Stand; index: number; sen
 /** Panel of a selected baggage node: buffer, read only connections, warnings, Fix automatically and Remove. */
 function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
   const info = useGameStore((s) => s.business?.baggage);
+  const grids = useGameStore((s) => s.terminalGrids);
+  const pick = useToolStore((s) => s.fixturePick);
   const nodes = info?.nodes ?? [];
   const node = nodes.find((n) => n.id === id);
   if (!node) return null;
+  // A drop node is the bag side of a check in desk: the desk's level and upgrade show here too (T74).
+  const grid = node.kind === 'drop' && pick ? grids.find((g) => g.id === pick.building) : undefined;
+  const cell = grid && pick ? cellIndex(grid, pick.x, pick.y) : -1;
+  const deskName = grid && cell >= 0 && grid.fixture[cell]! > 0 ? fixtureKey(grid.fixture[cell]!) : null;
   const label = (other: number): { kind: string; n: number } => {
     const o = nodes.find((x) => x.id === other);
     return { kind: o ? t(`inspector.bag.kind.${o.kind}`) : '', n: bagNodeNumber(nodes, other) };
@@ -386,6 +436,12 @@ function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
         {tFormat('inspector.bag.id', { id: node.id })}
       </div>
       <div data-testid="bag-buffer">{tFormat('inspector.bag.buffer', { held: node.held, capacity: node.capacity })}</div>
+      {grid && deskName !== null && isLevelKey(deskName) && (
+        <div style="margin-top:4px;border-top:1px solid var(--line);padding-top:4px">
+          <div style="font-weight:600">{tDynamic(`fixture.${grid.fixture[cell]}`)}</div>
+          <FixtureLevel grid={grid} cell={cell} name={deskName} send={send} />
+        </div>
+      )}
       <div class="section" style="margin:4px 0 2px">{t('inspector.bag.connections')}</div>
       {node.links.length === 0 && <div style="color:var(--muted)">{t('inspector.bag.none')}</div>}
       {node.links.map((l) => {
@@ -467,6 +523,7 @@ export function ObjectPanel({ send }: Props) {
           <div data-testid="fixture-block" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
             <div style="font-weight:600">{tDynamic(`fixture.${fixtureId}`)}</div>
             {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
+            {isLevelKey(fixtureName) && <FixtureLevel grid={grid} cell={cell} name={fixtureName} send={send} />}
             {MODE_FIXTURE_NAMES.includes(fixtureName) && (
               <div style="display:flex;gap:4px;margin-top:4px">
                 {[0, 1].map((m) => (

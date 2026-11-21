@@ -13,6 +13,7 @@ interface E2EGame {
   screen: string;
   business: { today: number[]; terminals: unknown[]; rating: number; paxToday: number; history: number[][]; airlines: { signed: boolean }[]; board: unknown[]; day: number } | null;
   site: { parcelCount: number; corridor: { cx: number; cy: number }; parcelId: Uint16Array; parcelType: Uint8Array } | null;
+  terminalGrids: { works: unknown[] }[];
 }
 
 interface Window {

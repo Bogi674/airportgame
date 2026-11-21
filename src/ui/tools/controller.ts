@@ -743,7 +743,8 @@ export class ToolController {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
         const term = hit ? null : this.terminalAt(p);
         const bag = hit ? null : this.bagNodeAt(p);
-        const fixturePick = term !== null && bag === null ? this.fixtureAt(p, term) : null;
+        // A drop node sits on its check in desk, so the desk stays picked for its level block (T74).
+        const fixturePick = term !== null ? this.fixtureAt(p, term) : null;
         useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null, fixturePick });
         break;
       }
