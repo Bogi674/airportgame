@@ -3,7 +3,7 @@ import { padPolygon } from '@shared/turnPad';
 import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
-import { FLOOR, fixtureKey, footprintOf, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { FIXTURE_FOOTPRINT, FLOOR, fixtureKey, footprintOf, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { drawCenter, drawFootprint, dropRampCenter, stagingLaneCenters, type BagDrawNode } from '@shared/baggageNodes';
 import { ACROSS, cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
 import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
@@ -27,20 +27,36 @@ const RED = '#d8362f';
 const THRESHOLD_STRIPES: Record<number, number> = { 18: 4, 23: 6, 30: 8, 45: 12, 60: 16 };
 /** Kit asset drawn for each terminal fixture. Security, belt, shops and atc keep block drawing: their kit footprint differs from the game footprint and sprites are never scaled. */
 export const FIXTURE_ASSET: Partial<Record<FixtureKey, string>> = {
-  checkIn: 'checkIn.l1',
   kiosk: 'kiosk',
   bagDrop: 'bagDrop',
-  passport: 'passport.l1',
-  gateDesk: 'gateDesk.l1',
   seating: 'bench.beam3',
   toilet: 'washroom.wcStall',
   eGate: 'eGate',
   customs: 'customs',
 };
-/** Kit asset per level of a fixture whose levels differ in footprint, index level minus 1. */
+/** Kit asset per level of a fixture with levels, index level minus 1. */
 export const FIXTURE_LEVEL_ASSET: Partial<Record<FixtureKey, readonly string[]>> = {
+  checkIn: ['checkIn.l1', 'checkIn.l2', 'checkIn.l3'],
+  security: ['security.l1', 'security.l2', 'security.l3'],
+  passport: ['passport.l1', 'passport.l2', 'passport.l3'],
+  gateDesk: ['gateDesk.l1', 'gateDesk.l2', 'gateDesk.l3'],
   securityExit: ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'],
 };
+/**
+ * Extra kit rotation of a fixture whose sprite does not flow from the bottom edge to the top edge. Security lanes are
+ * drawn flowing along +x (docs/TERMINAL_FIXTURES.md section 2), and rotation 0 of the grid flows toward lower rows.
+ */
+export const KIT_ROT_OFFSET: Partial<Record<FixtureKey, Rot>> = { security: 270 };
+/** Kit rotation of a fixture by its key and footprint code. */
+function kitRot(key: FixtureKey, code: number): Rot {
+  return (((code === 0 ? 0 : KIT_ROT[code - 1]!) + (KIT_ROT_OFFSET[key] ?? 0)) % 360) as Rot;
+}
+/** Cells a footprint reaches past its anchor at most: the eight cell security lane. */
+const FIXTURE_REACH = Math.max(...Object.values(FIXTURE_FOOTPRINT).flatMap((t) => t.flatMap(([a, b]) => [a, b]))) - 1;
+/** Works stripes on a fixture under upgrade (T74): stripe color, gap color and stripe spacing in meters. */
+const WORKS_STRIPE = '#f2b632';
+const WORKS_GAP = 'rgba(30,30,30,0.55)';
+const WORKS_STEP_M = 0.8;
 /** Kit asset of a staff door, drawn on its wall edge. */
 export const STAFF_DOOR_ASSET = 'staffDoor';
 /** Kit packs the terminal painter needs before its chunks bake. */
@@ -652,7 +668,8 @@ interface FixtureBody {
 function fixtureBody(f: number, code: number, level: number, cx: number, cy: number): FixtureBody {
   const C = TERMINAL_CELL_M;
   const rot = code === 0 ? 0 : code - 1;
-  const [along, across] = footprintOf(fixtureKey(f), level);
+  const key = fixtureKey(f);
+  const [along, across] = footprintOf(key, level);
   const [ax, ay] = ROT_STEP[rot];
   const [bx, by] = ACROSS(rot);
   const minX = cx + Math.min(0, (along - 1) * ax) + Math.min(0, (across - 1) * bx);
@@ -662,7 +679,7 @@ function fixtureBody(f: number, code: number, level: number, cx: number, cy: num
     y: minY * C,
     w: (along * Math.abs(ax) + across * Math.abs(bx)) * C,
     h: (along * Math.abs(ay) + across * Math.abs(by)) * C,
-    rot: KIT_ROT[rot],
+    rot: kitRot(key, code),
   };
 }
 
@@ -678,7 +695,7 @@ function kitSpriteAt(f: number, level: number, code: number, tier: 0 | Tier, sca
   if (tier === 0 || f === 0 || code >= 5) return null;
   const asset = kitAssetOf(fixtureKey(f), level);
   if (asset === undefined) return null;
-  return bakeFixture(asset, tier, code === 0 ? 0 : KIT_ROT[code - 1], scale, null);
+  return bakeFixture(asset, tier, kitRot(fixtureKey(f), code), scale, null);
 }
 
 /** Draws the kit sprites of the fixtures in a cell range at their footprint centers. */
@@ -692,6 +709,34 @@ function paintKitFixtures(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1:
       const body = fixtureBody(g.fixture[i], code, g.fixtureLevel[i], cx, cy);
       drawFixture(ctx, sprite, body.x + body.w / 2, body.y + body.h / 2, body.rot);
     }
+  }
+}
+
+/** Diagonal works stripes over the body of every fixture under upgrade works whose anchor lies in the cell range. */
+function paintWorks(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1: number, y1: number): void {
+  for (const w of g.works ?? []) {
+    if (w.x < x0 || w.x > x1 || w.y < y0 || w.y > y1) continue;
+    const i = cellIndex(g, w.x, w.y);
+    if (i < 0 || g.fixture[i] === 0) continue;
+    const b = fixtureBody(g.fixture[i], g.fixtureRot[i], g.fixtureLevel[i], w.x, w.y);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(b.x, b.y, b.w, b.h);
+    ctx.clip();
+    ctx.fillStyle = WORKS_GAP;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = WORKS_STRIPE;
+    ctx.lineWidth = WORKS_STEP_M / 2;
+    ctx.beginPath();
+    for (let d = -b.h; d <= b.w; d += WORKS_STEP_M) {
+      ctx.moveTo(b.x + d, b.y + b.h);
+      ctx.lineTo(b.x + d + b.h, b.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = WORKS_STRIPE;
+    ctx.lineWidth = 0.15;
+    ctx.strokeRect(b.x + 0.075, b.y + 0.075, b.w - 0.15, b.h - 0.15);
   }
 }
 
@@ -853,12 +898,12 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
       if (!filled(cx, cy + 1)) ctx.fillRect(px, py + C - 0.3, C, 0.3);
     }
   }
-  // Fixtures. A footprint can reach two cells past its anchor (the automated exit lane is three cells long), so the
-  // loops widen by two cells to catch an anchor just outside the window whose body is inside it. Tail cells (code 5 to 8) are skipped.
-  const fx0 = Math.max(g.x0, x0 - 2);
-  const fy0 = Math.max(g.y0, y0 - 2);
-  const fx1 = Math.min(g.x0 + g.w - 1, x1 + 2);
-  const fy1 = Math.min(g.y0 + g.h - 1, y1 + 2);
+  // Fixtures. A footprint can reach seven cells past its anchor (the security lane is eight cells long), so the loops
+  // widen by that reach to catch an anchor outside the window whose body is inside it. Tail cells (code 5 to 8) are skipped.
+  const fx0 = Math.max(g.x0, x0 - FIXTURE_REACH);
+  const fy0 = Math.max(g.y0, y0 - FIXTURE_REACH);
+  const fx1 = Math.min(g.x0 + g.w - 1, x1 + FIXTURE_REACH);
+  const fy1 = Math.min(g.y0 + g.h - 1, y1 + FIXTURE_REACH);
   for (let cy = fy0; cy <= fy1; cy++) {
     for (let cx = fx0; cx <= fx1; cx++) {
       const i = at(cx, cy);
@@ -872,6 +917,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     }
   }
   paintKitFixtures(ctx, g, fx0, fy0, fx1, fy1, tier, win.scale);
+  paintWorks(ctx, g, fx0, fy0, fx1, fy1);
   paintStaffDoors(ctx, g, x0, y0, x1, y1, tier, win.scale);
   if (g.bagNodes) paintBagNodes(ctx, g.bagNodes, tier, win.scale);
   for (let cy = fy0; cy <= fy1; cy++) {
