@@ -2,10 +2,22 @@ import { describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
+import needsJson from '../src/data/needs.json';
+import arrivalsJson from '../src/data/arrivals.json';
+import marketJson from '../src/data/market.json';
+import profilesJson from '../src/data/profiles.json';
+import peopleJson from '../src/data/people.json';
+import staffJson from '../src/data/staff.json';
 import standSizesJson from '../src/data/stand_sizes.json';
 import surfacesJson from '../src/data/surfaces.json';
-import { AIRFIELD, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
+import { AIRFIELD, PEOPLE, STAFF, STAND_SIZES, SURFACE_SPEC } from '../src/data/index';
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
+import { needsSchema } from '../src/data/schemas/needs';
+import { arrivalsSchema } from '../src/data/schemas/arrivals';
+import { marketSchema } from '../src/data/schemas/market';
+import { peopleSchema } from '../src/data/schemas/people';
+import { profilesSchema } from '../src/data/schemas/profiles';
+import { staffSchema } from '../src/data/schemas/staff';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -103,5 +115,134 @@ describe('revision 2 tables', () => {
       expect(SURFACE_SPEC[s].paint).toBe('markers');
     }
     for (const s of ['asphalt', 'concrete'] as const) expect(SURFACE_SPEC[s].allowedCodes).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+  });
+});
+
+describe('people sample spacing', () => {
+  it('profiles validate with the walk sample block', () => {
+    expect(profilesSchema.safeParse(profilesJson).success).toBe(true);
+  });
+
+  it('rejects dwellTries above the spiral size', () => {
+    const bad = structuredClone(profilesJson);
+    bad.walkSample.dwellTries = 50;
+    expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('passenger needs and group sizes', () => {
+  it('needs.json validates', () => {
+    expect(needsSchema.safeParse(needsJson).success).toBe(true);
+  });
+
+  it('factor with min above max fails', () => {
+    const bad = structuredClone(needsJson);
+    bad.factor = { min: 1.3, max: 0.7 };
+    expect(needsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('an unknown fixture name fails', () => {
+    const bad = structuredClone(needsJson);
+    bad.needs.hunger.fixtures = ['pizzaHut'];
+    expect(needsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a groupSize with 5 weights fails when maxGroup is 6', () => {
+    const bad = structuredClone(profilesJson);
+    bad.profiles.business.groupSize = [1, 2, 3, 4, 5];
+    expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a groupSize with all zero weights fails', () => {
+    const bad = structuredClone(profilesJson);
+    bad.profiles.crew.groupSize = [0, 0, 0, 0, 0, 0];
+    expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('arrival journey values', () => {
+  it('arrivals.json validates', () => {
+    expect(arrivalsSchema.safeParse(arrivalsJson).success).toBe(true);
+  });
+
+  it('a negative doorOpenS fails', () => {
+    const bad = structuredClone(arrivalsJson);
+    bad.doorOpenS = -1;
+    expect(arrivalsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a redShare above 1 fails', () => {
+    const bad = structuredClone(arrivalsJson);
+    bad.service.customs.redShare = 1.5;
+    expect(arrivalsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('an unknown profile in noGateProfiles fails', () => {
+    const bad = structuredClone(arrivalsJson);
+    bad.service.eGate.noGateProfiles = ['pilot'];
+    expect(arrivalsSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('market.json without internationalShare fails', () => {
+    const bad = structuredClone(marketJson);
+    delete (bad.destinations as Partial<typeof marketJson.destinations>).internationalShare;
+    expect(marketSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('airport staff', () => {
+  it('staff.json validates', () => {
+    expect(staffSchema.safeParse(staffJson).success).toBe(true);
+  });
+
+  it('a station with role pilot fails', () => {
+    const bad = structuredClone(staffJson);
+    (bad.stations.checkIn as { role: string }).role = 'pilot';
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('a station with need 0 fails', () => {
+    const bad = structuredClone(staffJson);
+    bad.stations.gateDesk.need = 0;
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('skill min above max fails', () => {
+    const bad = structuredClone(staffJson);
+    bad.skill = { min: 1.2, max: 1.1 };
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('two shift starts fail', () => {
+    const bad = structuredClone(staffJson);
+    bad.shifts.startsH = [6, 14] as unknown as typeof bad.shifts.startsH;
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('an unknown fixture key in stations fails', () => {
+    const bad = { ...structuredClone(staffJson), stations: { ...staffJson.stations, pizzaHut: { role: 'agent', need: 1 } } };
+    expect(staffSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('staff recipes in people.json', () => {
+  it('validates with 16 staff recipes', () => {
+    expect(peopleSchema.safeParse(peopleJson).success).toBe(true);
+    expect(PEOPLE.staff).toHaveLength(16);
+  });
+
+  it('has every role sprite id among the staff recipes', () => {
+    for (const role of [STAFF.roles.agent, STAFF.roles.security, STAFF.roles.border]) {
+      for (const id of role.sprites) {
+        expect(id).toBeGreaterThanOrEqual(1);
+        expect(id).toBeLessThanOrEqual(PEOPLE.staff.length);
+      }
+    }
+  });
+
+  it('rejects a staff recipe with epaulettes 5', () => {
+    const bad = structuredClone(peopleJson) as { staff: { epaulettes?: number }[] };
+    bad.staff[0]!.epaulettes = 5;
+    expect(peopleSchema.safeParse(bad).success).toBe(false);
   });
 });

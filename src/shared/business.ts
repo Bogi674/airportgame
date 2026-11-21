@@ -21,7 +21,7 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
@@ -36,30 +36,33 @@ export type ShopKind = FixtureKey;
 
 export const FLOOR = { None: 0, Concrete: 1, Tile: 2, Carpet: 3 } as const;
 /** Zones a player paints on terminal floor. 0 is unzoned. */
-export const ZONES = ['none', 'public', 'commercial', 'secure', 'staff'] as const;
+export const ZONES = ['none', 'public', 'commercial', 'secure', 'staff', 'international'] as const;
 export type ZoneKey = (typeof ZONES)[number];
-export const ZONE = { None: 0, Public: 1, Commercial: 2, Secure: 3, Staff: 4 } as const;
+export const ZONE = { None: 0, Public: 1, Commercial: 2, Secure: 3, Staff: 4, International: 5 } as const;
 /** Zones each fixture may sit in, the first is what an unzoned cell becomes when the fixture is placed. */
 export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   checkIn: [1],
   security: [1, 3],
   belt: [1, 4],
-  seating: [3, 1],
-  toilet: [3, 1, 4],
-  convenience: [2, 3],
-  quickFood: [2, 3],
-  cafe: [2, 3],
-  dutyFree: [2, 3],
-  booksGifts: [2, 3],
-  pharmacy: [2, 3],
+  seating: [3, 1, 5],
+  toilet: [3, 1, 4, 5],
+  convenience: [2, 3, 5],
+  quickFood: [2, 3, 5],
+  cafe: [2, 3, 5],
+  dutyFree: [2, 3, 5],
+  booksGifts: [2, 3, 5],
+  pharmacy: [2, 3, 5],
   atc: [4],
   kiosk: [1],
   bagDrop: [1],
-  passport: [3],
-  gateDesk: [3],
+  passport: [3, 5, 1],
+  gateDesk: [3, 5],
   screeningMachine: [4],
   baggageBay: [4, 3],
   carousel: [1],
+  securityExit: [3, 1],
+  eGate: [3, 5, 1],
+  customs: [1],
 };
 /** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
@@ -82,9 +85,46 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   screeningMachine: 1,
   baggageBay: 1,
   carousel: 1,
+  securityExit: 2,
+  eGate: 1,
+  customs: 2,
 };
+/**
+ * Footprint per level as [along, across] cells. Along follows the fixture direction, across is the
+ * perpendicular. A fixture without levels has one entry; a level past the last entry uses the last one.
+ */
+export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, number])[]> = {
+  checkIn: [[1, 1]],
+  security: [[1, 1]],
+  belt: [[1, 1]],
+  seating: [[1, 1]],
+  toilet: [[1, 1]],
+  convenience: [[1, 1]],
+  quickFood: [[1, 1]],
+  cafe: [[1, 1]],
+  dutyFree: [[1, 1]],
+  booksGifts: [[1, 1]],
+  pharmacy: [[1, 1]],
+  atc: [[1, 1]],
+  kiosk: [[1, 1]],
+  bagDrop: [[2, 1]],
+  passport: [[1, 1]],
+  gateDesk: [[2, 1]],
+  screeningMachine: [[1, 1]],
+  baggageBay: [[1, 1]],
+  carousel: [[1, 1]],
+  securityExit: [[2, 2], [1, 3], [2, 2]],
+  eGate: [[1, 1]],
+  customs: [[2, 2]],
+};
+/** Fixtures that move people from one zone to another. */
+export const TRANSITION_KEYS: readonly FixtureKey[] = ['security', 'securityExit', 'passport', 'eGate'];
+export function footprintOf(key: FixtureKey, level: number): readonly [number, number] {
+  const table = FIXTURE_FOOTPRINT[key];
+  return table[Math.min(Math.max(level, 1), table.length) - 1];
+}
 
-export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3 } as const;
+export const WALL = { None: 0, Wall: 1, Glass: 2, Door: 3, StaffDoor: 4 } as const;
 
 /** Terminal cells are 2 m in the local frame of a building. */
 export const TERMINAL_CELL_M = 2;
@@ -124,6 +164,15 @@ export interface TerminalGrid {
    * fixture and 5 + rot on its tail. Rot 0 to 3 is the direction from anchor to tail: +column, +row, -column, -row.
    */
   fixtureRot: Uint8Array;
+  /**
+   * Position of a footprint cell relative to its anchor, as along | across << 4 cells. 0 on anchors and on cells
+   * without a fixture. Along follows the fixture direction, across is one quarter turn after it.
+   */
+  fixtureOff: Uint8Array;
+  /** Level of the fixture on every cell of its footprint, 1 to 3. 0 where there is no fixture. */
+  fixtureLevel: Uint8Array;
+  /** Mode of the fixture on every cell of its footprint: 0 departure or passenger use, 1 arrival or staff use. */
+  fixtureMode: Uint8Array;
   /** Horizontal wall edges, (h + 1) rows of w columns. Index row * w + column, the edge above that cell. */
   hWall: Uint8Array;
   /** Vertical wall edges, h rows of (w + 1) columns. Index row * (w + 1) + column, the edge left of that cell. */
@@ -182,6 +231,8 @@ export interface Destination {
   size: number;
   /** Index into the region list of market.json. */
   region: number;
+  /** True when flights to it are international (T20). */
+  international: boolean;
 }
 
 /**
@@ -233,6 +284,8 @@ export interface BoardRow {
   typeIdx: number;
   /** Arrival in absolute game minutes, unwrapped, as the stand rule compares it. */
   startMin: number;
+  /** True when the flight is international (T20), so its passengers pass immigration and customs. */
+  intl: boolean;
 }
 
 /** A link of the baggage network as the inspector lists it. */
@@ -275,6 +328,20 @@ export interface BaggageInfo {
   nodes: BagNodeInfo[];
 }
 
+/** One row of the staffing table, per staff role (T68). */
+export interface StaffRow {
+  role: number;
+  hired: number;
+  onDuty: number;
+  /** Hired and not on duty: walking, commuting, on break, waiting as a relief or clocking in or out. */
+  away: number;
+  /** Officers the role's stations need on duty. */
+  needed: number;
+  /** Player cap of hired staff, -1 for none. */
+  cap: number;
+  wagePerDay: number;
+}
+
 export interface BusinessPayload {
   board: BoardRow[];
   /** Flight series of every signed airline (T61). */
@@ -285,6 +352,8 @@ export interface BusinessPayload {
   stars: number;
   paxScore: number;
   airlineScore: number;
+  /** Last closed day per rated passenger: satisfaction, queue, walk, unmet need and missed flight points, then visits per need (hunger, thirst, toilet, rest, shop) and visitor spend. Derived, never saved. */
+  paxDay: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a taxi node reaches the stand. */
   standLinked: number[];
   /** 1 or 0 per stand, indexed like airfield.data.stands: a contact stand has a terminal in reach, others are 1. */
@@ -312,6 +381,8 @@ export interface BusinessPayload {
   onTimePct: number;
   loan: number;
   staff: number;
+  /** Hired airport staff per role, see StaffRow. Empty before the staff store exists (T68). */
+  staffing: StaffRow[];
   weather: WeatherKind;
   /** Missing parts that stop flights, keys for the UI checklist. Empty when ready. */
   readiness: string[];
@@ -332,9 +403,10 @@ export interface BusinessPayload {
   fireGraceDays: number;
   /** 1 when ground handling keeps up, up to 1.6 when it is short of vehicles. */
   serviceSlowdown: number;
-  arrCapacity: number;
   /** Passengers the passport booths can clear per hour. */
   intlCapacity: number;
+  /** Last closed day of the arrival journey: passengers exited, stranded, mean claim wait in game minutes and passengers without their bags. Derived, never saved. */
+  arrDay: number[];
   /** Ledger history, newest day last, one row of LEDGER_CATEGORIES.length numbers per day, plus today. */
   history: number[][];
   today: number[];

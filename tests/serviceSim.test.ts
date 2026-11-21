@@ -248,7 +248,9 @@ describe('service queues in the sim', () => {
     const lane = laneNode(sim.business.serviceTable(gid)!);
     expect(sim.business.serviceJoin(gid, lane, 5, 2)).toBe(true);
     const before = sim.business.serviceWait(gid, lane, sim.tick);
-    expect(before).toBeCloseTo((2 * 12) / 1, 6);
+    const factor = sim.business.serviceTable(gid)!.staffFactor[lane]!;
+    expect(factor).toBeGreaterThan(0);
+    expect(before).toBeCloseTo((2 * 12) / factor, 6);
     for (let t = 0; t < 200; t++) sim.step();
     expect(sim.business.serviceWait(gid, lane, sim.tick)).toBeLessThan(before);
   });

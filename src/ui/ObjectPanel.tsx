@@ -3,7 +3,8 @@ import { bagNodeNumber, bayOptions, deskOptions, standBagState, standWarnings } 
 import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
-import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY, fixtureKey, type FixtureKey } from '@shared/business';
+import { cellIndex } from '@shared/terminalOps';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
@@ -23,6 +24,11 @@ import { t, tDynamic, tFormat } from './strings';
 interface Props {
   send(cmd: Command): void;
 }
+
+/** Zone problems of a building that the terminal panel lists, the zone keys of the sim readiness list. */
+const ZONE_ISSUES = ['zoneBreach', 'transitionOrientation', 'paxCannotLeave', 'staffBypass'] as const;
+/** Fixtures whose mode the player switches in the terminal panel: departure or arrival, or passenger or staff use. */
+const MODE_FIXTURE_NAMES: readonly FixtureKey[] = ['passport', 'eGate', 'security'];
 
 /**
  * Class, surface and strength of a taxiway, plus reversing it and the tools to extend, trim or cut it.
@@ -422,6 +428,8 @@ export function ObjectPanel({ send }: Props) {
   const selection = useToolStore((s) => s.selection);
   const af = useGameStore((s) => s.airfield);
   const biz = useGameStore((st) => st.business);
+  const grids = useGameStore((st) => st.terminalGrids);
+  const fixturePick = useToolStore((s) => s.fixturePick);
   if (!selection) return null;
   const { kind, id } = selection;
   if (kind === 'bagNode') return <BagNodePanel id={id} send={send} />;
@@ -429,11 +437,18 @@ export function ObjectPanel({ send }: Props) {
     const term = biz?.terminals.find((x) => x.id === id);
     if (!biz || !term) return null;
     const rows: { id: number; key: (typeof FIXTURE_KEYS)[number] }[] = FIXTURE_KEYS.map((k, i) => ({ id: i + 1, key: k })).filter((r) => !BAGGAGE_FIXTURE_KEYS.includes(r.key));
+    // The fixture block shows only the fixture picked in this terminal, read from the grid so it follows edits.
+    const pick = fixturePick?.building === id ? fixturePick : null;
+    const grid = pick ? grids.find((x) => x.id === id) : undefined;
+    const cell = pick && grid ? cellIndex(grid, pick.x, pick.y) : -1;
+    const fixtureId = grid && cell >= 0 ? grid.fixture[cell] : 0;
+    const fixtureName = fixtureId > 0 ? fixtureKey(fixtureId) : null;
+    const zoneIssueKeys = ZONE_ISSUES.filter((k) => biz.readiness.includes(k));
     return (
       <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
         <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
-        <div>{tFormat('terminal.arrivals', { arr: biz.arrCapacity })}</div>
+        <div>{tFormat('terminal.arrivals', { n: biz.arrDay[0] ?? 0 })}</div>
         <div>{tFormat('terminal.leased', { n: term.leased })}</div>
         {rows
           .filter((r) => term.counts[r.key] > 0)
@@ -443,6 +458,31 @@ export function ObjectPanel({ send }: Props) {
               <span data-testid={`count-${r.key}`}>{term.counts[r.key]}</span>
             </div>
           ))}
+        {zoneIssueKeys.map((k) => (
+          <div key={k} data-testid={`zone-issue-${k}`} style="color:var(--warn, var(--bad));font-size:12px">
+            {tDynamic(`ready.${k}`)}
+          </div>
+        ))}
+        {pick && grid && cell >= 0 && fixtureName !== null && (
+          <div data-testid="fixture-block" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
+            <div style="font-weight:600">{tDynamic(`fixture.${fixtureId}`)}</div>
+            {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
+            {MODE_FIXTURE_NAMES.includes(fixtureName) && (
+              <div style="display:flex;gap:4px;margin-top:4px">
+                {[0, 1].map((m) => (
+                  <button
+                    key={m}
+                    data-testid={`fixture-mode-${m}`}
+                    aria-pressed={grid.fixtureMode[cell] === m}
+                    onClick={() => send({ type: 'terminalBuild', building: grid.id, ox: grid.ox, oy: grid.oy, headingDeg: grid.headingDeg, edit: { op: 'mode', x0: pick.x, y0: pick.y, x1: pick.x + 1, y1: pick.y + 1, variant: m } })}
+                  >
+                    {tDynamic(fixtureName === 'security' ? `opt.use.${m}` : `opt.mode.${m}`)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div style="margin-top:4px;color:var(--muted);font-size:12px">{t('inspector.terminalHint')}</div>
         <button
           data-testid="demolish"

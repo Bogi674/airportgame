@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUSINESS } from '@data/index';
+import { ARRIVALS, BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, WALL, ZONE, fixtureKey, type FixtureKey, type TerminalGrid } from '../src/shared/business';
 import { cellIndex, ensureCells, hEdgeIndex, newGrid, vEdgeIndex } from '../src/shared/terminalOps';
 import { buildServiceNodes, expSeries, lnSeries, lognormalFactor, type ServiceNodes } from '../src/sim/terminal/serviceNodes';
@@ -80,6 +80,21 @@ describe('service nodes', () => {
     const cells = Array.from(nodes.cell);
     expect(cells).toEqual([...cells].sort((a, b) => a - b));
     expect(nodes.count).toBe(7);
+  });
+
+  it('gives an eGate and a customs fixture nodes with the arrival timing and keeps the order of the other kinds', () => {
+    const g = fixtureRow();
+    place(g, 24, 2, 'eGate');
+    placeTwo(g, 26, 2, 'customs');
+    const { nodes } = nodesOf(g);
+    const keys = Array.from(nodes.kind, (id) => fixtureKey(id));
+    expect(keys).toEqual(['checkIn', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'toilet', 'security', 'eGate', 'customs']);
+    const gate = nodeAt(nodes, 24, 2);
+    expect(nodes.servers[gate]).toBe(ARRIVALS.service.eGate.servers);
+    expect(nodes.meanS[gate]).toBe(ARRIVALS.service.eGate.serviceSeconds);
+    const customs = nodeAt(nodes, 26, 2);
+    expect(nodes.servers[customs]).toBe(ARRIVALS.service.customs.servers);
+    expect(nodes.meanS[customs]).toBe(ARRIVALS.service.customs.serviceSeconds);
   });
 
   it('takes servers and mean service time from the module data', () => {

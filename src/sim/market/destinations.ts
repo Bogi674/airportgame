@@ -6,9 +6,10 @@ import type { Rng } from '../rng';
  * The procedural destination network of a seed (docs/DESIGN_REVISION_4.md section 3.4, D16): named
  * airports at a distance and bearing from the site, each with a size that is also its demand weight
  * and a region from its bearing. Built from its own RNG stream, so it never shifts other streams and
- * is rebuilt identically on load.
+ * is rebuilt identically on load. The international flag is drawn from a second stream, `intlRng`, after
+ * the loop, so the names and distances of older seeds stay as they were (T20).
  */
-export function generateDestinations(rng: Rng): Destination[] {
+export function generateDestinations(rng: Rng, intlRng: Rng): Destination[] {
   const d = MARKET.destinations;
   const syl = d.syllables;
   const used = new Set<string>();
@@ -29,8 +30,9 @@ export function generateDestinations(rng: Rng): Destination[] {
     const size = rng.int(d.minSize, d.maxSize);
     // Regions are equal sectors of the compass, the first centred on north.
     const region = Math.floor((((bearingDeg + sector / 2) % 360) + 360) % 360 / sector) % d.regions.length;
-    out.push({ id, name, km, bearingDeg, size, region });
+    out.push({ id, name, km, bearingDeg, size, region, international: false });
   }
+  for (let id = 0; id < out.length; id++) out[id].international = intlRng.next() < d.internationalShare;
   return out;
 }
 

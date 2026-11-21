@@ -2,11 +2,20 @@ import { describe, expect, it } from 'vitest';
 import peopleJson from '../src/data/people.json';
 import { PEOPLE } from '../src/data/index';
 import { peopleSchema } from '../src/data/schemas/people';
-import { RECIPE_COUNT, memberHash, pickRecipe } from '../src/render/sprites/peopleRecipes';
+import { RECIPE_COUNT, memberHash, pickRecipe, staffRecipe } from '../src/render/sprites/peopleRecipes';
 import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/peopleShapes';
 import { peopleTierForZoom } from '../src/render/sprites/peopleAtlas';
 import { PeopleSelection } from '../src/render/peopleSelect';
 import { PACK_MARGIN_M, packGroup, recipeFootprint } from '../src/render/peoplePack';
+import { PeopleMotion } from '../src/render/peopleMotion';
+import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, STAFF_PROFILE_BASE, type SnapshotViews } from '../src/shared/snapshot';
+import { FIGURE_FRAME } from '../src/render/peoplePack';
+import { AIRCRAFT } from '@data/aircraft';
+import { Stage } from '@sim/cohorts/cohorts';
+import type { Sim } from '@sim/sim';
+import { ZONE } from '@shared/business';
+import { cellIndex, cornerWorld } from '@shared/terminalOps';
+import { buildArrivalTerminal, buildTestAirport, ownedSim } from './helpers';
 
 const SEED_COUNT = 6000;
 /** Float32 storage of the packed origins and footprints rounds a little, so touching boxes may overlap by this much. */
@@ -224,4 +233,195 @@ describe('PeopleSelection', () => {
     expect(a).toEqual([1, 3]);
     expect(Array.from(sel.order.subarray(0, second))).toEqual(a);
   });
+});
+
+function makeSnapshot(tick: number, samples: { id: number; x: number; y: number }[]): SnapshotViews {
+  const views = createSnapshotViews(createSnapshotBuffer());
+  views.header[SnapHeader.Tick] = tick;
+  views.header[SnapHeader.PeopleCount] = samples.length;
+  samples.forEach((s, i) => {
+    views.peopleId[i] = s.id;
+    views.peopleX[i] = s.x;
+    views.peopleY[i] = s.y;
+  });
+  return views;
+}
+
+describe('people motion', () => {
+  it('blends a matched sample by alpha', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 7, x: 1, y: 2 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.25, out);
+    expect(out[0]).toBeCloseTo(0.25, 6);
+    expect(out[1]).toBeCloseTo(0.5, 6);
+  });
+
+  it('returns the current position for an unmatched id', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 8, x: 1, y: 2 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.25, out);
+    expect(out[0]).toBe(1);
+    expect(out[1]).toBe(2);
+  });
+
+  it('returns the current position for a 7 m jump', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 7, x: 7, y: 0 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.25, out);
+    expect(out[0]).toBe(7);
+    expect(out[1]).toBe(0);
+  });
+
+  it('returns the current position when no previous snapshot is indexed', () => {
+    const curr = makeSnapshot(11, [{ id: 7, x: 3, y: 4 }]);
+    const motion = new PeopleMotion();
+    motion.index(null);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.5, out);
+    expect(out[0]).toBe(3);
+    expect(out[1]).toBe(4);
+  });
+
+  it('keeps the match after the same snapshot is indexed again', () => {
+    const prev = makeSnapshot(10, [{ id: 7, x: 0, y: 0 }]);
+    const curr = makeSnapshot(11, [{ id: 7, x: 2, y: 0 }]);
+    const motion = new PeopleMotion();
+    motion.index(prev);
+    motion.index(prev);
+    const out = new Float32Array(2);
+    motion.position(curr, 0, 0.5, out);
+    expect(out[0]).toBeCloseTo(1, 6);
+  });
+});
+
+describe('people walk frame', () => {
+  it('holds the figure frame for a non walking mode', () => {
+    const motion = new PeopleMotion();
+    expect(motion.walkFrame(PEOPLE_MODE.Queued, 12.3, 0, 5, 2)).toBe(FIGURE_FRAME);
+    expect(motion.walkFrame(PEOPLE_MODE.Dwelling, 12.3, 0, 5, 2)).toBe(FIGURE_FRAME);
+  });
+
+  it('steps through frames 0 to 3 while walking', () => {
+    const motion = new PeopleMotion();
+    const frames = new Set<number>();
+    for (let t = 0; t < 40; t++) frames.add(motion.walkFrame(PEOPLE_MODE.Walking, t * 0.1, 1, 0, 0));
+    expect([...frames].sort()).toEqual([0, 1, 2, 3]);
+  });
+
+  it('uses only seed and member for a profile out of range', () => {
+    const motion = new PeopleMotion();
+    expect(motion.walkFrame(PEOPLE_MODE.Walking, 50, 20, 4, 1)).toBe((1 + 0) & 3);
+  });
+});
+
+describe('staff figures', () => {
+  it('picks the staff row of a role from its sprite ids', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      expect([30, 31]).toContain(staffRecipe(1, seed));
+      expect(staffRecipe(0, seed)).toBe(34);
+      expect(staffRecipe(9, seed)).toBe(34);
+    }
+  });
+
+  it('packs one staff figure centred on its footprint', () => {
+    const x = new Float32Array(256);
+    const y = new Float32Array(256);
+    const recipe = new Uint8Array(256);
+    const fp = new Float32Array(4);
+    expect(packGroup(STAFF_PROFILE_BASE + 2, 7, 1, x, y, recipe)).toBe(1);
+    expect(recipe[0]).toBe(33);
+    recipeFootprint(33, fp);
+    expect(x[0]! + (fp[0]! + fp[2]!) / 2).toBeCloseTo(0, 5);
+    expect(y[0]! + (fp[1]! + fp[3]!) / 2).toBeCloseTo(0, 5);
+  });
+
+  it('steps the gait of a walking staff entry with time', () => {
+    const motion = new PeopleMotion();
+    const frames = new Set<number>();
+    for (let t = 0; t < 40; t++) frames.add(motion.walkFrame(PEOPLE_MODE.Walking, t * 0.1, STAFF_PROFILE_BASE, 0, 0));
+    expect(frames.size).toBe(4);
+  });
+});
+
+describe('arrival people sample (T20)', () => {
+  const A320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+
+  /** Logical cell of a world point of grid 0, from the corner positions of its cells. */
+  function logicalCell(sim: Sim, x: number, y: number): { lx: number; ly: number } {
+    const g = sim.business.grids[0]!;
+    const o = cornerWorld(g, 0, 0);
+    const ex = cornerWorld(g, 1, 0);
+    const ey = cornerWorld(g, 0, 1);
+    const ax = ex.x - o.x;
+    const ay = ex.y - o.y;
+    const bx = ey.x - o.x;
+    const by = ey.y - o.y;
+    const det = ax * by - ay * bx;
+    const dx = x - o.x;
+    const dy = y - o.y;
+    return { lx: Math.floor((dx * by - dy * bx) / det), ly: Math.floor((ax * dy - ay * dx) / det) };
+  }
+
+  it('shows arrival walkers, claim dwellers and immigration queues, on distinct cells, and repeats a sample', () => {
+    const sim = ownedSim();
+    sim.cash = 1_000_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildArrivalTerminal(sim, { carousel: true, customs: true })).toEqual([]);
+    const market = sim.business.market;
+    const dest = market.destinations.find((d) => d.international)!;
+    market.series.push({ id: 9001, airline: 0, dest: dest.id, typeIdx: A320, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 });
+    const t = sim.traffic;
+    const f = t.scheduleArrival(A320, t.nowTick + 1, 0, t.turnaroundTicks(A320), 0, 0, 9001);
+    t.fStand[f] = sim.airfield.data.stands[0]!.id;
+    const g = sim.business.grids[0]!;
+    const wg = sim.business.walkGraphs[0]!;
+    const co = sim.cohorts;
+    const views = createSnapshotViews(createSnapshotBuffer());
+    const again = createSnapshotViews(createSnapshotBuffer());
+    let walkIntl = false;
+    let walkPublic = false;
+    let dwellClaim = false;
+    let queuedPassport = false;
+    for (let tick = 0; tick < 12000; tick++) {
+      sim.step();
+      if (tick % 20 !== 0 || co.arrActive === 0) continue;
+      co.writeSample(views, sim.tick);
+      const n = views.header[SnapHeader.PeopleCount]!;
+      const cells = new Set<number>();
+      for (let i = 0; i < n; i++) {
+        const { lx, ly } = logicalCell(sim, views.peopleX[i]!, views.peopleY[i]!);
+        const cell = cellIndex(g, lx, ly);
+        expect(cells.has(cell), `two entries on cell ${lx},${ly}`).toBe(false);
+        cells.add(cell);
+        const c = views.peopleId[i]!;
+        const st = co.stage[c]!;
+        if (st < Stage.Deboard) continue;
+        const zone = wg.effective[cell]!;
+        if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.International) walkIntl = true;
+        if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.Public) walkPublic = true;
+        if (views.peopleMode[i] === PEOPLE_MODE.Dwelling && st === Stage.Claim && Math.hypot(lx - 56, ly - 44) <= 8) dwellClaim = true;
+        if (views.peopleMode[i] === PEOPLE_MODE.Queued && st === Stage.Immigration && Math.hypot(lx - 72, ly - 52) <= 6) queuedPassport = true;
+      }
+      co.writeSample(again, sim.tick);
+      expect(again.header[SnapHeader.PeopleCount]).toBe(n);
+      expect(Array.from(again.peopleX.subarray(0, n))).toEqual(Array.from(views.peopleX.subarray(0, n)));
+      expect(Array.from(again.peopleY.subarray(0, n))).toEqual(Array.from(views.peopleY.subarray(0, n)));
+      expect(Array.from(again.peopleMode.subarray(0, n))).toEqual(Array.from(views.peopleMode.subarray(0, n)));
+      expect(Array.from(again.peopleId.subarray(0, n))).toEqual(Array.from(views.peopleId.subarray(0, n)));
+      if (walkIntl && walkPublic && dwellClaim && queuedPassport) break;
+    }
+    expect(walkIntl).toBe(true);
+    expect(walkPublic).toBe(true);
+    expect(dwellClaim).toBe(true);
+    expect(queuedPassport).toBe(true);
+  }, 60000);
 });

@@ -1,10 +1,11 @@
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
-import { canStep, labelRooms } from '@shared/terminalRooms';
+import { labelRooms } from '@shared/terminalRooms';
+import { effectiveZones, stepAud, zoneAccess, type ZoneAccess } from '@shared/terminalZones';
 import { newWalkCache, type WalkCache } from './walkDistance';
 
 /** Kinds of walk node. A node is a cell that walking routes must know about. */
-export const WALK_NODE = { Lattice: 1, Door: 2, Fixture: 3 } as const;
+export const WALK_NODE = { Lattice: 1, Door: 2, Fixture: 3, Gate: 4 } as const;
 
 /** Side of a block in logical cells. */
 const L = BUSINESS.terminal.walk.latticeCells;
@@ -70,12 +71,37 @@ export interface WalkGraph {
   edgeTo: Int32Array;
   /** Per edge: walking length in metres. */
   edgeLen: Float32Array;
-  /** Cached walking distance rows over the edges above, see walkDistance. */
+  /** Per edge: the audiences that may take it, AUD bits. The graph is directed, so an edge and its reverse can differ. */
+  edgeMask: Uint8Array;
+  /** Who may cross each cell edge of the grid, kept from the last rebuild. Never recomputed per tick. */
+  access: ZoneAccess;
+  /** Effective zone per array cell from the last rebuild, 0 without floor. Read by the curb and the queue cells. */
+  effective: Uint8Array;
+  /** Cached walking distance rows for passengers over the edges above, see walkDistance. */
   cache: WalkCache;
+  /** The same for staff, over the edges staff may take. */
+  staffCache: WalkCache;
+}
+
+/** True when everyone may cross the edge from array cell (x, y) in direction d, both ways. */
+function full(acc: ZoneAccess, g: TerminalGrid, x: number, y: number, d: number): boolean {
+  if (stepAud(acc, g, x, y, d) !== 3) return false;
+  return stepAud(acc, g, x + DX[d]!, y + DY[d]!, d ^ 1) === 3;
+}
+
+/** True when an edge lets some audience or direction through but not all of them. */
+const restricted = (ab: number, ba: number): boolean => ab + ba > 0 && !(ab === 3 && ba === 3);
+
+/** True when any edge of array cell (ax, ay) is restricted, so the cell is a gate node. */
+function gateBeside(acc: ZoneAccess, g: TerminalGrid, ax: number, ay: number): boolean {
+  for (let d = 0; d < 4; d++) {
+    if (restricted(stepAud(acc, g, ax, ay, d), stepAud(acc, g, ax + DX[d]!, ay + DY[d]!, d ^ 1))) return true;
+  }
+  return false;
 }
 
 /** Collects the floor cells of the block that start at (ax0, ay0) and connect to the start in blockQueue. */
-function floodGroup(g: TerminalGrid, ax0: number, ay0: number, start: number): number {
+function floodGroup(g: TerminalGrid, acc: ZoneAccess, ax0: number, ay0: number, start: number): number {
   let head = 0;
   let tail = 0;
   blockQueue[tail++] = start;
@@ -85,7 +111,7 @@ function floodGroup(g: TerminalGrid, ax0: number, ay0: number, start: number): n
     const qx = ax0 + (q % L);
     const qy = ay0 + Math.floor(q / L);
     for (let d = 0; d < 4; d++) {
-      if (!canStep(g, qx, qy, d)) continue;
+      if (!full(acc, g, qx, qy, d)) continue;
       const lx = qx + DX[d]! - ax0;
       const ly = qy + DY[d]! - ay0;
       if (lx < 0 || ly < 0 || lx >= L || ly >= L) continue;
@@ -129,7 +155,7 @@ function fillBlock(g: TerminalGrid, wg: WalkGraph, bx: number, by: number): void
     const ay = ay0 + Math.floor(k / L);
     if (ax < 0 || ay < 0 || ax >= W || ay >= g.h) continue;
     if (g.floor[ay * W + ax]! <= 0 || blockDone[k] === 1) continue;
-    const tail = floodGroup(g, ax0, ay0, k);
+    const tail = floodGroup(g, wg.access, ax0, ay0, k);
     const centreK = CENTRE * L + CENTRE;
     let main = (ay0 + Math.floor(k / L)) * W + ax0 + (k % L);
     for (let i = 0; i < tail; i++) {
@@ -153,6 +179,7 @@ function fillBlock(g: TerminalGrid, wg: WalkGraph, bx: number, by: number): void
     const fixture = g.fixture[c]!;
     if (fixture > 0 && fixture !== SEATING && g.fixtureRot[c]! < TAIL_ROT) wg.cellKind[c] = WALK_NODE.Fixture;
     else if (wg.cellKind[c] === 0 && doorBeside(g, ax, ay)) wg.cellKind[c] = WALK_NODE.Door;
+    else if (wg.cellKind[c] !== WALK_NODE.Door && gateBeside(wg.access, g, ax, ay)) wg.cellKind[c] = WALK_NODE.Gate;
   }
 }
 
@@ -199,9 +226,9 @@ function compactNodes(g: TerminalGrid, wg: WalkGraph): void {
 
 /**
  * True when a person can walk in a straight line from array cell a to array cell b. The line is a supercover
- * walk between the cell centres, and every cell edge it crosses must be open to a person.
+ * walk between the cell centres, and every cell edge it crosses must be open to everyone both ways.
  */
-export function lineOfSight(g: TerminalGrid, a: number, b: number): boolean {
+export function lineOfSight(g: TerminalGrid, a: number, b: number, acc: ZoneAccess = zoneAccess(g)): boolean {
   const W = g.w;
   const ax = a % W;
   const ay = (a - ax) / W;
@@ -224,17 +251,17 @@ export function lineOfSight(g: TerminalGrid, a: number, b: number): boolean {
     const q = (1 + 2 * iy) * nx;
     if (p === q) {
       // The line passes a corner, so both cells beside it must be open as well.
-      if (!canStep(g, x, y, dirX) || !canStep(g, x + sx, y, dirY) || !canStep(g, x, y, dirY) || !canStep(g, x, y + sy, dirX)) return false;
+      if (!full(acc, g, x, y, dirX) || !full(acc, g, x + sx, y, dirY) || !full(acc, g, x, y, dirY) || !full(acc, g, x, y + sy, dirX)) return false;
       x += sx;
       y += sy;
       ix++;
       iy++;
     } else if (p < q) {
-      if (!canStep(g, x, y, dirX)) return false;
+      if (!full(acc, g, x, y, dirX)) return false;
       x += sx;
       ix++;
     } else {
-      if (!canStep(g, x, y, dirY)) return false;
+      if (!full(acc, g, x, y, dirY)) return false;
       y += sy;
       iy++;
     }
@@ -269,7 +296,7 @@ function cellPath(g: TerminalGrid, wg: WalkGraph, from: number, to: number): num
     const x = c % W;
     const y = (c - x) / W;
     for (let d = 0; d < 4; d++) {
-      if (!canStep(g, x, y, d)) continue;
+      if (!full(wg.access, g, x, y, d)) continue;
       const nc = (y + DY[d]!) * W + x + DX[d]!;
       const mc = wg.cellMain[nc]!;
       if (pathDist[nc] !== -1 || (mc !== m1 && mc !== m2)) continue;
@@ -310,7 +337,7 @@ function cellInRect(wg: WalkGraph, c: number, r: BlockRect): boolean {
 }
 
 /**
- * Pushes the edges of the old graph whose two cells both lie outside the blocks of r, as triples over cells.
+ * Pushes the edges of the old graph whose two cells both lie outside the blocks of r, as tuples over cells.
  * Must run before the nodes are refilled, because it reads the old node cells.
  */
 function keptEdges(wg: WalkGraph, r: BlockRect, out: number[]): void {
@@ -322,15 +349,22 @@ function keptEdges(wg: WalkGraph, r: BlockRect, out: number[]): void {
       if (b <= a) continue;
       const cb = wg.nodeCell[b]!;
       if (cellInRect(wg, cb, r)) continue;
-      out.push(ca, cb, wg.edgeLen[e]!);
+      let back = 0;
+      for (let r2 = wg.edgeStart[b]!; r2 < wg.edgeStart[b + 1]!; r2++) {
+        if (wg.edgeTo[r2] === a) {
+          back = wg.edgeMask[r2]!;
+          break;
+        }
+      }
+      out.push(ca, cb, wg.edgeLen[e]!, wg.edgeMask[e]!, back);
     }
   }
 }
 
 /**
- * Pushes the edges that touch the blocks of r as triples (cellA, cellB, lengthM) with cellA below cellB, each
- * pair once. Sight edges join nodes in nearby blocks, and the fallbacks join a node to its lattice node and
- * neighbouring lattice groups to each other, so the graph follows the same walks as canStep.
+ * Pushes the edges that touch the blocks of r as tuples (cellA, cellB, lengthM, audiences A to B, audiences B to A)
+ * with cellA below cellB, each pair once. Open edges carry everyone both ways. Sight edges join nodes in nearby blocks, and the fallbacks join a node to its lattice node and
+ * neighbouring lattice groups to each other, so the graph follows the walks the zone access table allows.
  */
 function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[]): void {
   const W = g.w;
@@ -350,11 +384,11 @@ function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[
             const b = blockCell(g, tx, ty, k2);
             if (b <= a || wg.cellKind[b] === 0) continue;
             const key = a * n + b;
-            if (seen.has(key) || !lineOfSight(g, a, b)) continue;
+            if (seen.has(key) || !lineOfSight(g, a, b, wg.access)) continue;
             seen.add(key);
             const dx = (b % W) - (a % W);
             const dy = Math.floor(b / W) - Math.floor(a / W);
-            out.push(a, b, TERMINAL_CELL_M * Math.sqrt(dx * dx + dy * dy));
+            out.push(a, b, TERMINAL_CELL_M * Math.sqrt(dx * dx + dy * dy), 3, 3);
           }
         }
       }
@@ -375,7 +409,7 @@ function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[
         const len = cellPath(g, wg, x, m);
         if (!Number.isFinite(len)) continue;
         seen.add(key);
-        out.push(lo, hi, len);
+        out.push(lo, hi, len, 3, 3);
       }
     }
   }
@@ -388,7 +422,7 @@ function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[
         const x = c % W;
         const y = (c - x) / W;
         for (let d = 1; d < 4; d += 2) {
-          if (!canStep(g, x, y, d)) continue;
+          if (!full(wg.access, g, x, y, d)) continue;
           const nc = d === 1 ? c + 1 : c + W;
           const m1 = wg.cellMain[c]!;
           const m2 = wg.cellMain[nc]!;
@@ -401,38 +435,61 @@ function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[
           const len = cellPath(g, wg, m1, m2);
           if (!Number.isFinite(len)) continue;
           seen.add(key);
-          out.push(lo, hi, len);
+          out.push(lo, hi, len, 3, 3);
+        }
+      }
+    }
+  }
+  // Restricted edges: a staff door or a transition joins its two gate cells one way or for some audiences only.
+  for (let by = r.by0 - 1; by <= r.by1 + 1; by++) {
+    for (let bx = r.bx0 - 1; bx <= r.bx1 + 1; bx++) {
+      for (let k = 0; k < L * L; k++) {
+        const c = blockCell(g, bx, by, k);
+        if (c < 0 || g.floor[c]! <= 0) continue;
+        const x = c % W;
+        const y = (c - x) / W;
+        for (let d = 1; d < 4; d += 2) {
+          const nc = d === 1 ? c + 1 : c + W;
+          if (d === 1 ? x >= W - 1 : y >= g.h - 1) continue;
+          if (!inRect(bx, by, r) && !inRect(blockXOf(g, nc), blockYOf(g, nc), r)) continue;
+          const ab = stepAud(wg.access, g, x, y, d);
+          const ba = stepAud(wg.access, g, x + DX[d]!, y + DY[d]!, d ^ 1);
+          if (!restricted(ab, ba) || wg.cellNode[c]! < 0 || wg.cellNode[nc]! < 0) continue;
+          out.push(c, nc, TERMINAL_CELL_M, ab, ba);
         }
       }
     }
   }
 }
 
-/** Writes the undirected triples as directed edges between node ids, sorted by from then to. */
-function packEdges(wg: WalkGraph, triples: number[]): void {
-  const pairs = triples.length / 3;
+/** Writes the tuples as directed edges between node ids, sorted by from then to. */
+function packEdges(wg: WalkGraph, tuples: number[]): void {
+  const pairs = tuples.length / 5;
   const m = pairs * 2;
   const n = wg.nodeCount;
   wg.edgeStart = new Int32Array(n + 1);
   wg.edgeTo = new Int32Array(m);
   wg.edgeLen = new Float32Array(m);
+  wg.edgeMask = new Uint8Array(m);
   // Counting sort by from node: count each node's degree, prefix sum, then place each edge at its node's cursor.
   const start = wg.edgeStart;
   for (let p = 0; p < pairs; p++) {
-    start[wg.cellNode[triples[3 * p]!]! + 1]! += 1;
-    start[wg.cellNode[triples[3 * p + 1]!]! + 1]! += 1;
+    start[wg.cellNode[tuples[5 * p]!]! + 1]! += 1;
+    start[wg.cellNode[tuples[5 * p + 1]!]! + 1]! += 1;
   }
   for (let i = 1; i <= n; i++) start[i]! += start[i - 1]!;
   const cursor = start.slice(0, n);
   for (let p = 0; p < pairs; p++) {
-    const a = wg.cellNode[triples[3 * p]!]!;
-    const b = wg.cellNode[triples[3 * p + 1]!]!;
-    const l = triples[3 * p + 2]!;
+    const a = wg.cellNode[tuples[5 * p]!]!;
+    const b = wg.cellNode[tuples[5 * p + 1]!]!;
+    const l = tuples[5 * p + 2]!;
     wg.edgeTo[cursor[a]!] = b;
     wg.edgeLen[cursor[a]!] = l;
+    wg.edgeMask[cursor[a]!] = tuples[5 * p + 3]!;
     cursor[a]! += 1;
     wg.edgeTo[cursor[b]!] = a;
     wg.edgeLen[cursor[b]!] = l;
+    wg.edgeMask[cursor[b]!] = tuples[5 * p + 4]!;
     cursor[b]! += 1;
   }
   // Each node's range is short, so an insertion sort by target id, moving the lengths with it, is cheapest.
@@ -440,14 +497,17 @@ function packEdges(wg: WalkGraph, triples: number[]): void {
     for (let e = start[a]! + 1; e < start[a + 1]!; e++) {
       const to = wg.edgeTo[e]!;
       const len = wg.edgeLen[e]!;
+      const mask = wg.edgeMask[e]!;
       let k = e;
       while (k > start[a]! && wg.edgeTo[k - 1]! > to) {
         wg.edgeTo[k] = wg.edgeTo[k - 1]!;
         wg.edgeLen[k] = wg.edgeLen[k - 1]!;
+        wg.edgeMask[k] = wg.edgeMask[k - 1]!;
         k--;
       }
       wg.edgeTo[k] = to;
       wg.edgeLen[k] = len;
+      wg.edgeMask[k] = mask;
     }
   }
 }
@@ -480,16 +540,46 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
     edgeStart: new Int32Array(1),
     edgeTo: new Int32Array(0),
     edgeLen: new Float32Array(0),
+    edgeMask: new Uint8Array(0),
+    access: zoneAccess(g),
+    effective: effectiveZones(g),
     cache: newWalkCache(0),
+    staffCache: newWalkCache(0),
   };
   const rect = gridRect(g);
   fillNodes(g, wg, rect);
   compactNodes(g, wg);
-  const triples: number[] = [];
-  collectEdges(g, wg, rect, triples);
-  packEdges(wg, triples);
+  const tuples: number[] = [];
+  collectEdges(g, wg, rect, tuples);
+  packEdges(wg, tuples);
   wg.cache = newWalkCache(wg.nodeCount);
+  wg.staffCache = newWalkCache(wg.nodeCount);
   return wg;
+}
+
+/** Grows box, in logical cells, to cover both cells of every edge whose access differs between the two tables. */
+function widenToChanges(g: TerminalGrid, before: ZoneAccess, after: ZoneAccess, box: { x0: number; y0: number; x1: number; y1: number }): void {
+  const W = g.w;
+  const cover = (x: number, y: number): void => {
+    box.x0 = Math.min(box.x0, x + g.x0);
+    box.y0 = Math.min(box.y0, y + g.y0);
+    box.x1 = Math.max(box.x1, x + g.x0);
+    box.y1 = Math.max(box.y1, y + g.y0);
+  };
+  for (let e = 0; e < after.h.length; e++) {
+    if (before.h[e] === after.h[e]) continue;
+    const x = e % W;
+    const y = (e - x) / W;
+    cover(x, y);
+    cover(x, Math.max(0, y - 1));
+  }
+  for (let e = 0; e < after.v.length; e++) {
+    if (before.v[e] === after.v[e]) continue;
+    const x = e % (W + 1);
+    const y = (e - x) / (W + 1);
+    cover(x, y);
+    cover(Math.max(0, x - 1), y);
+  }
 }
 
 /**
@@ -502,22 +592,33 @@ export function updateWalkGraph(wg: WalkGraph, g: TerminalGrid, lx0: number, ly0
   if (wg.x0 !== g.x0 || wg.y0 !== g.y0 || wg.w !== g.w || wg.h !== g.h) return buildWalkGraph(g);
   const M = BUSINESS.terminal.walk.dirtyMarginCells;
   const whole = gridRect(g);
+  // Zone changes can reach far from the edit, so the rect also covers every edge whose access changed.
+  const next = zoneAccess(g);
+  const box = { x0: lx0, y0: ly0, x1: lx1, y1: ly1 };
+  widenToChanges(g, wg.access, next, box);
+  wg.access = next;
+  wg.effective = effectiveZones(g);
   const rect: BlockRect = {
-    bx0: Math.max(whole.bx0, Math.floor((lx0 - M) / L)),
-    by0: Math.max(whole.by0, Math.floor((ly0 - M) / L)),
-    bx1: Math.min(whole.bx1, Math.floor((lx1 + M) / L)),
-    by1: Math.min(whole.by1, Math.floor((ly1 + M) / L)),
+    bx0: Math.max(whole.bx0, Math.floor((box.x0 - M) / L)),
+    by0: Math.max(whole.by0, Math.floor((box.y0 - M) / L)),
+    bx1: Math.min(whole.bx1, Math.floor((box.x1 + M) / L)),
+    by1: Math.min(whole.by1, Math.floor((box.y1 + M) / L)),
   };
   const blockCount = (r: BlockRect): number => Math.max(0, r.bx1 - r.bx0 + 1) * Math.max(0, r.by1 - r.by0 + 1);
   if (blockCount(rect) * 4 > blockCount(whole)) return buildWalkGraph(g);
-  const triples: number[] = [];
+  const tuples: number[] = [];
   const oldNodeCount = wg.nodeCount;
-  keptEdges(wg, rect, triples);
+  keptEdges(wg, rect, tuples);
   fillNodes(g, wg, rect);
   compactNodes(g, wg);
-  collectEdges(g, wg, rect, triples);
-  packEdges(wg, triples);
-  if (wg.nodeCount === oldNodeCount) resetCache(wg.cache);
-  else wg.cache = newWalkCache(wg.nodeCount);
+  collectEdges(g, wg, rect, tuples);
+  packEdges(wg, tuples);
+  if (wg.nodeCount === oldNodeCount) {
+    resetCache(wg.cache);
+    resetCache(wg.staffCache);
+  } else {
+    wg.cache = newWalkCache(wg.nodeCount);
+    wg.staffCache = newWalkCache(wg.nodeCount);
+  }
   return wg;
 }

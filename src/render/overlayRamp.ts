@@ -41,6 +41,9 @@ export function buildRamp(ok: string, warn: string, bad: string, alpha: number):
   return out;
 }
 
+/** Scale maximum of the staffing overlay: 100 percent short. */
+const STAFFING_SCALE = 100;
+
 /** Ramp step of a value against the scale maximum, 0 when the maximum is not positive, clamped to the ramp. */
 export function rampIndex(value: number, max: number): number {
   if (max <= 0) return 0;
@@ -63,6 +66,8 @@ function maxOf(a: ArrayLike<number>, below: number): number {
  * reachable gate distance (unreachable gates are left out). Never below 1, so an empty overlay still scales.
  */
 export function overlayMax(kind: OverlayKind, data: readonly OverlayData[]): number {
+  // Staffing is a percent short of the need, so its scale is fixed.
+  if (kind === 'staffing') return STAFFING_SCALE;
   let max = 1;
   for (let k = 0; k < data.length; k++) {
     const d = data[k]!;

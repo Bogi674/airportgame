@@ -46,8 +46,19 @@ export class Market {
     private readonly traffic: Traffic,
     private readonly host: MarketHost,
   ) {
-    this.destinations = generateDestinations(root.fork('destinations'));
+    this.destinations = generateDestinations(root.fork('destinations'), root.fork('destinationsIntl'));
     this.seriesRng = root.fork('series');
+  }
+
+  /** True when the flight belongs to a series whose destination is international. Flights without a series are domestic. */
+  isInternational(f: number): boolean {
+    const rot = this.traffic.fRot[f];
+    if (rot < 0) return false;
+    for (let i = 0; i < this.series.length; i++) {
+      const s = this.series[i];
+      if (s.id === rot) return this.destinations[s.dest]?.international === true;
+    }
+    return false;
   }
 
   // Airlines -----------------------------------------------------------------

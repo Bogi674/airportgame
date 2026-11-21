@@ -2,10 +2,16 @@ import type { GameOptions } from '@shared/protocol';
 import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield';
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
-import { GROUND } from '@data/index';
+import { ROT_STEP } from '@shared/terminalOps';
+import { GROUND, NEEDS, PROFILES } from '@data/index';
+import { NEED_COUNT } from '@data/schemas/needs';
+import { FLAG_SLOW } from '../cohorts/cohorts';
+import { FIXTURE_KEYS } from '@shared/business';
+import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, type ServiceSave } from '../terminal/serviceNodes';
+import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 26;
+export const SAVE_VERSION = 32;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -30,6 +36,8 @@ export interface SaveData {
   turnarounds?: unknown;
   /** Baggage network, since version 23 (T43). */
   baggage?: unknown;
+  /** Airport staff, since version 31 (T68). */
+  staff?: unknown;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -204,5 +212,154 @@ export function migrate(raw: unknown): SaveData {
   if (save.version < 25) save.version = 25;
   // Version 25 to 26: stands gained upgrades, upgrade works and a gate desk (T66). Older stands load with no upgrades, no works and the nearest gate desk.
   if (save.version < 26) save.version = 26;
+  // Version 26 to 27: cohorts gained the walk they are on (T54). Older cohorts load with no walk.
+  if (save.version < 27) {
+    const co = (save as { cohorts?: { hi?: number; arrays?: Record<string, string> } }).cohorts;
+    if (co?.arrays && typeof co.hi === 'number') co.arrays.walkStart = packTyped(new Int32Array(co.hi).fill(-1));
+    save.version = 27;
+  }
+  // Version 27 to 28: fixtures keep an anchor offset, a level and a mode, security lanes a direction (T75).
+  if (save.version < 28) {
+    type OldGrid = { w?: number; zone?: string; fixture: string; fixtureRot?: string; fixtureOff?: string; fixtureLevel?: string; fixtureMode?: string };
+    const business = (save as { business?: { grids?: OldGrid[] } }).business;
+    const SECURITY = 2;
+    for (const g of business?.grids ?? []) {
+      const fixture = unpackTyped(g.fixture, Uint8Array);
+      const n = fixture.length;
+      const rotLayer = g.fixtureRot ? unpackTyped(g.fixtureRot, Uint8Array) : new Uint8Array(n);
+      const zone = g.zone ? unpackTyped(g.zone, Uint8Array) : new Uint8Array(n);
+      const w = g.w ?? 160;
+      const h = n / w;
+      const off = new Uint8Array(n);
+      const level = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        if (rotLayer[i] >= 5) off[i] = 1;
+        if (fixture[i] > 0) level[i] = 1;
+      }
+      const zoneAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= w || y >= h ? -1 : zone[y * w + x]);
+      for (let i = 0; i < n; i++) {
+        if (fixture[i] !== SECURITY || rotLayer[i] !== 0) continue;
+        const x = i % w;
+        const y = Math.floor(i / w);
+        const here = zone[i];
+        let found = 0;
+        for (let rot = 0; rot < 4; rot++) {
+          const [sx, sy] = ROT_STEP[(rot + 3) % 4];
+          const ahead = zoneAt(x + sx, y + sy);
+          const behind = zoneAt(x - sx, y - sy);
+          if (((here === 0 || here === 1) && ahead === 3) || ((behind === 0 || behind === 1) && here === 3)) {
+            found = rot;
+            break;
+          }
+        }
+        rotLayer[i] = 1 + found;
+      }
+      g.fixtureRot = packTyped(rotLayer);
+      g.fixtureOff = packTyped(off);
+      g.fixtureLevel = packTyped(level);
+      g.fixtureMode = packTyped(new Uint8Array(n));
+    }
+    save.version = 28;
+  }
+  // Version 28 to 29: cohort members with traits seeds, needs and satisfaction, and the visit state of sub cohorts (T67). Older cohorts get seeded members, full satisfaction and no visit.
+  if (save.version < 29) {
+    const co = (save as { cohorts?: { hi?: number; arrays?: Record<string, string> } }).cohorts;
+    const arrays = co?.arrays;
+    if (arrays && typeof co.hi === 'number' && arrays.recipeSeed && arrays.size) {
+      const hi = co.hi;
+      const m = PROFILES.maxGroup;
+      const recipe = unpackTyped(arrays.recipeSeed, Uint32Array);
+      const size = unpackTyped(arrays.size, Uint8Array);
+      const profile = arrays.profile ? unpackTyped(arrays.profile, Uint8Array) : new Uint8Array(hi);
+      const memberSeed = new Uint32Array(hi * m);
+      const memberSat = new Uint8Array(hi * m);
+      const memberNeed = new Uint16Array(hi * m * NEED_COUNT);
+      const traits = new Float64Array(TRAIT_COUNT);
+      const flags = arrays.flags ? unpackTyped(arrays.flags, Uint8Array) : new Uint8Array(hi);
+      for (let c = 0; c < hi; c++) {
+        for (let i = 0; i < size[c]!; i++) {
+          const seed = memberSeedOf(recipe[c]!, i);
+          writeTraits(seed, profile[c]!, traits);
+          const b = c * m + i;
+          memberSeed[b] = seed;
+          memberSat[b] = NEEDS.satisfaction.start;
+          memberNeed[b * NEED_COUNT + NEED_COUNT - 1] = Math.floor(traits[TRAIT.Desire]! * 1000);
+          if (traits[TRAIT.Slow] === 1) flags[c] = flags[c]! | FLAG_SLOW;
+        }
+      }
+      arrays.flags = packTyped(flags);
+      arrays.memberSeed = packTyped(memberSeed);
+      arrays.memberSat = packTyped(memberSat);
+      arrays.memberNeed = packTyped(memberNeed);
+      arrays.needTick = packTyped(new Int32Array(hi).fill((save as { tick?: number }).tick ?? 0));
+      arrays.parent = packTyped(new Int32Array(hi).fill(-1));
+      arrays.waitStart = packTyped(new Int32Array(hi).fill(-1));
+      arrays.target = packTyped(new Int32Array(hi).fill(-1));
+      arrays.visitNeed = packTyped(new Uint8Array(hi));
+    }
+    save.version = 29;
+  }
+  // Version 29 to 30: cohorts save the day counters of passenger satisfaction and its 30 day ring (T67). Older saves start with both empty.
+  if (save.version < 30) save.version = 30;
+  // Version 30 to 31: the arrival journey (T20). eGate and customs anchors became service nodes, so each saved service table gets an empty row per such anchor, inserted in cell order. Cohorts gain the serial and born slot arrays, the arrival counters and the arrivals rng, and baggage gains the carousel delivery rows; all are optional and start empty.
+  if (save.version < 31) {
+    const biz = (save as { business?: { grids?: { fixture?: string; fixtureRot?: string }[]; service?: ServiceSave[] } }).business;
+    const grids = biz?.grids ?? [];
+    const tables = biz?.service ?? [];
+    for (let i = 0; i < tables.length; i++) {
+      const g = grids[i];
+      if (g?.fixture === undefined || g.fixtureRot === undefined) continue;
+      tables[i] = insertNewServiceRows(tables[i]!, unpackTyped(g.fixture, Uint8Array), unpackTyped(g.fixtureRot, Uint8Array));
+    }
+    save.version = 31;
+  }
+  // Version 31 to 32: airport staff as individuals (T68). Older saves have none; the first staffing pass hires the running shift on its stations.
+  if (save.version < 32) save.version = 32;
   return save as SaveData;
+}
+
+/** Fixture ids of the service keys that existed before save version 31, and of all service keys. */
+const LEGACY_SERVICE_IDS: readonly number[] = SERVICE_KEYS.slice(0, LEGACY_SERVICE_COUNT).map((k) => FIXTURE_KEYS.indexOf(k) + 1);
+const ALL_SERVICE_IDS: readonly number[] = SERVICE_KEYS.map((k) => FIXTURE_KEYS.indexOf(k) + 1);
+/** fixtureRot below this marks the anchor of a fixture, as in serviceNodes. */
+const ANCHOR_ROT_LIMIT = 5;
+
+/**
+ * Rebuilds a version 30 service table for the node set of version 31: the row of every old node moves to its new
+ * index, and each eGate or customs anchor gets an empty row. Both lists are in ascending cell order.
+ */
+function insertNewServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8Array): ServiceSave {
+  const oldIndexOfNew: number[] = [];
+  let oldCount = 0;
+  for (let c = 0; c < fixture.length; c++) {
+    if (rot[c]! >= ANCHOR_ROT_LIMIT) continue;
+    const id = fixture[c]!;
+    if (!ALL_SERVICE_IDS.includes(id)) continue;
+    if (LEGACY_SERVICE_IDS.includes(id)) oldIndexOfNew.push(oldCount++);
+    else oldIndexOfNew.push(-1);
+  }
+  if (oldCount !== old.count || oldIndexOfNew.length === oldCount) return old;
+  const count = oldIndexOfNew.length;
+  const slots = oldCount > 0 ? Math.floor(unpackTyped(old.qCohort, Int32Array).length / oldCount) : 0;
+  const rows = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number, fill: number): string => {
+    const src = unpackTyped(text, ctor as Int32ArrayConstructor);
+    const out = new ctor(count * per).fill(fill);
+    for (let k = 0; k < count; k++) {
+      const from = oldIndexOfNew[k]!;
+      if (from >= 0) for (let j = 0; j < per; j++) out[k * per + j] = src[from * per + j]!;
+    }
+    return packTyped(out);
+  };
+  return {
+    ...old,
+    count,
+    queueLen: rows(old.queueLen, Int32Array, 1, 0),
+    busyUntil: rows(old.busyUntil, Int32Array, 1, 0),
+    serving: rows(old.serving, Int32Array, 1, -1),
+    servingSize: rows(old.servingSize, Int32Array, 1, 0),
+    qCohort: rows(old.qCohort, Int32Array, slots, 0),
+    qSize: rows(old.qSize, Int32Array, slots, 0),
+    qHead: rows(old.qHead, Uint16Array, 1, 0),
+    qCount: rows(old.qCount, Uint16Array, 1, 0),
+  };
 }

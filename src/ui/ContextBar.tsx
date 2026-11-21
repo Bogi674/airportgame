@@ -218,10 +218,16 @@ export function ContextBar({ send }: Props) {
               <Select label={t('opt.floorType')} value={s.floorType} options={[1, 2, 3].map((f) => ({ v: f, text: tDynamic(`terminal.floor.${f}`) }))} onChange={(v) => s.set({ floorType: v as 1 | 2 | 3 })} />
             )}
             {s.tSub === 'zone' && (
-              <Select label={t('opt.zone')} value={s.zoneType} testId="opt-zone" options={[1, 2, 3, 4].map((z) => ({ v: z, text: tDynamic(`zone.${z}`) }))} onChange={(v) => s.set({ zoneType: v as 1 | 2 | 3 | 4 })} />
+              <>
+                <Select label={t('opt.zone')} value={s.zoneType} testId="opt-zone" options={[1, 2, 3, 4, 5].map((z) => ({ v: z, text: tDynamic(`zone.${z}`) }))} onChange={(v) => s.set({ zoneType: v as 1 | 2 | 3 | 4 | 5 })} />
+                <Select label={t('opt.zoneShape')} value={s.zoneBrush ? 1 : 0} testId="opt-zoneShape" options={[0, 1].map((m) => ({ v: m, text: tDynamic(`opt.zoneShape.${m}`) }))} onChange={(v) => s.set({ zoneBrush: v === 1 })} />
+              </>
             )}
             {s.tSub === 'wall' && (
               <Select label={t('opt.wallType')} value={s.wallType} options={[1, 2].map((f) => ({ v: f, text: tDynamic(`terminal.wall.${f}`) }))} onChange={(v) => s.set({ wallType: v as 1 | 2 })} />
+            )}
+            {s.tSub === 'door' && (
+              <Select label={t('opt.doorType')} value={s.doorType} testId="opt-doorType" options={[3, 4].map((d) => ({ v: d, text: tDynamic(`terminal.door.${d}`) }))} onChange={(v) => s.set({ doorType: v as 3 | 4 })} />
             )}
             {s.tSub === 'fixture' && (
               <Select
@@ -231,6 +237,15 @@ export function ContextBar({ send }: Props) {
                 options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
                 onChange={(v) => s.set({ fixtureId: v })}
               />
+            )}
+            {s.tSub === 'fixture' && FIXTURE_KEYS[s.fixtureId - 1] === 'securityExit' && (
+              <Select label={t('opt.exitLevel')} value={s.fixtureLevel} testId="opt-exitLevel" options={[1, 2, 3].map((l) => ({ v: l, text: tDynamic(`opt.exitLevel.${l}`) }))} onChange={(v) => s.set({ fixtureLevel: v as 1 | 2 | 3 })} />
+            )}
+            {s.tSub === 'fixture' && (FIXTURE_KEYS[s.fixtureId - 1] === 'passport' || FIXTURE_KEYS[s.fixtureId - 1] === 'eGate') && (
+              <Select label={t('opt.mode')} value={s.fixtureMode} testId="opt-mode" options={[0, 1].map((m) => ({ v: m, text: tDynamic(`opt.mode.${m}`) }))} onChange={(v) => s.set({ fixtureMode: v as 0 | 1 })} />
+            )}
+            {s.tSub === 'fixture' && FIXTURE_KEYS[s.fixtureId - 1] === 'security' && (
+              <Select label={t('opt.use')} value={s.fixtureMode} testId="opt-use" options={[0, 1].map((u) => ({ v: u, text: tDynamic(`opt.use.${u}`) }))} onChange={(v) => s.set({ fixtureMode: v as 0 | 1 })} />
             )}
             {s.tSub === 'bagNode' && s.bagKind === 'bay' && (
               <Select

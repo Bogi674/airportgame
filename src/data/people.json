@@ -1,7 +1,8 @@
 {
   "version": 1,
-  "note": "Passenger figure recipes from docs/ART_AND_ASSETS.md section 6.2, drawn by people2.py layers. Weights are per profile in profiles order. Tier ppm and detail feed the people bake.",
+  "note": "Passenger figure recipes from docs/ART_AND_ASSETS.md section 6.2, drawn by people2.py layers. Weights are per profile in profiles order. Tier ppm and detail feed the people bake. Staff recipes from section 6.3, ids referenced by staff.json roles.",
   "cellM": 1.6,
+  "motion": { "note": "strideM: step length for the gait frames, m. interpMaxJumpM: largest move per axis between snapshots that is interpolated, m. memberMarginM and cellHalfM: group packing clearance and half cell, m.", "strideM": 0.7, "interpMaxJumpM": 6, "memberMarginM": 0.05, "cellHalfM": 0.95 },
   "tiers": [
     { "minZoom": 4, "ppm": 8, "detail": 0 },
     { "minZoom": 8, "ppm": 24, "detail": 1 },
@@ -50,5 +51,23 @@
     { "id": 28, "name": "Pilgrim", "skin": 3, "hair": "peci", "hairCol": "white", "shirt": "#f4f4f4", "items": [], "weights": [0, 4, 2, 6, 0, 0] },
     { "id": 29, "name": "Premium traveler", "skin": 4, "hair": "side_part", "hairCol": "black", "shirt": "#f4f4f4", "overlay": "suit", "tie": "#1d3fa8", "items": [], "weights": [4, 1, 0, 0, 10, 0] },
     { "id": 30, "name": "Budget traveler", "skin": 5, "hair": "short", "hairCol": "brown", "shirt": "#9aa3ad", "items": [], "weights": [0, 3, 1, 10, 0, 0] }
+  ],
+  "staff": [
+    { "id": 1, "name": "Security officer", "skin": 3, "hair": "short", "hairCol": "black", "shirt": "#1f2d4d", "epaulettes": 1, "radio": true, "items": [] },
+    { "id": 2, "name": "Security officer with hijab", "skin": 5, "hair": "hijab", "hairCol": "black", "shirt": "#1f2d4d", "epaulettes": 1, "radio": true, "items": [] },
+    { "id": 3, "name": "Police", "skin": 1, "hair": "police_cap", "hairCol": "black", "shirt": "#1d2333", "overlay": "vest_police", "radio": true, "items": [] },
+    { "id": 4, "name": "Customs officer", "skin": 4, "hair": "beret", "hairCol": "dark", "shirt": "#c2b280", "epaulettes": 2, "items": [] },
+    { "id": 5, "name": "Check in agent", "skin": 2, "hair": "bun", "hairCol": "dark", "shirt": "#1f3f8f", "overlay": "blazer", "scarf": "#c8102e", "items": [] },
+    { "id": 6, "name": "Administrator", "skin": 0, "hair": "short", "hairCol": "brown", "shirt": "#e8edf2", "tie": "#2b3445", "items": ["clipboard"] },
+    { "id": 7, "name": "Pilot", "skin": 3, "hair": "pilot_cap", "hairCol": "black", "shirt": "#f4f4f4", "epaulettes": 4, "case": "#1d1f24", "items": ["suitcase"] },
+    { "id": 8, "name": "Cabin crew", "skin": 1, "hair": "bun", "hairCol": "black", "shirt": "#7a1f3d", "overlay": "blazer", "scarf": "#e8c547", "case": "#1d1f24", "items": ["suitcase"] },
+    { "id": 9, "name": "Ground handler", "skin": 5, "hair": "cap", "hairCol": "black", "shirt": "#2b3445", "overlay": "vest_orange", "headAcc": "ear_defenders", "gloves": "#3b3b3b", "items": [] },
+    { "id": 10, "name": "Baggage handler", "skin": 6, "hair": "short", "hairCol": "black", "shirt": "#2b3445", "overlay": "vest_yellow", "headAcc": "ear_defenders", "gloves": "#3b3b3b", "items": [] },
+    { "id": 11, "name": "Marshaller", "skin": 2, "hair": "short", "hairCol": "dark", "shirt": "#2b3445", "overlay": "vest_orange", "items": ["wands"] },
+    { "id": 12, "name": "Maintenance worker", "skin": 4, "hair": "helmet", "hairCol": "black", "shirt": "#2f5aa8", "overlay": "overalls", "headAcc": "ear_defenders", "items": ["toolbox"] },
+    { "id": 13, "name": "Cleaner", "skin": 7, "hair": "short", "hairCol": "black", "shirt": "#7d8590", "items": ["cart"] },
+    { "id": 14, "name": "Retail staff", "skin": 0, "hair": "ponytail", "hairCol": "brown", "shirt": "#f4f4f4", "overlay": "apron", "apron": "#2a9d8f", "items": [] },
+    { "id": 15, "name": "ARFF firefighter", "skin": 3, "hair": "fire_helmet", "hairCol": "black", "shirt": "#c9a23a", "overlay": "turnout", "items": ["extinguisher"] },
+    { "id": 16, "name": "Paramedic", "skin": 6, "hair": "short", "hairCol": "black", "shirt": "#2f8f4e", "overlay": "paramedic", "radio": true, "items": ["medbag"] }
   ]
 }

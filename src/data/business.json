@@ -19,6 +19,7 @@
   "wallPerEdge": 300,
   "glassPerEdge": 700,
   "doorPerEdge": 1500,
+  "staffDoorPerEdge": 2500,
   "contactReachM": 90,
   "atcRangeM": 3500,
   "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64 },
@@ -89,6 +90,14 @@
    "servers": 1,
    "serviceSeconds": 5
   }
+ },
+ "fixtureCosts": {
+  "note": "Build cost per asset id, T75",
+  "securityExit.staffed": 30000,
+  "securityExit.auto": 85000,
+  "securityExit.revolving": 60000,
+  "eGate": 25000,
+  "customs": 40000
  },
  "tower": {
   "note": "Free standing ATC tower, confirmed by the user on 2026-11-06. Money in the game currency, footprint side in meters. Index 0 of levels is level 1. movementsPerHour is the landing and takeoff budget per runway in a rolling 60 minute window. maxRunways is the most runways the level allows, minus 1 means unlimited.",

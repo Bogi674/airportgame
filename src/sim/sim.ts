@@ -17,7 +17,8 @@ import { Airfield, isProblem } from './airfield/airfield';
 import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
 import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
-import { Cohorts, type CohortsSave } from './cohorts/cohorts';
+import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
+import { Staff, type StaffSave } from './staff/staff';
 import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -30,6 +31,31 @@ import { migrate, SAVE_VERSION, type SaveData } from './save/migrations';
 /** Subsystems in execution order. The stress tool times each one separately. */
 const SUBSYSTEMS = ['commands', 'clock', 'network', 'business', 'cohorts', 'baggage', 'flights', 'aircraft', 'vehicles'] as const;
 export type SubsystemName = (typeof SUBSYSTEMS)[number];
+
+/**
+ * The last closed passenger day as the finance sheet shows it (BusinessPayload.paxDay), read from the DAY counters
+ * of cohorts.ts. Empty while no passenger was rated, which is the case right after a restore until the next daily close.
+ */
+function paxDayNumbers(day: Float64Array): number[] {
+  const rated = day[DAY.SatCount]!;
+  if (rated <= 0) return [];
+  const round = (v: number): number => Math.round(v * 10) / 10;
+  const out = [DAY.SatSum, DAY.PenQueue, DAY.PenWalk, DAY.PenUnmet, DAY.PenMissed].map((k) => round(day[k]! / rated));
+  for (let k = DAY.Visits0; k < DAY.Spend; k++) out.push(round(day[k]!));
+  out.push(round(day[DAY.Spend]!));
+  return out;
+}
+
+/**
+ * The last closed arrival day as the finance sheet shows it (BusinessPayload.arrDay): passengers exited, stranded,
+ * mean claim wait in game minutes and passengers without their bags. Empty while no arrival finished its journey.
+ */
+function arrDayNumbers(day: Float64Array): number[] {
+  if (day[DAY.ArrExited]! + day[DAY.ArrStranded]! <= 0) return [];
+  const round = (v: number): number => Math.round(v * 10) / 10;
+  const wait = day[DAY.ClaimCount]! > 0 ? round(day[DAY.ClaimWaitS]! / day[DAY.ClaimCount]! / 60) : 0;
+  return [day[DAY.ArrExited]!, day[DAY.ArrStranded]!, wait, day[DAY.NoBags]!];
+}
 
 /**
  * The simulation core. Pure TypeScript with no DOM and no wall clock, so the same seed
@@ -47,6 +73,8 @@ export class Sim {
   readonly cohorts: Cohorts;
   /** Baggage nodes and their automatic link network, one per building (T43). */
   readonly baggage: Baggage;
+  /** Airport staff as individuals (T68). */
+  readonly staff: Staff;
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -125,6 +153,9 @@ export class Sim {
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
+    this.business.closePax = () => this.cohorts.closeDay();
+    this.business.paxDay = () => paxDayNumbers(this.cohorts.lastDay);
+    this.business.arrDay = () => arrDayNumbers(this.cohorts.lastDay);
     this.baggage = new Baggage(this.business, {
       getCash: (): number => this.cash,
       book: (amount: number): void => this.book('construction', amount),
@@ -134,10 +165,15 @@ export class Sim {
         return f < 0 ? -2 : this.traffic.fStand[f];
       },
     }, this.rng);
+    this.staff = new Staff(this.business, this.baggage, this.airfield);
+    this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
+    this.business.staffWages = () => this.staff.wagesPerDay();
+    this.business.staffRows = () => this.staff.rows();
     this.business.onGridEdited = (b) => this.baggage.onGridEdited(b);
     this.business.bagMissingShare = () => this.baggage.missingShare();
     this.business.bagDayReset = () => this.baggage.resetDay();
     this.cohorts.onCheckIn = (gridId, cell, serial, bags) => this.baggage.checkIn(gridId, cell, serial, bags);
+    this.cohorts.bagLookup = this.baggage;
     this.turns.bagsReady = (f) => this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
     this.turns.loaded = (f) => this.baggage.freeFlight(this.traffic.serialOf(f));
     this.turns.unloaded = (f) => this.baggage.unloaded(this.traffic.serialOf(f), this.business.flightPaxOf(f), this.tick);
@@ -147,6 +183,7 @@ export class Sim {
       ...(this.traffic.hooks ?? { docked: () => undefined, pushback: () => undefined, departed: () => undefined }),
       docked: (f) => {
         businessDocked?.(f);
+        this.cohorts.onDocked(f, this.tick, this.dockedBoarding(f));
         this.warnNoRoad(f);
         this.warnFarStand(f);
         this.fuelAtDock(f);
@@ -221,6 +258,7 @@ export class Sim {
         this.syncAirfield();
         break;
       case 3:
+        this.staff.update(this.tick);
         this.business.update(this.tick);
         break;
       case 4:
@@ -332,6 +370,13 @@ export class Sim {
     const desk = this.business.gateFor(stand);
     if (!desk || Math.hypot(desk.wx - stand.x, desk.wy - stand.y) <= STAND_ACCESS.stairsWalkLimitM) return BOARDING.near;
     return ((stand.upgrades ?? 0) & STAND_UPGRADE.busBay) !== 0 ? BOARDING.bus : BOARDING.farSlow;
+  }
+
+  /** How the flight at its stand boards, near when it has no stand. */
+  private dockedBoarding(f: number): number {
+    const stands = this.airfield.data.stands;
+    for (let i = 0; i < stands.length; i++) if (stands[i]!.id === this.traffic.fStand[f]) return this.boardingMode(stands[i]!, f);
+    return BOARDING.near;
   }
 
   /** A flight docks at a far stand with no bus bay: boarding runs slower and an alert asks for a bus bay, once a game day per stand. */
@@ -457,6 +502,9 @@ export class Sim {
       case 'setAirlineFee':
         this.business.setFee(cmd.airlineId, cmd.level);
         break;
+      case 'setStaffCap':
+        this.report(this.staff.setCap(cmd.role, cmd.cap));
+        break;
       case 'takeLoan':
         this.report(this.business.takeLoan(cmd.amount));
         break;
@@ -557,6 +605,9 @@ export class Sim {
       zone: g.zone.slice(),
       fixture: g.fixture.slice(),
       fixtureRot: g.fixtureRot.slice(),
+      fixtureOff: g.fixtureOff.slice(),
+      fixtureLevel: g.fixtureLevel.slice(),
+      fixtureMode: g.fixtureMode.slice(),
       hWall: g.hWall.slice(),
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),
@@ -570,7 +621,9 @@ export class Sim {
 
   /** Read only overlay of one terminal building at the current tick. Changes no sim state. */
   overlayData(gridIndex: number, out: OverlayData): OverlayData {
-    return this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
+    const o = this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
+    this.staff.fillCoverage(o, gridIndex);
+    return o;
   }
 
   /** True once per airfield change. */
@@ -658,6 +711,7 @@ export class Sim {
       cohorts: this.cohorts.saveState(),
       vehicles: this.gse.saveState(),
       turnarounds: this.turns.saveState(),
+      staff: this.staff.saveState(),
     };
     return save;
   }
@@ -683,7 +737,8 @@ export class Sim {
     this.syncRoads(true);
     this.gse.loadState(save.vehicles);
     this.turns.loadState(save.turnarounds);
-    this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts);
+    this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
+    this.staff.loadState(save.staff as StaffSave | undefined);
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
@@ -714,6 +769,7 @@ export class Sim {
     h = this.cohorts.hash(h);
     h = this.gse.hash(h);
     h = this.turns.hash(h);
+    h = this.staff.hash(h);
     return h;
   }
 
@@ -736,6 +792,7 @@ export class Sim {
       n++;
     }
     views.header[SnapHeader.VehicleCount] = n;
-    this.cohorts.writeSample(views);
+    this.cohorts.writeSample(views, this.tick);
+    this.staff.writeSample(views, this.tick);
   }
 }

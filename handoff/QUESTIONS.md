@@ -338,3 +338,50 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Jet bridges while only floor 0 can be built | Bridges wait for T51. T66 ships stairs and bus bay, hydrant pit and fixed ground power now; jet bridge access types 1 to 4 stay unbuildable until multi floor terminals exist |
 | What the stand inspector assigns | The gate desk only. Check in stays airline wide. A stand with no gate desk falls back to the nearest one and shows a warning. The baggage bay comes from T43 and the carousel follows the bay |
 | Bus bay (access type 5) | A stand within 150 m of its gate desk boards by stairs. A farther stand needs a bus bay, and boarding then waits for a depot bus. Without a bus bay a far stand boards 25 percent slower and an alert asks for a bus bay |
+
+## 2026-11-18 phase 3 run: T54, T75, T67, T20, T68
+
+| Question | Answer (owner, 2026-11-18) |
+| --- | --- |
+| How to run phase 3 | Two parallel tracks first: T54 then T67 on the cohort store, and T75 zoning beside it. Once both land, T20 and T68 run in parallel. T78 stays parked |
+| How a flight is domestic or international | Per destination: each generated destination carries a seeded flag, the international share lives in data (35 percent proposed). A flight is international when its destination is |
+| Values marked Confirm and missing numbers | Every Confirm value of `docs/TERMINAL_ZONING.md` is accepted as written. Numbers for T67 needs and T68 shifts that no doc gives are proposed by the orchestrator in data files, listed here per task and reported for review |
+| Saves and stress | Save version bumps with a migration are approved for every task that needs one. A stress regression or a broken 4 ms medium budget stops the run for the owner; no baseline update without asking |
+
+### T67 proposed values (orchestrator, for the user's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| Group size | family 3, 4 or 5 at 34, 33 and 33 percent; budget and premium 1 or 2 at 60 and 40 percent; crew 1 |
+| Need threshold | a member acts on a need above 0.5 |
+| Visits | food 20 min with spend share 0.4, drink 10 min with 0.15, shop 15 min with 0.6, rest 20 min with 0 |
+| Gate lead | members head to the gate 15 to 40 min before departure |
+| Reduced mobility | 3 percent of members, walking at 0.7 speed |
+| Satisfaction | queue costs 1 point per game minute over patience; walking costs 0.02 per m beyond 300 m; an unmet need costs 10 per hour; a missed flight costs 40 |
+| Scope | needs act only airside (retail window, GAME_DESIGN section 8); flight delay and facility bonuses stay in their own rating parts; travel class and price sensitivity move to T32 |
+
+### T20 proposed values (orchestrator, for the user's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| International share | 0.35 of destinations, seeded per destination (owner answer) |
+| Immigration | passport desk 45 s; eGate 20 s, 1 server, 8 percent referred to an officer, families with children under 12 use desks |
+| Customs | 8 s with 2 servers; 5 percent sent to the red channel for 120 s |
+| Deboarding | doors open 180 s after docking; 2.5 s per passenger per door; remote stand bus delay 480 s until bus trips exist; far stands without a bus bay reuse the 0.25 boarding slowdown |
+| Baggage claim | checked every 30 s; passengers give up after 45 min; missing bags cost 20 points per member |
+| Stranded | after 60 min, costing 40 points per member |
+| Scope | security exits stay walk through with no queue; international departures through passport control and security exit throughput become new roadmap rows |
+| Default for Q1 | an international flight at an airport with no international gate desk uses the domestic route, skips immigration and customs, and the player gets a notice; the alternative (passengers lost) is one branch in arrivalEntry |
+
+### T68 proposed values (orchestrator, for the user's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| Shifts | start 06:00, 14:00 and 22:00, 8 h each; clock in and out 10 min; an unrelieved worker stays at most 60 min past shift end |
+| Breaks | one per shift, due 240 min after shift start plus 0 to 60 min, 30 min long; waits up to 30 min for relief; skill 0.8 without a break |
+| Staff | skill 0.9 to 1.1; relief pool 0.2 of the on duty need; per station: check in 1, bag drop 1, gate desk 1, security 2, passport 1, customs 1, screening machine 1; wage 130 per role per day (existing fee); walk 1.5 m/s (existing crew speed) |
+| Sim | store capacity 4 096, state step 1 min, staffing pass every 60 min |
+| Render | 300 staff figures in the snapshot, passenger sample cap 3 000 to 2 700; staff stand 0.7 m behind the desk, 0.8 m apart |
+| Default for Q1 | with no staff center, staff clock in and out at the curb door, skip their break and work at 0.8 skill; the alternative (no staffed desk opens without a staff center) would break existing saves |
+| Scope | apron crews, cleaners, staffed security exits, morale and training move to a new roadmap row at close |
+| Default for Q2 | when the player cap or the stations shrink, members already on site keep working until their shift ends and are then freed; the alternative (send them home at once) would empty a desk in the middle of a shift |

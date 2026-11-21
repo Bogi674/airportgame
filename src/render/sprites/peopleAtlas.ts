@@ -1,10 +1,13 @@
 import { PEOPLE } from '@data/index';
 import { personOps, shadowOps, type ShapeOp } from './peopleShapes';
+import { STAFF_LOOKS } from './peopleRecipes';
 
 /** Frame columns per recipe row: four gait frames. */
 const FRAMES = 4;
-/** Recipe rows followed by one shadow row. */
-const SHADOW_ROW = PEOPLE.recipes.length;
+/** First row of the staff recipes, after the passenger recipes. */
+export const STAFF_ROW0 = PEOPLE.recipes.length;
+/** Passenger recipe rows, then staff recipe rows, then one shadow row. */
+export const SHADOW_ROW = STAFF_ROW0 + PEOPLE.staff.length;
 const ROWS = SHADOW_ROW + 1;
 
 export interface PeopleAtlas {
@@ -97,8 +100,8 @@ export function bakePeopleAtlas(tier: number): PeopleAtlas {
   const ctx = canvas.getContext('2d');
   if (!ctx) return { canvas, ppm, cellPx };
   const ops: ShapeOp[] = [];
-  for (let row = 0; row < PEOPLE.recipes.length; row++) {
-    const recipe = PEOPLE.recipes[row];
+  for (let row = 0; row < SHADOW_ROW; row++) {
+    const recipe = row < STAFF_ROW0 ? PEOPLE.recipes[row] : STAFF_LOOKS[row - STAFF_ROW0];
     for (let frame = 0; frame < FRAMES; frame++) {
       ops.length = 0;
       personOps(recipe, frame, t.detail, false, ops);

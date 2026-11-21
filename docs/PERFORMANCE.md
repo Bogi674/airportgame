@@ -21,7 +21,7 @@ Other budgets:
 * Saving a large airport under 500 ms, loading under 1.5 s.
 * Building or editing anything gives visual feedback within one frame. Network rebuilds and re-bakes finish within 100 ms for a typical edit.
 
-`npm run stress` builds the three scenarios from fixed seeds, runs 20 000 ticks headlessly and prints mean and 99th percentile ms per tick per subsystem. The medium scenario now includes a terminal with departing cohorts. CI fails if any budget is exceeded or any subsystem regresses by more than 10 percent against `perf-baseline.json`.
+`npm run stress` builds the three scenarios from fixed seeds, runs 20 000 ticks headlessly and prints mean and 99th percentile ms per tick per subsystem. The medium scenario now includes a terminal with departing cohorts. The people20k scenario fills a zoned terminal to at least 20 000 cohorts and 40 000 people (T67) under the 4 ms medium budget and fails with PEOPLE TOO LOW if the peak falls short. CI fails if any budget is exceeded or any subsystem regresses by more than 10 percent against `perf-baseline.json`. The report prints `staff peak <n> hired, <m> on duty` for every scenario with a terminal (T68), counted every 500 ticks outside the timed section; the staff update itself is part of the `business` line, and it recomputes service factors only when staffing changed.
 
 ## 2. Data and memory
 

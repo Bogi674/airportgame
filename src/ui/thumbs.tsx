@@ -199,8 +199,10 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
     case 'zonePublic':
     case 'zoneCommercial':
     case 'zoneSecure':
-    case 'zoneStaff': {
-      const c = { zonePublic: '#468ce6', zoneCommercial: '#ebaa32', zoneSecure: '#46be78', zoneStaff: '#dc5050' }[kind];
+    case 'zoneStaff':
+    case 'zoneInternational': {
+      // Zone colors of the overlay tokens in theme.css (docs/TERMINAL_ZONING.md section 5).
+      const c = { zonePublic: '#3ea35a', zoneCommercial: '#2f9d8f', zoneSecure: '#2f6fd1', zoneStaff: '#d9463e', zoneInternational: '#7a4fd0' }[kind];
       return <Scene bg="#d3dadd"><rect x="12" y="10" width="72" height="40" rx="3" fill={c} opacity="0.55" stroke={c} stroke-width="1.500" /></Scene>;
     }
     case 'tug':

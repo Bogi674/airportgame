@@ -69,7 +69,7 @@ function terminalSim(): Sim {
 }
 
 function blank(): OverlayData {
-  return emptyOverlay({ building: 0, w: 0, h: 0, density: new Uint16Array(0), nodeCell: new Int32Array(0), nodeQueue: new Uint16Array(0), nodeWaitS: new Uint16Array(0), gateCell: new Int32Array(0), gateDistM: new Uint16Array(0) }, 0);
+  return emptyOverlay({ building: 0, w: 0, h: 0, density: new Uint16Array(0), nodeCell: new Int32Array(0), nodeQueue: new Uint16Array(0), nodeWaitS: new Uint16Array(0), gateCell: new Int32Array(0), gateDistM: new Uint16Array(0), stationCell: new Int32Array(0), stationNeed: new Uint8Array(0), stationPresent: new Uint8Array(0) }, 0);
 }
 
 /** Runs ticks like the worker does: one step, then the overlay read whenever the publisher is due. */

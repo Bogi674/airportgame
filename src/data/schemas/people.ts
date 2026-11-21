@@ -95,6 +95,16 @@ const recipeSchema = z.strictObject({
   weights: z.array(z.number().int().min(0).max(MAX_WEIGHT)).length(PROFILE_KEYS.length),
 });
 
+/** A staff recipe: the passenger shape without weights, plus the extras people2.py reads for uniforms. */
+const staffRecipeSchema = recipeSchema.omit({ weights: true }).extend({
+  gloves: hex.optional(),
+  epaulettes: z.number().int().min(0).max(4).optional(),
+  radio: z.literal(true).optional(),
+  apron: hex.optional(),
+});
+
+export const STAFF_RECIPE_COUNT = 16;
+
 const tierSchema = z.strictObject({
   minZoom: z.number().nonnegative(),
   ppm: z.number().positive(),
@@ -106,11 +116,19 @@ export const peopleSchema = z
     version: z.literal(1),
     note: z.string(),
     cellM: z.number().positive(),
+    motion: z.strictObject({
+      note: z.string(),
+      strideM: z.number().positive(),
+      interpMaxJumpM: z.number().positive(),
+      memberMarginM: z.number().nonnegative(),
+      cellHalfM: z.number().positive(),
+    }),
     tiers: z.array(tierSchema).min(1),
     skin: z.array(hex).length(SKIN_COUNT),
     hair: z.record(z.string().min(1), hex),
     profiles: z.array(z.enum(PROFILE_KEYS)).length(PROFILE_KEYS.length),
     recipes: z.array(recipeSchema),
+    staff: z.array(staffRecipeSchema),
   })
   .superRefine((d, ctx) => {
     if (d.recipes.length !== RECIPE_COUNT) {
@@ -120,6 +138,15 @@ export const peopleSchema = z
       if (r.id !== i + 1) ctx.addIssue({ code: 'custom', message: `recipe at index ${i} has id ${r.id}, expected ${i + 1}` });
       if (!Object.hasOwn(d.hair, r.hairCol)) {
         ctx.addIssue({ code: 'custom', message: `recipe ${r.id} hairCol ${r.hairCol} is not a hair key` });
+      }
+    });
+    if (d.staff.length !== STAFF_RECIPE_COUNT) {
+      ctx.addIssue({ code: 'custom', message: `expected ${STAFF_RECIPE_COUNT} staff recipes, got ${d.staff.length}` });
+    }
+    d.staff.forEach((r, i) => {
+      if (r.id !== i + 1) ctx.addIssue({ code: 'custom', message: `staff recipe at index ${i} has id ${r.id}, expected ${i + 1}` });
+      if (!Object.hasOwn(d.hair, r.hairCol)) {
+        ctx.addIssue({ code: 'custom', message: `staff recipe ${r.id} hairCol ${r.hairCol} is not a hair key` });
       }
     });
     d.tiers.forEach((t, i) => {
@@ -139,3 +166,4 @@ export const peopleSchema = z
 
 export type PeopleData = z.infer<typeof peopleSchema>;
 export type PersonRecipe = z.infer<typeof recipeSchema>;
+export type StaffRecipe = z.infer<typeof staffRecipeSchema>;

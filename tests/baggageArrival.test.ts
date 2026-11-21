@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { BAGGAGE, BUSINESS, PROFILES } from '@data/index';
+import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { BagStage } from '@sim/ops/baggage/baggage';
 import { Sim } from '@sim/sim';
@@ -92,6 +92,14 @@ describe('arrival bag flow (T43)', () => {
 
   it('creates the arrival bags in a live sim when the unload task completes and they reach the carousel', () => {
     const r = rig();
+    // The passengers need an entry desk: a curb door on the north wall and a gate desk in a secure corner.
+    const gate = (e: Edit & { rot?: 0 | 1 | 2 | 3 }): void => expect(run(r.sim, { type: 'terminalBuild', building: r.building, ox, oy, headingDeg: 90, edit: e })).toEqual([]);
+    gate({ op: 'foundation', x0: 44, y0: 39, x1: 48, y1: 40, variant: 0 });
+    gate({ op: 'floor', x0: 44, y0: 39, x1: 48, y1: 40, variant: 2 });
+    run(r.sim, { type: 'terminalBuild', building: r.building, ox, oy, headingDeg: 90, edit: { op: 'wall', x0: 44, y0: 40, x1: 46, y1: 40, variant: 3 } });
+    gate({ op: 'zone', x0: 62, y0: 40, x1: 70, y1: 46, variant: 3 });
+    gate({ op: 'fixture', x0: 63, y0: 41, x1: 65, y1: 42, variant: 16 });
+    expect(r.sim.business.curbNode(0)).toBeGreaterThanOrEqual(0);
     const f = flight(r);
     for (let t = 0; t < 40000 && r.sim.baggage.claimedTotal === 0; t++) r.sim.step();
     expect(r.sim.business.flightPaxOf(f)).toBeGreaterThan(0);
@@ -185,15 +193,13 @@ describe('arrival bag flow (T43)', () => {
     expect(r.sim.baggage.missingToday).toBe(0);
   });
 
-  it('counts a carousel for arrival capacity and the belt check', () => {
+  it('counts a carousel for the belt check', () => {
     const none = rig({ carousels: 0, bays: 0 });
-    expect(none.sim.business.arrCapacity()).toBe(0);
     expect(none.sim.business.readiness()).toContain('noBelt');
     const one = rig();
-    expect(one.sim.business.arrCapacity()).toBe(BUSINESS.modules.belt.capacityPerHour);
     expect(one.sim.business.readiness()).not.toContain('noBelt');
     const two = rig({ carousels: 2, bays: 0 });
-    expect(two.sim.business.arrCapacity()).toBe(2 * BUSINESS.modules.belt.capacityPerHour);
+    expect(two.sim.business.readiness()).not.toContain('noBelt');
   });
 
   it('restores to the same hash after a save in the middle of the flow', () => {

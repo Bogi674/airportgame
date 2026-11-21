@@ -26,6 +26,7 @@ import { QualityGovernor, type QualityPreset } from './quality';
 import { vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, chunkSizeM, chunksPerSide, BAND_RASTER_SCALE, CHUNKS_PER_SIDE, type ChunkEntry } from './chunks';
 import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
+import { drawZoneOverlay, type ZoneColors } from './zoneOverlay';
 
 const MAX_BACKING = 4096;
 
@@ -154,6 +155,7 @@ export class Renderer {
   private overlayThemeKey = '';
   /** Fill of unreachable gates, the muted token at the overlay alpha. */
   private overlayMutedFill = '';
+  private zoneColors: ZoneColors | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -322,6 +324,11 @@ export class Renderer {
     this.overlayMutedFill = withAlpha(muted, OVERLAY_ALPHA);
   }
 
+  /** Theme colors of the zones overlay. */
+  setZoneColors(colors: ZoneColors): void {
+    this.zoneColors = colors;
+  }
+
   /**
    * Shows one terminal overlay, or none. The scale is recomputed only when new data or a new kind arrives. The cell
    * frames of the grids are recomputed whenever the grids or the data change, never per frame.
@@ -437,7 +444,7 @@ export class Renderer {
     if (this.ghost) this.drawGhost(this.ghost, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawVehicles(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     if (curr) this.drawAircraft(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
-    this.drawPeople(curr, z * c, z * s, -z * s, z * c, e, f);
+    this.drawPeople(prev, curr, alpha, z * c, z * s, -z * s, z * c, e, f);
     if (this.standStates.length > 0) this.drawStandStates(z * c, z * s, -z * s, z * c, e, f);
   }
 
@@ -503,6 +510,10 @@ export class Renderer {
   private overlayFontDpr = 0;
 
   private drawOverlay(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    if (this.overlayKind === 'zones') {
+      this.drawZoneOverlays(a, b, cc, d, e, f);
+      return;
+    }
     const data = this.overlayData;
     if (!data || this.overlayRamp.length === 0) return;
     const ctx = this.ctx;
@@ -533,8 +544,31 @@ export class Renderer {
           const dist = d0.gateDistM[n]!;
           this.fillOverlayCell(g, i, dist === OVERLAY_MAX ? this.overlayMutedFill : ramp[rampIndex(dist, scale)]!);
         }
+      } else if (kind === 'staffing') {
+        // Percent short of the officers a station needs, so a full station is the cool end of the ramp.
+        for (let n = 0; n < d0.stationCell.length; n++) {
+          const i = d0.stationCell[n]!;
+          if (i < 0) continue;
+          const need = d0.stationNeed[n]!;
+          const short = need > 0 ? Math.round((100 * (need - Math.min(need, d0.stationPresent[n]!))) / need) : 0;
+          this.fillOverlayCell(g, i, ramp[rampIndex(short, scale)]!);
+        }
       }
       if (labelled && (kind === 'queue' || kind === 'walk')) this.labelOverlayCells(d0, kind, m, this.overlayLabels[k]!);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /** Zones of every overlay grid. The matrix maps logical cells, the zone overlay draws in grid meters, so it is divided by the cell size. */
+  private drawZoneOverlays(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const colors = this.zoneColors;
+    if (!colors) return;
+    const ctx = this.ctx;
+    for (let i = 0; i < this.overlayGrids.length; i++) {
+      const g = this.overlayGrids[i]!;
+      const m = this.overlayMatrixFor(i, a, b, cc, d, e, f);
+      ctx.setTransform(m[0]! / TERMINAL_CELL_M, m[1]! / TERMINAL_CELL_M, m[2]! / TERMINAL_CELL_M, m[3]! / TERMINAL_CELL_M, m[4]!, m[5]!);
+      drawZoneOverlay(ctx, g, colors);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -1121,12 +1155,12 @@ export class Renderer {
     }
   }
 
-  private drawPeople(curr: SnapshotViews | null, a: number, b: number, cc: number, d: number, e: number, f: number): void {
+  private drawPeople(prev: SnapshotViews | null, curr: SnapshotViews | null, alpha: number, a: number, b: number, cc: number, d: number, e: number, f: number): void {
     if (!curr) return;
     this.camera.visibleBounds(this.bounds);
     this.ctx.setTransform(a, b, cc, d, e, f);
     const bo = this.bounds;
-    this.people.draw(this.ctx, curr, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3]);
+    this.people.draw(this.ctx, prev, curr, alpha, this.camera.zoom, this.camera.x, this.camera.y, a, b, cc, d, e, f, bo[0], bo[1], bo[2], bo[3]);
   }
 
   /**

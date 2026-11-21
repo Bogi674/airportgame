@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
-import { BAGGAGE, BUSINESS, GROUND, MARKET, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
+import { BAGGAGE, BUSINESS, GROUND, MARKET, STAFF, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
 import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
 import { airportFireCategory, neededCategory } from '@shared/fireCover';
 import {
@@ -28,7 +28,8 @@ import { terminalIssues } from '@shared/terminalRooms';
 import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE } from '@shared/business';
+import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type StaffRow } from '@shared/business';
+import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { Market } from '../market/market';
 import type { BuildContext } from '@shared/validate';
@@ -234,6 +235,16 @@ export class Business {
   /** Share of today's checked bags that were missing, 0 to 1, and the reset after the daily close. Set by the sim (T43). */
   bagMissingShare: (() => number) | null = null;
   bagDayReset: (() => void) | null = null;
+  /** Closes the day of passenger satisfaction and returns the mean over the trailing 30 days, 0 to 100, or -1 with no passenger rated. Set by the sim (T67). */
+  closePax: (() => number) | null = null;
+  /** Daily wages of the hired station staff, set by the sim (T68). */
+  staffWages: (() => number) | null = null;
+  /** Staffing table of the payload, set by the sim (T68). */
+  staffRows: (() => StaffRow[]) | null = null;
+  /** Last closed day of passengers, see BusinessPayload.paxDay. Set by the sim (T67). */
+  paxDay: (() => number[]) | null = null;
+  /** Last closed day of the arrival journey, see BusinessPayload.arrDay. Set by the sim (T20). */
+  arrDay: (() => number[]) | null = null;
   private readonly rng: Rng;
   private readonly marketRng: Rng;
   private readonly serviceRng: Rng;
@@ -503,6 +514,13 @@ export class Business {
     return this.deskList().some((d) => d.building === building && d.x === x && d.y === y);
   }
 
+  /** Display number of the stand a flight is assigned to, '0' when it has none. */
+  private standNumberOf(f: number): string {
+    const stands = this.airfield.data.stands;
+    for (let i = 0; i < stands.length; i++) if (stands[i]!.id === this.traffic.fStand[f]) return stands[i]!.number;
+    return '0';
+  }
+
   /** The desk a stand is assigned to while that desk still exists, null when the stand is unknown, has no assignment or the desk is gone. */
   assignedGate(standId: number): GateDesk | null {
     const stand = this.airfield.data.stands.find((s) => s.id === standId);
@@ -543,10 +561,10 @@ export class Business {
     return buildOverlayData(out, grid, g.id, g, sn, people, this, tick);
   }
 
-  /** Walking distance in metres between two walk nodes of a grid, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
-  walkDistance(grid: number, fromNode: number, toNode: number): number {
+  /** Walking distance in metres between two walk nodes of a grid for an audience, passengers by default, Infinity when no grid has that id. Node ids come from nearestNode and are stale after walkVersion changes. */
+  walkDistance(grid: number, fromNode: number, toNode: number, aud: number = AUD.Pax): number {
     for (let i = 0; i < this.grids.length; i++) {
-      if (this.grids[i]!.id === grid) return walkDistance(this.walkGraphs[i]!, fromNode, toNode);
+      if (this.grids[i]!.id === grid) return walkDistance(this.walkGraphs[i]!, fromNode, toNode, aud);
     }
     return Infinity;
   }
@@ -582,9 +600,63 @@ export class Business {
     return Math.floor(this.totals.carousel / (F.w * F.d));
   }
 
-  /** Each belt and each carousel adds the belt module capacity. */
-  arrCapacity(): number {
-    return (this.totals.belt + this.carouselCount()) * BUSINESS.modules.belt.capacityPerHour;
+  /** Result of arrivalEntry: grid index, walk node of the entry desk, 1 when the route is international. */
+  readonly entryOut = new Int32Array(3);
+
+  /**
+   * Picks where the passengers of a docked flight enter the terminal (T20 D5) and leaves it in entryOut. An
+   * international flight wants a gate desk in an International zone, a domestic one in a Secure zone; an
+   * international flight with no International desk falls back to a Secure one with entryOut[2] 0 (Q1 default,
+   * the switch is this one branch). False when no gate desk in a grid with a curb can take the flight.
+   */
+  arrivalEntry(f: number): boolean {
+    const stands = this.airfield.data.stands;
+    let desk: GateDesk | null = null;
+    for (let i = 0; i < stands.length; i++) {
+      if (stands[i]!.id === this.traffic.fStand[f]) {
+        desk = this.gateFor(stands[i]!);
+        break;
+      }
+    }
+    const intl = this.market.isInternational(f);
+    if (this.entryInZone(desk, intl ? ZONE.International : ZONE.Secure)) {
+      this.entryOut[2] = intl ? 1 : 0;
+      return true;
+    }
+    if (intl && this.entryInZone(desk, ZONE.Secure)) {
+      this.entryOut[2] = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** Fills entryOut[0..1] with a gate desk whose zone is `want`: the stand's own desk first, then grids and nodes ascending. */
+  private entryInZone(desk: GateDesk | null, want: number): boolean {
+    if (desk) {
+      for (let i = 0; i < this.grids.length; i++) {
+        if (this.grids[i]!.id !== desk.building || this.curbNode(i) < 0) continue;
+        const sn = this.serviceNodes[i]!;
+        for (let n = 0; n < sn.count; n++) {
+          if (sn.lx[n] !== desk.x || sn.ly[n] !== desk.y || fixtureKey(sn.kind[n]!) !== 'gateDesk') continue;
+          if (this.walkGraphs[i]!.effective[sn.cell[n]!] !== want) break;
+          this.entryOut[0] = i;
+          this.entryOut[1] = sn.walkNode[n]!;
+          return true;
+        }
+      }
+    }
+    for (let i = 0; i < this.grids.length; i++) {
+      if (this.curbNode(i) < 0) continue;
+      const sn = this.serviceNodes[i]!;
+      for (let n = 0; n < sn.count; n++) {
+        if (sn.queueCap[n]! <= 0 || fixtureKey(sn.kind[n]!) !== 'gateDesk') continue;
+        if (this.walkGraphs[i]!.effective[sn.cell[n]!] !== want) continue;
+        this.entryOut[0] = i;
+        this.entryOut[1] = sn.walkNode[n]!;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Passengers a flight was served with at docking, 0 for GA and for flights lost to a missing terminal. */
@@ -621,6 +693,17 @@ export class Business {
     return Math.round(s);
   }
 
+  /** Staff the legacy per fixture count includes for fixtures that individual staff now cover (T68). */
+  stationPositions(): number {
+    let s = 0;
+    for (const k of Object.keys(STAFF.stations)) {
+      if (k === 'note' || !(k in BUSINESS.modules)) continue;
+      const key = k as keyof typeof BUSINESS.modules;
+      s += this.totals[key] * BUSINESS.modules[key].staff;
+    }
+    return s;
+  }
+
   // Hooks from traffic -------------------------------------------------------
 
   paxFor(f: number): number {
@@ -641,11 +724,11 @@ export class Business {
     return AIRCRAFT[this.traffic.fType[f]].capacity.seatsTypical >= TERMINAL_SEAT_THRESHOLD;
   }
 
-  /** Walk node of the lowest id door of a grid, the curb where passengers arrive. Index into grids, -1 when there is none. */
+  /** Walk node of the lowest id door of a grid that stands on public floor, the curb where passengers arrive. Index into grids, -1 when there is none. */
   curbNode(grid: number): number {
     const wg = this.walkGraphs[grid];
     if (!wg) return -1;
-    for (let n = 0; n < wg.nodeCount; n++) if (wg.nodeKind[n] === WALK_NODE.Door) return n;
+    for (let n = 0; n < wg.nodeCount; n++) if (wg.nodeKind[n] === WALK_NODE.Door && wg.effective[wg.nodeCell[n]!] === ZONE.Public) return n;
     return -1;
   }
 
@@ -699,15 +782,12 @@ export class Business {
     this.host.book('landing', Math.round((spec.weights.mtowKg / 1000) * BUSINESS.fees.landingPerTonne * m));
     let pax = ga ? 0 : this.paxFor(f);
     if (!ga && this.needsTerminal(f)) {
-      const cap = this.arrCapacity();
-      if (cap <= 0) {
+      if (!this.arrivalEntry(f)) {
         this.lostToday += pax;
         pax = 0;
-      } else {
-        const sf = Math.min(1, cap / Math.max(1, pax * 3));
-        const served = Math.round(pax * sf);
-        this.lostToday += pax - served;
-        pax = served;
+        this.host.emit(`arrivalNoGate|stand=${this.standNumberOf(f)}`);
+      } else if (this.market.isInternational(f) && this.entryOut[2] === 0) {
+        this.host.emit(`intlNoImmigration|stand=${this.standNumberOf(f)}`);
       }
     }
     if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerArriving * m));
@@ -729,7 +809,6 @@ export class Business {
       // Only passengers who boarded through the terminal fly. The rest miss the flight.
       const served = Math.min(pax, this.boarded ? this.boarded(f) : 0);
       this.lostToday += pax - served;
-      this.satisfaction += (served / Math.max(1, pax) - this.satisfaction) * 0.1;
       pax = served;
     }
     if (!ga) this.host.book('passengers', Math.round(pax * BUSINESS.fees.passengerDeparting * m));
@@ -790,6 +869,8 @@ export class Business {
       this.history.push(Float64Array.from(this.today));
       if (this.history.length > LEDGER_DAYS) this.history.shift();
       this.today.fill(0);
+      const rated = this.closePax?.() ?? -1;
+      if (rated >= 0) this.satisfaction = rated / 100;
       this.updateRating();
       this.bagDayReset?.();
     }
@@ -816,7 +897,7 @@ export class Business {
 
   private chargeDaily(): void {
     const fees = BUSINESS.fees;
-    const wages = Math.round(this.staffCount() * fees.wageStaffPerDay);
+    const wages = Math.round((this.staffCount() - this.stationPositions()) * fees.wageStaffPerDay) + (this.staffWages?.() ?? 0);
     this.host.book('wages', -wages);
     // Upkeep: surface percentage of build cost per year, spread over days.
     let upkeep = 0;
@@ -937,6 +1018,7 @@ export class Business {
         offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
         typeIdx: t.type[i],
         startMin: f >= 0 ? t.fEta[f] / TICKS_PER_MINUTE : 0,
+        intl: f >= 0 && this.market.isInternational(f),
       });
     }
     for (let f = 0; f < 1024 && rows.length < SCHEDULE_ROWS; f++) {
@@ -959,6 +1041,7 @@ export class Business {
         offBlockMin: (eta + turnMin) % MINUTES_PER_DAY,
         typeIdx: t.fType[f],
         startMin: t.fEta[f] / TICKS_PER_MINUTE,
+        intl: this.market.isInternational(f),
       });
     }
     void tick;
@@ -979,6 +1062,7 @@ export class Business {
 
   payload(tick: number): Omit<BusinessPayload, 'baggage'> {
     const stands = this.airfield.data.stands;
+    const staffing = this.staffRows?.() ?? [];
     return {
       board: this.board(tick),
       series: this.market.series,
@@ -986,6 +1070,8 @@ export class Business {
       stars: this.stars(),
       paxScore: Math.round(this.paxScore * 100),
       airlineScore: Math.round(this.airlineScore * 100),
+      paxDay: this.paxDay?.() ?? [],
+      arrDay: this.arrDay?.() ?? [],
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
       standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
       gateDesks: this.deskList().map((d) => ({ building: d.building, x: d.x, y: d.y })),
@@ -1009,7 +1095,8 @@ export class Business {
       satisfaction: Math.round(this.satisfaction * 100) / 100,
       onTimePct: Math.round(this.onTime * 100),
       loan: this.loan,
-      staff: this.staffCount(),
+      staff: Math.round(this.staffCount() - this.stationPositions()) + staffing.reduce((n, r) => n + r.hired, 0),
+      staffing,
       weather: this.weather,
       readiness: this.readiness(),
       autoStands: this.traffic.autoStands,
@@ -1020,7 +1107,6 @@ export class Business {
       fireCategory: this.traffic.fireCategory,
       fireGraceDays: Math.max(0, this.fireGraceUntil - this.day),
       serviceSlowdown: this.traffic.serviceSlowdown,
-      arrCapacity: this.arrCapacity(),
       intlCapacity: this.intlCapacity(),
       towerLevel: towerLevelOf(this.airfield.data),
       atcQueue: this.traffic.atcQueueLength(),
@@ -1124,6 +1210,8 @@ export class Business {
         acc = foldU32(foldU32(foldU32(acc, c.x + 65536), c.y + 65536), g.fixture[i]);
         // The pairing of two cell fixtures is state. Only nonzero footprints hash, so layouts without them keep their hash.
         if (g.fixtureRot[i] !== 0) acc = foldU32(foldU32(acc, i), g.fixtureRot[i]);
+        // Level and mode only hash when they differ from the defaults, so older layouts keep their hash.
+        if (g.fixtureLevel[i] > 1 || g.fixtureMode[i] > 0) acc = foldU32(foldU32(acc, g.fixtureLevel[i]), g.fixtureMode[i]);
       }
     }
     // Queues only enter the hash once someone waits, so idle games keep their hashes.
@@ -1168,6 +1256,9 @@ interface SavedGrid {
   zone?: string;
   fixture: string;
   fixtureRot: string;
+  fixtureOff?: string;
+  fixtureLevel?: string;
+  fixtureMode?: string;
   hWall: string;
   vWall: string;
   leased: string;
@@ -1187,7 +1278,7 @@ const cellCountOf = (g: TerminalGrid): number => cellCount(g);
 const LEGACY_GRID = 160;
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
@@ -1198,11 +1289,14 @@ function loadGrid(sg: SavedGrid): TerminalGrid {
   const y0 = sg.y0 ?? 0;
   const w = sg.w ?? LEGACY_GRID;
   const h = sg.h ?? LEGACY_GRID;
-  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
+  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), fixtureOff: new Uint8Array(w * h), fixtureLevel: new Uint8Array(w * h), fixtureMode: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
   unpackInto(sg.floor, g.floor, Uint8Array);
   if (sg.zone) unpackInto(sg.zone, g.zone, Uint8Array);
   unpackInto(sg.fixture, g.fixture, Uint8Array);
   unpackInto(sg.fixtureRot, g.fixtureRot, Uint8Array);
+  if (sg.fixtureOff) unpackInto(sg.fixtureOff, g.fixtureOff, Uint8Array);
+  if (sg.fixtureLevel) unpackInto(sg.fixtureLevel, g.fixtureLevel, Uint8Array);
+  if (sg.fixtureMode) unpackInto(sg.fixtureMode, g.fixtureMode, Uint8Array);
   unpackInto(sg.hWall, g.hWall, Uint8Array);
   unpackInto(sg.vWall, g.vWall, Uint8Array);
   unpackInto(sg.leased, g.leased, Uint8Array);

@@ -81,6 +81,8 @@ export type Command =
   | { type: 'cancelSeries'; seriesId: number }
   | { type: 'renewSeries'; seriesId: number }
   | { type: 'setAirlineFee'; airlineId: number; level: FeeLevel }
+  /** Caps the hired staff of a role, -1 for automatic staffing with no cap (T68). */
+  | { type: 'setStaffCap'; role: number; cap: number }
   | { type: 'takeLoan'; amount: number }
   | { type: 'repayLoan'; amount: number }
   | { type: 'undo' }

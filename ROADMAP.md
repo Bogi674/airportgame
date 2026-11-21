@@ -37,7 +37,7 @@ The game benchmarks the mechanics of Airport CEO and gives them its own flavor:
 
 ## 3. What is built (2026-11-18)
 
-A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. Save format version 26.
+A player can start a seeded game, buy land, build an airport, sign airlines and watch flights operate. Aircraft move at twice real time at speed 1 and a game day takes 60 real minutes. People walk along their routes in lanes with spacing and stand spread out where they wait. Terminals are zoned into Public, Secure, Commercial, Staff and International areas joined only through security lanes, security exits, eGates, customs and staff doors, with a zones overlay that shows breaches. Passengers travel in groups of individuals who get hungry, thirsty or tired, visit shops, seats and toilets airside and rejoin their group, and their satisfaction drives the airport rating. Arriving passengers walk from the gate through immigration (international flights), baggage claim and customs to the curb, and their satisfaction counts in the rating. Save format version 31.
 
 | Area | Built |
 | --- | --- |
@@ -47,13 +47,14 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | Aircraft and movement | 10 aircraft types with sprites in four tiers, taxi network with conflict sets, routing, reservations, junction priority, push back, deadlock handling, performance checks, wake separation |
 | ATC | Free standing tower with five levels and a movement budget per runway |
 | Terminal | Free size building on a 2 m grid, walls, doors, zones, room validation, check in, kiosk, bag drop, security, passport booth, gate desk, seating, toilets, six shop fixtures, floor index in the data model. Check in, kiosk, bag drop, passport, gate desk, seating and toilets are drawn from the terminal asset kit with detail tiers and shadows. Baggage: screening machines in staff screening rooms, bays on the exterior wall and carousels placed with a baggage tool and drawn from the kit, linked automatically under the floor; departure bags flow from the desks through screening to the bay of the flight's stand, loading waits up to 15 minutes for late bags and lost bags lower satisfaction, arrival bags reach the carousel of the stand's bay; node and stand inspectors show bays, carousels, connections and warnings |
-| Passengers | Departing cohorts by profile, walking graph, service nodes and queues, journey from curb to boarding, people atlas with 30 recipes, density, queue and walking distance overlays |
+| Passengers | Departing cohorts by profile, walking graph, service nodes and queues, journey from curb to boarding, people atlas with 30 recipes, density, queue and walking distance overlays, arriving cohorts through immigration, baggage claim and customs to the curb |
+| Staff | Airport staff as individuals with a role, shift and station: check in and gate agents, security officers and border officers work three shifts of 8 hours from the staff center, hired automatically within a cap per role, with breaks covered by a relief. A desk or lane with nobody on it serves no one, one officer on a two officer lane serves at half speed, and a screening machine needs an officer. Staff are drawn behind their desks and walking in uniform, wages follow the hired staff, a staffing coverage overlay shows each station by the percent short, and the Staff sheet in the staff category sets the cap per role. Save format 32 |
 | Flights | A destination network of 80 generated airports per seed, airlines that sign with flight series on fixed weekdays, a weekly planner with day tabs where one drop places a series on all its days, an auto planner, airline satisfaction with cancellations, renewals and new airlines approaching as stars grow, flights board, general aviation arriving on its own |
 | Ground handling | A ground handling depot that stores the fleet (24 vehicles each, a starter set on build) and service roads the player draws, joined to the road strips of contact stands, with hold lines where they cross a taxiway. Vehicles leave the depot, drive the road keeping right and giving way at junctions and to aircraft at crossings, take stand paths that never cross the aircraft to door positions from data, and drive home. Tractors tow 1 to 4 carts by stand size. A commercial stand with no road from a depot turns around 25 percent slower and shows an amber badge. Supporting buildings: a fuel farm with tanker deliveries that sells fuel and holds flights it cannot fuel, a fire station whose vehicles set the fire category that airline types need after a 7 day grace, a catering unit that sends its own trucks, and a staff center, cleaning depot and maintenance workshop that wait for later tasks. Aircraft stop with the nose gear on their stop line. Airline turnarounds run a task list (chocks, power, stairs, deboarding, unloading, cleaning, catering, fuel, water and waste, loading, boarding, doors) whose vehicle tasks wait for a docked vehicle of the owned fleet, and the flights board shows each delay with its cause and whether the airport or the airline owns it. GA keeps a fixed turnaround time. Stand upgrades through works: a hydrant pit fuels by dispenser, fixed ground power replaces the GPU, a bus bay lets a stand far from its gate board by bus. The stand inspector assigns the gate desk |
 | Business | Seven generated airline slots with rating gates, contracts and fees, stars from passenger and airline experience (cleanliness and ground handling included), daily ledger, one term loan, shop rent, ratings, weather events (rain, fog, strong wind) |
 | UI | Main menu, new game, top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
 
-Simplified today and replaced by the phases below: rent only shops, staff as a number, arrivals as an aggregate, weather as the only event.
+Simplified today and replaced by the phases below: rent only shops, staff as a number, weather as the only event.
 
 ## 4. MVP 1 phases
 
@@ -64,7 +65,7 @@ MVP 1 ends with the acceptance task T38.
 | 0 | Repair | T57, T58, T69 | done |
 | 1 | Stands and flight planning | T59, T47, T61, T62, T72, T70, T71 | done |
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66, T78 | doing |
-| 3 | People | T54, T67, T20, T68 | todo |
+| 3 | People | T54, T67, T20, T68 | done |
 | 3b | Terminal kit | T73, T74, T75, T76, T77 | todo |
 | 4 | Tenants and events | T32, T50 | todo |
 | 5 | Shell and release | T35, T36, T45, T37, T38 | todo |
@@ -122,10 +123,13 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
-| T54 | People walk and dwell along routes with spacing (needs a from node in the cohort store and a save migration) |  |  | todo |
-| T67 | Individuals inside cohorts: traits, needs evaluated at decision points, sub cohorts, satisfaction per member rolled up to the airport rating, the stress scenario with 20 000 cohorts and 40 000 people under the 4 ms medium budget (section 6.1 to 6.3) | T17, T18 | T54 | todo |
-| T20 | Arrival journey with immigration (passport control or automated gate in arrival mode), baggage claim and the customs channel (`docs/TERMINAL_ZONING.md` section 3) |  | T67, T43, T75 | todo |
-| T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | todo |
+| T54 | People walk and dwell along routes with spacing (needs a from node in the cohort store and a save migration) |  |  | done (a1cfacb, 447a52d, e99916b, 249af37, eae575b, 43ea83e, a70cf08, f04ae5f) |
+| T67 | Individuals inside cohorts: traits, needs evaluated at decision points, sub cohorts, satisfaction per member rolled up to the airport rating, the stress scenario with 20 000 cohorts and 40 000 people under the 4 ms medium budget (section 6.1 to 6.3) | T17, T18 | T54 | done (481bbbf, 4e49b2e, cc9cf61, 91a82d5, b01dce2, 5044c11, 89a81fb, c3b2713, eea142f) |
+| T20 | Arrival journey with immigration (passport control or automated gate in arrival mode), baggage claim and the customs channel (`docs/TERMINAL_ZONING.md` section 3) |  | T67, T43, T75 | done (1cecc8b, 3a25cf8, 738d95e, a137b13, 39fa3db, 3759a93, 8e10e55, c797be8, 868dcdb, 09034c2, 6477ba9, 8522eb1) |
+| T79 | International departures through passport control in departure mode: departing international passengers queue at a passport booth or eGate set to departure mode before security, with the Q1 answer for airports without one |  | T20 | todo |
+| T80 | Security exit throughput as a queue: security exits become service nodes with a rate, so arrivals and exiting passengers wait at a busy exit |  | T20 | todo |
+| T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | done (4915887, caa76a0, 0e440f2, c4ff0cc, 3561b13, f07ecbe, 3da6df3, 4a5bb20, 5a93613, 02f16e1, 6c47c6b, d4cd9f4, 9a13ebf, e57015f, cd1cd44, d0d4df8, fcbef61) |
+| T81 | Staff follow up: apron crews on turnarounds, cleaners, staffed security exits, staff screening queues on staff routes, morale, fatigue beyond the break, sick leave, training and the yearly wage index (decision 21 of T68) |  | T68 | todo |
 
 Exit: a passenger who gets hungry leaves the group, visits a shop and rejoins at the gate, arriving passengers collect bags and leave, staff change shifts at the staff center, and the rating reacts to all of it.
 
@@ -137,7 +141,7 @@ Goal: the terminal looks and plays like the kit sheets: every fixture and prop d
 | --- | --- | --- | --- | --- |
 | T73 | Fixture sprite baker: port `fixture_ops.py` to `src/render/sprites/fixtureSprite.ts`, lazy loaded sprite packs, tiers, shadows per rotation, airline livery, chunk cache; today's check in, kiosk, bag drop, security, passport, gate desk, seating and toilet fixtures drawn from the kit |  |  | done 2a746e8 bece34b ad1a020. Security keeps its block until T74 gives it the kit footprint |
 | T74 | Fixture levels 1 to 3 for check in, security, passport control and gate desk: level per fixture in the grid and saves, in place upgrade through works, inspector upgrade button, values from the catalog | T44 fixture part | T73 | todo |
-| T75 | Zoning revision: international zone, transition fixtures with direction, security exit in three levels, automated passport gate, customs channel, staff door wall type, breach validation in the walking graph, zones overlay with badges |  | T73 | todo |
+| T75 | Zoning revision: international zone, transition fixtures with direction, security exit in three levels, automated passport gate, customs channel, staff door wall type, breach validation in the walking graph, zones overlay with badges |  | T73 | done (c3ae229, 6bc0b5a, 03c5680, 9cd5af5, 49c4c36, 2074618, 337023d, c351408, 4f27e99, 8fba5f3, ee3e0f1, 03c66ea, b4fac60) |
 | T76 | Props on a 0.5 m sub grid: seating, lounge, washroom, decoration, vending, screens, service, office and back of house items from the catalog, with comfort, ambience, wayfinding, charging, washroom capacity and staff room effects |  | T73 | todo |
 | T77 | Circulation and back of house: escalators, stairs, elevators and travelators placed and drawn, travelators speed walking on one floor, janitor room as the cleaners' base; vertical links wait for T51 |  | T76 | todo |
 

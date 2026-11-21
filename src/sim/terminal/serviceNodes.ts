@@ -1,14 +1,16 @@
-import { BUSINESS } from '@data/index';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, ZONE, fixtureKey, type TerminalGrid } from '@shared/business';
+import { ARRIVALS, BUSINESS, STAFF } from '@data/index';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
-import { canStep } from '@shared/terminalRooms';
+import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
 import type { Rng } from '../rng';
 import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
 
 /** Fixtures that serve people one at a time. Each anchor of these is a service node. */
-export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet'] as const;
+export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs'] as const;
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
+/** Keys before this index existed before save version 31, so the migration needs no hard coded list. */
+export const LEGACY_SERVICE_COUNT = 7;
 
 /** fixtureRot below this marks the anchor of a fixture. 5 and up is the tail of a two cell fixture. */
 const TAIL_ROT = 5;
@@ -21,7 +23,6 @@ const NORMAL_ROLLS = 12;
 /** Finished cohorts the done buffer holds per node. The buffer is shared by all nodes of a table: count * 16 entries per call. */
 export const DONE_PER_NODE = 16;
 
-const SECURITY = FIXTURE_KEYS.indexOf('security') + 1;
 const SERVICE_IDS: readonly number[] = SERVICE_KEYS.map((k) => FIXTURE_KEYS.indexOf(k) + 1);
 const AREA_PER_CELL = TERMINAL_CELL_M * TERMINAL_CELL_M;
 const DX = [-1, 1, 0, 0];
@@ -76,24 +77,37 @@ export interface ServiceNodes {
   active: number;
   /** 1 while the node may not start a new service, set by the baggage back pressure. Derived, not saved. */
   blocked: Uint8Array;
+  /** Officers the node needs to serve at full speed, 0 when it needs none. Derived from the staff data, not saved. */
+  staffNeed: Uint8Array;
+  /** Officers on duty at the node. Derived, set by the staff store, not saved. */
+  staffPresent: Uint8Array;
+  /** Service speed factor of the staff on the node, 1 for nodes that need no staff. Derived, not saved. */
+  staffFactor: Float32Array;
 }
 
 /** Module timing for a service key. Every service key carries both values in the data. */
 function timing(key: ServiceKey): { servers: number; meanS: number } {
+  if (key === 'eGate' || key === 'customs') return { servers: ARRIVALS.service[key].servers, meanS: ARRIVALS.service[key].serviceSeconds };
   const m = BUSINESS.modules[key];
   if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error(`${key} has no service timing`);
   return { servers: m.servers, meanS: m.serviceSeconds };
 }
 
 /**
- * Counts the cells a queue for the anchor at `start` can use. Breadth first over canStep, at most `reach`
- * steps out. Only cells without a fixture count and only they are passed through. Secure cells are skipped
- * when `secure` is set. The anchor is the start and is not counted. The counted cells are left in
+ * Counts the cells a queue for the anchor at `start` can use. Breadth first, at most `reach` steps out. Only cells
+ * without a fixture count and only they are passed through. A transition fixture queues on its entry side, in cells
+ * of its from zone. Its own first step may cross any edge that lets one of its audiences through in either direction,
+ * and every later step needs the audience the fixture serves (passengers, or staff for a staff lane) to be able to
+ * walk back toward the anchor, so a staff only door never extends a passenger queue. Every other anchor steps over
+ * edges that are open to everyone. The anchor is the start and is not counted. The counted cells are left in
  * queue[1..count], in the order found, so nearest the anchor first. parent[p] is the queue position the cell at
  * queue[p] was reached from.
  */
-function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): number {
+function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, start: number, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): number {
   const W = g.w;
+  const transition = transitionOf(fixtureKey(g.fixture[start]!), g.fixtureMode[start]!);
+  // The audience whose walk toward the anchor must be possible: passengers unless the fixture is staff only.
+  const need = transition && (transition.aud & AUD.Pax) !== 0 ? AUD.Pax : AUD.Staff;
   seen[start] = 1;
   dist[start] = 0;
   queue[0] = start;
@@ -107,10 +121,15 @@ function queueCells(g: TerminalGrid, start: number, secure: boolean, reach: numb
     const x = i % W;
     const y = (i - x) / W;
     for (let d = 0; d < 4; d++) {
-      if (!canStep(g, x, y, d)) continue;
       const j = (y + DY[d]) * W + x + DX[d];
+      if (x + DX[d] < 0 || x + DX[d] >= W || y + DY[d] < 0 || y + DY[d] >= g.h) continue;
+      const out = stepAud(acc, g, x, y, d);
+      const back = stepAud(acc, g, x + DX[d], y + DY[d], d ^ 1);
+      if (transition) {
+        if (effective[j] !== transition.from) continue;
+        if (i === start ? ((out | back) & transition.aud) === 0 : (back & need) === 0) continue;
+      } else if (out !== 3) continue;
       if (seen[j] === 1 || g.fixture[j] !== 0) continue;
-      if (secure && g.zone[j] === ZONE.Secure) continue;
       seen[j] = 1;
       dist[j] = dist[i] + 1;
       parent[tail] = pos;
@@ -172,6 +191,9 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     evictedCount: 0,
     active: 0,
     blocked: new Uint8Array(count),
+    staffNeed: new Uint8Array(count),
+    staffPresent: new Uint8Array(count),
+    staffFactor: new Float32Array(count).fill(1),
   };
 
   for (let k = 0; k < count; k++) {
@@ -186,7 +208,8 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     nodes.ly[k] = g.y0 + (c - x) / g.w;
     nodes.servers[k] = t.servers;
     nodes.meanS[k] = t.meanS;
-    const cells = queueCells(g, c, id === SECURITY, reach, seen, dist, queue, parent);
+    nodes.staffNeed[k] = STAFF.stations[key]?.need ?? 0;
+    const cells = queueCells(g, wg.access, wg.effective, c, reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
     nodes.qCellOffset[k] = cellX.length;
     nodes.qCellLen[k] = cells;
@@ -233,6 +256,8 @@ export function rebuildServiceNodes(prev: ServiceNodes, g: TerminalGrid, wg: Wal
     next.serving[k] = prev.serving[p]!;
     next.servingSize[k] = prev.servingSize[p]!;
     next.blocked[k] = prev.blocked[p]!;
+    next.staffPresent[k] = prev.staffPresent[p]!;
+    next.staffFactor[k] = prev.staffFactor[p]!;
     next.qHead[k] = prev.qHead[p]!;
     next.qCount[k] = prev.qCount[p]!;
     for (let s = 0; s < prev.slots; s++) {
@@ -341,7 +366,7 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
         sn.serving[k] = -1;
         sn.active -= 1;
       }
-      if (sn.qCount[k] === 0 || sn.blocked[k] === 1) break;
+      if (sn.qCount[k] === 0 || sn.blocked[k] === 1 || sn.staffFactor[k] === 0) break;
       const slot = k * sn.slots + sn.qHead[k];
       const size = sn.qSize[slot];
       sn.qHead[k] = (sn.qHead[k] + 1) % sn.slots;
@@ -351,7 +376,7 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
       const f = lognormalDraw(rng, sigma, s2);
       sn.serving[k] = sn.qCohort[slot];
       sn.servingSize[k] = size;
-      sn.busyUntil[k] = start + gameSecondsToTicks((size * sn.meanS[k] * f) / sn.servers[k]);
+      sn.busyUntil[k] = start + gameSecondsToTicks((size * sn.meanS[k] * f) / (sn.servers[k] * sn.staffFactor[k]));
     }
   }
 }
@@ -364,7 +389,9 @@ export function serviceUpdate(sn: ServiceNodes, tick: number, rng: Rng): void {
 export function serviceWait(sn: ServiceNodes, node: number, tick: number): number {
   if (node < 0 || node >= sn.count) return Infinity;
   const left = sn.serving[node] >= 0 ? (Math.max(0, sn.busyUntil[node] - tick) * CLOCK_SCALE) / 10 : 0;
-  return left + (sn.queueLen[node] * sn.meanS[node]) / sn.servers[node];
+  const rate = sn.servers[node] * sn.staffFactor[node];
+  if (rate === 0) return Infinity;
+  return left + (sn.queueLen[node] * sn.meanS[node]) / rate;
 }
 
 /** The queue state of a service table as saved. Grid derived arrays are not saved, they come from the grid. */

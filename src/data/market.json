@@ -5,6 +5,7 @@
     "maxKm": 4000,
     "minSize": 1,
     "maxSize": 5,
+    "internationalShare": 0.35,
     "regions": ["north", "northEast", "southEast", "south", "southWest", "northWest"],
     "syllables": {
       "start": ["Bel", "Cor", "Dun", "Esk", "Far", "Gal", "Hal", "Ist", "Kar", "Lin", "Mor", "Nar", "Ost", "Pel", "Quen", "Ros", "Sal", "Tor", "Val", "Wen", "Ard", "Bran", "Cal", "Del"],

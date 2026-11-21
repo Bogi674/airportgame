@@ -9,7 +9,7 @@ import { SAVE_VERSION } from '@sim/save/migrations';
 import { FlState } from '@sim/ops/traffic';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BuildContext } from '@shared/validate';
-import { cellIndex, ensureCells, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellIndex, ensureCells, fixtureCost, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 describe('service node data', () => {
@@ -48,9 +48,9 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     const cells = 60 * 12;
     expect(sim.business.terminals[0].cells).toBe(cells);
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
-    expect(sim.business.arrCapacity()).toBe(2 * 260);
-    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures.
-    const expected = cells * (2000 + 480) + 129 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000);
+    expect(sim.business.terminals[0].counts.belt).toBe(2);
+    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures. The test terminal gained a security exit in a gap of its wall, two edges fewer.
+    const expected = cells * (2000 + 480) + 127 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
     expect(g.cost).toBe(expected);
   });
 
@@ -76,7 +76,7 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     buildTestAirport(a, { standsPerRow: 4 });
     buildTestTerminal(a, { checkIn: 2, security: 1, belt: 1 });
     const b = airportWithTerminal().sim;
-    expect(a.business.arrCapacity()).toBeLessThan(b.business.arrCapacity());
+    expect(a.business.terminals[0].counts.belt).toBeLessThan(b.business.terminals[0].counts.belt);
     expect(a.business.grids[0].cost).toBeLessThan(b.business.grids[0].cost);
   });
 
@@ -583,7 +583,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(26);
+    expect(SAVE_VERSION).toBe(32);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -593,7 +593,8 @@ describe('two cell fixture footprints', () => {
     expect(c.business.grids.length).toBeGreaterThan(0);
     for (const g of c.business.grids) {
       expect(g.fixtureRot.length).toBe(g.fixture.length);
-      expect(g.fixtureRot.every((v) => v === 0)).toBe(true);
+      // Only security lanes gain a direction in the version 27 to 28 step (T75). No cell pairs with a tail.
+      expect(g.fixtureRot.every((v, i) => v === 0 || (g.fixture[i] === FIXTURE_KEYS.indexOf('security') + 1 && v <= 4))).toBe(true);
     }
   });
 });
@@ -607,9 +608,9 @@ describe('fixture ids, spans and module data', () => {
     expect(FIXTURE_KEYS.indexOf('gateDesk') + 1).toBe(16);
   });
 
-  it('gives two cell spans to bag drop and gate desk only', () => {
+  it('gives two cell spans to bag drop, gate desk, security exit and customs', () => {
     const twoCell = FIXTURE_KEYS.filter((k) => FIXTURE_SPAN[k] === 2);
-    expect(twoCell).toEqual(['bagDrop', 'gateDesk']);
+    expect(twoCell).toEqual(['bagDrop', 'gateDesk', 'securityExit', 'customs']);
     expect(FIXTURE_KEYS.every((k) => FIXTURE_SPAN[k] === 1 || FIXTURE_SPAN[k] === 2)).toBe(true);
   });
 
@@ -822,5 +823,130 @@ describe('departure revenue', () => {
     expect(sim.business.paxToday).toBe(pax - 3);
     expect(sim.business.lostToday).toBe(3);
     expect(sim.business.payload(sim.traffic.nowTick).flightsToday).toBe(flights + 1);
+  });
+});
+
+describe('passenger day for the finance sheet (T67)', () => {
+  it('after a day with boarded cohorts the payload lists eleven numbers, the first a satisfaction from 0 to 100', () => {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2, seating: 0, toilet: 0 })).toEqual([]);
+    expect(sim.business.payload(sim.traffic.nowTick).paxDay).toEqual([]);
+    sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 6000, -1);
+    for (let t = 0; t < 16000 && sim.cohorts.boarded === 0; t++) sim.step();
+    expect(sim.cohorts.boarded).toBeGreaterThan(0);
+    (sim.business as unknown as { dailyClose(tick: number): void }).dailyClose(sim.tick + TICKS_PER_DAY);
+    const day = sim.business.payload(sim.traffic.nowTick).paxDay;
+    expect(day).toHaveLength(11);
+    expect(day[0]).toBeGreaterThanOrEqual(0);
+    expect(day[0]).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('international destinations (T20)', () => {
+  it('about 35 percent of the destinations of three seeds are international', () => {
+    for (const seed of ['GOLDEN-0001', 'GOLDEN-0002', 'GOLDEN-0003']) {
+      const list = ownedSim(seed).business.market.destinations;
+      const share = list.filter((d) => d.international).length / list.length;
+      expect(Math.abs(share - MARKET.destinations.internationalShare), seed).toBeLessThan(0.15);
+    }
+  });
+
+  it('the names and distances of GOLDEN-0001 did not move', () => {
+    const list = ownedSim('GOLDEN-0001').business.market.destinations;
+    expect(list.map((d) => d.name).join('|')).toBe(
+      'Coromont|Fareton|Naredale|Dunhaven|Karorburg|Rosiwick|Torton|Linerholm|Narerford|Calerhaven|Moroholm|Eskilgate|Quenordale|Torehaven|Rosilholm|Corwick|Wenawick|Moremont|Eskwick|Haloford|Brananton|Linaholm|Dunerby|Galburg|Branerfield|Valorstad|Ardanmouth|Rosilton|Ardoby|Linorburg|Morhaven|Torormouth|Corby|Ostaby|Rosastad|Istiford|Belobridge|Galanhaven|Delerdale|Branorwick|Brananburg|Branimouth|Pelilmont|Dunadale|Caliburg|Naroport|Eskilfield|Rosiby|Ardanhaven|Belordale|Delerburg|Branilbridge|Osteby|Farhaven|Galilgate|Istahaven|Moroby|Liniburg|Eskaholm|Delport|Nariford|Calanwick|Linerfield|Karofield|Galadale|Rosport|Halgate|Morivik|Corowick|Delangate|Istmouth|Linilburg|Valiwick|Karburg|Valaburg|Beleport|Eskeholm|Eskibridge|Galbridge|Morilholm',
+    );
+    expect(list.reduce((sum, d) => sum + d.km, 0)).toBe(149159);
+  });
+
+  it('isInternational is false without a series and follows the destination of the series otherwise', () => {
+    const sim = ownedSim();
+    const market = sim.business.market;
+    const type = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+    const plain = sim.traffic.scheduleArrival(type, sim.traffic.nowTick + 100, 0, 600, -1);
+    expect(market.isInternational(plain)).toBe(false);
+    const base = market.series[0] ?? { id: 0, airline: 0, dest: 0, typeIdx: type, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 };
+    const intl = market.destinations.find((d) => d.international)!;
+    const home = market.destinations.find((d) => !d.international)!;
+    market.series.push({ ...base, id: 9001, dest: intl.id }, { ...base, id: 9002, dest: home.id });
+    const a = sim.traffic.scheduleArrival(type, sim.traffic.nowTick + 100, 0, 600, -1, 0, 9001);
+    const b = sim.traffic.scheduleArrival(type, sim.traffic.nowTick + 100, 0, 600, -1, 0, 9002);
+    expect(market.isInternational(a)).toBe(true);
+    expect(market.isInternational(b)).toBe(false);
+  });
+});
+
+describe('arrival entry desk (T20)', () => {
+  const A320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+
+  /** Docks one flight and returns the events of the run. rot is the series id of an international flight, -1 for a plain one. */
+  function dock(sim: Sim, rot: number): { f: number; events: string[] } {
+    const f = sim.traffic.scheduleArrival(A320, sim.traffic.nowTick + 100, 0, 6000, -1, 0, rot);
+    sim.traffic.fStand[f] = sim.airfield.data.stands[0]!.id;
+    const events: string[] = [];
+    for (let t = 0; t < 6000 && sim.business.flightPaxOf(f) === 0; t++) {
+      sim.step();
+      sim.drainEvents(events);
+    }
+    return { f, events };
+  }
+
+  function addInternationalSeries(sim: Sim): number {
+    const market = sim.business.market;
+    const intl = market.destinations.find((d) => d.international)!;
+    market.series.push({ id: 9001, airline: 0, dest: intl.id, typeIdx: A320, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 });
+    return 9001;
+  }
+
+  function terminalSim(gateDesk: number): Sim {
+    const sim = ownedSim();
+    sim.cash = 100_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk })).toEqual([]);
+    return sim;
+  }
+
+  it('a domestic flight docking at a terminal with gate desks is served with all its passengers', () => {
+    const sim = terminalSim(2);
+    const { f, events } = dock(sim, -1);
+    expect(sim.business.flightPaxOf(f)).toBeGreaterThan(0);
+    expect(sim.business.flightPaxOf(f)).toBe(sim.business.paxFor(f));
+    expect(sim.business.arrivalEntry(f)).toBe(true);
+    expect(sim.business.entryOut[0]).toBe(0);
+    expect(sim.business.entryOut[1]).toBeGreaterThanOrEqual(0);
+    expect(sim.business.entryOut[2]).toBe(0);
+    expect(events.some((e) => e.startsWith('arrivalNoGate'))).toBe(false);
+  });
+
+  it('without a gate desk the passengers are lost and arrivalNoGate is emitted', () => {
+    const sim = terminalSim(0);
+    const { f, events } = dock(sim, -1);
+    expect(sim.business.arrivalEntry(f)).toBe(false);
+    expect(sim.business.flightPaxOf(f)).toBe(0);
+    expect(sim.business.lostToday).toBeGreaterThan(0);
+    expect(events.some((e) => e.startsWith('arrivalNoGate|stand='))).toBe(true);
+  });
+
+  it('an international flight with only secure desks takes the domestic route and emits intlNoImmigration', () => {
+    const sim = terminalSim(2);
+    const { f, events } = dock(sim, addInternationalSeries(sim));
+    expect(sim.business.market.isInternational(f)).toBe(true);
+    expect(sim.business.arrivalEntry(f)).toBe(true);
+    expect(sim.business.entryOut[2]).toBe(0);
+    expect(sim.business.flightPaxOf(f)).toBe(sim.business.paxFor(f));
+    expect(events.some((e) => e.startsWith('intlNoImmigration|stand='))).toBe(true);
+  });
+
+  it('an international flight with a gate desk in an International zone gets the international route', () => {
+    const sim = terminalSim(2);
+    const g = sim.business.grids[0]!;
+    const paint = run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: { op: 'zone', x0: 76, y0: 42, x1: 78, y1: 43, variant: 5 } });
+    expect(paint).toEqual([]);
+    const { f, events } = dock(sim, addInternationalSeries(sim));
+    expect(sim.business.arrivalEntry(f)).toBe(true);
+    expect(sim.business.entryOut[2]).toBe(1);
+    expect(events.some((e) => e.startsWith('intlNoImmigration'))).toBe(false);
   });
 });

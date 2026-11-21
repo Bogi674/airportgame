@@ -1,0 +1,14 @@
+{
+  "note": "Arrival journey (T20): deboarding, claim, outcomes and the arrival service nodes. Game seconds and minutes. Values marked proposed in handoff/QUESTIONS.md 2026-11-18 phase 3 run; service values from src/data/fixtures/catalog.json stats.",
+  "doorOpenS": 180,
+  "deboardSecondsPerPax": 2.5,
+  "remoteBusS": 480,
+  "strandedMin": 60,
+  "claim": { "pollS": 30, "giveUpMin": 45 },
+  "service": {
+    "note": "eGate and customs as service nodes (docs/TERMINAL_ZONING.md section 6, TERMINAL_FIXTURES catalog).",
+    "eGate": { "servers": 1, "serviceSeconds": 20, "referralShare": 0.08, "noGateProfiles": ["family"] },
+    "customs": { "servers": 2, "serviceSeconds": 8, "redShare": 0.05, "redServiceSeconds": 120 }
+  },
+  "satisfaction": { "missingBagPoints": 20, "strandedPoints": 40 }
+}

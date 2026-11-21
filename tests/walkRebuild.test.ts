@@ -32,7 +32,8 @@ function graphFields(wg: WalkGraph): unknown[] {
     Array.from(wg.cellKind), Array.from(wg.cellMain), Array.from(wg.cellNode),
     Array.from(wg.nodeCell), Array.from(wg.nodeX), Array.from(wg.nodeY),
     Array.from(wg.nodeKind), Array.from(wg.nodeRoom),
-    Array.from(wg.edgeStart), Array.from(wg.edgeTo), Array.from(wg.edgeLen),
+    Array.from(wg.edgeStart), Array.from(wg.edgeTo), Array.from(wg.edgeLen), Array.from(wg.edgeMask),
+    Array.from(wg.access.h), Array.from(wg.access.v),
   ];
 }
 

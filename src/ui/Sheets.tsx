@@ -2,6 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS, GSE } from '@data/index';
 import { causeOwner, isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { LEDGER_CATEGORIES } from '@shared/business';
+import { STAFF_ROLE_KEYS } from '@data/schemas/staff';
 import type { Command } from '@sim/commands';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { GA_LABEL, type BoardRow, type BusinessPayload } from '@shared/business';
@@ -65,6 +66,39 @@ function FinanceSheet({ send }: Props) {
         <span>{t('top.rating')}: {formatNumber(b.rating)}</span>
         <span>{b.paxToday} pax, {b.flightsToday} flights today, {b.lostPaxToday} lost</span>
       </div>
+      {b.arrDay.length > 0 && (
+        <div data-testid="arrivals-day" style="margin-bottom:10px;font-size:12px">
+          {tFormat('finance.arrivals', {
+            exited: formatNumber(b.arrDay[0]!),
+            stranded: formatNumber(b.arrDay[1]!),
+            wait: formatNumber(b.arrDay[2]!),
+            noBags: formatNumber(b.arrDay[3]!),
+          })}
+        </div>
+      )}
+      {b.paxDay.length > 0 && (
+        <div data-testid="pax-satisfaction" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
+          <span>
+            {tFormat('finance.paxSat', {
+              sat: formatNumber(b.paxDay[0]!),
+              queue: formatNumber(b.paxDay[1]!),
+              walk: formatNumber(b.paxDay[2]!),
+              unmet: formatNumber(b.paxDay[3]!),
+              missed: formatNumber(b.paxDay[4]!),
+            })}
+          </span>
+          <span>
+            {tFormat('finance.paxVisits', {
+              hunger: formatNumber(b.paxDay[5]!),
+              thirst: formatNumber(b.paxDay[6]!),
+              toilet: formatNumber(b.paxDay[7]!),
+              rest: formatNumber(b.paxDay[8]!),
+              shop: formatNumber(b.paxDay[9]!),
+              spend: formatMoney(b.paxDay[10]!),
+            })}
+          </span>
+        </div>
+      )}
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <button data-testid="take-loan" disabled={canBorrow < loanStep} onClick={() => send({ type: 'takeLoan', amount: loanStep })}>
           {tFormat('finance.take', { amount: formatMoney(loanStep) })}
@@ -105,6 +139,61 @@ function FinanceSheet({ send }: Props) {
           </tr>
         </tbody>
       </table>
+    </Sheet>
+  );
+}
+
+/** Hired staff per role with the cap stepper: Auto hires what the stations need, a number caps the hires of the role. */
+function StaffSheet({ send }: Props) {
+  const b = useGameStore((s) => s.business);
+  if (!b) return null;
+  const rows = b.staffing;
+  const hired = rows.reduce((n, r) => n + r.hired, 0);
+  const wages = rows.reduce((n, r) => n + r.hired * r.wagePerDay, 0);
+  return (
+    <Sheet title={t('staff.title')} testId="sheet-staff">
+      <table data-testid="staff-table" style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr>
+            <th style="text-align:left" />
+            <th style="text-align:right">{t('staff.hired')}</th>
+            <th style="text-align:right">{t('staff.onDuty')}</th>
+            <th style="text-align:right">{t('staff.away')}</th>
+            <th style="text-align:right">{t('staff.needed')}</th>
+            <th style="text-align:center">{t('staff.cap')}</th>
+            <th style="text-align:right">{t('staff.wage')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.role} data-testid={`staff-row-${r.role}`}>
+              <td>{tDynamic(`staff.role.${STAFF_ROLE_KEYS[r.role]}`)}</td>
+              <td style="text-align:right">{r.hired}</td>
+              <td style="text-align:right">{r.onDuty}</td>
+              <td style="text-align:right">{r.away}</td>
+              <td style="text-align:right">{r.needed}</td>
+              <td style="text-align:center">
+                <button aria-pressed={r.cap < 0} data-testid={`staff-auto-${r.role}`} onClick={() => send({ type: 'setStaffCap', role: r.role, cap: -1 })}>
+                  {t('staff.auto')}
+                </button>{' '}
+                <button aria-label="-" data-testid={`staff-minus-${r.role}`} onClick={() => send({ type: 'setStaffCap', role: r.role, cap: r.cap < 0 ? r.hired : Math.max(0, r.cap - 1) })}>
+                  -
+                </button>
+                <span data-testid={`staff-cap-${r.role}`} style="display:inline-block;min-width:34px;text-align:center">
+                  {r.cap < 0 ? t('staff.auto') : r.cap}
+                </span>
+                <button aria-label="+" data-testid={`staff-plus-${r.role}`} onClick={() => send({ type: 'setStaffCap', role: r.role, cap: r.cap < 0 ? r.hired : r.cap + 1 })}>
+                  +
+                </button>
+              </td>
+              <td style="text-align:right">{formatMoney(r.wagePerDay)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div data-testid="staff-total" style="margin-top:8px;font-weight:600">
+        {tFormat('staff.total', { n: hired, w: formatMoney(wages) })}
+      </div>
     </Sheet>
   );
 }
@@ -524,7 +613,7 @@ function FlightsSheet() {
                 <td>{r.type}</td>
                 <td>{tDynamic(`status.${r.status}`)}</td>
                 <td>{r.stand}</td>
-                <td>{r.stageKm > 0 ? `${formatInt(r.stageKm)} km` : ''}</td>
+                <td>{r.stageKm > 0 ? `${formatInt(r.stageKm)} km` : ''}{r.intl ? ` ${t('flights.intl')}` : ''}</td>
                 <td>
                   {eta(r.eta)}
                   {r.delayMin > 0 ? ` (+${r.delayMin})` : ''}
@@ -582,6 +671,7 @@ export function Sheets({ send }: Props) {
   if (sheet === 'slots') return <PlannerSheet send={send} />;
   if (sheet === 'stands') return <StandsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
+  if (sheet === 'staff') return <StaffSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;
   if (sheet === 'site') return <SiteSheet />;
   return null;
