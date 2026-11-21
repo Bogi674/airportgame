@@ -114,6 +114,9 @@ for (const scene of SCENES) {
         c.rotation = 0;
       }
     }, { x: scene.x, y: STAND_Y, zoom: ZOOM });
+    // chunksReady is set while a frame draws, so it may still describe the old camera; wait for a frame drawn with the new one first.
+    const framesBeforeCamera = (await readProbe(page)).frames;
+    await expect.poll(async () => (await readProbe(page)).frames).toBeGreaterThanOrEqual(framesBeforeCamera + 1);
     await expect
       .poll(() =>
         page.evaluate(({ x, y, zoom }) => {
