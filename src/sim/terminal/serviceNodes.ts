@@ -1,5 +1,5 @@
 import { ARRIVALS, BUSINESS, STAFF } from '@data/index';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, footprintOf, type TerminalGrid } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, footprintOf, isLevelKey, levelOf, type TerminalGrid } from '@shared/business';
 import { ACROSS } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
@@ -44,6 +44,8 @@ export interface ServiceNodes {
   ly: Int32Array;
   /** Parallel servers at the node, from the module data. */
   servers: Uint8Array;
+  /** Level 1 to 3 of the fixture, 1 for fixtures without levels. Derived from the grid, not saved. */
+  level: Uint8Array;
   /** Mean service time in seconds, from the module data. */
   meanS: Float32Array;
   /** Most people the walkable area around the node holds in a queue. */
@@ -86,12 +88,19 @@ export interface ServiceNodes {
   staffFactor: Float32Array;
 }
 
-/** Module timing for a service key. Every service key carries both values in the data. */
-function timing(key: ServiceKey): { servers: number; meanS: number } {
+/** Module timing for a service key at a level. Every service key carries both values in the data; leveled fixtures take their mean from the level table. */
+function timing(key: ServiceKey, level: number): { servers: number; meanS: number } {
   if (key === 'eGate' || key === 'customs') return { servers: ARRIVALS.service[key].servers, meanS: ARRIVALS.service[key].serviceSeconds };
   const m = BUSINESS.modules[key];
   if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error(`${key} has no service timing`);
+  if (isLevelKey(key)) return { servers: m.servers, meanS: BUSINESS.fixtureLevels.serviceSeconds[key][level - 1]! };
   return { servers: m.servers, meanS: m.serviceSeconds };
+}
+
+/** Officers a node of a service key needs at a level: the level table for leveled fixtures, else the staff data. */
+function staffNeedOf(key: ServiceKey, level: number): number {
+  if (isLevelKey(key)) return BUSINESS.fixtureLevels.staffNeed[key][level - 1]!;
+  return STAFF.stations[key]?.need ?? 0;
 }
 
 /**
@@ -183,6 +192,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     lx: new Int32Array(count),
     ly: new Int32Array(count),
     servers: new Uint8Array(count),
+    level: new Uint8Array(count),
     meanS: new Float32Array(count),
     queueCap: new Int32Array(count),
     qCellOffset: new Int32Array(count),
@@ -216,15 +226,17 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     const c = anchors[k]!;
     const id = g.fixture[c]!;
     const key = fixtureKey(id) as ServiceKey;
-    const t = timing(key);
+    const level = isLevelKey(key) ? levelOf(g.fixtureLevel[c]!) : 1;
+    const t = timing(key, level);
     const x = c % g.w;
     nodes.kind[k] = id;
     nodes.cell[k] = c;
     nodes.lx[k] = g.x0 + x;
     nodes.ly[k] = g.y0 + (c - x) / g.w;
     nodes.servers[k] = t.servers;
+    nodes.level[k] = level;
     nodes.meanS[k] = t.meanS;
-    nodes.staffNeed[k] = STAFF.stations[key]?.need ?? 0;
+    nodes.staffNeed[k] = staffNeedOf(key, level);
     const cells = queueCells(g, wg.access, wg.effective, queueOrigin(g, c), reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
     nodes.qCellOffset[k] = cellX.length;
@@ -339,14 +351,16 @@ function lognormalDraw(rng: Rng, sigma: number, s2: number): number {
 /**
  * Queues a cohort of `size` people at a node. False when the node is out of range, the cohort is empty, the
  * node has no queue room or the queue is full. Once people wait, a cohort may not take the queue past its cap,
- * but an empty queue takes any size so one large cohort can always start.
+ * but an empty queue takes any size so one large cohort can always start. A `front` cohort (priority boarding,
+ * T74) goes to the head of the queue instead of its end.
  */
 // hot
-export function serviceJoin(sn: ServiceNodes, node: number, cohort: number, size: number): boolean {
+export function serviceJoin(sn: ServiceNodes, node: number, cohort: number, size: number, front = false): boolean {
   if (node < 0 || node >= sn.count || size < 1) return false;
   if (sn.queueCap[node] === 0 || sn.qCount[node] === sn.slots) return false;
   if (sn.queueLen[node] > 0 && sn.queueLen[node] + size > sn.queueCap[node]) return false;
-  const slot = node * sn.slots + ((sn.qHead[node] + sn.qCount[node]) % sn.slots);
+  if (front) sn.qHead[node] = (sn.qHead[node] + sn.slots - 1) % sn.slots;
+  const slot = node * sn.slots + (front ? sn.qHead[node] : (sn.qHead[node] + sn.qCount[node]) % sn.slots);
   sn.qCohort[slot] = cohort;
   sn.qSize[slot] = size;
   sn.qCount[node] += 1;

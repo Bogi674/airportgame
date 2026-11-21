@@ -472,9 +472,9 @@ export class Business {
    * Joins a cohort to a service node of a grid. False when no grid has that id or the node refuses the cohort.
    * Node ids are stale after serviceVersion changes, so look them up again after an edit.
    */
-  serviceJoin(grid: number, node: number, cohort: number, size: number): boolean {
+  serviceJoin(grid: number, node: number, cohort: number, size: number, front = false): boolean {
     const i = this.gridIndex(grid);
-    return i >= 0 && serviceJoin(this.serviceNodes[i]!, node, cohort, size);
+    return i >= 0 && serviceJoin(this.serviceNodes[i]!, node, cohort, size, front);
   }
 
   /** Seconds a person joining a node of a grid now would wait, Infinity when no grid or node has that id. Stale after serviceVersion changes. */

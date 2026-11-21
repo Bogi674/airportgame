@@ -1,4 +1,4 @@
-import { ARRIVALS, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
+import { ARRIVALS, BUSINESS, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
 import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
@@ -109,6 +109,10 @@ const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
 const WALK_SPEED = Float32Array.from(PROFILE_ROWS, (r) => r.walkSpeed);
 /** 1 for the profiles that never use an automated passport gate, by profile id. */
 const NO_GATE = Uint8Array.from(PROFILE_KEYS, (k) => (ARRIVALS.service.eGate.noGateProfiles.includes(k) ? 1 : 0));
+/** 1 for the premium profiles that fixture levels treat apart (T74): penalised at low level check in, boarded first at a priority gate desk. */
+const PREMIUM = Uint8Array.from(PROFILE_KEYS, (k) => (BUSINESS.fixtureLevels.premiumProfiles.includes(k) ? 1 : 0));
+const PREMIUM_POINTS = BUSINESS.fixtureLevels.premiumPoints;
+const PRIORITY_LEVEL = BUSINESS.fixtureLevels.priorityLevel;
 /** Cumulative profile mix, so one uniform float picks a profile in a fixed order. */
 const MIX_CUM = (() => {
   const out = new Float64Array(PROFILE_ROWS.length);
@@ -952,6 +956,8 @@ export class Cohorts {
       return;
     }
     const kind = t.kind[this.node[c]];
+    // Premium passengers expect a premium desk: a check in below level 3 costs them points (T74).
+    if (kind === CHECK_IN && PREMIUM[this.profile[c]!] === 1) this.penalize(c, PREMIUM_POINTS[t.level[this.node[c]]! - 1]!, DAY.PenQueue);
     if (this.onCheckIn !== null && (kind === CHECK_IN || kind === BAG_DROP) && this.bags[c] > 0) {
       this.onCheckIn(this.gridId(g), t.cell[this.node[c]], this.traffic.serialOf(this.flight[c]), this.bags[c]);
     }
@@ -1259,10 +1265,18 @@ export class Cohorts {
       else this.walk(g, c, n, from, this.stage[c]);
       return;
     }
-    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c])) {
+    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c], this.boardsFirst(g, c))) {
       this.stage[c] = queued;
       this.waitStart[c] = this.tick;
     } else this.schedule(c, this.tick + JOIN_RETRY_TICKS);
+  }
+
+  /** True when cohort c is premium and its node is a gate desk of the priority level, so it joins at the head of the queue. */
+  private boardsFirst(g: number, c: number): boolean {
+    if (PREMIUM[this.profile[c]!] !== 1) return false;
+    const t = this.table(g);
+    const n = this.node[c]!;
+    return t !== null && n >= 0 && n < t.count && t.kind[n] === GATE_DESK && t.level[n]! >= PRIORITY_LEVEL;
   }
 
   /** Airside passengers walk to a gate desk once the flight is on the ground. The flight's gate count rises only on the first walk. */

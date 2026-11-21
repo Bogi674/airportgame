@@ -106,6 +106,9 @@ export interface TerminalOptions {
   seating?: number;
   toilet?: number;
   gateDesk?: number;
+  /** Level of the check in desks and the gate desks, 1 to 3 (T74). Default 1. */
+  checkInLevel?: number;
+  gateDeskLevel?: number;
   shop?: boolean;
   /** Build the ATC tower too. Set false to test the no ATC case. */
   atc?: boolean;
@@ -137,8 +140,8 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
     edit(id, { op: 'foundation', x0: 68, y0: 52, x1: 74, y1: 53, variant: 0 });
     edit(id, { op: 'floor', x0: 68, y0: 52, x1: 74, y1: 53, variant: 2 });
   }
-  const row = (key: number, n: number, x: number, y: number): void => {
-    if (n > 0) edit(id, { op: 'fixture', x0: x, y0: y, x1: x + n, y1: y + 1, variant: key });
+  const row = (key: number, n: number, x: number, y: number, level = 1): void => {
+    if (n > 0) edit(id, { op: 'fixture', x0: x, y0: y, x1: x + n, y1: y + 1, variant: key, level });
   };
   // A secure hall on the east side, closed by a wall with one opening that holds the security lanes.
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
@@ -147,7 +150,7 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   // three lanes' rows. The wall leaves a gap at rows 50 and 51 for the security exit.
   const lanes = o.security ?? 3;
   edit(id, { op: 'wall', x0: 72, y0: lanes > 0 ? 42 + 2 * Math.min(3, lanes) : 48, x1: 72, y1: 50, variant: 1 });
-  row(1, o.checkIn ?? 8, 42, 42);
+  row(1, o.checkIn ?? 8, 42, 42, o.checkInLevel ?? 1);
   // Each lane flows east with its anchor at x 72 and its entry at x 65.
   if (lanes > 0) edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 42 + 2 * Math.min(3, lanes), variant: 2, rot: 1 });
   // Passengers leave the secure hall through one exit that flows west, from secure to public.
@@ -155,7 +158,7 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   row(3, o.belt ?? 2, 62, 42);
   row(4, o.seating ?? 6, 76, 46);
   row(5, o.toilet ?? 2, 84, 46);
-  row(16, o.gateDesk ?? 0, 76, 42);
+  row(16, o.gateDesk ?? 0, 76, 42, o.gateDeskLevel ?? 1);
   if (o.shop) row(6, 1, 86, 46);
   if (o.atc !== false) problems.push(...run(sim, { type: 'buildTower', x: TEST_TOWER.x, y: TEST_TOWER.y, level: 5 }));
   return problems;

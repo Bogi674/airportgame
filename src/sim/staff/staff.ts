@@ -332,7 +332,8 @@ export class Staff {
         this.sKind[s] = sn.kind[k]!;
         this.sNode[s] = k;
         this.sRole[s] = STAFF_ROLE_KEYS.indexOf(entry.role);
-        this.sNeed[s] = entry.need;
+        // The node carries the need of its fixture level (T74), the staff data the role.
+        this.sNeed[s] = sn.staffNeed[k]!;
         this.stationOf.set(`${g.id}|${sn.lx[k]}|${sn.ly[k]}|${sn.kind[k]}`, s);
         s++;
       }
