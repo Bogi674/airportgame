@@ -33,7 +33,7 @@ interface Scenario {
   minPeak?: number;
   /** Adds a 640 by 120 m terminal with fixtures (docs/DESIGN_REVISION_2.md section 5). */
   bigTerminal?: boolean;
-  /** Adds a small terminal with a curb, check in, six security lanes, eight gate desks and seating, so departing cohorts run through it. */
+  /** Adds a small terminal with a curb, check in, three security lanes, eight gate desks and seating, so departing cohorts run through it. */
   cohortTerminal?: boolean;
   /** Adds a 120 by 30 cell terminal with 24 check in desks, 12 security lanes, 16 gate desks, seating, toilets and every shop kind. */
   peopleTerminal?: boolean;
@@ -64,11 +64,11 @@ function buildBigTerminal(sim: Sim): void {
   edit(id, { op: 'floor', x0: 40, y0: 40, x1: 360, y1: 100, variant: 2 });
   edit(id, { op: 'fixture', x0: 50, y0: 44, x1: 110, y1: 45, variant: 1 });
   edit(id, { op: 'zone', x0: 172, y0: 40, x1: 360, y1: 100, variant: 3 });
-  // The secure hall is closed by a wall at x = 172 with two gaps: 20 security lanes flowing east, and a security exit flowing west.
-  edit(id, { op: 'wall', x0: 172, y0: 40, x1: 172, y1: 60, variant: 1 });
-  edit(id, { op: 'wall', x0: 172, y0: 80, x1: 172, y1: 90, variant: 1 });
+  // The secure hall is closed by a wall at x = 172 with two gaps: 20 security lanes of 8 by 2 cells (T74) flowing
+  // east over rows 50 to 89, and a security exit flowing west.
+  edit(id, { op: 'wall', x0: 172, y0: 40, x1: 172, y1: 50, variant: 1 });
   edit(id, { op: 'wall', x0: 172, y0: 92, x1: 172, y1: 100, variant: 1 });
-  edit(id, { op: 'fixture', x0: 172, y0: 60, x1: 173, y1: 80, variant: 2, rot: 1 });
+  edit(id, { op: 'fixture', x0: 172, y0: 50, x1: 173, y1: 90, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 172, y0: 91, x1: 173, y1: 92, variant: 20, rot: 3, level: 1 });
   edit(id, { op: 'fixture', x0: 200, y0: 60, x1: 340, y1: 64, variant: 4 });
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 360, y1: 40, variant: 1 });
@@ -76,8 +76,8 @@ function buildBigTerminal(sim: Sim): void {
 }
 
 /**
- * A 60 by 12 cell terminal south of the stands, at the big terminal origin, with a curb door, check in, six security
- * lanes, eight gate desks and seating. Departing cohorts walk from the curb through every service point.
+ * A 60 by 12 cell terminal south of the stands, at the big terminal origin, with a curb door, check in, three security
+ * lanes of 8 by 2 cells, eight gate desks and seating. Departing cohorts walk from the curb through every service point.
  */
 function buildCohortTerminal(sim: Sim): void {
   const { ox, oy } = originFor(3200, 5600, 90);
@@ -95,7 +95,7 @@ function buildCohortTerminal(sim: Sim): void {
   // A door needs floor on both sides to be a walk node, so the strip outside the door is floor too.
   edit(id, { op: 'foundation', x0: 68, y0: 52, x1: 74, y1: 53, variant: 0 });
   edit(id, { op: 'floor', x0: 68, y0: 52, x1: 74, y1: 53, variant: 2 });
-  // The secure hall on the east side, closed by a wall with a six cell opening for the security lanes.
+  // The secure hall on the east side, closed by a wall with a six cell opening for three security lanes.
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
   edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
   // The wall leaves a gap at rows 50 and 51 for the security exit, which flows west from the secure hall.
@@ -110,7 +110,7 @@ function buildCohortTerminal(sim: Sim): void {
 
 /**
  * A 120 by 30 cell terminal at the cohort terminal origin: a public hall with a curb door and 24 check in desks, a secure
- * hall behind a wall with 12 security lanes and a security exit, and in the secure hall 16 gate desks, seating, toilets
+ * hall behind a wall with 12 security lanes of 8 by 2 cells and a security exit, and in the secure hall 16 gate desks, seating, toilets
  * and one of each shop kind in a commercial area. Departing cohorts walk through every service point and visit the shops.
  */
 function buildPeopleTerminal(sim: Sim): void {
@@ -129,14 +129,14 @@ function buildPeopleTerminal(sim: Sim): void {
   // The curb door needs floor on both sides, so the strip outside the door is floor too.
   edit(id, { op: 'foundation', x0: 68, y0: 70, x1: 74, y1: 71, variant: 0 });
   edit(id, { op: 'floor', x0: 68, y0: 70, x1: 74, y1: 71, variant: 2 });
-  // The secure hall east of x = 72, closed by a wall with a 12 lane opening and a two cell gap for the security exit.
+  // The secure hall east of x = 72, closed by a wall with a 12 lane opening over rows 42 to 65 and a two cell gap for
+  // the security exit. The lanes reach west to x 65, so the check in row ends at x 64.
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 160, y1: 70, variant: 3 });
   edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
-  edit(id, { op: 'wall', x0: 72, y0: 54, x1: 72, y1: 56, variant: 1 });
-  edit(id, { op: 'wall', x0: 72, y0: 58, x1: 72, y1: 70, variant: 1 });
-  edit(id, { op: 'fixture', x0: 42, y0: 42, x1: 66, y1: 43, variant: 1 });
-  edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 54, variant: 2, rot: 1 });
-  edit(id, { op: 'fixture', x0: 72, y0: 57, x1: 73, y1: 58, variant: 20, rot: 3, level: 1 });
+  edit(id, { op: 'wall', x0: 72, y0: 68, x1: 72, y1: 70, variant: 1 });
+  edit(id, { op: 'fixture', x0: 40, y0: 42, x1: 64, y1: 43, variant: 1 });
+  edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 66, variant: 2, rot: 1 });
+  edit(id, { op: 'fixture', x0: 72, y0: 67, x1: 73, y1: 68, variant: 20, rot: 3, level: 1 });
   edit(id, { op: 'fixture', x0: 76, y0: 44, x1: 92, y1: 45, variant: 16 });
   edit(id, { op: 'fixture', x0: 76, y0: 48, x1: 124, y1: 49, variant: 4 });
   edit(id, { op: 'fixture', x0: 76, y0: 52, x1: 88, y1: 53, variant: 5 });

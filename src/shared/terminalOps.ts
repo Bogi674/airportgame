@@ -15,6 +15,8 @@ import {
   ZONES,
   isShopFixture,
   isBaggageFixture,
+  isLevelKey,
+  levelOf,
   fixtureKey,
   type FixtureKey,
   type Terminal,
@@ -264,11 +266,12 @@ export function summarize(g: TerminalGrid): Terminal {
 
 const EXIT_COST_KEYS = ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'] as const;
 
-/** Build cost of one fixture. Levels only change the price of a security exit. */
+/** Build cost of one fixture. A security exit has a price per level; the leveled fixtures scale their module cost. */
 export function fixtureCost(id: number, level: number): number {
   const key = fixtureKey(id);
   const costs = BUSINESS.fixtureCosts;
   if (key === 'securityExit') return costs[EXIT_COST_KEYS[Math.min(Math.max(level, 1), 3) - 1]];
+  if (isLevelKey(key)) return Math.round(BUSINESS.modules[key].cost * BUSINESS.fixtureLevels.costFactor[levelOf(level) - 1]!);
   if (key === 'eGate' || key === 'customs') return costs[key];
   if (isBaggageFixture(id)) return 0;
   return isShopFixture(id) ? BUSINESS.shops[key as keyof typeof BUSINESS.shops].cost : BUSINESS.modules[key as keyof typeof BUSINESS.modules].cost;
@@ -398,7 +401,8 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
     if (e.op === 'fixture' && (e.variant < 1 || e.variant > FIXTURE_COUNT)) return none({ code: 'nothingThere' });
     let blocked: Problem | null = null;
     const key = e.op === 'fixture' && e.variant >= 1 && e.variant <= FIXTURE_COUNT ? fixtureKey(e.variant) : null;
-    const level = e.level ?? 1;
+    // Only the leveled fixtures and the security exit keep a level; every other fixture is level 1.
+    const level = key !== null && !isLevelKey(key) && key !== 'securityExit' ? 1 : (e.level ?? 1);
     const mode = e.mode ?? 0;
     const rot = e.rot ?? 0;
     if (e.op === 'fixture') {

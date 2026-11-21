@@ -95,7 +95,7 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
  */
 export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, number])[]> = {
   checkIn: [[1, 1]],
-  security: [[1, 1]],
+  security: [[2, 8]],
   belt: [[1, 1]],
   seating: [[1, 1]],
   toilet: [[1, 1]],
@@ -119,6 +119,13 @@ export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, n
 };
 /** Fixtures that move people from one zone to another. */
 export const TRANSITION_KEYS: readonly FixtureKey[] = ['security', 'securityExit', 'passport', 'eGate'];
+/** Fixtures with levels 1 to 3 on one footprint, upgraded in place (T74). The security exit has its own level rules. */
+export const LEVEL_KEYS = ['checkIn', 'security', 'passport', 'gateDesk'] as const;
+export type LevelKey = (typeof LEVEL_KEYS)[number];
+export const isLevelKey = (key: FixtureKey): key is LevelKey => (LEVEL_KEYS as readonly string[]).includes(key);
+export const MAX_FIXTURE_LEVEL = 3;
+/** Level of a fixture from its saved level byte: 0, written before T74, reads as level 1. */
+export const levelOf = (raw: number): 1 | 2 | 3 => (raw >= 3 ? 3 : raw === 2 ? 2 : 1);
 export function footprintOf(key: FixtureKey, level: number): readonly [number, number] {
   const table = FIXTURE_FOOTPRINT[key];
   return table[Math.min(Math.max(level, 1), table.length) - 1];

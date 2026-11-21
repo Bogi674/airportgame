@@ -1,5 +1,6 @@
 import { ARRIVALS, BUSINESS, STAFF } from '@data/index';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, footprintOf, type TerminalGrid } from '@shared/business';
+import { ACROSS } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
 import type { Rng } from '../rng';
@@ -141,6 +142,21 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
   return counted;
 }
 
+/**
+ * Cell a queue grows from: the anchor, or for a transition longer than one cell along its flow the entry cell at
+ * the far end. Tail cells lie along ACROSS from the anchor and the flow runs the other way, so the entry is the last.
+ */
+function queueOrigin(g: TerminalGrid, anchor: number): number {
+  const code = g.fixtureRot[anchor]!;
+  const key = fixtureKey(g.fixture[anchor]!);
+  if (code === 0 || !transitionOf(key, g.fixtureMode[anchor]!)) return anchor;
+  const across = footprintOf(key, g.fixtureLevel[anchor]!)[1];
+  const [bx, by] = ACROSS(code - 1);
+  const x = (anchor % g.w) + (across - 1) * bx;
+  const y = Math.floor(anchor / g.w) + (across - 1) * by;
+  return x < 0 || y < 0 || x >= g.w || y >= g.h ? anchor : y * g.w + x;
+}
+
 /** Builds the service node table of one terminal floor. Nodes are the anchors of the service fixtures, in cell order. */
 export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes {
   const n = g.w * g.h;
@@ -209,7 +225,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     nodes.servers[k] = t.servers;
     nodes.meanS[k] = t.meanS;
     nodes.staffNeed[k] = STAFF.stations[key]?.need ?? 0;
-    const cells = queueCells(g, wg.access, wg.effective, c, reach, seen, dist, queue, parent);
+    const cells = queueCells(g, wg.access, wg.effective, queueOrigin(g, c), reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
     nodes.qCellOffset[k] = cellX.length;
     nodes.qCellLen[k] = cells;

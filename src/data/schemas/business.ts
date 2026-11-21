@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { PROFILE_KEYS } from './profiles';
+
+/** A value per fixture level, index level minus 1. */
+const levels3 = <T extends z.ZodTypeAny>(v: T) => z.tuple([v, v, v]);
 
 const module = z.object({
   cost: z.number().nonnegative(),
@@ -48,6 +52,17 @@ export const businessSchema = z.object({
   }),
   terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), staffDoorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive(), atcRangeM: z.number().positive(), walk: z.object({ latticeCells: z.number().int().positive(), dirtyMarginCells: z.number().int().positive(), cacheSources: z.number().int().positive() }), service: z.strictObject({ cv: z.number().positive().max(1), queueDensityPerM2: z.number().positive(), queueReachCells: z.number().int().positive(), queueSlots: z.number().int().positive() }) }),
   modules: z.object({ checkIn: module, security: module, belt: module, seating: module, toilet: module, atc: module, kiosk: module, bagDrop: module, passport: module, gateDesk: module }),
+  fixtureLevels: z.strictObject({
+    note: z.string(),
+    costFactor: levels3(z.number().positive()),
+    worksDays: z.number().positive(),
+    upkeepShare: z.number().nonnegative(),
+    serviceSeconds: z.strictObject({ checkIn: levels3(z.number().positive()), security: levels3(z.number().positive()), passport: levels3(z.number().positive()), gateDesk: levels3(z.number().positive()) }),
+    staffNeed: z.strictObject({ checkIn: levels3(z.number().int().positive()), security: levels3(z.number().int().positive()), passport: levels3(z.number().int().positive()), gateDesk: levels3(z.number().int().positive()) }),
+    premiumProfiles: z.array(z.enum(PROFILE_KEYS)).min(1),
+    premiumPoints: levels3(z.number().nonnegative()),
+    priorityLevel: z.number().int().min(1).max(3),
+  }),
   fixtureCosts: z.strictObject({
     note: z.string(),
     'securityExit.staffed': z.number().nonnegative(),

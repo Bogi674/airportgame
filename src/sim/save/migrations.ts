@@ -3,7 +3,7 @@ import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield'
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 import { ROT_STEP } from '@shared/terminalOps';
-import { GROUND, NEEDS, PROFILES } from '@data/index';
+import { BUSINESS, GROUND, NEEDS, PROFILES } from '@data/index';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { FLAG_SLOW } from '../cohorts/cohorts';
 import { FIXTURE_KEYS } from '@shared/business';
@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, type ServiceSave } from '../termina
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 32;
+export const SAVE_VERSION = 33;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -38,12 +38,15 @@ export interface SaveData {
   baggage?: unknown;
   /** Airport staff, since version 31 (T68). */
   staff?: unknown;
+  /** One cell security lanes removed by the version 33 step (T74) and the cash refunded for them, for the load notice. */
+  securityRefund?: { lanes: number; amount: number };
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
 export function migrate(raw: unknown): SaveData {
   const save = raw as { version?: number };
   if (typeof save !== 'object' || save === null || typeof save.version !== 'number') throw new Error('This is not an Airfield Tycoon save');
+  const entry = save.version;
   if (save.version > SAVE_VERSION) throw new Error(`This save was made by a newer version (save format ${save.version}, this game reads ${SAVE_VERSION})`);
   // Version 1 to 2: terminals gained a zone layer and airlines gained slots. Both default on load.
   if (save.version < 2) save.version = 2;
@@ -315,7 +318,108 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 31 to 32: airport staff as individuals (T68). Older saves have none; the first staffing pass hires the running shift on its stations.
   if (save.version < 32) save.version = 32;
+  // Version 32 to 33: security lanes take the 8 by 2 cell kit footprint and fixtures gain levels and works (T74). Old
+  // one cell lanes cannot be widened in place, so they are removed with a full refund; their queues are evicted.
+  // Grids without works start with none, and a level byte of 0 reads as level 1.
+  if (save.version < 33) {
+    removeOldLanes(save as SaveData, entry);
+    save.version = 33;
+  }
   return save as SaveData;
+}
+
+/** fixture id of the security lane, see FIXTURE_KEYS. */
+const SECURITY_ID = FIXTURE_KEYS.indexOf('security') + 1;
+
+/**
+ * Removes every security lane of a save from before version 33, refunds it to the cash and drops its rows from the
+ * service table. A grid whose lanes already have tail cells has the kit footprint and is kept, unless the save came
+ * from before version 28, whose step rewrites the direction of every lane cell.
+ */
+function removeOldLanes(save: SaveData, entry: number): void {
+  type OldGrid = { fixture: string; fixtureRot?: string; fixtureOff?: string; fixtureLevel?: string; fixtureMode?: string; leased?: string; cost?: number };
+  const biz = save.business as { grids?: OldGrid[]; service?: ServiceSave[] } | undefined;
+  const grids = biz?.grids ?? [];
+  const price = BUSINESS.modules.security.cost;
+  let lanes = 0;
+  for (let gi = 0; gi < grids.length; gi++) {
+    const g = grids[gi]!;
+    const fixture = unpackTyped(g.fixture, Uint8Array);
+    const n = fixture.length;
+    const layer = (text: string | undefined): Uint8Array => (text ? unpackTyped(text, Uint8Array) : new Uint8Array(n));
+    const rot = layer(g.fixtureRot);
+    const off = layer(g.fixtureOff);
+    const level = layer(g.fixtureLevel);
+    const mode = layer(g.fixtureMode);
+    const leased = layer(g.leased);
+    // A lane with tail cells already has the kit footprint, so the grid is left as it is.
+    if (entry >= 28 && fixture.some((f, i) => f === SECURITY_ID && rot[i]! >= ANCHOR_ROT_LIMIT)) continue;
+    const table = biz?.service?.[gi];
+    if (table) biz!.service![gi] = dropServiceRows(table, fixture, rot, SECURITY_ID);
+    let here = 0;
+    for (let i = 0; i < n; i++) {
+      if (fixture[i] !== SECURITY_ID) continue;
+      if (rot[i]! < ANCHOR_ROT_LIMIT) here++;
+      fixture[i] = 0;
+      rot[i] = 0;
+      off[i] = 0;
+      level[i] = 0;
+      mode[i] = 0;
+      leased[i] = 0;
+    }
+    if (here === 0) continue;
+    lanes += here;
+    Object.assign(g, { fixture: packTyped(fixture), fixtureRot: packTyped(rot), fixtureOff: packTyped(off), fixtureLevel: packTyped(level), fixtureMode: packTyped(mode), leased: packTyped(leased) });
+    if (typeof g.cost === 'number') g.cost = Math.max(0, g.cost - here * price);
+  }
+  if (lanes === 0) return;
+  save.cash += lanes * price;
+  save.securityRefund = { lanes, amount: lanes * price };
+}
+
+/**
+ * The service table of a grid without the rows of every anchor of fixture `id`. Cohorts queued or served there join
+ * the evicted list, so they go back to the step they queued from. Rows are in ascending cell order of the service anchors.
+ */
+function dropServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8Array, id: number): ServiceSave {
+  const keep: number[] = [];
+  const evicted = Array.from(unpackTyped(old.evicted, Int32Array));
+  let row = 0;
+  const slots = old.count > 0 ? Math.floor(unpackTyped(old.qCohort, Int32Array).length / old.count) : 0;
+  const serving = unpackTyped(old.serving, Int32Array);
+  const qCohort = unpackTyped(old.qCohort, Int32Array);
+  const qHead = unpackTyped(old.qHead, Uint16Array);
+  const qCount = unpackTyped(old.qCount, Uint16Array);
+  for (let c = 0; c < fixture.length; c++) {
+    if (rot[c]! >= ANCHOR_ROT_LIMIT || !ALL_SERVICE_IDS.includes(fixture[c]!)) continue;
+    if (fixture[c] === id) {
+      if (serving[row]! >= 0) evicted.push(serving[row]!);
+      for (let q = 0; q < qCount[row]!; q++) evicted.push(qCohort[row * slots + ((qHead[row]! + q) % slots)]!);
+    } else keep.push(row);
+    row++;
+  }
+  if (row !== old.count || keep.length === row) return old;
+  const pick = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number): string => {
+    const src = unpackTyped(text, ctor as Int32ArrayConstructor);
+    const out = new ctor(keep.length * per);
+    keep.forEach((from, k) => {
+      for (let j = 0; j < per; j++) out[k * per + j] = src[from * per + j]!;
+    });
+    return packTyped(out);
+  };
+  return {
+    count: keep.length,
+    queueLen: pick(old.queueLen, Int32Array, 1),
+    busyUntil: pick(old.busyUntil, Int32Array, 1),
+    serving: pick(old.serving, Int32Array, 1),
+    servingSize: pick(old.servingSize, Int32Array, 1),
+    qCohort: pick(old.qCohort, Int32Array, slots),
+    qSize: pick(old.qSize, Int32Array, slots),
+    qHead: pick(old.qHead, Uint16Array, 1),
+    qCount: pick(old.qCount, Uint16Array, 1),
+    evictedCount: evicted.length,
+    evicted: packTyped(Int32Array.from(evicted)),
+  };
 }
 
 /** Fixture ids of the service keys that existed before save version 31, and of all service keys. */

@@ -385,3 +385,13 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Default for Q1 | with no staff center, staff clock in and out at the curb door, skip their break and work at 0.8 skill; the alternative (no staffed desk opens without a staff center) would break existing saves |
 | Scope | apron crews, cleaners, staffed security exits, morale and training move to a new roadmap row at close |
 | Default for Q2 | when the player cap or the stations shrink, members already on site keep working until their shift ends and are then freed; the alternative (send them home at once) would empty a desk in the middle of a shift |
+
+## 2026-11-21 T74 fixture levels
+
+| Question | Answer (owner, 2026-11-21) |
+| --- | --- |
+| Session scope for phase 3b | T74 only; T76 and T77 in fresh sessions |
+| Build cost, upkeep and works time of levels 2 and 3 | Level 2 costs 1.5 times level 1, level 3 costs 2 times; an upgrade costs the difference; works take 0.5 game day; upkeep 0.05 percent of cost per day |
+| How a higher level is obtained | The fixture tool places any level, and the inspector upgrades a built fixture; no downgrade, only undo |
+| Level 3 extras | The remote screener counts as one more staff on a level 3 lane with no room needed (the room moves to T81); premium passengers lose 10 satisfaction at a level 1 check in, 5 at level 2, none at level 3; a level 3 gate desk boards premium passengers first |
+| Service values of levels 2 and 3 | Already accepted in R5 (2026-11-18) |

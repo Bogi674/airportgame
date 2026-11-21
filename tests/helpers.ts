@@ -143,11 +143,13 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   // A secure hall on the east side, closed by a wall with one opening that holds the security lanes.
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 52, variant: 3 });
   edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
-  // The wall leaves a gap at rows 50 and 51 for the security exit.
-  edit(id, { op: 'wall', x0: 72, y0: 45, x1: 72, y1: 50, variant: 1 });
-  row(1, o.checkIn ?? 8, 42, 42);
+  // Lanes are 8 by 2 cells (T74), so the opening spans two rows per lane, at most three lanes. Without lanes it spans
+  // three lanes' rows. The wall leaves a gap at rows 50 and 51 for the security exit.
   const lanes = o.security ?? 3;
-  if (lanes > 0) edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 42 + Math.min(3, lanes), variant: 2, rot: 1 });
+  edit(id, { op: 'wall', x0: 72, y0: lanes > 0 ? 42 + 2 * Math.min(3, lanes) : 48, x1: 72, y1: 50, variant: 1 });
+  row(1, o.checkIn ?? 8, 42, 42);
+  // Each lane flows east with its anchor at x 72 and its entry at x 65.
+  if (lanes > 0) edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 42 + 2 * Math.min(3, lanes), variant: 2, rot: 1 });
   // Passengers leave the secure hall through one exit that flows west, from secure to public.
   if (lanes > 0) edit(id, { op: 'fixture', x0: 72, y0: 51, x1: 73, y1: 52, variant: 20, rot: 3, level: 1 });
   row(3, o.belt ?? 2, 62, 42);
@@ -190,8 +192,8 @@ export function buildArrivalTerminal(sim: Sim, o: { eGate?: boolean; passport?: 
   edit(id, { op: 'floor', x0: 48, y0: 60, x1: 54, y1: 61, variant: 2 });
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 50, variant: 3 });
   edit(id, { op: 'zone', x0: 72, y0: 50, x1: 100, y1: 60, variant: 5 });
-  // The dividing wall leaves one edge open at each fixture row.
-  for (const [y0, y1] of [[40, 42], [43, 47], [48, 52], [53, 55], [56, 60]] as const) edit(id, { op: 'wall', x0: 72, y0, x1: 72, y1, variant: 1 });
+  // The dividing wall leaves one edge open at each fixture row, two for the 8 by 2 security lane.
+  for (const [y0, y1] of [[40, 42], [44, 47], [48, 52], [53, 55], [56, 60]] as const) edit(id, { op: 'wall', x0: 72, y0, x1: 72, y1, variant: 1 });
   edit(id, { op: 'wall', x0: 72, y0: 50, x1: 100, y1: 50, variant: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 43, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 47, x1: 73, y1: 48, variant: 20, rot: 3, level: 1 });

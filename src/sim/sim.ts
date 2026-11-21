@@ -741,6 +741,8 @@ export class Sim {
     this.staff.loadState(save.staff as StaffSave | undefined);
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
+    // A save from before T74 lost its one cell security lanes in the migration, with a refund the player is told about.
+    if (save.securityRefund) this.eventQueue.push(`securityRebuilt|n=${save.securityRefund.lanes}|amount=${save.securityRefund.amount}`);
     this.ownershipDirty = true;
     this.airfieldSent = -1;
     this.obstaclesSent = -1;

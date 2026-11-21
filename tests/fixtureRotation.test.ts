@@ -105,21 +105,22 @@ describe('zone brush line', () => {
 });
 
 describe('transition orientation of a ghost', () => {
+  // A lane is 8 cells long (T74), so the split sits at x 10 of a 20 cell grid.
   const split = () => {
-    const g = grid(10, 5);
-    paint(g, 0, 0, 5, 5, 1);
-    paint(g, 5, 0, 10, 5, 3);
+    const g = grid(20, 5);
+    paint(g, 0, 0, 10, 5, 1);
+    paint(g, 10, 0, 20, 5, 3);
     return g;
   };
 
   it('warns about a security lane placed the wrong way round', () => {
     // Rotation 3 flows west, from the secure side into public: no transition edge is open that way.
-    expect(transitionOrientationBreaks(split(), fixtureEdit(5, 2, 6, 3, SECURITY, 3, 1, 0), ENV)).toBe(true);
+    expect(transitionOrientationBreaks(split(), fixtureEdit(10, 2, 11, 3, SECURITY, 3, 1, 0), ENV)).toBe(true);
   });
 
   it('does not warn about a security lane placed the right way round', () => {
     // Rotation 1 flows east, from public into secure.
-    expect(transitionOrientationBreaks(split(), fixtureEdit(5, 2, 6, 3, SECURITY, 1, 1, 0), ENV)).toBe(false);
+    expect(transitionOrientationBreaks(split(), fixtureEdit(10, 2, 11, 3, SECURITY, 1, 1, 0), ENV)).toBe(false);
   });
 
   it('never warns about a fixture that is not a transition', () => {

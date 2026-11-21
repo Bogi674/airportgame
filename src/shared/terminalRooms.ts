@@ -1,5 +1,6 @@
 import { FIXTURE_KEYS, WALL, ZONE, type TerminalGrid } from './business';
-import { AUD, stepAud, zoneAccess, zoneIssues } from './terminalZones';
+import { AUD, stepAud, zoneAccess, zoneIssues, type ZoneAccess } from './terminalZones';
+import { fixtureAnchor, fixtureCells } from './terminalOps';
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
@@ -27,6 +28,23 @@ export function canStep(g: TerminalGrid, x: number, y: number, d: number): boole
 
 const DX = [-1, 1, 0, 0];
 const DY = [0, 0, -1, 1];
+
+/** True when a cell of the lane holding cell j that is not secure itself lets passengers step onto secure floor. */
+function laneOpens(g: TerminalGrid, acc: ZoneAccess, j: number): boolean {
+  const W = g.w;
+  for (const c of fixtureCells(g, fixtureAnchor(g, j))) {
+    const x = c % W;
+    const y = (c - x) / W;
+    if (g.zone[c] === ZONE.Secure) continue;
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DX[d];
+      const ny = y + DY[d];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= g.h || g.zone[ny * W + nx] !== ZONE.Secure) continue;
+      if ((stepAud(acc, g, x, y, d) & AUD.Pax) !== 0) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * True when a room can step from array cell (x, y) to its neighbour in direction d, the same directions
@@ -121,7 +139,8 @@ export function terminalIssues(g: TerminalGrid): string[] {
         continue;
       }
       if (g.fixture[j] === SECURITY) {
-        touchesLane = true;
+        // A lane is 8 cells long (T74): reaching its entry counts only when its exit opens into secure floor.
+        if (g.zone[j] === ZONE.Secure || laneOpens(g, acc, j)) touchesLane = true;
         if (!lanes.includes(j)) lanes.push(j);
         continue;
       }

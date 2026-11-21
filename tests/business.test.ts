@@ -49,8 +49,8 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.terminals[0].cells).toBe(cells);
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
     expect(sim.business.terminals[0].counts.belt).toBe(2);
-    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures. The test terminal gained a security exit in a gap of its wall, two edges fewer.
-    const expected = cells * (2000 + 480) + 127 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
+    // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures. The test terminal gained a security exit in a gap of its wall, two edges fewer, and its 8 by 2 lanes (T74) open three edges more.
+    const expected = cells * (2000 + 480) + 124 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
     expect(g.cost).toBe(expected);
   });
 
@@ -284,7 +284,7 @@ describe('room validation', () => {
     at({ op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: 1 });
     expect(sim.business.roomIssues).toEqual([]);
     // Close the opening in the wall and the lanes can no longer be reached.
-    at({ op: 'wall', x0: 72, y0: 42, x1: 72, y1: 45, variant: 1 });
+    at({ op: 'wall', x0: 72, y0: 42, x1: 72, y1: 48, variant: 1 });
     expect(sim.business.roomIssues).toContain('noSecurityLink');
   });
 });
@@ -583,7 +583,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(32);
+    expect(SAVE_VERSION).toBe(33);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -719,7 +719,7 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     const sim = airportWith({ checkIn: 0 });
     expect(fixtureAt(sim, KEY('kiosk'), 42, 42)).toEqual([]);
     expect(sim.business.roomIssues).toEqual([]);
-    expect(wallEdit(sim, 'wall', 72, 42, 72, 45, 1)).toEqual([]);
+    expect(wallEdit(sim, 'wall', 72, 42, 72, 48, 1)).toEqual([]);
     expect(sim.business.roomIssues).toContain('noSecurityLink');
   });
 

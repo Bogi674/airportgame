@@ -777,6 +777,7 @@
   "notice.bagScreeningRoom": "Needs a closed staff screening room of {area} m2 with a door",
   "alert.noAtc": "{name} cannot fly here until an ATC tower stands at the airport.",
   "alert.atcLost": "Your old control room no longer provides ATC. Build an ATC tower to bring the airlines back.",
+  "alert.securityRebuilt": "Security lanes are now 16 by 4 m. Your {n} old lanes were removed and {amount} refunded. Build new lanes to reopen security.",
   "alert.atcOverload": "The tower is at its movement limit. {n} movements are waiting. Upgrade the tower to handle more.",
   "fixture.12": "Control room (ATC)",
   "terminal.sub.erase": "Erase",

@@ -21,10 +21,11 @@ function prepared(): Sim {
   const sim = ownedSim();
   sim.cash = 80_000_000;
   buildTestAirport(sim, { standsPerRow: 6 });
-  expect(buildTestTerminal(sim, { shop: true, gateDesk: 1 })).toEqual([]);
+  // Two passenger lanes fill rows 42 to 45; the staff lane (8 by 2 cells, T74) takes rows 46 and 47.
+  expect(buildTestTerminal(sim, { shop: true, gateDesk: 1, security: 2 })).toEqual([]);
   expect(edit(sim, { op: 'wall', x0: 60, y0: 46, x1: 60, y1: 47, variant: WALL.StaffDoor })).toEqual([]);
-  expect(edit(sim, { op: 'removeWall', x0: 72, y0: 45, x1: 72, y1: 46, variant: 0 })).toEqual([]);
-  expect(edit(sim, { op: 'fixture', x0: 72, y0: 45, x1: 73, y1: 46, variant: SECURITY, rot: 1, mode: 1 })).toEqual([]);
+  expect(edit(sim, { op: 'removeWall', x0: 72, y0: 46, x1: 72, y1: 48, variant: 0 })).toEqual([]);
+  expect(edit(sim, { op: 'fixture', x0: 72, y0: 46, x1: 73, y1: 47, variant: SECURITY, rot: 1, mode: 1 })).toEqual([]);
   run(sim, { type: 'signAirline', airlineId: 0, sign: true });
   run(sim, { type: 'signAirline', airlineId: 1, sign: true });
   run(sim, { type: 'setTestTraffic', perHour: 20, turnScale: 0.1 });
@@ -85,10 +86,10 @@ describe('zoned terminal in the sim', () => {
     const breaches = (): number => zoneBreaches(g, sim.business.walkGraphs[0]!.access).length;
     expect(sim.business.readiness()).not.toContain('zoneBreach');
     expect(breaches()).toBe(0);
-    expect(edit(sim, { op: 'wall', x0: 72, y0: 46, x1: 72, y1: 47, variant: WALL.Door })).toEqual([]);
+    expect(edit(sim, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: WALL.Door })).toEqual([]);
     expect(sim.business.readiness()).toContain('zoneBreach');
     expect(breaches()).toBe(1);
-    expect(edit(sim, { op: 'wall', x0: 72, y0: 46, x1: 72, y1: 47, variant: WALL.Wall })).toEqual([]);
+    expect(edit(sim, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: WALL.Wall })).toEqual([]);
     expect(sim.business.readiness()).not.toContain('zoneBreach');
     expect(breaches()).toBe(0);
   });

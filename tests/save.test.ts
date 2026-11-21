@@ -124,7 +124,8 @@ describe('saves', () => {
     expect(loaded.fixtureLevel[at(3, 3)]).toBe(1);
     expect(loaded.fixtureLevel[at(4, 3)]).toBe(1);
     expect(loaded.fixtureLevel[at(5, 5)]).toBe(0);
-    expect(loaded.fixtureRot[at(10, 3)]).toBe(2);
+    // The version 32 to 33 step (T74) removes every one cell lane, so the lane the version 28 step turned is gone.
+    expect(loaded.fixture[at(10, 3)]).toBe(0);
     const d = new Sim('GOLDEN-0001', OPTIONS);
     d.restore(JSON.parse(JSON.stringify(c.serialize())));
     expect(d.stateHash()).toBe(c.stateHash());
@@ -164,13 +165,14 @@ describe('saves', () => {
     const walkStart = unpackTyped(out.cohorts.arrays.walkStart!, Int32Array);
     expect(walkStart.length).toBe(out.cohorts.hi);
     expect(walkStart.every((v) => v === -1)).toBe(true);
+    // The lanes the version 28 step turned are removed by the version 33 step (T74), every layer cleared.
     for (const { grid, cell } of lanes) {
       const sg = out.business.grids[grid]!;
       const rot = unpackTyped(sg.fixtureRot!, Uint8Array);
-      expect(rot[cell]).toBeGreaterThanOrEqual(1);
-      expect(rot[cell]).toBeLessThanOrEqual(4);
+      expect(unpackTyped(sg.fixture!, Uint8Array)[cell]).toBe(0);
+      expect(rot[cell]).toBe(0);
       expect(unpackTyped(sg.fixtureOff!, Uint8Array).length).toBe(rot.length);
-      expect(unpackTyped(sg.fixtureLevel!, Uint8Array)[cell]).toBe(1);
+      expect(unpackTyped(sg.fixtureLevel!, Uint8Array)[cell]).toBe(0);
       expect(unpackTyped(sg.fixtureMode!, Uint8Array)[cell]).toBe(0);
     }
     const seeds = unpackTyped(out.cohorts.arrays.memberSeed!, Uint32Array);
@@ -318,6 +320,60 @@ describe('saves', () => {
     const c = new Sim(sim.seed, OPTIONS);
     c.restore(data);
     expect(c.staff.hi).toBe(0);
+  });
+});
+
+describe('save 32 to 33 security lanes (T74)', () => {
+  it('removes every lane with a refund and a notice, drops its service rows and reloads to the same hash', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim);
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2 })).toEqual([]);
+    sim.traffic.scheduleArrival(AIRCRAFT.findIndex((a) => a.id === 'a320neo'), sim.traffic.nowTick + 100, 0, 6000, -1);
+    for (let t = 0; t < 400; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; cash: number; business: { grids: Record<string, string | number>[]; service: ServiceSave[] } };
+    data.version = 32;
+    const securityId = FIXTURE_KEYS.indexOf('security') + 1;
+    // A version 32 lane is one cell: drop the tail cells of today's 8 by 2 lanes so only their anchors remain.
+    for (const sg of data.business.grids) {
+      const fixture = unpackTyped(sg.fixture as string, Uint8Array);
+      const rot = unpackTyped(sg.fixtureRot as string, Uint8Array);
+      for (let i = 0; i < fixture.length; i++) {
+        if (fixture[i] !== securityId || rot[i]! < 5) continue;
+        fixture[i] = 0;
+        rot[i] = 0;
+      }
+      sg.fixture = packTyped(fixture);
+      sg.fixtureRot = packTyped(rot);
+    }
+    const countBefore = data.business.service[0]!.count;
+    const before = data.cash;
+    const costBefore = data.business.grids[0]!.cost as number;
+    const out = migrate(data) as unknown as typeof data & { securityRefund?: { lanes: number; amount: number } };
+    expect(out.version).toBe(SAVE_VERSION);
+    expect(out.securityRefund).toEqual({ lanes: 2, amount: 2 * 70000 });
+    expect(out.cash).toBe(before + 2 * 70000);
+    expect(out.business.grids[0]!.cost).toBe(costBefore - 2 * 70000);
+    expect(Array.from(unpackTyped(out.business.grids[0]!.fixture as string, Uint8Array)).includes(securityId)).toBe(false);
+    expect(out.business.service[0]!.count).toBe(countBefore - 2);
+    const c = new Sim(sim.seed, OPTIONS);
+    c.restore(out);
+    expect(c.business.serviceTable(c.business.grids[0]!.id)!.count).toBe(countBefore - 2);
+    const events: string[] = [];
+    c.drainEvents(events);
+    expect(events.some((e) => e.startsWith('securityRebuilt|n=2|'))).toBe(true);
+    const d = new Sim(sim.seed, OPTIONS);
+    d.restore(JSON.parse(JSON.stringify(c.serialize())));
+    expect(d.stateHash()).toBe(c.stateHash());
+  });
+
+  it('leaves a save without lanes as it was', () => {
+    const sim = ownedSim();
+    for (let t = 0; t < 20; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; cash: number };
+    data.version = 32;
+    const out = migrate(data);
+    expect(out.securityRefund).toBeUndefined();
+    expect(out.cash).toBe(data.cash);
   });
 });
 

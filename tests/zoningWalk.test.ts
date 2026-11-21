@@ -109,11 +109,12 @@ describe('walk graph audiences', () => {
     const g = hall();
     wallOff(g, [4]);
     put(g, 'security', 10, 4, 1);
-    for (let y = 0; y < 10; y++) wall(g, false, 8, y, 4);
+    // The lane spans x 3 to 10 (T74) and queues from its entry at x 3, so the staff doors stand just west of it.
+    for (let y = 0; y < 10; y++) wall(g, false, 2, y, 4);
     const wg = buildWalkGraph(g);
     const sn = buildServiceNodes(g, wg);
     expect(sn.qCellLen[0]).toBeGreaterThan(0);
-    for (let q = 0; q < sn.qCellLen[0]!; q++) expect(sn.qCellX[sn.qCellOffset[0]! + q]).toBeGreaterThanOrEqual(8);
+    for (let q = 0; q < sn.qCellLen[0]!; q++) expect(sn.qCellX[sn.qCellOffset[0]! + q]).toBeGreaterThanOrEqual(2);
   });
 
   it('queues a lane on its public side only', () => {
@@ -171,7 +172,8 @@ describe('regional update with zones', () => {
   });
 
   it('matches a fresh build when a commercial region comes to touch both sides of a lane', () => {
-    check((g) => paint(g, 80, 4, 100, 5, 2), [80, 4, 80, 4]);
+    // The lane covers x 93 to 100 of rows 4 and 5, so the region ends at its entry.
+    check((g) => paint(g, 80, 4, 93, 5, 2), [80, 4, 80, 4]);
   });
 
   it('matches a fresh build after a staff door', () => {

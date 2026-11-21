@@ -91,6 +91,17 @@
    "serviceSeconds": 5
   }
  },
+ "fixtureLevels": {
+  "note": "Levels 1 to 3 of check in, security, passport control and gate desk (T74, docs/TERMINAL_FIXTURES.md section 4). Arrays are index level minus 1. Service seconds and staff equal the catalog stats in src/data/fixtures/catalog.json (gate desk: seconds per passenger, security level 3 counts its remote screener). costFactor multiplies the module cost; an upgrade costs the difference. worksDays in game days. upkeepShare is the share of the build cost paid per day by levels 2 and 3. premiumPoints is what each premium profile passenger loses at a check in desk of that level.",
+  "costFactor": [1, 1.5, 2],
+  "worksDays": 0.5,
+  "upkeepShare": 0.0005,
+  "serviceSeconds": { "checkIn": [120, 105, 95], "security": [12, 10, 8], "passport": [45, 38, 30], "gateDesk": [5, 3.5, 3] },
+  "staffNeed": { "checkIn": [1, 1, 1], "security": [2, 3, 3], "passport": [1, 1, 1], "gateDesk": [1, 2, 2] },
+  "premiumProfiles": ["premium"],
+  "premiumPoints": [10, 5, 0],
+  "priorityLevel": 3
+ },
  "fixtureCosts": {
   "note": "Build cost per asset id, T75",
   "securityExit.staffed": 30000,
