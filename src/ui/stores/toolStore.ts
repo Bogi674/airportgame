@@ -9,7 +9,7 @@ import type { FixtureRot } from '../tools/fixtureRot';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish';
 
-export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode';
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode' | 'prop' | 'propRemove';
 
 /** Snap mode of a placement tool: the construction grid, or free placement. */
 export type SnapMode = 'grid' | 'free';
@@ -89,6 +89,9 @@ interface ToolState {
   bagWidth: number;
   bagCarousel: number;
   bagRoomWarn: boolean;
+  /** Prop tool (T76): the catalog asset to place and its quarter turns, turned with R. */
+  propAsset: string;
+  propRot: 0 | 1 | 2 | 3;
   selection: Selection | null;
   /** Id of the construction grid offered near the cursor, or null when the cursor is out of reach of every grid. Set by the tool controller. */
   gridId: string | null;
@@ -146,6 +149,8 @@ export const useToolStore = create<ToolState>((set) => ({
   bagWidth: BAGGAGE.footprints.bay.widths[0],
   bagCarousel: BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w,
   bagRoomWarn: false,
+  propAsset: 'bench.beam3',
+  propRot: 0,
   selection: null,
   gridId: null,
   snapMode: {},

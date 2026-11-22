@@ -19,8 +19,9 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import type { TerminalGrid } from '@shared/business';
+import { TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { footprintSteps, planProp, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { cellAtWorld, cellIndex, fixtureAnchor, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
@@ -122,7 +123,7 @@ export class ToolController {
   /** True for the tools where a plain click only sets the start point. */
   get twoClick(): boolean {
     const st = useToolStore.getState();
-    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode');
+    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode' && st.tSub !== 'prop' && st.tSub !== 'propRemove');
   }
 
   /** True while any gesture is in progress, so the map should scroll when the pointer reaches an edge. */
@@ -807,6 +808,11 @@ export class ToolController {
     }
     if ((e.key === 'r' || e.key === 'R') && (st.tool === 'depot' || st.tool === 'building') && !e.ctrlKey && !e.metaKey) {
       st.set({ depotHeading: (st.depotHeading + 90) % 360 });
+      this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'prop' && !e.ctrlKey && !e.metaKey) {
+      st.set({ propRot: ((st.propRot + 1) % 4) as 0 | 1 | 2 | 3 });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
@@ -2097,7 +2103,8 @@ export class ToolController {
 
   private terminalDown(p: Pt, mods: Mods): void {
     this.frozen = false;
-    if (useToolStore.getState().tSub === 'bagNode') return;
+    const click = useToolStore.getState().tSub;
+    if (click === 'bagNode' || click === 'prop' || click === 'propRemove') return;
     const g = this.gridFor(p, mods);
     this.tGrid = g;
     const c = worldToCell(g, p.x, p.y);
@@ -2152,6 +2159,84 @@ export class ToolController {
     this.deps.send({ type: 'placeBaggageNode', building: g.id, kind: spec.kind, cx: spec.cx, cy: spec.cy, rot: spec.rot, widthCells: spec.widthCells });
   }
 
+  // Props (T76) -------------------------------------------------------------
+
+  /** The prop the tool would place under the cursor, centered on it and snapped to the 0.5 m grid, or null off every building. */
+  private propAtCursor(p: Pt): { g: TerminalGrid; prop: Prop } | null {
+    const st = useToolStore.getState();
+    const g = this.buildingAt(p);
+    const spec = propSpec(st.propAsset);
+    if (!g || !spec) return null;
+    const c = worldToCell(g, p.x, p.y);
+    const [w, d] = footprintSteps(spec, st.propRot);
+    const sx = Math.round((c.cx * TERMINAL_CELL_M) / PROP_STEP_M - w / 2);
+    const sy = Math.round((c.cy * TERMINAL_CELL_M) / PROP_STEP_M - d / 2);
+    return { g, prop: { asset: st.propAsset, x: sx * PROP_STEP_M, y: sy * PROP_STEP_M, rot: st.propRot } };
+  }
+
+  /** Footprint polygon of a prop in world meters, and the point in front of the side people use. */
+  private propShapes(g: TerminalGrid, prop: Prop): GhostShape[] {
+    const r = propRect(prop);
+    if (!r) return [];
+    const k = PROP_STEP_M / TERMINAL_CELL_M;
+    const shapes: GhostShape[] = [{ k: 'poly', pts: rectWorld(g, r.sx0 * k, r.sy0 * k, r.sx1 * k, r.sy1 * k) }];
+    const mx = ((r.sx0 + r.sx1) / 2) * k;
+    const my = ((r.sy0 + r.sy1) / 2) * k;
+    const front = prop.rot === 0 ? [mx, r.sy1 * k] : prop.rot === 1 ? [r.sx0 * k, my] : prop.rot === 2 ? [mx, r.sy0 * k] : [r.sx1 * k, my];
+    const f = cornerWorld(g, front[0]!, front[1]!);
+    shapes.push({ k: 'marker', x: f.x, y: f.y, shape: 'diamond' });
+    return shapes;
+  }
+
+  private previewProp(p: Pt): void {
+    const st = useToolStore.getState();
+    const at = this.propAtCursor(p);
+    if (!at) {
+      this.deps.setGhost(null);
+      st.set({ hint: 'hint.terminal.prop', problem: null, buy: null });
+      return;
+    }
+    const plan = planProp(at.g, at.prop);
+    const name = propSpec(at.prop.asset)?.name ?? at.prop.asset;
+    this.show({ valid: plan.problem === null, shapes: this.propShapes(at.g, at.prop), label: { x: p.x, y: p.y, text: tFormat('ghost.prop', { name, cost: formatMoney(propCost(at.prop.asset)) }) } }, plan.problem, 'hint.terminal.prop');
+    st.set({ buy: null });
+  }
+
+  private placeProp(p: Pt): void {
+    const at = this.propAtCursor(p);
+    if (!at || planProp(at.g, at.prop).problem !== null) return;
+    const { g, prop } = at;
+    this.deps.send({ type: 'placeProp', building: g.id, asset: prop.asset, x: prop.x, y: prop.y, rot: prop.rot });
+  }
+
+  /** The building and the index of the topmost prop under the cursor, or null. */
+  private propUnder(p: Pt): { g: TerminalGrid; i: number } | null {
+    const g = this.buildingAt(p);
+    if (!g) return null;
+    const c = worldToCell(g, p.x, p.y);
+    const i = propAt(g.props, c.cx * TERMINAL_CELL_M, c.cy * TERMINAL_CELL_M);
+    return i < 0 ? null : { g, i };
+  }
+
+  private previewPropRemove(p: Pt): void {
+    const hit = this.propUnder(p);
+    if (!hit) {
+      this.deps.setGhost(null);
+      useToolStore.getState().set({ hint: 'hint.terminal.propRemove', problem: null, buy: null });
+      return;
+    }
+    const prop = hit.g.props[hit.i]!;
+    const name = propSpec(prop.asset)?.name ?? prop.asset;
+    this.show({ valid: true, tone: 'remove', shapes: this.propShapes(hit.g, prop), label: { x: p.x, y: p.y, text: tFormat('ghost.propRemove', { name, cost: formatMoney(propCost(prop.asset)) }) } }, null, 'hint.terminal.propRemove');
+  }
+
+  private removePropAt(p: Pt): void {
+    const hit = this.propUnder(p);
+    if (!hit) return;
+    const c = worldToCell(hit.g, p.x, p.y);
+    this.deps.send({ type: 'removeProp', building: hit.g.id, x: c.cx * TERMINAL_CELL_M, y: c.cy * TERMINAL_CELL_M });
+  }
+
   /**
    * Zone brush: sends one 1 by 1 zone edit for each cell from the last pointer cell to this one that the drag has not
    * painted yet. The first call of a drag passes the start cell, so a click paints it.
@@ -2174,6 +2259,14 @@ export class ToolController {
   private previewTerminal(p: Pt, mods: Mods): void {
     if (useToolStore.getState().tSub === 'bagNode') {
       this.previewBagNode(p);
+      return;
+    }
+    if (useToolStore.getState().tSub === 'prop') {
+      this.previewProp(p);
+      return;
+    }
+    if (useToolStore.getState().tSub === 'propRemove') {
+      this.previewPropRemove(p);
       return;
     }
     if (this.frozen && !this.dragging) return;
@@ -2226,6 +2319,14 @@ export class ToolController {
   private finishTerminal(p: Pt): void {
     if (useToolStore.getState().tSub === 'bagNode') {
       this.placeBagNode(p);
+      return;
+    }
+    if (useToolStore.getState().tSub === 'prop') {
+      this.placeProp(p);
+      return;
+    }
+    if (useToolStore.getState().tSub === 'propRemove') {
+      this.removePropAt(p);
       return;
     }
     const g = this.tGrid;

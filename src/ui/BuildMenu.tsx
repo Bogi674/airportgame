@@ -10,6 +10,8 @@ import { useGameStore, type Sheet } from './stores/gameStore';
 import { useToolStore, type TerminalSub, type Tool } from './stores/toolStore';
 import { t, tDynamic, type StringKey } from './strings';
 import { Thumb } from './thumbs';
+import { PropThumb } from './PropThumb';
+import { PROP_CATEGORIES, propCost, propsOfCategory } from '@shared/props';
 
 type ToolState = ReturnType<typeof useToolStore.getState>;
 
@@ -26,6 +28,10 @@ interface Item {
   gse?: string;
   /** Price in cash for fixtures, shown on the card. */
   price?: number;
+  /** Prop asset whose kit sprite is the thumbnail (T76). */
+  asset?: string;
+  /** Card name from data, used instead of a string key. */
+  name?: string;
 }
 
 interface Tab {
@@ -75,6 +81,26 @@ const sub = (id: string, tSub: TerminalSub, thumb: string, icon: IconName): Item
   run: (s) => s.set({ tool: 'terminal', tSub }),
   active: (s) => s.tool === 'terminal' && s.tSub === tSub,
 });
+
+const prop = (id: string, name: string): Item => ({
+  id,
+  thumb: 'prop',
+  icon: 'fixture',
+  asset: id,
+  name,
+  price: propCost(id),
+  run: (s) => s.set({ tool: 'terminal', tSub: 'prop', propAsset: id, hint: 'hint.terminal.prop', problem: null, buy: null }),
+  active: (s) => s.tool === 'terminal' && s.tSub === 'prop' && s.propAsset === id,
+});
+
+/** The card that removes props, on every furnishing tab. */
+const removeProp: Item = {
+  id: 'remove',
+  thumb: 'erase',
+  icon: 'erase',
+  run: (s) => s.set({ tool: 'terminal', tSub: 'propRemove', hint: 'hint.terminal.propRemove', problem: null, buy: null }),
+  active: (s) => s.tool === 'terminal' && s.tSub === 'propRemove',
+};
 
 const sheet = (id: string, target: Sheet, icon: IconName): Item => ({ id, thumb: id, icon, run: () => useGameStore.getState().setSheet(target) });
 
@@ -223,7 +249,7 @@ export const CATEGORIES: Category[] = [
     tabs: [
       { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase')] },
       { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk')] },
-      { id: 'facilities', items: [fx('belt', 'belt'), fx('seating', 'seating'), fx('toilet', 'toilet')] },
+      { id: 'facilities', items: [fx('belt', 'belt')] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'shops', items: [fx('convenience', 'shop'), fx('quickFood', 'shop'), fx('cafe', 'shop'), fx('dutyFree', 'shop'), fx('booksGifts', 'shop'), fx('pharmacy', 'shop')] },
       {
@@ -242,6 +268,14 @@ export const CATEGORIES: Category[] = [
         ],
       },
     ],
+  },
+  {
+    id: 'furnish',
+    icon: 'fixture',
+    hue: 310,
+    testId: 'tool-furnish',
+    tool: 'terminal',
+    tabs: PROP_CATEGORIES.map((cat) => ({ id: cat, items: [...propsOfCategory(cat).map((a) => prop(a.id, a.name)), removeProp] })),
   },
   {
     id: 'infra',
@@ -337,14 +371,14 @@ export function BuildMenu({ send }: { send(cmd: Command): void }) {
                 onClick={() => it.run && it.run(useToolStore.getState())}
               >
                 <div class="thumb">
-                  <Thumb kind={it.thumb} icon={it.icon} />
+                  {it.asset ? <PropThumb asset={it.asset} /> : <Thumb kind={it.thumb} icon={it.icon} />}
                   {it.locked && (
                     <span class="lockbadge">
                       <Icon name="lock" size={14} />
                     </span>
                   )}
                 </div>
-                <div class="card-name">{spec ? spec.name : tDynamic(`menu.${cat.id}.${tab.id}.${it.id}` as StringKey) }</div>
+                <div class="card-name">{spec ? spec.name : it.name ?? (it.id === 'remove' && cat.id === 'furnish' ? t('menu.furnish.remove') : tDynamic(`menu.${cat.id}.${tab.id}.${it.id}` as StringKey))}</div>
                 <div class="card-sub">{it.locked ? t('menu.soon') : it.gse ? `${t('menu.owned')} ${owned}` : price > 0 ? formatMoney(price) : ''}</div>
               </button>
               {it.gse && (
