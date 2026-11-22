@@ -411,3 +411,12 @@ Implementer choices, stated for the owner: carousel S is a 10 m loop (6 by 2 cel
 | Order and placement | Passport control is entered from the Secure zone, so it comes after security by layout. Departure booths keep the Secure to International rule |
 
 Implementer choice, stated for the owner: a cancelled international flight costs the airline 2 happiness points, the same as an unplaced flight (`cancelledFlight` in `market.json`).
+
+## 2026-11-22 T80: security exit throughput
+
+| Question | Answer (owner, 2026-11-22) |
+| --- | --- |
+| Who queues at a security exit | Domestic arrivals only. Missed departures keep leaving the terminal as today |
+| Officer at a staffed exit | Not in T80. All three levels serve at their rate with no staff; staffed exits move to T81 |
+| Rates and save format | The rates accepted on 2026-11-18 (1 200, 900 and 1 500 people per hour, one server each); save format 34 with a migration; merge to main when verify is green |
+
