@@ -661,70 +661,11 @@
  "hideUi": false,
  "actions": [
   {
-   "key": "4"
-  },
-  {
-   "wait": 200000
-  },
-  {
-   "shot": "trains-0",
+   "shot": "bay-road",
    "clip": {
     "w": 1200,
     "h": 800
    }
-  },
-  {
-   "wait": 8000
-  },
-  {
-   "shot": "trains-1",
-   "clip": {
-    "w": 1200,
-    "h": 800
-   }
-  },
-  {
-   "wait": 8000
-  },
-  {
-   "shot": "trains-2",
-   "clip": {
-    "w": 1200,
-    "h": 800
-   }
-  },
-  {
-   "wait": 8000
-  },
-  {
-   "shot": "trains-3",
-   "clip": {
-    "w": 1200,
-    "h": 800
-   }
-  },
-  {
-   "wait": 8000
-  },
-  {
-   "shot": "trains-4",
-   "clip": {
-    "w": 1200,
-    "h": 800
-   }
-  },
-  {
-   "wait": 8000
-  },
-  {
-   "shot": "trains-5",
-   "clip": {
-    "w": 1200,
-    "h": 800
-   }
-  },
-  {
-   "wait": 8000
   },
   {
    "key": "o"
@@ -733,27 +674,17 @@
    "tool": "overlay-baggage"
   },
   {
-   "wait": 2000
-  },
-  {
-   "shot": "overlay",
-   "clip": {
-    "w": 1200,
-    "h": 800
-   }
-  },
-  {
    "camera": {
-    "x": 4012.0000000000005,
+    "x": 3997.0000000000005,
     "y": 5458,
-    "zoom": 14
+    "zoom": 12
    }
   },
   {
    "wait": 1500
   },
   {
-   "shot": "overlay-near",
+   "shot": "overlay",
    "clip": {
     "w": 1200,
     "h": 800
