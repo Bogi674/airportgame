@@ -19,6 +19,8 @@ export const baggageSchema = z.strictObject({
     bufferBags: positive,
     loadSecondsPerBag: positive,
     stagingLaneM: positive,
+    /** Turn radius of a train on its way into a slot; the road connection point sits two of these beyond the lanes (T78). */
+    turnRadiusM: positive,
   }),
   carousel: z.strictObject({
     sizes: z.array(z.strictObject({ id: z.string(), w: positiveInt, capacityBags: positive, cost: positive })).min(1),

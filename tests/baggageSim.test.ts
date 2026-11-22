@@ -4,6 +4,7 @@ import { Sim } from '@sim/sim';
 import { WALL } from '../src/shared/business';
 import { dropOutCell, nodeCells } from '../src/shared/baggageNodes';
 import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '../src/shared/terminalOps';
+import { roadSnapPoints, standRoadAnchors } from '../src/shared/roadGraph';
 import { buildTestAirport, ownedSim, OPTIONS, run } from './helpers';
 
 const { ox, oy } = originFor(3960, 5440, 90);
@@ -230,5 +231,23 @@ describe('baggage subsystem', () => {
     expect(place(l, 'carousel', 42, 42, 0)).toEqual([]);
     const rec = l.sim.baggage.nodesOf(l.building).find((r) => r.kind === 'carousel');
     expect(rec?.spec?.widthCells).toBe(BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w);
+  });
+
+  it('connects a bay to the road net through the point beyond its staging lanes (T78)', () => {
+    const l = fullLayout();
+    const bay = idOf(l, 'bay');
+    const stand = l.sim.airfield.data.stands[0];
+    run(l.sim, { type: 'setStandBay', standId: stand.id, bayId: bay });
+    const anchor = l.sim.airfield.data.bayAnchors?.find((a) => a.bay === bay);
+    expect(anchor).toBeDefined();
+    const warn = (): string[] => l.sim.baggage.inspect([]).nodes.find((n) => n.id === bay)?.warnings ?? [];
+    expect(warn()).toContain('bayNoRoad');
+    expect(l.sim.baggage.inspect([]).bays.find((b) => b.id === bay)?.road).toBe(false);
+    // The terminal sits west of the stand row and the bay faces south, so the road goes round its east side.
+    const conn = standRoadAnchors(stand)!.conn;
+    expect(run(l.sim, { type: 'buildRoad', points: [conn, { x: conn.x, y: anchor!.y }, { x: anchor!.x, y: anchor!.y }] })).toEqual([]);
+    expect(warn()).not.toContain('bayNoRoad');
+    expect(l.sim.roads.tripOk(0)).toBe(true);
+    expect(roadSnapPoints(l.sim.airfield.data)).toContainEqual({ x: anchor!.x, y: anchor!.y });
   });
 });

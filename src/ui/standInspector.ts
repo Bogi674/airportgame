@@ -52,6 +52,7 @@ export interface BagBayLike {
   slots: number;
   stands: readonly number[];
   carousel: number | null;
+  road: boolean;
 }
 
 export interface BagNodeLike {
@@ -88,7 +89,7 @@ export function bagNodeNumber(nodes: readonly BagNodeLike[], id: number): number
   return nodes.filter((n) => n.kind === node.kind && n.building === node.building && n.id <= id).length;
 }
 
-export type StandBagWarning = 'noBay' | 'bayNoCarousel';
+export type StandBagWarning = 'noBay' | 'bayNoCarousel' | 'bayNoRoad';
 
 export interface StandBagFacts {
   commercial: boolean;
@@ -110,6 +111,8 @@ export function standBagState(f: StandBagFacts): StandBagState {
   if (!f.commercial) return { visible: false, warning: null, carousel: null };
   const bay = f.bayId < 0 ? undefined : f.bays.find((b) => b.id === f.bayId);
   if (!bay) return { visible: true, warning: 'noBay', carousel: null };
+  // No road to the bay loses every bag, so it outranks a missing carousel.
+  if (!bay.road) return { visible: true, warning: 'bayNoRoad', carousel: bay.carousel };
   return { visible: true, warning: bay.carousel === null ? 'bayNoCarousel' : null, carousel: bay.carousel };
 }
 

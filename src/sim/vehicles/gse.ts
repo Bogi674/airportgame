@@ -687,7 +687,7 @@ export class Gse {
     this.sendPrev(v);
     for (let c = v; c >= 0; ) {
       const next = this.tail[c];
-      const unit = this.host !== null && this.rStand[c] >= this.host.roads.standCount;
+      const unit = this.host !== null && this.host.roads.isUnitRoute(this.rStand[c]);
       if (this.state[c] === Work && this.owner[c] >= 0) this.dockedMask[this.owner[c]] &= ~(1 << this.kind[c]);
       if (unit && this.outUnit > 0) this.outUnit--;
       else if (this.counted[c] === 1 && this.out[this.kind[c]] > 0) this.out[this.kind[c]]--;

@@ -58,12 +58,13 @@ describe('baggage inspector payload', () => {
     if (!info) throw new Error('no payload');
     expect(info.standBay[0]).toBe(bay);
     expect(info.standBay.slice(1).every((b) => b === -1)).toBe(true);
-    expect(info.bays).toEqual([{ id: bay, building: l.building, slots: 2, stands: [stands[0].id], carousel }]);
+    expect(info.bays).toEqual([{ id: bay, building: l.building, slots: 2, stands: [stands[0].id], carousel, road: false }]);
     const byId = (id: number) => info.nodes.find((n) => n.id === id);
     expect(byId(drop)?.links).toEqual([{ from: drop, to: machine, mode: 'auto' }]);
     expect(byId(machine)?.links).toContainEqual({ from: machine, to: bay, mode: 'auto' });
     expect(byId(bay)?.links).toContainEqual({ from: bay, to: carousel, mode: 'auto' });
-    expect(byId(bay)?.warnings).toEqual([]);
+    // The test airport has no road to the bay (T78).
+    expect(byId(bay)?.warnings).toEqual(['bayNoRoad']);
     expect(byId(bay)?.capacity).toBe(200);
     expect(byId(drop)?.cells).toEqual([[60, 41]]);
     expect(info.nodes.every((n) => n.held === 0)).toBe(true);
@@ -73,10 +74,10 @@ describe('baggage inspector payload', () => {
     const l = fullLayout();
     const info = l.sim.baggage.inspect([]);
     const bay = kindId(l, 'bay');
-    expect(info.nodes.find((n) => n.id === bay)?.warnings).toEqual([]);
+    expect(info.nodes.find((n) => n.id === bay)?.warnings).toEqual(['bayNoRoad']);
     expect(run(l.sim, { type: 'removeBaggageNode', id: kindId(l, 'carousel') })).toEqual([]);
     const after = l.sim.baggage.inspect([]);
-    expect(after.nodes.find((n) => n.id === bay)?.warnings).toEqual(['bayNoCarousel']);
+    expect(after.nodes.find((n) => n.id === bay)?.warnings).toEqual(['bayNoCarousel', 'bayNoRoad']);
     expect(after.bays[0].carousel).toBeNull();
   });
 
@@ -91,9 +92,9 @@ describe('baggage inspector payload', () => {
 
 describe('baggage inspector helpers', () => {
   const bays = [
-    { id: 9, building: 2, slots: 2, stands: [1], carousel: 4 },
-    { id: 7, building: 1, slots: 4, stands: [2, 3], carousel: null },
-    { id: 8, building: 1, slots: 2, stands: [], carousel: 4 },
+    { id: 9, building: 2, slots: 2, stands: [1], carousel: 4, road: false },
+    { id: 7, building: 1, slots: 4, stands: [2, 3], carousel: null, road: true },
+    { id: 8, building: 1, slots: 2, stands: [], carousel: 4, road: true },
   ];
   it('numbers bays per terminal with slot use', () => {
     expect(bayOptions(bays)).toEqual([
@@ -107,6 +108,7 @@ describe('baggage inspector helpers', () => {
     expect(standBagState({ commercial: true, bayId: -1, bays })).toEqual({ visible: true, warning: 'noBay', carousel: null });
     expect(standBagState({ commercial: true, bayId: 7, bays })).toEqual({ visible: true, warning: 'bayNoCarousel', carousel: null });
     expect(standBagState({ commercial: true, bayId: 8, bays })).toEqual({ visible: true, warning: null, carousel: 4 });
+    expect(standBagState({ commercial: true, bayId: 9, bays })).toEqual({ visible: true, warning: 'bayNoRoad', carousel: 4 });
   });
   it('picks and numbers nodes', () => {
     const nodes = [

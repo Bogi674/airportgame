@@ -2,7 +2,7 @@
 
 import { BAGGAGE } from '@data/index';
 import { FIXTURE_ZONES, TERMINAL_CELL_M, WALL, ZONE, type FixtureKey, type TerminalGrid } from './business';
-import { cellIndex, hEdgeIndex, vEdgeIndex } from './terminalOps';
+import { cellIndex, cornerWorld, hEdgeIndex, vEdgeIndex } from './terminalOps';
 import { labelRooms } from './terminalRooms';
 
 export type BagKind = 'machine' | 'bay' | 'carousel';
@@ -143,6 +143,54 @@ export function stagingLaneCenters(n: BagDrawNode): Cell[] {
   const out: Cell[] = [];
   for (let k = 0; k < Math.floor(size.w / slotCells); k++) out.push(drawPoint(n, slotCells * k + slotCells / 2, size.d + laneCells / 2));
   return out;
+}
+
+/**
+ * World frame of a bay's truck edge (T78): the origin is the outer corner of the bay at u = 0 on the truck edge
+ * line, a runs along the edge in meters, n points out of the building onto the apron. Null for an unlisted width.
+ */
+export interface BayFrame {
+  ox: number;
+  oy: number;
+  ax: number;
+  ay: number;
+  nx: number;
+  ny: number;
+  widthM: number;
+  slots: number;
+}
+
+export function bayFrame(g: Pick<TerminalGrid, 'ox' | 'oy' | 'headingDeg'>, spec: BagNodeSpec): BayFrame | null {
+  const size = nodeSize(spec);
+  if (spec.kind !== 'bay' || !size) return null;
+  const n: BagDrawNode = { building: 0, kind: 'bay', cx: spec.cx, cy: spec.cy, rot: spec.rot, widthCells: spec.widthCells, linked: false };
+  const at = (u: number, v: number): { x: number; y: number } => {
+    const [cx, cy] = drawPoint(n, u, v);
+    return cornerWorld(g, cx, cy);
+  };
+  const o = at(0, size.d);
+  const pu = at(1, size.d);
+  const pv = at(0, size.d + 1);
+  return {
+    ox: o.x,
+    oy: o.y,
+    ax: (pu.x - o.x) / TERMINAL_CELL_M,
+    ay: (pu.y - o.y) / TERMINAL_CELL_M,
+    nx: (pv.x - o.x) / TERMINAL_CELL_M,
+    ny: (pv.y - o.y) / TERMINAL_CELL_M,
+    widthM: size.w * TERMINAL_CELL_M,
+    slots: Math.floor((size.w * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM),
+  };
+}
+
+/** World point at u meters along the truck edge and v meters out from it. */
+export function bayPoint(f: BayFrame, u: number, v: number): { x: number; y: number } {
+  return { x: f.ox + f.ax * u + f.nx * v, y: f.oy + f.ay * u + f.ny * v };
+}
+
+/** The bay's road connection point: on its center line, two turn radii beyond the staging lanes (docs/BAGGAGE.md 3.4, T78). */
+export function bayRoadPoint(f: BayFrame): { x: number; y: number } {
+  return bayPoint(f, f.widthM / 2, BAGGAGE.bay.stagingLaneM + 2 * BAGGAGE.bay.turnRadiusM);
 }
 
 /** Wall value on the edge between two orthogonally adjacent logical cells, or -1 outside the edge arrays. */

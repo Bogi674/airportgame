@@ -1,7 +1,8 @@
 import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, bagNodeCost, carouselSize, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
+import type { BayAnchor } from '@shared/airfield';
+import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BagWarningCode, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { bagKey, bagNodeCost, bayFrame, bayRoadPoint, carouselSize, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
@@ -27,6 +28,8 @@ export interface BaggageHost {
   standExists(standId: number): boolean;
   /** Stand id of the live flight with this serial, -1 when it has none yet and -2 when the flight is gone. */
   standOfSerial(serial: number): number;
+  /** True when a depot reaches the bay's road connection point (T78). */
+  bayConnected(bayId: number): boolean;
 }
 
 export interface PlaceBagNode {
@@ -353,6 +356,20 @@ export class Baggage {
     return this.recs.filter((r) => r.building === building);
   }
 
+  /** Road connection point of every bay, in bay id order, for the road net (T78). A bay whose grid is gone has none. */
+  bayAnchors(): BayAnchor[] {
+    const out: BayAnchor[] = [];
+    for (const rec of this.recs.slice().sort((a, b) => a.id - b.id)) {
+      if (rec.kind !== 'bay' || rec.spec === null) continue;
+      const g = this.business.grids.find((x) => x.id === rec.building);
+      const f = g ? bayFrame(g, rec.spec) : null;
+      if (!f) continue;
+      const p = bayRoadPoint(f);
+      out.push({ bay: rec.id, x: p.x, y: p.y });
+    }
+    return out;
+  }
+
   /** Changes whenever a node, a drop link or a grid sync may have changed what drawList returns. Not saved. */
   drawVersion(): number {
     return this.drawStamp;
@@ -400,11 +417,14 @@ export class Baggage {
       const warnings = net
         .warnings()
         .filter((w) => w.id === rec.id)
-        .map((w) => w.code);
+        .map((w): BagWarningCode => w.code);
+      // A bay the road net does not reach from a depot gets no trains, so its stands lose their bags (T78).
+      const road = rec.kind !== 'bay' || this.host.bayConnected(rec.id);
+      if (!road) warnings.push('bayNoRoad');
       const cells: [number, number][] = rec.spec === null ? [[rec.cell[0], rec.cell[1]]] : nodeCells(rec.spec).map(([x, y]): [number, number] => [x, y]);
       nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec), links, warnings });
       if (rec.kind === 'bay' && rec.spec !== null) {
-        bays.push({ id: rec.id, building: rec.building, slots: Math.floor((rec.spec.widthCells * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM), stands: node ? node.stands.slice() : [], carousel: net.carouselOf(rec.id) });
+        bays.push({ id: rec.id, building: rec.building, slots: Math.floor((rec.spec.widthCells * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM), stands: node ? node.stands.slice() : [], carousel: net.carouselOf(rec.id), road });
       }
     }
     return { standBay: standIds.map((id) => this.bayOfStand(id) ?? -1), bays, nodes };

@@ -246,6 +246,13 @@ export function towerRect(x: number, y: number, sideM: number): Pt[] {
 }
 
 /** Everything the renderer and UI need to know about the airfield. */
+/** Where the road reaches a baggage bay: the bay id and the world point beyond its staging lanes (docs/BAGGAGE.md 3.4). */
+export interface BayAnchor {
+  bay: number;
+  x: number;
+  y: number;
+}
+
 export interface AirfieldPayload {
   version: number;
   runways: Runway[];
@@ -261,6 +268,8 @@ export interface AirfieldPayload {
   depots?: Depot[];
   /** Supporting buildings (T65). Missing means none. */
   buildings?: Building[];
+  /** Road connection point of every baggage bay, in bay id order (T78). Derived from the terminals, never saved. Missing means none. */
+  bayAnchors?: BayAnchor[];
   /** Obstacle surface results per runway, derived from the terrain, land and buildings. */
   obstacles?: RunwayObstacles[];
   /** Stands whose parked box breaks a taxiway clearance, ascending by id. Derived from the layout, never saved. Missing means none. */

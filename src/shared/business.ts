@@ -295,7 +295,7 @@ export interface BagLinkInfo {
   mode: 'auto' | 'manual';
 }
 
-export type BagWarningCode = 'dropNoMachine' | 'machineNoBay' | 'bayNoCarousel';
+export type BagWarningCode = 'dropNoMachine' | 'machineNoBay' | 'bayNoCarousel' | 'bayNoRoad';
 
 export interface BagNodeInfo {
   id: number;
@@ -319,6 +319,8 @@ export interface BagBayInfo {
   stands: number[];
   /** Carousel the bay feeds, null when it has none. */
   carousel: number | null;
+  /** True when a depot reaches the bay's road connection point (T78). */
+  road: boolean;
 }
 
 export interface BaggageInfo {

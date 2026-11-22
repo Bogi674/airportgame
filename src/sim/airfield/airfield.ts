@@ -12,6 +12,7 @@ import {
   towerRect,
   type Apron,
   type AirfieldPayload,
+  type BayAnchor,
   type CodeLetter,
   type Runway,
   type Stand,
@@ -1025,6 +1026,17 @@ export class Airfield {
     b.cost += price;
     this.groundVersion++;
     return { cashDelta: -price };
+  }
+
+  /**
+   * Sets the road connection points of the baggage bays (T78). They are derived from the terminals, so they are never
+   * saved; a change counts as a ground change, so the road net and the road tool's snap points follow.
+   */
+  setBayAnchors(list: BayAnchor[]): void {
+    const old = this.data.bayAnchors ?? [];
+    if (old.length === list.length && old.every((a, i) => a.bay === list[i].bay && a.x === list[i].x && a.y === list[i].y)) return;
+    this.data.bayAnchors = list;
+    this.groundVersion++;
   }
 
   /** Removes a tower and refunds a share of everything the player spent on it, as the other demolitions do. */
