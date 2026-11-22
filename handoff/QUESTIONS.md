@@ -429,3 +429,16 @@ Implementer choice, stated for the owner: a cancelled international flight costs
 | Cost per level | L2 costs 1.6 times L1, L3 2.5 times L1 (check in 9 000, 14 400, 22 500; security 70 000, 112 000, 175 000; passport 18 000, 28 800, 45 000; gate desk 12 000, 19 200, 30 000). An upgrade costs the difference. Upkeep follows the build cost as today. Works take 1 game day, security 2 |
 | Undo and placement | While works run, Cancel restores the old level with a full refund. The fixture tool gets a level picker, so L2 and L3 can be placed new |
 | Premium and staff | Premium profile passengers checked in below level 3 lose 5 satisfaction points. At a level 3 gate desk premium cohorts go to the front of the queue. Gate desk needs 2 agents at L2 and L3; security needs 2, 3 and 2 officers; the remote screener waits for T81 |
+
+## 2026-11-22 T76: props
+
+| Question | Answer (owner, 2026-11-22) |
+| --- | --- |
+| Scope | Placement and removal of every sub grid prop of the nine prop categories, saves, walking block, drawing from the kit and build menu cards. Effects now: comfort from seats and ambience from decoration feed the passenger rating, plus washroom capacity (below). Vending sales, ad income, wayfinding, charging and office staff effects move to a new roadmap row |
+| Old seating and toilet fixtures | Convert on load: each seating fixture becomes beam seat props, each toilet block becomes stall props, and both leave the build menu |
+| Washrooms | In T76: the stall, accessible toilet and urinal props of one room form one toilet node whose servers are their capacity, with the catalog service times (stall 90 s, urinal 45 s, accessible 150 s) |
+| Walking block | A 2 m cell is unwalkable when floor props cover at least half of its area. Floor layer and overhead props never block. Placement is refused when it would block a cell beside a door or a transition fixture |
+| Prices | Seat 300 per seat, lounge item 1 200, washroom item 800 (stall 2 500), decoration 600 per ambience point, vending 3 000, screen 2 000 (LED wall 12 000), service item 1 500, office item 1 000, back of house 600. Upkeep 2 percent of cost per month |
+| Rating | New passenger term Amenities = (comfort + ambience) / 2. Comfort = min(1, sum of seats times (1 + 0.25 times comfort) / (30 per gate desk)). Ambience = min(1, ambience points / (1 per 50 m2 of passenger floor)). The catalog ambience values are accepted |
+
+Implementer choices, stated for the owner: a converted seating cell holds two beam seats of 3 (6 seats), a converted toilet block two stalls side by side (2 servers instead of 6), so the toilet rating term now reads washroom servers over 8 (four converted blocks give the full score, as four blocks did before). Converted props skip the wall rule. Removing a prop refunds its full price, which stands in for undo, since terminal edits have no undo stack. With no gate desk, comfort counts against 30 seats. Overhead props are baked into the floor chunk under people (logged in the backlog).

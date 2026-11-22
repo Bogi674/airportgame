@@ -1,0 +1,435 @@
+{
+  "buy": [
+    [
+      3900,
+      4900,
+      4200,
+      5200
+    ]
+  ],
+  "commands": [
+    {
+      "type": "terminalBuild",
+      "building": -1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "foundation",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 0
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "floor",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "zone",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 0,
+        "variant": 1
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 0,
+        "y0": 0,
+        "x1": 0,
+        "y1": 8,
+        "variant": 1
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 13,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 2
+      }
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.tvCredenza",
+      "x": 2.5,
+      "y": 0,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.cupboard",
+      "x": 6,
+      "y": 0,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.magazineShelf",
+      "x": 9,
+      "y": 0,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.rug",
+      "x": 2.5,
+      "y": 2,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.sofa3",
+      "x": 2.5,
+      "y": 4.5,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.coffeeTable",
+      "x": 3,
+      "y": 2.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.armchair",
+      "x": 1,
+      "y": 2.5,
+      "rot": 1
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.armchair",
+      "x": 5.5,
+      "y": 2.5,
+      "rot": 3
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.endTableLamp",
+      "x": 1,
+      "y": 4,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.floorLamp",
+      "x": 5.5,
+      "y": 4,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.dining4",
+      "x": 8.5,
+      "y": 3.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.barStools",
+      "x": 13,
+      "y": 1,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.buffet",
+      "x": 13,
+      "y": 5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.coffeeStation",
+      "x": 16.5,
+      "y": 5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "lounge.workDesk",
+      "x": 8.5,
+      "y": 7,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 1,
+      "y": 9,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 1,
+      "y": 11,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.charge4",
+      "x": 5,
+      "y": 9,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.padded3",
+      "x": 5,
+      "y": 11,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "recliner",
+      "x": 11,
+      "y": 9,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "recliner",
+      "x": 12,
+      "y": 9,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "decor.palm",
+      "x": 22,
+      "y": 1,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "decor.planterLarge",
+      "x": 22,
+      "y": 5.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "decor.sculpture",
+      "x": 17,
+      "y": 9,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "decor.planterSmall",
+      "x": 14,
+      "y": 13,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "decor.trough",
+      "x": 19.5,
+      "y": 13,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "vending.coffee",
+      "x": 23,
+      "y": 13,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "vending.drink",
+      "x": 21.5,
+      "y": 13,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "screen.fids3",
+      "x": 9,
+      "y": 14.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "screen.infoTotem",
+      "x": 15,
+      "y": 9,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "service.helpPoint",
+      "x": 14,
+      "y": 10.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "washroom.trash",
+      "x": 13,
+      "y": 13,
+      "rot": 0
+    }
+  ],
+  "camera": {
+    "x": 4013,
+    "y": 5008,
+    "zoom": 24
+  },
+  "hideUi": false,
+  "actions": [
+    {
+      "tool": "tool-furnish"
+    },
+    {
+      "tool": "menutab-decoration"
+    },
+    {
+      "tool": "card-decor.fountain"
+    },
+    {
+      "move": [
+        4019,
+        5002.5
+      ]
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": "menu"
+    },
+    {
+      "click": [
+        4019,
+        5002.5
+      ]
+    },
+    {
+      "wait": 800
+    },
+    {
+      "expect": {
+        "path": "terminalGrids.0.props.length",
+        "equals": 33
+      }
+    },
+    {
+      "tool": "card-remove"
+    },
+    {
+      "move": [
+        4019,
+        5002.5
+      ]
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": "remove"
+    },
+    {
+      "click": [
+        4019,
+        5002.5
+      ]
+    },
+    {
+      "wait": 800
+    },
+    {
+      "expect": {
+        "path": "terminalGrids.0.props.length",
+        "equals": 32
+      }
+    }
+  ],
+  "report": [
+    "cash"
+  ]
+}

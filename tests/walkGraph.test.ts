@@ -143,7 +143,7 @@ describe('walk graph nodes', () => {
   it('gives every floor cell a main node in its own block and no main to other cells', () => {
     const { grid, wg } = build();
     for (let c = 0; c < grid.w * grid.h; c++) {
-      if (grid.floor[c]! > 0) {
+      if (grid.floor[c]! > 0 && wg.blocked[c] === 0) {
         const main = wg.cellMain[c]!;
         expect(main).toBeGreaterThanOrEqual(0);
         expect(sameBlock(grid, main, c)).toBe(true);
@@ -158,7 +158,7 @@ describe('walk graph nodes', () => {
     const { grid, wg } = build();
     let centres = 0;
     for (let c = 0; c < grid.w * grid.h; c++) {
-      if (grid.floor[c]! > 0 && isBlockCentre(grid, c)) {
+      if (grid.floor[c]! > 0 && wg.blocked[c] === 0 && isBlockCentre(grid, c)) {
         centres++;
         expect(wg.cellMain[c]).toBe(c);
       }

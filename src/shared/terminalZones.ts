@@ -1,5 +1,6 @@
 import { TERMINAL_CELL_M, TRANSITION_KEYS, WALL, fixtureKey, type FixtureKey, type TerminalGrid } from './business';
 import { ROT_STEP, cellOf, fixtureCells } from './terminalOps';
+import { propBlockMask } from './props';
 
 /** Audience bits of an edge mask: passengers and staff. */
 export const AUD = { Pax: 1, Staff: 2 } as const;
@@ -106,7 +107,8 @@ export function edgeWall(g: TerminalGrid, x: number, y: number, d: number): numb
 /**
  * The edge table of a grid. Walls and glass are closed. A staff door lets staff through both ways. Equal effective
  * zones are open to all. An edge between different zones is open only one way through a transition fixture whose flow
- * crosses it from its from zone to its to zone, and every other such edge is a breach with no access.
+ * crosses it from its from zone to its to zone, and every other such edge is a breach with no access. Every edge of a
+ * cell that props block (T76) is closed.
  */
 export function zoneAccess(g: TerminalGrid): ZoneAccess {
   const W = g.w;
@@ -143,6 +145,18 @@ export function zoneAccess(g: TerminalGrid): ZoneAccess {
       const cy = (c - cx) / W;
       openFlow(g, acc, eff, t, cx - fx, cy - fy, cx, cy);
       openFlow(g, acc, eff, t, cx, cy, cx + fx, cy + fy);
+    }
+  }
+  if (g.props.length > 0) {
+    const blocked = propBlockMask(g);
+    for (let c = 0; c < blocked.length; c++) {
+      if (blocked[c] === 0) continue;
+      const x = c % W;
+      const y = (c - x) / W;
+      acc.v[y * (W + 1) + x] = 0;
+      acc.v[y * (W + 1) + x + 1] = 0;
+      acc.h[c] = 0;
+      acc.h[c + W] = 0;
     }
   }
   return acc;
@@ -321,8 +335,10 @@ export function zoneIssues(g: TerminalGrid, acc: ZoneAccess): string[] {
       queue[tail++] = i;
     }
   }
+  // Nobody stands on a cell that props block (T76), so it needs no way out.
+  const blocked = g.props.length > 0 ? propBlockMask(g) : null;
   for (let i = 0; i < n; i++) {
-    if (reach[i] === 0 && (eff[i] === SECURE || eff[i] === INTERNATIONAL)) {
+    if (reach[i] === 0 && (eff[i] === SECURE || eff[i] === INTERNATIONAL) && (blocked === null || blocked[i] === 0)) {
       issues.push('paxCannotLeave');
       break;
     }

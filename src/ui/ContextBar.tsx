@@ -5,6 +5,8 @@ import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS } from '@shared/business';
 import { isLeveled, levelCost, type LeveledKey } from '@shared/fixtureLevels';
+import { propCost, propSpec } from '@shared/props';
+import { RETIRED_KEYS } from '@shared/terminalOps';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useGameStore } from './stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
@@ -209,12 +211,22 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'terminal' && (
           <>
-            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode'>[]).map((sub) => (
+            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'propRemove'>[]).map((sub) => (
               <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
                 <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
               </button>
             ))}
+            {s.tSub === 'prop' && (
+              <>
+                <span data-testid="prop-name" style="align-self:center;font-size:12px">
+                  {propSpec(s.propAsset)?.name ?? s.propAsset} {formatMoney(propCost(s.propAsset))}
+                </span>
+                <button data-testid="prop-rotate" title={t('opt.propRotate')} onClick={() => s.set({ propRot: ((s.propRot + 1) % 4) as 0 | 1 | 2 | 3 })}>
+                  {t('opt.propRotate')} {s.propRot * 90}°
+                </button>
+              </>
+            )}
             {s.tSub === 'floor' && (
               <Select label={t('opt.floorType')} value={s.floorType} options={[1, 2, 3].map((f) => ({ v: f, text: tDynamic(`terminal.floor.${f}`) }))} onChange={(v) => s.set({ floorType: v as 1 | 2 | 3 })} />
             )}
@@ -235,7 +247,7 @@ export function ContextBar({ send }: Props) {
                 label={t('opt.fixture')}
                 value={s.fixtureId}
                 testId="opt-fixture"
-                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
+                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k) && !RETIRED_KEYS.includes(f.k)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
                 onChange={(v) => s.set({ fixtureId: v })}
               />
             )}

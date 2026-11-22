@@ -109,6 +109,21 @@
   "premiumPenalty": 5,
   "priorityLevel": 3
  },
+ "props": {
+  "note": "Props on the 0.5 m sub grid (T76, owner 2026-11-22). costByCategory is the build cost of one prop by catalog category; seating costs perSeat per seat, decoration perAmbience per ambience point, and costById overrides both. Removal refunds the full cost. upkeepPctPerMonth of the cost is booked daily. blockShare of a 2 m cell covered by floor and wall props makes it unwalkable. Rating: comfort counts seats times (1 + comfortWeight times comfort) against seatsPerGateDesk per gate desk (at least one desk), ambience counts points against one per ambienceAreaM2 of passenger floor; toiletServersTarget washroom servers give the full toilet term. Converted seating cells hold two bench.beam3, converted toilet blocks two washroom.wcStall.",
+  "costByCategory": { "seating": 0, "lounge": 1200, "washroom": 800, "decoration": 0, "vending": 3000, "screens": 2000, "service": 1500, "office": 1000, "backOfHouse": 600 },
+  "perSeat": 300,
+  "perAmbience": 600,
+  "costById": { "washroom.wcStall": 2500, "washroom.wcAccessible": 2500, "screen.ledWall": 12000 },
+  "upkeepPctPerMonth": 2,
+  "blockShare": 0.5,
+  "comfortWeight": 0.25,
+  "seatsPerGateDesk": 30,
+  "ambienceAreaM2": 50,
+  "toiletServersTarget": 8,
+  "seatingAsset": "bench.beam3",
+  "toiletAsset": "washroom.wcStall"
+ },
  "tower": {
   "note": "Free standing ATC tower, confirmed by the user on 2026-11-06. Money in the game currency, footprint side in meters. Index 0 of levels is level 1. movementsPerHour is the landing and takeoff budget per runway in a rolling 60 minute window. maxRunways is the most runways the level allows, minus 1 means unlimited.",
   "cost": 100000,

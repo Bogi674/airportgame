@@ -10,6 +10,7 @@ import { FlState } from '@sim/ops/traffic';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BuildContext } from '@shared/validate';
 import { cellIndex, ensureCells, fixtureCost, fixturePartner, floorBounds, newGrid, originFor, planEdit, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { propTotals } from '@shared/props';
 import { buildTestAirport, buildTestControlRoom, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 describe('service node data', () => {
@@ -50,8 +51,10 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(sim.business.terminals[0].counts.checkIn).toBe(8);
     expect(sim.business.terminals[0].counts.belt).toBe(2);
     // Foundation, tile, 2 walls of 60 edges plus a door, and the fixtures. The test terminal gained a security exit in a gap of its wall, two edges fewer, and the 2 by 8 cell lanes (T74) leave a six edge opening, three edges fewer.
-    const expected = cells * (2000 + 480) + 124 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000 + 6 * 6000 + 2 * 20000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
+    const expected = cells * (2000 + 480) + 124 * 300 + 2 * 1500 + (8 * 9000 + 3 * 70000 + 2 * 55000) + fixtureCost(FIXTURE_KEYS.indexOf('securityExit') + 1, 1);
     expect(g.cost).toBe(expected);
+    // Seating and toilets are props with their own price (T76): 12 beam seats of 3 seats and 4 stalls.
+    expect(propTotals(g).cost).toBe(12 * 3 * 300 + 4 * 2500);
   });
 
   it('only floor 0 can be built', () => {
@@ -584,7 +587,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(35);
+    expect(SAVE_VERSION).toBe(36);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;
@@ -692,7 +695,7 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     expect(edit(id, { op: 'floor', x0: 150, y0: 40, x1: 170, y1: 50, variant: 2 })).toEqual([]);
     expect(edit(id, { op: 'zone', x0: 150, y0: 40, x1: 170, y1: 50, variant: 3 })).toEqual([]);
     expect(edit(id, { op: 'fixture', x0: 150, y0: 42, x1: 151, y1: 43, variant: KEY('security'), rot: 0 })).toEqual([]);
-    expect(edit(id, { op: 'fixture', x0: 160, y0: 46, x1: 161, y1: 47, variant: KEY('seating'), rot: 0 })).toEqual([]);
+    expect(run(sim, { type: 'placeProp', building: id, asset: 'bench.beam3', x: 320, y: 92, rot: 0 })).toEqual([]);
   }
 
   it('check in capacity counts kiosks and bag drops at their module rates', () => {
@@ -745,8 +748,9 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     expect(sim.business.roomIssues).toEqual([]);
     expect(wallEdit(sim, 'wall', 80, 40, 80, 52, 1)).toEqual([]);
     expect(sim.business.roomIssues).toContain('noGateDeskLink');
-    expect(wallEdit(sim, 'removeWall', 80, 46, 80, 47, 0)).toEqual([]);
-    expect(wallEdit(sim, 'wall', 80, 46, 80, 47, 3)).toEqual([]);
+    // Row 46 holds the seat props, which block it (T76), so the door goes in at row 48.
+    expect(wallEdit(sim, 'removeWall', 80, 48, 80, 49, 0)).toEqual([]);
+    expect(wallEdit(sim, 'wall', 80, 48, 80, 49, 3)).toEqual([]);
     expect(sim.business.roomIssues).toEqual([]);
   });
 

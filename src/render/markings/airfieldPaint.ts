@@ -6,6 +6,7 @@ import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 import { FIXTURE_FOOTPRINT, FLOOR, fixtureKey, footprintOf, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { carouselSize, drawCenter, drawFootprint, dropRampCenter, stagingLaneCenters, type BagDrawNode } from '@shared/baggageNodes';
 import { ACROSS, cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
+import { layerOf, PROP_CATEGORIES, PROP_STEP_M, propRect, propSpec } from '@shared/props';
 import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
 import type { FixtureWorks } from '@shared/fixtureLevels';
@@ -53,7 +54,7 @@ const FOOTPRINT_REACH = Math.max(...Object.values(FIXTURE_FOOTPRINT).flatMap((le
 /** Kit asset of a staff door, drawn on its wall edge. */
 export const STAFF_DOOR_ASSET = 'staffDoor';
 /** Kit packs the terminal painter needs before its chunks bake. */
-export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'seating', 'washroom', 'baggage', 'zoning'];
+export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'baggage', 'zoning', ...PROP_CATEGORIES];
 /** Rotation in degrees of a two cell fixture by its footprint code 1 to 4, see fixtureRot in TerminalGrid. */
 const KIT_ROT: readonly Rot[] = [0, 90, 180, 270];
 /** Kit assets of the baggage nodes that do not depend on a bay width. */
@@ -741,6 +742,31 @@ function paintFixtureWorks(ctx: Ctx, g: TerminalGrid, works: readonly FixtureWor
   }
 }
 
+/** Margin in meters around the window within which props are drawn, so a prop straddling the edge is not cut off. */
+const PROP_MARGIN_M = 8;
+
+/**
+ * Draws the props of a floor (T76) on one layer pass, in placement order: floor layer props under the fixtures, then
+ * floor, wall and desktop props, then overhead props. Each sprite sits centered in its footprint, turned by its rot.
+ */
+function paintProps(ctx: Ctx, g: TerminalGrid, pass: 'under' | 'body' | 'over', minM: { x: number; y: number }, maxM: { x: number; y: number }, tier: 0 | Tier, scale: number): void {
+  if (tier === 0 || g.props.length === 0) return;
+  for (const p of g.props) {
+    const spec = propSpec(p.asset);
+    if (!spec) continue;
+    const layer = layerOf(spec);
+    const want = layer === 'floorLayer' ? 'under' : layer === 'overhead' ? 'over' : 'body';
+    if (want !== pass) continue;
+    const r = propRect(p)!;
+    const cx = ((r.sx0 + r.sx1) / 2) * PROP_STEP_M;
+    const cy = ((r.sy0 + r.sy1) / 2) * PROP_STEP_M;
+    if (cx < minM.x - PROP_MARGIN_M || cy < minM.y - PROP_MARGIN_M || cx > maxM.x + PROP_MARGIN_M || cy > maxM.y + PROP_MARGIN_M) continue;
+    const rot = KIT_ROT[p.rot];
+    const sprite = bakeFixture(p.asset, tier, rot, scale, null);
+    if (sprite !== null) drawFixture(ctx, sprite, cx, cy, rot);
+  }
+}
+
 /** Draws the kit staff door centered on each staff door edge in a cell range, 0.45 m into the cell below or right. */
 function paintStaffDoors(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1: number, y1: number, tier: 0 | Tier, scale: number): void {
   if (tier === 0) return;
@@ -917,7 +943,12 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
       ctx.fillRect(body.x + 0.45, body.y + 0.45, body.w - 0.4, body.h - 0.4);
     }
   }
+  const propMin = { x: x0 * C, y: y0 * C };
+  const propMax = { x: (x1 + 1) * C, y: (y1 + 1) * C };
+  paintProps(ctx, g, 'under', propMin, propMax, tier, win.scale);
   paintKitFixtures(ctx, g, fx0, fy0, fx1, fy1, tier, win.scale);
+  paintProps(ctx, g, 'body', propMin, propMax, tier, win.scale);
+  paintProps(ctx, g, 'over', propMin, propMax, tier, win.scale);
   if (g.works) paintFixtureWorks(ctx, g, g.works, win);
   paintStaffDoors(ctx, g, x0, y0, x1, y1, tier, win.scale);
   if (g.bagNodes) paintBagNodes(ctx, g.bagNodes, tier, win.scale);

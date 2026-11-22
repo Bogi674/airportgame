@@ -388,7 +388,8 @@ describe('save 30 to 31 service rows (T20)', () => {
     sim.cash = 80_000_000;
     buildTestAirport(sim, { standsPerRow: 6 });
     // No legacy belts: a save from before version 33 turns them into carousels on load, which is not the subject here.
-    expect(buildTestTerminal(sim, { gateDesk: 2, belt: 0 })).toEqual([]);
+    // No toilet props either: a save from before version 36 has no washroom nodes (T76).
+    expect(buildTestTerminal(sim, { gateDesk: 2, belt: 0, toilet: 0 })).toEqual([]);
     const id = sim.business.grids[0]!.id;
     const edit = (x0: number, y0: number, x1: number, y1: number, variant: number): string[] =>
       run(sim, { type: 'terminalBuild', building: id, ox: sim.business.grids[0]!.ox, oy: sim.business.grids[0]!.oy, headingDeg: 90, edit: { op: 'fixture', x0, y0, x1, y1, variant } });

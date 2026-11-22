@@ -1,6 +1,7 @@
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
 import { labelRooms } from '@shared/terminalRooms';
+import { propBlockMask } from '@shared/props';
 import { effectiveZones, stepAud, zoneAccess, type ZoneAccess } from '@shared/terminalZones';
 import { newWalkCache, type WalkCache } from './walkDistance';
 
@@ -75,6 +76,8 @@ export interface WalkGraph {
   edgeMask: Uint8Array;
   /** Who may cross each cell edge of the grid, kept from the last rebuild. Never recomputed per tick. */
   access: ZoneAccess;
+  /** 1 on floor cells that props block (T76): no node and no walking there. From the last rebuild. */
+  blocked: Uint8Array;
   /** Effective zone per array cell from the last rebuild, 0 without floor. Read by the curb and the queue cells. */
   effective: Uint8Array;
   /** Cached walking distance rows for passengers over the edges above, see walkDistance. */
@@ -154,7 +157,7 @@ function fillBlock(g: TerminalGrid, wg: WalkGraph, bx: number, by: number): void
     const ax = ax0 + (k % L);
     const ay = ay0 + Math.floor(k / L);
     if (ax < 0 || ay < 0 || ax >= W || ay >= g.h) continue;
-    if (g.floor[ay * W + ax]! <= 0 || blockDone[k] === 1) continue;
+    if (g.floor[ay * W + ax]! <= 0 || wg.blocked[ay * W + ax] === 1 || blockDone[k] === 1) continue;
     const tail = floodGroup(g, wg.access, ax0, ay0, k);
     const centreK = CENTRE * L + CENTRE;
     let main = (ay0 + Math.floor(k / L)) * W + ax0 + (k % L);
@@ -175,7 +178,7 @@ function fillBlock(g: TerminalGrid, wg: WalkGraph, bx: number, by: number): void
     const ay = ay0 + Math.floor(k / L);
     if (ax < 0 || ay < 0 || ax >= W || ay >= g.h) continue;
     const c = ay * W + ax;
-    if (g.floor[c]! <= 0) continue;
+    if (g.floor[c]! <= 0 || wg.blocked[c] === 1) continue;
     const fixture = g.fixture[c]!;
     if (fixture > 0 && fixture !== SEATING && g.fixtureRot[c]! < TAIL_ROT) wg.cellKind[c] = WALK_NODE.Fixture;
     else if (wg.cellKind[c] === 0 && doorBeside(g, ax, ay)) wg.cellKind[c] = WALK_NODE.Door;
@@ -542,6 +545,7 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
     edgeLen: new Float32Array(0),
     edgeMask: new Uint8Array(0),
     access: zoneAccess(g),
+    blocked: propBlockMask(g),
     effective: effectiveZones(g),
     cache: newWalkCache(0),
     staffCache: newWalkCache(0),
@@ -597,6 +601,7 @@ export function updateWalkGraph(wg: WalkGraph, g: TerminalGrid, lx0: number, ly0
   const box = { x0: lx0, y0: ly0, x1: lx1, y1: ly1 };
   widenToChanges(g, wg.access, next, box);
   wg.access = next;
+  wg.blocked = propBlockMask(g);
   wg.effective = effectiveZones(g);
   const rect: BlockRect = {
     bx0: Math.max(whole.bx0, Math.floor((box.x0 - M) / L)),
