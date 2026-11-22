@@ -3,13 +3,13 @@ import { AIRCRAFT } from '@data/aircraft';
 import { Sim } from '@sim/sim';
 import { migrate, SAVE_VERSION } from '@sim/save/migrations';
 import { packTyped, unpackTyped } from '@sim/save/pack';
-import { FLAG_SLOW } from '@sim/cohorts/cohorts';
+import { FLAG_SLOW, Stage } from '@sim/cohorts/cohorts';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '@sim/cohorts/traits';
 import { FIXTURE_KEYS, FLOOR } from '@shared/business';
-import type { ServiceSave } from '@sim/terminal/serviceNodes';
+import { SERVICE_KEYS, type ServiceSave } from '@sim/terminal/serviceNodes';
 import { terminalIssues } from '@shared/terminalRooms';
 import { cellIndex, ensureCells, gridOnLevel, newGrid } from '@shared/terminalOps';
-import { buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
+import { buildArrivalTerminal, buildTestAirport, buildTestControlRoom, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 
 function prepared(): Sim {
   const sim = ownedSim();
@@ -321,8 +321,61 @@ describe('saves', () => {
   });
 });
 
+type ServiceData = { version: number; business: { grids: { fixture: string; fixtureRot: string }[]; service: ServiceSave[] }; cohorts?: { arrays: Record<string, string> } };
+
+/**
+ * Rewrites a save whose service table in grid 0 holds the anchors of `present` as an older one that holds only the
+ * anchors of `keep`: the rows of the other anchors are dropped. With `remap`, the node index of every cohort in grid
+ * 0 moves back to its old row, as the migration to version 34 expects; the migration to 31 never remapped them.
+ */
+function dropServiceRows(data: ServiceData, version: number, present: readonly string[], keep: readonly string[], remap: boolean): void {
+  data.version = version;
+  const fixture = unpackTyped(data.business.grids[0]!.fixture, Uint8Array);
+  const rot = unpackTyped(data.business.grids[0]!.fixtureRot, Uint8Array);
+  const s = data.business.service[0]!;
+  const kept: number[] = [];
+  const oldOfNew = new Int32Array(s.count).fill(-1);
+  let node = 0;
+  for (let c = 0; c < fixture.length; c++) {
+    const key = FIXTURE_KEYS[fixture[c]! - 1] ?? '';
+    if (rot[c]! >= 5 || !present.includes(key)) continue;
+    if (keep.includes(key)) {
+      oldOfNew[node] = kept.length;
+      kept.push(node);
+    }
+    node++;
+  }
+  const slots = unpackTyped(s.qCohort, Int32Array).length / s.count;
+  const pick = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number): string => {
+    const src = unpackTyped(text, ctor as Int32ArrayConstructor);
+    const out = new ctor(kept.length * per);
+    kept.forEach((from, k) => {
+      for (let j = 0; j < per; j++) out[k * per + j] = src[from * per + j]!;
+    });
+    return packTyped(out);
+  };
+  data.business.service[0] = {
+    ...s,
+    count: kept.length,
+    queueLen: pick(s.queueLen, Int32Array, 1),
+    busyUntil: pick(s.busyUntil, Int32Array, 1),
+    serving: pick(s.serving, Int32Array, 1),
+    servingSize: pick(s.servingSize, Int32Array, 1),
+    qCohort: pick(s.qCohort, Int32Array, slots),
+    qSize: pick(s.qSize, Int32Array, slots),
+    qHead: pick(s.qHead, Uint16Array, 1),
+    qCount: pick(s.qCount, Uint16Array, 1),
+  };
+  const arrays = data.cohorts?.arrays;
+  if (remap && arrays?.node !== undefined && arrays.building !== undefined) {
+    const nodes = unpackTyped(arrays.node, Int32Array);
+    const building = unpackTyped(arrays.building, Uint8Array);
+    for (let c = 0; c < nodes.length; c++) if (building[c] === 0 && nodes[c]! >= 0) nodes[c] = oldOfNew[nodes[c]!]!;
+    arrays.node = packTyped(nodes);
+  }
+}
+
 describe('save 30 to 31 service rows (T20)', () => {
-  type ServiceData = { version: number; business: { grids: { fixture: string; fixtureRot: string }[]; service: ServiceSave[] } };
   const NEW_IDS = [FIXTURE_KEYS.indexOf('eGate') + 1, FIXTURE_KEYS.indexOf('customs') + 1];
 
   /** A sim with a queue at the check in desks and an eGate and a customs fixture in the public hall. */
@@ -343,42 +396,11 @@ describe('save 30 to 31 service rows (T20)', () => {
     return sim;
   }
 
-  /** Rewrites a version 31 save as version 30 by dropping the rows of the eGate and customs anchors. */
+  /** Rewrites a version 31 save as version 30 by dropping the rows of the eGate, customs and security exit anchors. */
   function asVersion30(data: ServiceData): void {
-    data.version = 30;
-    const fixture = unpackTyped(data.business.grids[0]!.fixture, Uint8Array);
-    const rot = unpackTyped(data.business.grids[0]!.fixtureRot, Uint8Array);
-    const s = data.business.service[0]!;
-    const keep: number[] = [];
-    let node = 0;
-    for (let c = 0; c < fixture.length; c++) {
-      if (rot[c]! >= 5 || !['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs'].includes(FIXTURE_KEYS[fixture[c]! - 1] ?? '')) continue;
-      if (!NEW_IDS.includes(fixture[c]!)) keep.push(node);
-      node++;
-    }
-    const slots = unpackTyped(s.qCohort, Int32Array).length / s.count;
-    const pick = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number): string => {
-      const src = unpackTyped(text, ctor as Int32ArrayConstructor);
-      const out = new ctor(keep.length * per);
-      keep.forEach((from, k) => {
-        for (let j = 0; j < per; j++) out[k * per + j] = src[from * per + j]!;
-      });
-      return packTyped(out);
-    };
-    data.business.service[0] = {
-      ...s,
-      count: keep.length,
-      queueLen: pick(s.queueLen, Int32Array, 1),
-      busyUntil: pick(s.busyUntil, Int32Array, 1),
-      serving: pick(s.serving, Int32Array, 1),
-      servingSize: pick(s.servingSize, Int32Array, 1),
-      qCohort: pick(s.qCohort, Int32Array, slots),
-      qSize: pick(s.qSize, Int32Array, slots),
-      qHead: pick(s.qHead, Uint16Array, 1),
-      qCount: pick(s.qCount, Uint16Array, 1),
-    };
+    dropServiceRows(data, 33, SERVICE_KEYS, SERVICE_KEYS.slice(0, 9), true);
+    dropServiceRows(data, 30, SERVICE_KEYS.slice(0, 9), SERVICE_KEYS.slice(0, 7), false);
   }
-
   it('a version 30 save with an eGate and a customs fixture keeps its queued cohort and the same hash', () => {
     const a = withArrivalFixtures();
     for (let t = 0; t < 8000 && a.business.serviceNodes[0]!.active === 0; t++) a.step();
@@ -387,7 +409,7 @@ describe('save 30 to 31 service rows (T20)', () => {
     const before = a.business.serviceNodes[0]!;
     const queued = Array.from(before.qCohort);
     asVersion30(data);
-    expect(data.business.service[0]!.count).toBe(before.count - 2);
+    expect(data.business.service[0]!.count).toBe(before.count - 3);
     const b = new Sim('GOLDEN-0001', OPTIONS);
     b.restore(data as never);
     const after = b.business.serviceNodes[0]!;
@@ -425,3 +447,74 @@ describe('save 30 to 31 service rows (T20)', () => {
     expect(JSON.stringify(data.business.service)).toBe(before);
   });
 });
+
+describe('save 33 to 34 security exit rows (T80)', () => {
+  const SEC_EXIT = FIXTURE_KEYS.indexOf('securityExit') + 1;
+  const A320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
+
+  /** The arrival hall with an international airline flight on stand 0, whose cohorts queue at immigration past the exit row and never at the exit. */
+  function hallWithArrivals(): Sim {
+    const sim = ownedSim();
+    sim.cash = 1_000_000_000;
+    buildTestAirport(sim, { standsPerRow: 8 });
+    expect(buildArrivalTerminal(sim, { carousel: true, customs: true })).toEqual([]);
+    const market = sim.business.market;
+    const dest = market.destinations.find((d) => d.international)!;
+    market.series.push({ id: 9001, airline: 0, dest: dest.id, typeIdx: A320, days: 127, winMin: 0, startDay: 0, endDay: 100, standId: -1, minute: -1, turnMin: 30 });
+    const f = sim.traffic.scheduleArrival(A320, sim.traffic.nowTick + 100, 0, 600, -1, 0, 9001);
+    sim.traffic.fStand[f] = sim.airfield.data.stands[0]!.id;
+    return sim;
+  }
+
+  /** Index of the security exit node in grid 0. */
+  function exitNode(sim: Sim): number {
+    const t = sim.business.serviceNodes[0]!;
+    return Array.from(t.kind).indexOf(SEC_EXIT);
+  }
+
+  it('a version 33 save with cohorts at nodes after the exit keeps their nodes and the same hash', () => {
+    const a = hallWithArrivals();
+    const co = a.cohorts;
+    // Stop while a cohort holds a node whose index is past the exit row, so the remap is exercised.
+    let found = false;
+    for (let t = 0; t < 20000 && !found; t++) {
+      a.step();
+      const ex = exitNode(a);
+      for (let c = 0; c < co.hi && !found; c++) found = co.stage[c] === Stage.Immigration && co.node[c]! > ex;
+    }
+    expect(found).toBe(true);
+    const data = JSON.parse(JSON.stringify(a.serialize())) as ServiceData;
+    const before = a.business.serviceNodes[0]!;
+    // The exit is idle, as it must be for a version 33 save to exist.
+    const ex = exitNode(a);
+    expect(before.qCount[ex]).toBe(0);
+    expect(before.serving[ex]).toBe(-1);
+    dropServiceRows(data, 33, SERVICE_KEYS, SERVICE_KEYS.slice(0, 9), true);
+    expect(data.business.service[0]!.count).toBe(before.count - 1);
+    const b = new Sim('GOLDEN-0001', OPTIONS);
+    b.restore(data as never);
+    expect(b.business.serviceNodes[0]!.count).toBe(before.count);
+    expect(Array.from(b.cohorts.node.subarray(0, co.hi))).toEqual(Array.from(co.node.subarray(0, co.hi)));
+    expect(b.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 2000; t++) {
+      a.step();
+      b.step();
+    }
+    expect(b.stateHash()).toBe(a.stateHash());
+  }, 60000);
+
+  it('a version 33 save with no security exit migrates with an identical service block', () => {
+    const sim = prepared();
+    for (let t = 0; t < 500; t++) sim.step();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as ServiceData;
+    const fixture = unpackTyped(data.business.grids[0]!.fixture, Uint8Array);
+    if (fixture.includes(SEC_EXIT)) dropServiceRows(data, 33, SERVICE_KEYS, SERVICE_KEYS.slice(0, 9), true);
+    else data.version = 33;
+    const service = JSON.stringify(data.business.service);
+    const migrated = migrate(data) as unknown as ServiceData;
+    expect(migrated.version).toBe(SAVE_VERSION);
+    if (!fixture.includes(SEC_EXIT)) expect(JSON.stringify(migrated.business.service)).toBe(service);
+    else expect(migrated.business.service[0]!.count).toBe(JSON.parse(service)[0].count + 1);
+  });
+});
+

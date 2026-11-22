@@ -28,6 +28,10 @@ export const arrivalsSchema = z.strictObject({
       redShare: share,
       redServiceSeconds: seconds,
     }),
+    securityExit: z.strictObject({
+      note: z.string(),
+      levels: z.array(z.strictObject({ servers, serviceSeconds: seconds })).length(3),
+    }),
   }),
   satisfaction: z.strictObject({ missingBagPoints: points, strandedPoints: points }),
 });

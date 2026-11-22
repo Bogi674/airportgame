@@ -133,7 +133,7 @@ export function buildOverlayData(
     if (people.building[c] !== index) continue;
     const st = people.stage[c]!;
     let cell = -1;
-    if (st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs || st === Stage.Emigration) {
+    if (st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs || st === Stage.Emigration || st === Stage.SecExit) {
       const node = people.node[c]!;
       if (node >= 0 && node < sn.count) cell = queueCellOf(sn, node, c, out.nodeCell[node]!, grid);
     } else if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.ToGate) {

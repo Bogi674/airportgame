@@ -8,7 +8,15 @@
   "service": {
     "note": "eGate and customs as service nodes (docs/TERMINAL_ZONING.md section 6, TERMINAL_FIXTURES catalog).",
     "eGate": { "servers": 1, "serviceSeconds": 20, "referralShare": 0.08, "noGateProfiles": ["family"] },
-    "customs": { "servers": 2, "serviceSeconds": 8, "redShare": 0.05, "redServiceSeconds": 120 }
+    "customs": { "servers": 2, "serviceSeconds": 8, "redShare": 0.05, "redServiceSeconds": 120 },
+    "securityExit": {
+      "note": "Domestic arrivals leave the secure zone here (T80). Levels 1 to 3: staffed lane 1 200 per hour, automated lane 900 per hour, revolving door 1 500 per hour, from the catalog throughputPerHour.",
+      "levels": [
+        { "servers": 1, "serviceSeconds": 3 },
+        { "servers": 1, "serviceSeconds": 4 },
+        { "servers": 1, "serviceSeconds": 2.4 }
+      ]
+    }
   },
   "satisfaction": { "missingBagPoints": 20, "strandedPoints": 40 }
 }
