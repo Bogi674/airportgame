@@ -385,3 +385,16 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Default for Q1 | with no staff center, staff clock in and out at the curb door, skip their break and work at 0.8 skill; the alternative (no staffed desk opens without a staff center) would break existing saves |
 | Scope | apron crews, cleaners, staffed security exits, morale and training move to a new roadmap row at close |
 | Default for Q2 | when the player cap or the stations shrink, members already on site keep working until their shift ends and are then freed; the alternative (send them home at once) would empty a desk in the middle of a shift |
+
+## 2026-11-22 T78: baggage follow up
+
+| Question | Answer |
+| --- | --- |
+| Scope | All six parts in this task: bay road connection, tractor trips, Baggage load overlay with alerts, legacy belt migration, busy baggage stress scenario, ramp stub visual tests |
+| Bay with no road | Strict: no truck serves it, so departure and arrival bags of its stands count as missing. The same holds whenever a train cannot make the trip (no depot route to the bay, or no route between bay and stand) |
+| Train load | One train per flight per direction carries every bag, no cart capacity |
+| Legacy belts | Carousels come in sizes S, M and L (owner: implementer picks the size steps). Each belt becomes the largest carousel that fits at it, else stays a legacy belt with a warning |
+| Save format | Bump with a migration |
+| Chaining | Separate trips: arrival train depot, stand, bay, depot; departure train depot, bay, stand, depot |
+
+Implementer choices, stated for the owner: carousel S is a 10 m loop (6 by 2 cells, 30 bags), M is today's 20 m loop (11 by 2 cells, 60 bags), L is a 30 m loop (16 by 2 cells, 90 bags). A bay's road connection point sits on its center line, beyond the staging lanes by two turn radii; the train turns along the bay face and reverses into its slot so the last cart is on the truck edge, then leaves forward. Link load in the overlay is bags per hour over the last 10 minutes against `linkCapacityBagsPerHour`.

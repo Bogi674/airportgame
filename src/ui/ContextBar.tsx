@@ -256,7 +256,16 @@ export function ContextBar({ send }: Props) {
                 onChange={(v) => s.set({ bagWidth: v })}
               />
             )}
-            {s.tSub === 'bagNode' && s.bagKind !== 'bay' && <span style="align-self:center;font-size:12px">{formatMoney(bagCost(s.bagKind, 0))}</span>}
+            {s.tSub === 'bagNode' && s.bagKind === 'carousel' && (
+              <Select
+                label={t('opt.carouselSize')}
+                value={s.bagCarousel}
+                testId="opt-carousel-size"
+                options={BAGGAGE.carousel.sizes.map((z) => ({ v: z.w, text: tFormat('opt.carouselSizeOption', { size: tDynamic(`opt.carouselSize.${z.id}`), bags: z.capacityBags, cost: formatMoney(z.cost) }) }))}
+                onChange={(v) => s.set({ bagCarousel: v })}
+              />
+            )}
+            {s.tSub === 'bagNode' && s.bagKind === 'machine' && <span style="align-self:center;font-size:12px">{formatMoney(bagCost(s.bagKind, 0))}</span>}
             {s.tSub === 'bagNode' && s.bagKind === 'machine' && s.bagRoomWarn && (
               <span data-testid="bag-room-warning" style="align-self:center;color:var(--warn, var(--bad));font-size:12px">
                 {tFormat('notice.bagScreeningRoom', { area: BAGGAGE.screeningRoom.minAreaM2 })}

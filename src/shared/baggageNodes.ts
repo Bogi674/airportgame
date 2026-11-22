@@ -13,7 +13,7 @@ export interface BagNodeSpec {
   cx: number;
   cy: number;
   rot: 0 | 1 | 2 | 3;
-  /** Bay width in cells, ignored for the other kinds. */
+  /** Bay width in cells, or the carousel length in cells (its size), ignored for a machine. */
   widthCells: number;
 }
 
@@ -31,11 +31,25 @@ const KEYS: Record<BagKind, FixtureKey> = { machine: 'screeningMachine', bay: 'b
 
 export const bagKey = (kind: BagKind): FixtureKey => KEYS[kind];
 
+/** Carousel size of a length in cells (T78). A length the data does not list, as in saves before sizes, is the default size. */
+export function carouselSize(widthCells: number): (typeof BAGGAGE.carousel.sizes)[number] {
+  const sizes = BAGGAGE.carousel.sizes;
+  return sizes.find((z) => z.w === widthCells) ?? sizes[BAGGAGE.carousel.defaultSize];
+}
+
+/** Price of one node in cash, from the baggage data: a bay by its width, a carousel by its size. */
+export function bagNodeCost(kind: BagKind, widthCells: number): number {
+  const c = BAGGAGE.costs;
+  if (kind === 'machine') return c.machine;
+  if (kind === 'carousel') return carouselSize(widthCells).cost;
+  return c.bayPerCell * widthCells;
+}
+
 /** Footprint size in cells along u and v, or null for a bay width the data does not list. */
 export function nodeSize(spec: BagNodeSpec): { w: number; d: number } | null {
   const F = BAGGAGE.footprints;
   if (spec.kind === 'machine') return { w: F.machine.w, d: F.machine.d };
-  if (spec.kind === 'carousel') return { w: F.carousel.w, d: F.carousel.d };
+  if (spec.kind === 'carousel') return { w: carouselSize(spec.widthCells).w, d: F.carousel.d };
   return F.bay.widths.includes(spec.widthCells) ? { w: spec.widthCells, d: F.bay.d } : null;
 }
 

@@ -208,4 +208,27 @@ describe('baggage subsystem', () => {
     });
     expect(hashes[0]).toBe(hashes[1]);
   });
+
+  it('places carousels in three sizes with their own footprint, price and capacity (T78)', () => {
+    for (const z of BAGGAGE.carousel.sizes) {
+      const l = layout();
+      const cash = l.sim.cash;
+      expect(place(l, 'carousel', 42, 42, z.w)).toEqual([]);
+      expect(cash - l.sim.cash).toBe(z.cost);
+      const id = idOf(l, 'carousel');
+      const g = l.sim.business.grids[0];
+      const cells = nodeCells({ kind: 'carousel', cx: 42, cy: 42, rot: 0, widthCells: z.w });
+      expect(cells.length).toBe(z.w * BAGGAGE.footprints.carousel.d);
+      for (const [x, y] of cells) expect(g.fixture[cellIndex(g, x, y)]).not.toBe(0);
+      const node = l.sim.baggage.inspect([]).nodes.find((n) => n.id === id);
+      expect(node?.capacity).toBe(z.capacityBags);
+    }
+  });
+
+  it('places the default carousel size for an unlisted length', () => {
+    const l = layout();
+    expect(place(l, 'carousel', 42, 42, 0)).toEqual([]);
+    const rec = l.sim.baggage.nodesOf(l.building).find((r) => r.kind === 'carousel');
+    expect(rec?.spec?.widthCells).toBe(BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w);
+  });
 });

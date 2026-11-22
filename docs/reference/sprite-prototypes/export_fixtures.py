@@ -128,6 +128,10 @@ add("stagingLane", "Bay staging lane", "baggage", fbg.staging_lane, 4, 16, grid=
     zones=["apron"], sheet=S_B)
 add("carousel", "Baggage carousel", "baggage", fbg.carousel_with_ramp, 22, 4, grid="cell", zones=LAND,
     newKey="carousel", stats=dict(capacityBags=60), ramps=[dict(cell=[0, 1], dir="in")], sheet=S_B)
+for size, loop, bags in (("s", 10, 30), ("l", 30, 90)):
+    add(f"carousel.{size}", f"Baggage carousel, {loop} m", "baggage", fbg.carousel_with_ramp, loop + 2.0, 4,
+        dict(length=float(loop)), family="carousel", grid="cell", zones=LAND, newKey="carousel",
+        stats=dict(capacityBags=bags), ramps=[dict(cell=[0, 1], dir="in")], sheet=S_B)
 
 # ---------------- general --------------------------------------------------------------------------------------
 S_F = "docs/art/terminal_furniture_kit.png"

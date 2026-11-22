@@ -1,5 +1,4 @@
-import { BAGGAGE } from '@data/index';
-import { nodeCells, nodeSize, rampCell, type BagKind, type BagNodeSpec } from '@shared/baggageNodes';
+import { bagNodeCost, nodeCells, nodeSize, rampCell, type BagKind, type BagNodeSpec } from '@shared/baggageNodes';
 
 export type BagRot = 0 | 1 | 2 | 3;
 
@@ -25,9 +24,4 @@ export function bagGhostCells(spec: BagNodeSpec): { cells: [number, number][]; r
 }
 
 /** Price of one node in cash, from the baggage data. */
-export function bagCost(kind: BagKind, widthCells: number): number {
-  const c = BAGGAGE.costs;
-  if (kind === 'machine') return c.machine;
-  if (kind === 'carousel') return c.carousel;
-  return c.bayPerCell * widthCells;
-}
+export const bagCost = bagNodeCost;

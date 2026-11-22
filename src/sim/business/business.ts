@@ -378,7 +378,7 @@ export class Business {
       if (this.secureSeating === 0) out.push('noSeating');
       if (this.anyGateDesk && this.gatelessHall) out.push('noGateDesk');
       for (const k of this.roomIssues) out.push(k);
-      if (this.totals.belt + this.carouselCount() === 0) out.push('noBelt');
+      if (this.totals.belt + this.totals.carousel === 0) out.push('noBelt');
     }
     if (!this.atcOk) out.push('noAtc');
     return out;
@@ -592,12 +592,6 @@ export class Business {
       };
     }
     return null;
-  }
-
-  /** Placed carousels. A carousel fixture fills every cell of its footprint, so the cell count is divided by the footprint size. */
-  private carouselCount(): number {
-    const F = BAGGAGE.footprints.carousel;
-    return Math.floor(this.totals.carousel / (F.w * F.d));
   }
 
   /** Result of arrivalEntry: grid index, walk node of the entry desk, 1 when the route is international. */

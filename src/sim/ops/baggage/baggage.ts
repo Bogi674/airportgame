@@ -1,7 +1,7 @@
 import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { bagKey, bagNodeCost, carouselSize, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
@@ -402,7 +402,7 @@ export class Baggage {
         .filter((w) => w.id === rec.id)
         .map((w) => w.code);
       const cells: [number, number][] = rec.spec === null ? [[rec.cell[0], rec.cell[1]]] : nodeCells(rec.spec).map(([x, y]): [number, number] => [x, y]);
-      nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec.kind), links, warnings });
+      nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec), links, warnings });
       if (rec.kind === 'bay' && rec.spec !== null) {
         bays.push({ id: rec.id, building: rec.building, slots: Math.floor((rec.spec.widthCells * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM), stands: node ? node.stands.slice() : [], carousel: net.carouselOf(rec.id) });
       }
@@ -410,11 +410,11 @@ export class Baggage {
     return { standBay: standIds.map((id) => this.bayOfStand(id) ?? -1), bays, nodes };
   }
 
-  private capacityOf(kind: BagNodeKind): number {
-    if (kind === 'drop') return BAGGAGE.dropPoint.bufferBags;
-    if (kind === 'machine') return BAGGAGE.screeningMachine.bufferBags;
-    if (kind === 'bay') return BAGGAGE.bay.bufferBags;
-    return BAGGAGE.carousel.capacityBags;
+  private capacityOf(rec: BagNodeRec): number {
+    if (rec.kind === 'drop') return BAGGAGE.dropPoint.bufferBags;
+    if (rec.kind === 'machine') return BAGGAGE.screeningMachine.bufferBags;
+    if (rec.kind === 'bay') return BAGGAGE.bay.bufferBags;
+    return carouselSize(rec.spec?.widthCells ?? 0).capacityBags;
   }
 
   /** Bags a node holds right now, counted straight from the batch store. */
@@ -451,11 +451,12 @@ export class Baggage {
   place(cmd: PlaceBagNode): string | null {
     const g = this.business.grids.find((x) => x.id === cmd.building);
     if (!g) return 'nothingThere';
-    const spec: BagNodeSpec = { kind: cmd.kind, cx: cmd.cx, cy: cmd.cy, rot: cmd.rot, widthCells: cmd.widthCells };
+    // A carousel keeps its size in widthCells; an unlisted length places the default size.
+    const widthCells = cmd.kind === 'carousel' ? carouselSize(cmd.widthCells).w : cmd.widthCells;
+    const spec: BagNodeSpec = { kind: cmd.kind, cx: cmd.cx, cy: cmd.cy, rot: cmd.rot, widthCells };
     const problem = validateBagNode(g, spec);
     if (problem) return problem;
-    const costs = BAGGAGE.costs;
-    const cost = spec.kind === 'machine' ? costs.machine : spec.kind === 'carousel' ? costs.carousel : spec.widthCells * costs.bayPerCell;
+    const cost = bagNodeCost(spec.kind, spec.widthCells);
     if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
     this.host.book(-cost);
     const key = bagKey(spec.kind);
@@ -944,6 +945,12 @@ export class Baggage {
     }
   }
 
+  /** Bags the carousel holds at most, by its size. */
+  private carouselRoom(carouselId: number): number {
+    const rec = this.recById(carouselId);
+    return carouselSize(rec?.spec?.widthCells ?? 0).capacityBags;
+  }
+
   private carouselHeld(carouselId: number): number {
     let n = 0;
     for (let b = 0; b < this.hi; b++) if (this.stage[b] === BagStage.Carousel && this.node[b] === carouselId) n += this.count[b];
@@ -952,9 +959,9 @@ export class Baggage {
 
   /** A batch at the end of its carousel link goes on the carousel while it has room, else it holds the link (back pressure). */
   private admitToCarousels(tick: number): void {
-    const room = BAGGAGE.carousel.capacityBags;
     for (let b = 0; b < this.hi; b++) {
       if (this.stage[b] !== BagStage.ToCarousel || this.ready[b] > tick) continue;
+      const room = this.carouselRoom(this.node[b]);
       const held = this.carouselHeld(this.node[b]);
       // An empty carousel takes any batch, so one large batch can always arrive.
       if (held !== 0 && held + this.count[b] > room) continue;

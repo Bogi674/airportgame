@@ -1,6 +1,7 @@
+import { carouselSize } from '@shared/baggageNodes';
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { BAGGAGE, PROFILES } from '@data/index';
+import { PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { BagStage } from '@sim/ops/baggage/baggage';
 import { Sim } from '@sim/sim';
@@ -138,7 +139,7 @@ describe('arrival bag flow (T43)', () => {
     const a = flight(r, 0);
     const b = flight(r, 1);
     expect(r.sim.baggage.carouselOf(r.bays[0])).toBe(r.sim.baggage.carouselOf(r.bays[1]));
-    expect(bagsOf(200)).toBeGreaterThan(BAGGAGE.carousel.capacityBags);
+    expect(bagsOf(200)).toBeGreaterThan(carouselSize(0).capacityBags);
     unload(r, a, 200);
     unload(r, b, 200);
     let held = false;

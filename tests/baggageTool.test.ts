@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BAGGAGE } from '@data/index';
-import { nodeCells, nodeSize, type BagKind } from '@shared/baggageNodes';
+import { carouselSize, nodeCells, nodeSize, type BagKind } from '@shared/baggageNodes';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot, type BagRot } from '../src/ui/tools/baggageTool';
 import en from '../src/ui/strings/en.json';
 
@@ -52,6 +52,7 @@ describe('baggage tool', () => {
   it('prices a bay per cell', () => {
     expect(bagCost('bay', 4)).toBe(4 * BAGGAGE.costs.bayPerCell);
     expect(bagCost('machine', 0)).toBe(BAGGAGE.costs.machine);
-    expect(bagCost('carousel', 0)).toBe(BAGGAGE.costs.carousel);
+    expect(bagCost('carousel', 0)).toBe(carouselSize(0).cost);
+    for (const z of BAGGAGE.carousel.sizes) expect(bagCost('carousel', z.w)).toBe(z.cost);
   });
 });

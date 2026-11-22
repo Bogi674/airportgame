@@ -1201,6 +1201,72 @@
    "generator": "fixtures_baggage.carousel_with_ramp"
   },
   {
+   "id": "carousel.s",
+   "name": "Baggage carousel, 10 m",
+   "category": "baggage",
+   "family": "carousel",
+   "level": null,
+   "size": [
+    12.0,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "carousel",
+   "stats": {
+    "capacityBags": 30
+   },
+   "confirm": [],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      1
+     ],
+     "dir": "in"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.carousel_with_ramp"
+  },
+  {
+   "id": "carousel.l",
+   "name": "Baggage carousel, 30 m",
+   "category": "baggage",
+   "family": "carousel",
+   "level": null,
+   "size": [
+    32.0,
+    4
+   ],
+   "grid": "cell",
+   "mount": "floor",
+   "zones": [
+    "public"
+   ],
+   "gameKey": null,
+   "newKey": "carousel",
+   "stats": {
+    "capacityBags": 90
+   },
+   "confirm": [],
+   "ramps": [
+    {
+     "cell": [
+      0,
+      1
+     ],
+     "dir": "in"
+    }
+   ],
+   "sheet": "docs/art/baggage_kit.png",
+   "generator": "fixtures_baggage.carousel_with_ramp"
+  },
+  {
    "id": "bench.beam3",
    "name": "Beam seat, 3",
    "category": "seating",
