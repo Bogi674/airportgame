@@ -88,8 +88,8 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `ops/traffic.ts` | `Traffic`: flights and aircraft as typed arrays, runway reservations, states (`AcState`), push back, backtrack |
 | `ops/performance.ts` | takeoff and landing distance, payload and range checks |
 | `business/business.ts` | `Business`: terminals, airlines, contracts, ledger, rating, weather |
-| `vehicles/gse.ts` | ground vehicles: depot to stand along the road net, stand paths to docks, cart trains |
-| `vehicles/roads.ts` | `RoadNet`: per stand lane routes from the depot, junction and crossing holds, derived and never saved |
+| `vehicles/gse.ts` | ground vehicles: depot to stand along the road net, stand paths to docks, cart trains, baggage trains between bay slots and stands (T78) |
+| `vehicles/roads.ts` | `RoadNet`: per stand lane routes from the depot, the catering unit and the stand's baggage bay, depot routes to every bay, junction and crossing holds, derived and never saved |
 | `world/*` | site generation: terrain, corridor, parcels, wind, climate |
 | `save/migrations.ts`, `save/pack.ts` | save versions and typed array packing |
 
@@ -98,6 +98,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | File | Holds |
 | --- | --- |
 | `renderer.ts` | frame loop: chunks, overlays, highlights, ghost, people, vehicles, aircraft |
+| `bagOverlay.ts` | the Baggage load overlay: link bands by load, flow chevrons, buffer rings (T78) |
 | `chunks.ts`, `bake/*`, `terrain.ts` | baked static chunks (terrain and airfield paint) |
 | `markings/taxiPlan.ts` | builds the marking plan from the airfield payload |
 | `markings/airfieldPaint.ts` | paints runways, taxiways, aprons, terminals from the plan |

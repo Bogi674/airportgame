@@ -110,6 +110,7 @@ export function roadSnapPoints(af: AirfieldPayload): Pt[] {
     out.push(a.conn);
     if (a.ends) out.push(a.ends[0], a.ends[1]);
   }
+  for (const b of af.bayAnchors ?? []) out.push({ x: b.x, y: b.y });
   for (const r of af.roads ?? []) out.push(r.points[0], r.points[r.points.length - 1]);
   return out;
 }
@@ -133,6 +134,8 @@ export interface RoadGraph {
   depotNode: number[];
   /** Door node per supporting building, same order as `af.buildings`. */
   buildingNode: number[];
+  /** Road connection node per baggage bay, same order as `af.bayAnchors` (T78). */
+  bayNode: number[];
 }
 
 interface Seg {
@@ -154,7 +157,7 @@ export function crossingHoldM(t: Pick<Taxiway, 'widthM' | 'code' | 'surface'> | 
 }
 /** Builds the road graph of an airfield. Deterministic: every list is walked in its stored order. */
 export function buildRoadGraph(af: AirfieldPayload): RoadGraph {
-  const g: RoadGraph = { nodeX: [], nodeY: [], nodeCross: [], nodeDegree: [], edgeA: [], edgeB: [], edgeLen: [], edgeKind: [], adj: [], standConn: [], depotNode: [], buildingNode: [] };
+  const g: RoadGraph = { nodeX: [], nodeY: [], nodeCross: [], nodeDegree: [], edgeA: [], edgeB: [], edgeLen: [], edgeKind: [], adj: [], standConn: [], depotNode: [], buildingNode: [], bayNode: [] };
   const nodeAt = (p: Pt): number => {
     for (let i = 0; i < g.nodeX.length; i++) {
       const dx = g.nodeX[i] - p.x;
@@ -170,6 +173,7 @@ export function buildRoadGraph(af: AirfieldPayload): RoadGraph {
   };
   for (const d of af.depots ?? []) g.depotNode.push(nodeAt(depotExit(d)));
   for (const b of af.buildings ?? []) g.buildingNode.push(nodeAt(buildingDoor(b)));
+  for (const b of af.bayAnchors ?? []) g.bayNode.push(nodeAt(b));
   const segs: Seg[] = [];
   for (const s of af.stands) {
     const a = standRoadAnchors(s);
@@ -401,4 +405,11 @@ export function standsReached(af: AirfieldPayload): boolean[] {
   const g = buildRoadGraph(af);
   const r = routeFromDepots(g);
   return g.standConn.map((n) => n >= 0 && r.time[n] < Infinity);
+}
+
+/** Per baggage bay, same order as `af.bayAnchors`: true when a depot reaches its road connection point (T78). */
+export function baysReached(af: AirfieldPayload): boolean[] {
+  const g = buildRoadGraph(af);
+  const r = routeFromDepots(g);
+  return g.bayNode.map((n) => r.time[n] < Infinity);
 }

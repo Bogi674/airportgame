@@ -2,7 +2,7 @@
 
 import { BAGGAGE } from '@data/index';
 import { FIXTURE_ZONES, TERMINAL_CELL_M, WALL, ZONE, type FixtureKey, type TerminalGrid } from './business';
-import { cellIndex, hEdgeIndex, vEdgeIndex } from './terminalOps';
+import { cellIndex, cornerWorld, hEdgeIndex, vEdgeIndex } from './terminalOps';
 import { labelRooms } from './terminalRooms';
 
 export type BagKind = 'machine' | 'bay' | 'carousel';
@@ -13,7 +13,7 @@ export interface BagNodeSpec {
   cx: number;
   cy: number;
   rot: 0 | 1 | 2 | 3;
-  /** Bay width in cells, ignored for the other kinds. */
+  /** Bay width in cells, or the carousel length in cells (its size), ignored for a machine. */
   widthCells: number;
 }
 
@@ -31,11 +31,25 @@ const KEYS: Record<BagKind, FixtureKey> = { machine: 'screeningMachine', bay: 'b
 
 export const bagKey = (kind: BagKind): FixtureKey => KEYS[kind];
 
+/** Carousel size of a length in cells (T78). A length the data does not list, as in saves before sizes, is the default size. */
+export function carouselSize(widthCells: number): (typeof BAGGAGE.carousel.sizes)[number] {
+  const sizes = BAGGAGE.carousel.sizes;
+  return sizes.find((z) => z.w === widthCells) ?? sizes[BAGGAGE.carousel.defaultSize];
+}
+
+/** Price of one node in cash, from the baggage data: a bay by its width, a carousel by its size. */
+export function bagNodeCost(kind: BagKind, widthCells: number): number {
+  const c = BAGGAGE.costs;
+  if (kind === 'machine') return c.machine;
+  if (kind === 'carousel') return carouselSize(widthCells).cost;
+  return c.bayPerCell * widthCells;
+}
+
 /** Footprint size in cells along u and v, or null for a bay width the data does not list. */
 export function nodeSize(spec: BagNodeSpec): { w: number; d: number } | null {
   const F = BAGGAGE.footprints;
   if (spec.kind === 'machine') return { w: F.machine.w, d: F.machine.d };
-  if (spec.kind === 'carousel') return { w: F.carousel.w, d: F.carousel.d };
+  if (spec.kind === 'carousel') return { w: carouselSize(spec.widthCells).w, d: F.carousel.d };
   return F.bay.widths.includes(spec.widthCells) ? { w: spec.widthCells, d: F.bay.d } : null;
 }
 
@@ -129,6 +143,54 @@ export function stagingLaneCenters(n: BagDrawNode): Cell[] {
   const out: Cell[] = [];
   for (let k = 0; k < Math.floor(size.w / slotCells); k++) out.push(drawPoint(n, slotCells * k + slotCells / 2, size.d + laneCells / 2));
   return out;
+}
+
+/**
+ * World frame of a bay's truck edge (T78): the origin is the outer corner of the bay at u = 0 on the truck edge
+ * line, a runs along the edge in meters, n points out of the building onto the apron. Null for an unlisted width.
+ */
+export interface BayFrame {
+  ox: number;
+  oy: number;
+  ax: number;
+  ay: number;
+  nx: number;
+  ny: number;
+  widthM: number;
+  slots: number;
+}
+
+export function bayFrame(g: Pick<TerminalGrid, 'ox' | 'oy' | 'headingDeg'>, spec: BagNodeSpec): BayFrame | null {
+  const size = nodeSize(spec);
+  if (spec.kind !== 'bay' || !size) return null;
+  const n: BagDrawNode = { building: 0, kind: 'bay', cx: spec.cx, cy: spec.cy, rot: spec.rot, widthCells: spec.widthCells, linked: false };
+  const at = (u: number, v: number): { x: number; y: number } => {
+    const [cx, cy] = drawPoint(n, u, v);
+    return cornerWorld(g, cx, cy);
+  };
+  const o = at(0, size.d);
+  const pu = at(1, size.d);
+  const pv = at(0, size.d + 1);
+  return {
+    ox: o.x,
+    oy: o.y,
+    ax: (pu.x - o.x) / TERMINAL_CELL_M,
+    ay: (pu.y - o.y) / TERMINAL_CELL_M,
+    nx: (pv.x - o.x) / TERMINAL_CELL_M,
+    ny: (pv.y - o.y) / TERMINAL_CELL_M,
+    widthM: size.w * TERMINAL_CELL_M,
+    slots: Math.floor((size.w * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM),
+  };
+}
+
+/** World point at u meters along the truck edge and v meters out from it. */
+export function bayPoint(f: BayFrame, u: number, v: number): { x: number; y: number } {
+  return { x: f.ox + f.ax * u + f.nx * v, y: f.oy + f.ay * u + f.ny * v };
+}
+
+/** The bay's road connection point: on its center line, two turn radii beyond the staging lanes (docs/BAGGAGE.md 3.4, T78). */
+export function bayRoadPoint(f: BayFrame): { x: number; y: number } {
+  return bayPoint(f, f.widthM / 2, BAGGAGE.bay.stagingLaneM + 2 * BAGGAGE.bay.turnRadiusM);
 }
 
 /** Wall value on the edge between two orthogonally adjacent logical cells, or -1 outside the edge arrays. */

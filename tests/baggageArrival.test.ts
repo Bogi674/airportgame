@@ -1,12 +1,13 @@
+import { carouselSize } from '@shared/baggageNodes';
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { BAGGAGE, PROFILES } from '@data/index';
+import { PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { BagStage } from '@sim/ops/baggage/baggage';
 import { Sim } from '@sim/sim';
 import { WALL } from '../src/shared/business';
 import { hEdgeIndex, originFor, vEdgeIndex } from '../src/shared/terminalOps';
-import { buildTestAirport, ownedSim, OPTIONS, run } from './helpers';
+import { buildTestAirport, connectBays, ownedSim, OPTIONS, run } from './helpers';
 
 const { ox, oy } = originFor(3960, 5440, 90);
 const A320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
@@ -51,6 +52,7 @@ function rig(o: { carousels?: number; bays?: number; assign?: boolean } = {}): R
   if (o.assign !== false) {
     for (let i = 0; i < bays.length; i++) expect(run(sim, { type: 'setStandBay', standId: stands[i].id, bayId: bays[i] })).toEqual([]);
   }
+  if (bays.length > 0) expect(connectBays(sim)).toEqual([]);
   return { sim, building, bays };
 }
 
@@ -63,7 +65,11 @@ function flight(r: Rig, standIndex = 0): number {
 }
 
 const serialOf = (r: Rig, f: number): number => r.sim.traffic.serialOf(f);
-const unload = (r: Rig, f: number, pax: number): void => r.sim.baggage.unloaded(serialOf(r, f), pax, r.sim.tick);
+/** The unload task ends and the arrival train puts the bags into the bay at once (the trip itself is tested in baggageTrips). */
+const unload = (r: Rig, f: number, pax: number): void => {
+  r.sim.baggage.unloaded(serialOf(r, f), pax, r.sim.tick, true);
+  r.sim.baggage.dropOff(serialOf(r, f), true);
+};
 const inSystem = (r: Rig, serial: number): number => Object.values(BagStage).reduce<number>((n, s) => n + (s === 0 ? 0 : r.sim.baggage.bagsOf(serial, s)), 0);
 
 describe('arrival bag flow (T43)', () => {
@@ -138,7 +144,7 @@ describe('arrival bag flow (T43)', () => {
     const a = flight(r, 0);
     const b = flight(r, 1);
     expect(r.sim.baggage.carouselOf(r.bays[0])).toBe(r.sim.baggage.carouselOf(r.bays[1]));
-    expect(bagsOf(200)).toBeGreaterThan(BAGGAGE.carousel.capacityBags);
+    expect(bagsOf(200)).toBeGreaterThan(carouselSize(0).capacityBags);
     unload(r, a, 200);
     unload(r, b, 200);
     let held = false;

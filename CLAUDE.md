@@ -44,7 +44,7 @@ Working files live in `handoff/`:
 
 `AGENTS.md` only points here.
 
-Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`), `src/data/gse.json` (ground vehicle catalog) and `src/data/fixtures/` (the terminal asset kit: catalog plus vector sprites of 144 fixtures and props, `docs/TERMINAL_FIXTURES.md` section 11). Regenerate the kit with `python3 docs/reference/sprite-prototypes/export_fixtures.py`; never edit its JSON by hand.
+Data delivered with the docs: `src/data/aircraft/aircraft.mvp.json` (42 Phase 1 aircraft with specs and sprite geometry, 10 marked `mvp1`), `src/data/gse.json` (ground vehicle catalog) and `src/data/fixtures/` (the terminal asset kit: catalog plus vector sprites of 146 fixtures and props, `docs/TERMINAL_FIXTURES.md` section 11). Regenerate the kit with `python3 docs/reference/sprite-prototypes/export_fixtures.py`; never edit its JSON by hand.
 
 ## Crew and terse mode
 

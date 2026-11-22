@@ -4,7 +4,7 @@ import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
 import { FLOOR, fixtureKey, footprintOf, isBaggageFixture, TERMINAL_CELL_M, WALL, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { drawCenter, drawFootprint, dropRampCenter, stagingLaneCenters, type BagDrawNode } from '@shared/baggageNodes';
+import { carouselSize, drawCenter, drawFootprint, dropRampCenter, stagingLaneCenters, type BagDrawNode } from '@shared/baggageNodes';
 import { ACROSS, cellIndex, hEdgeIndex, ROT_STEP, vEdgeIndex, worldToCell } from '@shared/terminalOps';
 import { BAND_RASTER_SCALE, chunkSizeM } from '../chunks';
 import type { GhostPreview } from '@shared/ghost';
@@ -48,13 +48,20 @@ export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'seatin
 /** Rotation in degrees of a two cell fixture by its footprint code 1 to 4, see fixtureRot in TerminalGrid. */
 const KIT_ROT: readonly Rot[] = [0, 90, 180, 270];
 /** Kit assets of the baggage nodes that do not depend on a bay width. */
-export const BAG_FIXED_ASSETS: readonly string[] = ['screeningMachine', 'carousel', 'ramp.out', 'ramp.unconnected', 'stagingLane'];
+export const BAG_FIXED_ASSETS: readonly string[] = ['screeningMachine', 'carousel', 'carousel.s', 'carousel.l', 'ramp.out', 'ramp.unconnected', 'stagingLane'];
 const BAG_BLOCK_COLOR = '#8e959c';
+
+/** Kit asset of a carousel by its length in cells. */
+export function carouselAssetId(widthCells: number): string {
+  const id = carouselSize(widthCells).id;
+  return id === 'M' ? 'carousel' : `carousel.${id.toLowerCase()}`;
+}
 
 /** Kit asset of a baggage node's body: a drop has none, it draws only its ramp stub. */
 export function bagAssetId(n: BagDrawNode): string | null {
   if (n.kind === 'machine') return 'screeningMachine';
-  if (n.kind === 'carousel') return 'carousel';
+  // The medium carousel keeps the kit id it had before sizes (T78).
+  if (n.kind === 'carousel') return carouselAssetId(n.widthCells);
   if (n.kind === 'bay') return `baggageBay.w${n.widthCells}`;
   return null;
 }

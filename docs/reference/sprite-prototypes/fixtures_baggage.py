@@ -122,38 +122,42 @@ def staging_lane(d):
     d.T(2.0, 14.3, "BAGS", 0.8, "#f4f6f8")
 
 
-def carousel(d):
-    """Arrival carousel 20 by 4 m with an inclined plate loop and an island; feed ramp cell outside the left end."""
-    d.R(0, 0, 20, 4, soft("#c3cad2", "v"), 0.75, rx=2.0)
-    d.R(0.35, 0.35, 19.3, 3.3, "#59616d", st=None, rx=1.65)
+def carousel(d, length=20.0):
+    """Arrival carousel of the given loop length (10, 20 or 30 m, sizes S, M and L) by 4 m with an inclined plate
+    loop and an island; feed ramp cell outside the left end."""
+    L = length
+    run = L - 5.0
+    f = L / 20.0
+    d.R(0, 0, L, 4, soft("#c3cad2", "v"), 0.75, rx=2.0)
+    d.R(0.35, 0.35, L - 0.7, 3.3, "#59616d", st=None, rx=1.65)
     k = 0.0
-    per = 2 * 15.0 + 2 * math.pi * 1.4
+    per = 2 * run + 2 * math.pi * 1.4
     step = 0.45
     while k < per:
-        if k < 15.0:
+        if k < run:
             x, y, a = 2.5 + k, 0.65, 0
-        elif k < 15.0 + math.pi * 1.4:
-            t = (k - 15.0) / 1.4
-            x, y, a = 17.5 + 1.35 * math.sin(t), 2.0 - 1.35 * math.cos(t), 0
-        elif k < 30.0 + math.pi * 1.4:
-            x, y, a = 17.5 - (k - 15.0 - math.pi * 1.4), 3.35, 0
+        elif k < run + math.pi * 1.4:
+            t = (k - run) / 1.4
+            x, y, a = L - 2.5 + 1.35 * math.sin(t), 2.0 - 1.35 * math.cos(t), 0
+        elif k < 2 * run + math.pi * 1.4:
+            x, y, a = L - 2.5 - (k - run - math.pi * 1.4), 3.35, 0
         else:
-            t = (k - 30.0 - math.pi * 1.4) / 1.4
+            t = (k - 2 * run - math.pi * 1.4) / 1.4
             x, y, a = 2.5 - 1.35 * math.sin(t), 2.0 + 1.35 * math.cos(t), 0
         d.C(x, y, 0.035, "#8c96a2", st=None)
         k += step
-    d.R(1.3, 1.3, 17.4, 1.4, soft("#e3e7eb", "v"), 0.9, rx=0.7)                              # island
-    d.R(1.5, 1.5, 17.0, 1.0, lit("#cfd5dc"), st=None, rx=0.5)
+    d.R(1.3, 1.3, L - 2.6, 1.4, soft("#e3e7eb", "v"), 0.9, rx=0.7)                              # island
+    d.R(1.5, 1.5, L - 3.0, 1.0, lit("#cfd5dc"), st=None, rx=0.5)
     for i, (x, y) in enumerate(((4.0, 0.65), (6.2, 0.65), (9.6, 0.65), (14.0, 3.35), (11.2, 3.35), (7.5, 3.35),
                                 (17.9, 1.0))):
-        bag(d, x, y, i + 2)
+        bag(d, x * f, y, i + 2)
     d.R(0.0, 1.6, 1.2, 0.8, lit(C["belt"]), 0.6, st=C["steelDk"], sw=d.dw)                   # feed belt
-    d.T(10.0, 2.25, "1", 0.8, "#2f4a6e")
+    d.T(L / 2, 2.25, "1", 0.8, "#2f4a6e")
 
 
-def carousel_with_ramp(d):
+def carousel_with_ramp(d, length=20.0):
     d.place(ramp, 0.0, 3.0, 270, False, "arr")
-    d.place(carousel, 2.0, 0.0)
+    d.place(carousel, 2.0, 0.0, 0, length)
 
 
 # ---------------------------------------------------------------------------------------------------------------

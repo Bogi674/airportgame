@@ -7,6 +7,7 @@ const ROWS: { kind: OverlayKind; key: StringKey }[] = [
   { kind: 'density', key: 'hud.overlay.density' },
   { kind: 'queue', key: 'hud.overlay.queue' },
   { kind: 'staffing', key: 'hud.overlay.staffing' },
+  { kind: 'baggage', key: 'hud.overlay.baggage' },
   { kind: 'walk', key: 'hud.overlay.walk' },
   { kind: 'zones', key: 'hud.overlay.zones' },
 ];

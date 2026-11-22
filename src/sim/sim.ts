@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GROUND, GSE, STAND_ACCESS } from '@data/index';
-import { STAND_UPGRADE, type Stand } from '@shared/airfield';
+import { STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
@@ -19,7 +19,7 @@ import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
 import { Staff, type StaffSave } from './staff/staff';
-import { Baggage, BAG_RUN_TICKS, type BaggageSave } from './ops/baggage/baggage';
+import { Baggage, BAG_RUN_TICKS, BagStage, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
 import { generateSite, type SiteSpec } from './world/site';
@@ -81,7 +81,7 @@ export class Sim {
   /** Service road graph and the vehicle routes on it, derived from the airfield (T60). */
   readonly roads = new RoadNet();
   /** Airfield and ground versions the road net was built for, and the depots counted then. */
-  private roadSeen = [-1, -1];
+  private roadSeen = [-1, -1, -1];
   private depotsSeen = 0;
   private businessSent = -1;
   private gridsSent = -1;
@@ -146,6 +146,19 @@ export class Sim {
       },
       owned: (k) => this.business.fleet[k] ?? 0,
       cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
+      trips: {
+        frame: (b) => this.baggage.bayFrameOf((this.airfield.data.bayAnchors ?? [])[b]?.bay ?? -1),
+        serialOf: (a) => (this.traffic.flight[a] >= 0 ? this.traffic.serialOf(this.traffic.flight[a]) : 0),
+        ready: (a) => {
+          const f = this.traffic.flight[a];
+          return f >= 0 && this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
+        },
+        unloadDone: (a) => this.turns.unloadDone(a),
+        bags: (serial, arrival) => this.baggage.bagsOf(serial, arrival ? BagStage.TrainIn : BagStage.Bay),
+        pickUp: (serial) => this.baggage.pickUp(serial),
+        putBack: (serial) => this.baggage.putBack(serial),
+        dropOff: (serial, force) => this.baggage.dropOff(serial, force),
+      },
     });
     this.turns = new Turnarounds(this.traffic, this.gse);
     this.gse.turns = this.turns;
@@ -164,6 +177,7 @@ export class Sim {
         const f = this.traffic.flightOfSerial(serial);
         return f < 0 ? -2 : this.traffic.fStand[f];
       },
+      bayConnected: (id: number): boolean => this.roads.bayConnected((this.airfield.data.bayAnchors ?? []).findIndex((a) => a.bay === id)),
     }, this.rng);
     this.staff = new Staff(this.business, this.baggage, this.airfield);
     this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
@@ -176,7 +190,12 @@ export class Sim {
     this.cohorts.bagLookup = this.baggage;
     this.turns.bagsReady = (f) => this.baggage.loadReady(this.traffic.serialOf(f), this.tick, this.traffic.fEta[f] + this.traffic.fTurn[f]);
     this.turns.loaded = (f) => this.baggage.freeFlight(this.traffic.serialOf(f));
-    this.turns.unloaded = (f) => this.baggage.unloaded(this.traffic.serialOf(f), this.business.flightPaxOf(f), this.tick);
+    this.turns.unloaded = (f) => {
+      const serial = this.traffic.serialOf(f);
+      // The train takes the bags to the bay when it can make the trip; otherwise they are lost (T78, owner: strict).
+      const onTrain = this.traffic.fAc[f] >= 0 && this.gse.sendArrival(this.traffic.fAc[f], serial);
+      this.baggage.unloaded(serial, this.business.flightPaxOf(f), this.tick, onTrain);
+    };
     const businessPushback = this.traffic.hooks?.pushback;
     const businessDocked = this.traffic.hooks?.docked;
     this.traffic.hooks = {
@@ -314,11 +333,13 @@ export class Sim {
    * a restore only counts the depots, as their vehicles are in the saved fleet.
    */
   private syncRoads(restoring: boolean): void {
-    if (this.roadSeen[0] === this.airfield.version && this.roadSeen[1] === this.airfield.groundVersion) return;
+    this.syncBayAnchors();
+    if (this.roadSeen[0] === this.airfield.version && this.roadSeen[1] === this.airfield.groundVersion && this.roadSeen[2] === this.standBayKeyStamp) return;
     this.roadSeen[0] = this.airfield.version;
     this.roadSeen[1] = this.airfield.groundVersion;
+    this.roadSeen[2] = this.standBayKeyStamp;
     const af = this.airfield.data;
-    this.roads.rebuild(af, this.traffic.net);
+    this.roads.rebuild(af, this.traffic.net, this.standBayIndex(af));
     const factor = new Float64Array(af.stands.length);
     for (let s = 0; s < factor.length; s++) factor[s] = this.roads.standRoad[s] === 1 ? 1 : GROUND.noRoadTurnaroundFactor;
     this.traffic.standRoadFactor = factor;
@@ -327,6 +348,36 @@ export class Sim {
     this.depotsSeen = depots;
     this.business.depotCapacity = depots * GROUND.depot.capacity;
     this.business.refreshFire();
+  }
+
+  /** Baggage layout stamp the bay anchors were last taken at, the stand to bay key, and a counter bumped when that key changes. */
+  private bagRoadStamp = -1;
+  private standBayKey = '';
+  private standBayKeyStamp = 0;
+
+  /**
+   * Hands the bays' road connection points to the airfield after a baggage edit, and notes when a stand changed bay,
+   * so the road net rebuilds only when the bays or the assignments really changed (T78).
+   */
+  private syncBayAnchors(): void {
+    const stamp = this.baggage.drawVersion();
+    if (stamp === this.bagRoadStamp) return;
+    this.bagRoadStamp = stamp;
+    this.airfield.setBayAnchors(this.baggage.bayAnchors());
+    const key = this.airfield.data.stands.map((s) => this.baggage.bayOfStand(s.id) ?? -1).join(',');
+    if (key !== this.standBayKey) {
+      this.standBayKey = key;
+      this.standBayKeyStamp++;
+    }
+  }
+
+  /** Per stand index, the index of its bay in `af.bayAnchors`, or -1. */
+  private standBayIndex(af: AirfieldPayload): Int32Array {
+    const anchors = af.bayAnchors ?? [];
+    return Int32Array.from(af.stands, (s) => {
+      const bay = this.baggage.bayOfStand(s.id);
+      return bay === null ? -1 : anchors.findIndex((a) => a.bay === bay);
+    });
   }
 
   /**
@@ -623,6 +674,8 @@ export class Sim {
   overlayData(gridIndex: number, out: OverlayData): OverlayData {
     const o = this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
     this.staff.fillCoverage(o, gridIndex);
+    const g = this.business.grids[gridIndex];
+    o.bag = (g ? this.baggage.overlay(g.id, this.tick) : null) ?? undefined;
     return o;
   }
 
@@ -733,7 +786,12 @@ export class Sim {
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
     this.baggage.loadState(save.baggage as BaggageSave | undefined);
+    if (save.convertBelts) {
+      const kept = this.baggage.convertBelts();
+      if (kept > 0) this.eventQueue.push(`beltsKept|n=${kept}`);
+    }
     this.roadSeen.fill(-1);
+    this.bagRoadStamp = -1;
     this.syncRoads(true);
     this.gse.loadState(save.vehicles);
     this.turns.loadState(save.turnarounds);

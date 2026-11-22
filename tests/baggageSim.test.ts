@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BAGGAGE } from '@data/index';
 import { Sim } from '@sim/sim';
-import { WALL } from '../src/shared/business';
+import { FIXTURE_KEYS, WALL } from '../src/shared/business';
 import { dropOutCell, nodeCells } from '../src/shared/baggageNodes';
 import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '../src/shared/terminalOps';
+import { roadSnapPoints, standRoadAnchors } from '../src/shared/roadGraph';
 import { buildTestAirport, ownedSim, OPTIONS, run } from './helpers';
 
 const { ox, oy } = originFor(3960, 5440, 90);
@@ -208,4 +209,65 @@ describe('baggage subsystem', () => {
     });
     expect(hashes[0]).toBe(hashes[1]);
   });
+
+  it('places carousels in three sizes with their own footprint, price and capacity (T78)', () => {
+    for (const z of BAGGAGE.carousel.sizes) {
+      const l = layout();
+      const cash = l.sim.cash;
+      expect(place(l, 'carousel', 42, 42, z.w)).toEqual([]);
+      expect(cash - l.sim.cash).toBe(z.cost);
+      const id = idOf(l, 'carousel');
+      const g = l.sim.business.grids[0];
+      const cells = nodeCells({ kind: 'carousel', cx: 42, cy: 42, rot: 0, widthCells: z.w });
+      expect(cells.length).toBe(z.w * BAGGAGE.footprints.carousel.d);
+      for (const [x, y] of cells) expect(g.fixture[cellIndex(g, x, y)]).not.toBe(0);
+      const node = l.sim.baggage.inspect([]).nodes.find((n) => n.id === id);
+      expect(node?.capacity).toBe(z.capacityBags);
+    }
+  });
+
+  it('places the default carousel size for an unlisted length', () => {
+    const l = layout();
+    expect(place(l, 'carousel', 42, 42, 0)).toEqual([]);
+    const rec = l.sim.baggage.nodesOf(l.building).find((r) => r.kind === 'carousel');
+    expect(rec?.spec?.widthCells).toBe(BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w);
+  });
+
+  it('connects a bay to the road net through the point beyond its staging lanes (T78)', () => {
+    const l = fullLayout();
+    const bay = idOf(l, 'bay');
+    const stand = l.sim.airfield.data.stands[0];
+    run(l.sim, { type: 'setStandBay', standId: stand.id, bayId: bay });
+    const anchor = l.sim.airfield.data.bayAnchors?.find((a) => a.bay === bay);
+    expect(anchor).toBeDefined();
+    const warn = (): string[] => l.sim.baggage.inspect([]).nodes.find((n) => n.id === bay)?.warnings ?? [];
+    expect(warn()).toContain('bayNoRoad');
+    expect(l.sim.baggage.inspect([]).bays.find((b) => b.id === bay)?.road).toBe(false);
+    // The terminal sits west of the stand row and the bay faces south, so the road goes round its east side.
+    const conn = standRoadAnchors(stand)!.conn;
+    expect(run(l.sim, { type: 'buildRoad', points: [conn, { x: conn.x, y: anchor!.y }, { x: anchor!.x, y: anchor!.y }] })).toEqual([]);
+    expect(warn()).not.toContain('bayNoRoad');
+    expect(l.sim.roads.tripOk(0)).toBe(true);
+    expect(roadSnapPoints(l.sim.airfield.data)).toContainEqual({ x: anchor!.x, y: anchor!.y });
+  });
+
+  it('turns a legacy belt into the largest carousel that fits when an older save loads (T78)', () => {
+    const l = layout();
+    const edit = { op: 'fixture' as const, x0: 64, y0: 42, x1: 65, y1: 43, variant: FIXTURE_KEYS.indexOf('belt') + 1 };
+    expect(run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit })).toEqual([]);
+    const g0 = l.sim.business.grids[0];
+    expect(g0.fixture[cellIndex(g0, 64, 42)]).toBe(FIXTURE_KEYS.indexOf('belt') + 1);
+    const data = JSON.parse(JSON.stringify(l.sim.serialize())) as { version: number };
+    data.version = 32;
+    const copy = new Sim('GOLDEN-0001', OPTIONS);
+    copy.restore(data);
+    const g = copy.business.grids[0];
+    expect(g.fixture.some((f) => f === FIXTURE_KEYS.indexOf('belt') + 1)).toBe(false);
+    const rec = copy.baggage.nodesOf(l.building).find((r) => r.kind === 'carousel');
+    const large = BAGGAGE.carousel.sizes.reduce((m, z) => Math.max(m, z.w), 0);
+    expect(rec?.spec?.widthCells).toBe(large);
+    expect(nodeCells(rec!.spec!).some(([x, y]) => x === 64 && y === 42)).toBe(true);
+    expect(copy.cash).toBe(l.sim.cash);
+  });
 });
+

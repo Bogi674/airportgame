@@ -3,12 +3,14 @@
   --text: #dbe7f5; --muted: #8aa4c2; --accent: #3d8bff; --accent-soft: #3d8bff26; --accent-text: #fff;
   --ok: #7fe0a0; --warn: #ffd38a; --bad: #ff9a92; --field: #0a1424; --shadow: 0 6px 22px #0007;
   --zone-public: #3ea35a; --zone-commercial: #2f9d8f; --zone-secure: #2f6fd1; --zone-international: #7a4fd0; --zone-staff: #d9463e; --zone-breach: #d9312b; --zone-badge: #ffffff;
+  --baggage-departure: #3b82c4; --baggage-arrival: #e0a030; --baggage-warning: #d9534f; --baggage-load-low: #3ea35a; --baggage-load-mid: #f2a93b; --baggage-load-high: #d9312b; --baggage-idle: #8c96a2;
 }
 :root[data-theme='light'] {
   --bg: #e9f0f8; --panel: #fbfdfffa; --panel-solid: #ffffff; --line: #b4c8de; --line-soft: #d6e2ef;
   --text: #14263b; --muted: #546b85; --accent: #1f6fe0; --accent-soft: #1f6fe01f; --accent-text: #fff;
   --ok: #1a7f46; --warn: #8a5a00; --bad: #b3261e; --field: #f1f6fb; --shadow: 0 6px 18px #1a2f4a22;
   --zone-public: #3ea35a; --zone-commercial: #2f9d8f; --zone-secure: #2f6fd1; --zone-international: #7a4fd0; --zone-staff: #d9463e; --zone-breach: #d9312b; --zone-badge: #ffffff;
+  --baggage-departure: #3b82c4; --baggage-arrival: #e0a030; --baggage-warning: #d9534f; --baggage-load-low: #3ea35a; --baggage-load-mid: #f2a93b; --baggage-load-high: #d9312b; --baggage-idle: #8c96a2;
 }
 html, body, #app { margin: 0; height: 100%; background: var(--bg); overflow: hidden; color: var(--text); font-family: Inter, system-ui, sans-serif; }
 button { font: inherit; font-size: 12px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; letter-spacing: 0.02em; }

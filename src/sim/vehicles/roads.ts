@@ -16,9 +16,16 @@ const TICK_S = 0.1;
  */
 export class RoadNet {
   graph: RoadGraph = buildRoadGraph({ version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [] });
-  /** Stands the routes were built for; route index s is the depot route of stand s, standCount + s its catering unit route. */
+  /**
+   * Stands the routes were built for. Route index s is the depot route of stand s, standCount + s its catering unit
+   * route, 2 standCount + s the route from the bay of stand s to the stand (T78), and 3 standCount + b the depot
+   * route of baggage bay b, in the order of `af.bayAnchors`.
+   */
   standCount = 0;
-  /** Per route index: 1 when a depot (or, past standCount, a catering unit) reaches the stand's connection point. */
+  bayCount = 0;
+  /** Per stand index: index of its bay in `af.bayAnchors`, or -1. */
+  standBay = new Int32Array(0);
+  /** Per route index: 1 when the route's source reaches its end: a depot, catering unit or bay reaching the stand, or a depot reaching the bay. */
   standRoad = new Uint8Array(0);
   /** Per stand index: meters from the connection point back to the stand's top edge. */
   connDepthM = new Float64Array(0);
@@ -46,21 +53,32 @@ export class RoadNet {
   /** Bumped on every rebuild, so vehicles drop routes from an older build. */
   version = 0;
 
-  rebuild(af: AirfieldPayload, net: TaxiNetwork): void {
+  /** Rebuilds every route. standBay maps each stand index to the index of its bay in `af.bayAnchors`, or -1. */
+  rebuild(af: AirfieldPayload, net: TaxiNetwork, standBay: Int32Array = new Int32Array(af.stands.length).fill(-1)): void {
     const g = buildRoadGraph(af);
     this.graph = g;
     const nS = af.stands.length;
+    const nB = g.bayNode.length;
     // Route sets: index s for the depot route of stand s, nS + s for its route from the nearest catering unit (T65).
     const sets = [routeFromDepots(g), routeFrom(g, g.buildingNode.filter((_, i) => af.buildings![i].kind === 'catering'))];
+    // One shortest path tree per bay that serves a stand, built once (T78).
+    const bayTrees = new Map<number, ReturnType<typeof routeFrom>>();
+    for (let s = 0; s < nS; s++) {
+      const b = standBay[s] ?? -1;
+      if (b >= 0 && b < nB && !bayTrees.has(b)) bayTrees.set(b, routeFrom(g, [g.bayNode[b]]));
+    }
     this.standCount = nS;
-    this.standRoad = new Uint8Array(2 * nS);
-    this.standDepot = new Int32Array(2 * nS).fill(-1);
+    this.bayCount = nB;
+    this.standBay = Int32Array.from({ length: nS }, (_, s) => ((standBay[s] ?? -1) < nB ? (standBay[s] ?? -1) : -1));
+    const nR = 3 * nS + nB;
+    this.standRoad = new Uint8Array(nR);
+    this.standDepot = new Int32Array(nR).fill(-1);
     this.connDepthM = new Float64Array(nS);
     for (let s = 0; s < nS; s++) this.connDepthM[s] = hasRoadStrip(af.stands[s]) ? STAND_MARKINGS.serviceRoadM / 2 : GROUND.road.widthM / 2;
-    this.inStart = new Int32Array(2 * nS);
-    this.inLen = new Int32Array(2 * nS);
-    this.outStart = new Int32Array(2 * nS);
-    this.outLen = new Int32Array(2 * nS);
+    this.inStart = new Int32Array(nR);
+    this.inLen = new Int32Array(nR);
+    this.outStart = new Int32Array(nR);
+    this.outLen = new Int32Array(nR);
     const xs: number[] = [];
     const ys: number[] = [];
     const nodes: number[] = [];
@@ -74,13 +92,21 @@ export class RoadNet {
         steps.push(i + 1 < path.length ? edgeSpeedMps(g.edgeKind[edgeBetween(g, path[i], path[i + 1])]) * TICK_S : 0);
       }
     };
-    for (let r = 0; r < 2 * nS; r++) {
-      const routes = sets[r < nS ? 0 : 1];
-      const s = r % nS;
-      const path = pathTo(routes, g.standConn[s]);
-      if (!path || path.length < 2) continue;
+    for (let r = 0; r < nR; r++) {
+      let routes: ReturnType<typeof routeFrom> | undefined;
+      let end: number;
+      if (r < 3 * nS) {
+        const s = r % nS;
+        routes = r < 2 * nS ? sets[r < nS ? 0 : 1] : bayTrees.get(this.standBay[s]);
+        end = g.standConn[s];
+      } else {
+        routes = sets[0];
+        end = g.bayNode[r - 3 * nS];
+      }
+      const path = routes ? pathTo(routes, end) : null;
+      if (!routes || !path || path.length < 2) continue;
       this.standRoad[r] = 1;
-      this.standDepot[r] = routes.depot[g.standConn[s]];
+      this.standDepot[r] = routes.depot[end];
       this.inStart[r] = xs.length;
       this.inLen[r] = path.length;
       push(path);
@@ -112,6 +138,33 @@ export class RoadNet {
       }
     }
     this.version++;
+  }
+
+  /** Route index from the bay of stand s to the stand. */
+  bayRoute(s: number): number {
+    return 2 * this.standCount + s;
+  }
+
+  /** Route index from a depot to bay b. */
+  depotBayRoute(b: number): number {
+    return 3 * this.standCount + b;
+  }
+
+  /** True when a route index is a catering unit route. */
+  isUnitRoute(r: number): boolean {
+    return r >= this.standCount && r < 2 * this.standCount;
+  }
+
+  /** True when a depot reaches bay b (its index in `af.bayAnchors`). */
+  bayConnected(b: number): boolean {
+    return b >= 0 && b < this.bayCount && this.standRoad[this.depotBayRoute(b)] === 1;
+  }
+
+  /** True when a tractor train can carry the bags of stand s: a depot reaches its bay and the bay reaches the stand (T78). */
+  tripOk(s: number): boolean {
+    if (s < 0 || s >= this.standCount) return false;
+    const b = this.standBay[s];
+    return b >= 0 && this.bayConnected(b) && this.standRoad[this.bayRoute(s)] === 1;
   }
 
   /** Releases every node a vehicle holds. */

@@ -1,3 +1,4 @@
+import { carouselSize } from '@shared/baggageNodes';
 import { describe, expect, it } from 'vitest';
 import { BAGGAGE } from '@data/index';
 import type { Sim } from '@sim/sim';
@@ -57,7 +58,7 @@ describe('baggage draw list', () => {
     expect(list.map((n) => n.kind)).toEqual(['drop', 'machine', 'carousel', 'bay']);
     expect(list.map((n) => n.linked)).toEqual([true, false, false, false]);
     expect(list[1]).toMatchObject({ cx: 42, cy: 48, rot: 0, widthCells: BAGGAGE.footprints.machine.w });
-    expect(list[2]).toMatchObject({ cx: 42, cy: 42, widthCells: BAGGAGE.footprints.carousel.w });
+    expect(list[2]).toMatchObject({ cx: 42, cy: 42, widthCells: carouselSize(0).w });
     expect(list[3]).toMatchObject({ cx: 50, cy: 49, widthCells: 4 });
   });
 

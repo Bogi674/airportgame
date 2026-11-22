@@ -1,19 +1,19 @@
 {
   "version": 1,
-  "note": "Baggage network values, docs/BAGGAGE.md section 11. Confirm rows accepted by the owner on 2026-11-18, lateBagHoldMin and missingBagWeight from the 2026-11-18 phase 2 answers.",
+  "note": "Baggage network values, docs/BAGGAGE.md section 11. Confirm rows accepted by the owner on 2026-11-18, lateBagHoldMin and missingBagWeight from the 2026-11-18 phase 2 answers. Carousel sizes S, M and L from the 2026-11-22 T78 answers, w counts the in ramp cell.",
   "beltSpeedMps": 0.8,
   "linkCapacityBagsPerHour": 1800,
   "maxLinkLengthM": 300,
   "dropPoint": { "bufferBags": 30 },
   "screeningMachine": { "secondsPerBag": 10, "bufferBags": 20, "officers": 1 },
-  "bay": { "depthM": 8, "slotWidthM": 4, "bufferBags": 200, "loadSecondsPerBag": 6, "stagingLaneM": 16 },
-  "carousel": { "capacityBags": 60 },
-  "footprints": { "machine": { "w": 4, "d": 1, "in": [0, 0], "out": [3, 0] }, "bay": { "widths": [2, 4, 6, 8], "d": 4, "in": [0, 0], "outFromRight": 0 }, "carousel": { "w": 11, "d": 2, "in": [0, 1] } },
+  "bay": { "depthM": 8, "slotWidthM": 4, "bufferBags": 200, "loadSecondsPerBag": 6, "stagingLaneM": 16, "turnRadiusM": 6 },
+  "carousel": { "sizes": [{ "id": "S", "w": 6, "capacityBags": 30, "cost": 30000 }, { "id": "M", "w": 11, "capacityBags": 60, "cost": 60000 }, { "id": "L", "w": 16, "capacityBags": 90, "cost": 90000 }], "defaultSize": 1 },
+  "footprints": { "machine": { "w": 4, "d": 1, "in": [0, 0], "out": [3, 0] }, "bay": { "widths": [2, 4, 6, 8], "d": 4, "in": [0, 0], "outFromRight": 0 }, "carousel": { "d": 2, "in": [0, 1] } },
   "screeningRoom": { "minAreaM2": 24 },
   "loadingDeadlineMin": 15,
   "lateBagHoldMin": 15,
   "missingBagWeight": 0.5,
   "linkCostPerM": 150,
   "linkUpkeepPctPerYear": 2,
-  "costs": { "machine": 90000, "bayPerCell": 15000, "carousel": 60000 }
+  "costs": { "machine": 90000, "bayPerCell": 15000 }
 }

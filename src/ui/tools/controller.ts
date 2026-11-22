@@ -2116,9 +2116,10 @@ export class ToolController {
     const st = useToolStore.getState();
     const g = this.buildingAt(p);
     if (!g) return null;
-    const origin = bagOrigin(cellAtWorld(g, p.x, p.y), st.bagKind, st.bagRot, st.bagWidth);
+    const width = st.bagKind === 'carousel' ? st.bagCarousel : st.bagWidth;
+    const origin = bagOrigin(cellAtWorld(g, p.x, p.y), st.bagKind, st.bagRot, width);
     if (!origin) return null;
-    return { g, spec: { kind: st.bagKind, cx: origin.cx, cy: origin.cy, rot: st.bagRot, widthCells: st.bagWidth } };
+    return { g, spec: { kind: st.bagKind, cx: origin.cx, cy: origin.cy, rot: st.bagRot, widthCells: width } };
   }
 
   private previewBagNode(p: Pt): void {

@@ -83,10 +83,11 @@ interface ToolState {
   fixtureLevel: 1 | 2 | 3;
   /** Fixture tool: the mode of passport and eGate (0 departure, 1 arrival) or the use of a security lane (0 passengers, 1 staff). */
   fixtureMode: 0 | 1;
-  /** Baggage node tool: the kind, its rotation turned with R, the bay width in cells, and whether a machine stands outside a valid screening room. */
+  /** Baggage node tool: the kind, its rotation turned with R, the bay width and carousel length in cells, and whether a machine stands outside a valid screening room. */
   bagKind: BagKind;
   bagRot: BagRot;
   bagWidth: number;
+  bagCarousel: number;
   bagRoomWarn: boolean;
   selection: Selection | null;
   /** Id of the construction grid offered near the cursor, or null when the cursor is out of reach of every grid. Set by the tool controller. */
@@ -143,6 +144,7 @@ export const useToolStore = create<ToolState>((set) => ({
   bagKind: 'machine',
   bagRot: 0,
   bagWidth: BAGGAGE.footprints.bay.widths[0],
+  bagCarousel: BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w,
   bagRoomWarn: false,
   selection: null,
   gridId: null,

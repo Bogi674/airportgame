@@ -93,6 +93,9 @@ function copyOverlay(o: OverlayData): OverlayData {
     stationCell: o.stationCell.slice(),
     stationNeed: o.stationNeed.slice(),
     stationPresent: o.stationPresent.slice(),
+    bag: o.bag
+      ? { linkPts: o.bag.linkPts.slice(), linkStart: o.bag.linkStart.slice(), linkLoad: o.bag.linkLoad.slice(), linkFlags: o.bag.linkFlags.slice(), nodePos: o.bag.nodePos.slice(), nodeFill: o.bag.nodeFill.slice(), nodeFlags: o.bag.nodeFlags.slice() }
+      : undefined,
   };
 }
 

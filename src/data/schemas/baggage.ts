@@ -19,12 +19,17 @@ export const baggageSchema = z.strictObject({
     bufferBags: positive,
     loadSecondsPerBag: positive,
     stagingLaneM: positive,
+    /** Turn radius of a train on its way into a slot; the road connection point sits two of these beyond the lanes (T78). */
+    turnRadiusM: positive,
   }),
-  carousel: z.strictObject({ capacityBags: positive }),
+  carousel: z.strictObject({
+    sizes: z.array(z.strictObject({ id: z.string(), w: positiveInt, capacityBags: positive, cost: positive })).min(1),
+    defaultSize: z.number().int().nonnegative(),
+  }),
   footprints: z.strictObject({
     machine: z.strictObject({ w: positiveInt, d: positiveInt, in: cell, out: cell }),
     bay: z.strictObject({ widths: z.array(positiveInt).min(1), d: positiveInt, in: cell, outFromRight: z.number().int().nonnegative() }),
-    carousel: z.strictObject({ w: positiveInt, d: positiveInt, in: cell }),
+    carousel: z.strictObject({ d: positiveInt, in: cell }),
   }),
   screeningRoom: z.strictObject({ minAreaM2: positive }),
   loadingDeadlineMin: positive,
@@ -32,7 +37,7 @@ export const baggageSchema = z.strictObject({
   missingBagWeight: positive,
   linkCostPerM: positive,
   linkUpkeepPctPerYear: positive,
-  costs: z.strictObject({ machine: positive, bayPerCell: positive, carousel: positive }),
+  costs: z.strictObject({ machine: positive, bayPerCell: positive }),
 });
 
 export type BaggageData = z.infer<typeof baggageSchema>;

@@ -350,6 +350,11 @@ function StandBaggage({ stand, index, send }: { stand: Stand; index: number; sen
           {tFormat('inspector.stand.carousel', { n: bagNodeNumber(nodes, state.carousel) })}
         </div>
       )}
+      {now && state.warning === 'bayNoRoad' && (
+        <div style="color:var(--warn)" data-testid="stand-warn-bayNoRoad">
+          {tFormat('inspector.stand.bayNoRoad', { n: now.number })}
+        </div>
+      )}
       {now && state.warning === 'bayNoCarousel' && (
         <div style="color:var(--warn)" data-testid="stand-warn-bayNoCarousel">
           {tFormat('inspector.stand.bayNoCarousel', { n: now.number })}

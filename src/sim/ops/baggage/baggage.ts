@@ -1,7 +1,9 @@
 import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
-import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
+import type { BayAnchor } from '@shared/airfield';
+import { BAG_LINK_ARRIVAL, BAG_LINK_FLOW, BAG_NODE_BLOCKED, type BagOverlay } from '@shared/overlay';
+import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BagWarningCode, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { bagKey, bagNodeCost, bayFrame, bayRoadPoint, carouselSize, drawCenter, type BayFrame, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
@@ -27,6 +29,8 @@ export interface BaggageHost {
   standExists(standId: number): boolean;
   /** Stand id of the live flight with this serial, -1 when it has none yet and -2 when the flight is gone. */
   standOfSerial(serial: number): number;
+  /** True when a depot reaches the bay's road connection point (T78). */
+  bayConnected(bayId: number): boolean;
 }
 
 export interface PlaceBagNode {
@@ -93,7 +97,10 @@ const DECI_PER_SECOND = 10;
 const MISS_ROWS = 64;
 
 /** Where a batch is. Free slots are 0. */
-export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5, BayIn: 6, ToCarousel: 7, Carousel: 8 } as const;
+export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5, BayIn: 6, ToCarousel: 7, Carousel: 8, TrainOut: 9, TrainIn: 10 } as const;
+
+/** True for the stages of arriving bags: on the train to the bay, in the bay, on the carousel link and on the carousel. */
+const isArrival = (stage: number): boolean => (stage >= BagStage.BayIn && stage <= BagStage.Carousel) || stage === BagStage.TrainIn;
 
 /** Bags per passenger of an arriving flight: the mean of the profile table weighted by the profile mix. */
 const ARRIVAL_BAGS_PER_PAX = (() => {
@@ -122,6 +129,12 @@ interface NodeState {
 const KIND_INDEX: readonly BagNodeKind[] = ['drop', 'machine', 'bay', 'carousel'];
 const keyId = (key: FixtureKey): number => FIXTURE_KEYS.indexOf(key) + 1;
 const CHECK_IN_ID = keyId('checkIn');
+const BELT_ID = keyId('belt');
+/** Window of the Baggage load overlay in game minutes, and in ticks (docs/BAGGAGE.md 6.1, T78). */
+const LOAD_WINDOW_MIN = 10;
+const LOAD_WINDOW_TICKS = LOAD_WINDOW_MIN * TICKS_PER_MINUTE;
+/** Node ids stay far below this, so src * LINK_KEY + dst names a link uniquely. */
+const LINK_KEY = 1 << 20;
 const BAG_DROP_ID = keyId('bagDrop');
 
 interface Anchor {
@@ -184,6 +197,10 @@ export class Baggage {
   private deliNext = 0;
   private states: NodeState[] = [];
   /** Bumped whenever a record is added or dropped, so the state table and the orphan sweep know to run. */
+  /** Bags that entered each link in the current and the last load period. Display only: never saved or hashed. */
+  private linkNow = new Map<number, number>();
+  private linkLast = new Map<number, number>();
+  private linkWindow = -1;
   private layoutStamp = 0;
   /** Bumped with every layout or link change for drawVersion. */
   private drawStamp = 0;
@@ -213,15 +230,16 @@ export class Baggage {
   }
 
   /**
-   * The unload task of a flight finished. Its arriving bags become one batch in the bay of the flight's stand,
-   * resolved once here so the batch never follows another flight's stand. No bay counts them missing. GA flights carry no passengers.
+   * The unload task of a flight finished. Its arriving bags become one batch on the train to the bay of the flight's
+   * stand, resolved once here so the batch never follows another flight's stand. Without a train that makes the trip
+   * (no bay, or no road between the depot, the bay and the stand, T78) they count missing. GA flights carry no passengers.
    */
-  unloaded(serial: number, pax: number, tick: number): void {
+  unloaded(serial: number, pax: number, tick: number, onTrain: boolean): void {
     const bags = Math.round(pax * ARRIVAL_BAGS_PER_PAX);
     if (bags <= 0 || serial <= 0) return;
     this.checkedToday += bags;
     const standId = this.host.standOfSerial(serial);
-    const bay = standId < 0 ? null : this.bayOfStand(standId);
+    const bay = standId < 0 || !onTrain ? null : this.bayOfStand(standId);
     const b = bay === null ? -1 : this.allocBatch();
     if (b < 0 || bay === null) {
       this.addMissing(serial, bags);
@@ -229,7 +247,7 @@ export class Baggage {
     }
     this.serial[b] = serial;
     this.count[b] = bags;
-    this.stage[b] = BagStage.BayIn;
+    this.stage[b] = BagStage.TrainIn;
     this.node[b] = bay;
     this.origin[b] = bay;
     this.ready[b] = 0;
@@ -314,16 +332,51 @@ export class Baggage {
     return !onTheWay || tick >= departTick + Math.round(BAGGAGE.lateBagHoldMin * TICKS_PER_MINUTE);
   }
 
-  /** The flight is loaded or has pushed back: bags in its bay count as loaded, all others as missing. */
+  /**
+   * The flight is loaded or has pushed back: bags its train brought count as loaded, all others as missing, those left in
+   * the bay too (T78: bags reach the aircraft only by train).
+   */
   freeFlight(serial: number): void {
     if (serial <= 0 || this.live === 0) return;
     for (let b = 0; b < this.hi; b++) {
       // Arrival bags leave through the carousel, a departing flight's load does not settle them.
-      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free || this.stage[b] >= BagStage.BayIn) continue;
-      if (this.stage[b] === BagStage.Bay) this.loadedTotal += this.count[b];
+      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free || isArrival(this.stage[b])) continue;
+      if (this.stage[b] === BagStage.TrainOut) this.loadedTotal += this.count[b];
       else this.addMissing(serial, this.count[b]);
       this.freeBatch(b);
     }
+  }
+
+  /** A departure train loaded at its bay slot: the flight's bags staged in the bay go onto it (T78). */
+  pickUp(serial: number): void {
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.Bay) this.stage[b] = BagStage.TrainOut;
+  }
+
+  /** A departure train that will not reach its stand brings its bags back to the bay they came from. */
+  putBack(serial: number): void {
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.TrainOut) this.stage[b] = BagStage.Bay;
+  }
+
+  /**
+   * An arrival train unloads at its bay slot: its bags wait in the bay for the carousel link. False while the bay holds
+   * arriving bags up to its buffer, so the train waits at its slot; force puts them in regardless.
+   */
+  dropOff(serial: number, force: boolean): boolean {
+    let n = 0;
+    let bay = -1;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.serial[b] !== serial || this.stage[b] !== BagStage.TrainIn) continue;
+      n += this.count[b];
+      bay = this.node[b];
+    }
+    if (n === 0) return true;
+    if (!force) {
+      let held = 0;
+      for (let b = 0; b < this.hi; b++) if (this.stage[b] === BagStage.BayIn && this.node[b] === bay) held += this.count[b];
+      if (held > 0 && held + n > BAGGAGE.bay.bufferBags) return false;
+    }
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.TrainIn) this.stage[b] = BagStage.BayIn;
+    return true;
   }
 
   /** One run of the subsystem, every BAG_RUN_TICKS ticks. */
@@ -351,6 +404,111 @@ export class Baggage {
 
   nodesOf(building: number): BagNodeRec[] {
     return this.recs.filter((r) => r.building === building);
+  }
+
+  /**
+   * The Baggage load overlay of one building (docs/BAGGAGE.md 6.1, T78): every link with its path, its load over the last
+   * full period against the link capacity and whether bags flow, and every node's buffer fill. Built at overlay cadence,
+   * never in the tick; null for a building with no baggage network.
+   */
+  overlay(building: number, tick: number): BagOverlay | null {
+    const net = this.netOf(building);
+    if (net === null) return null;
+    this.rollLinkWindow(tick);
+    const links = net.linkList();
+    const kinds = new Map(net.nodeList().map((n) => [n.id, n.kind]));
+    let pts = 0;
+    for (const l of links) pts += l.cells.length;
+    const out: BagOverlay = {
+      linkPts: new Float32Array(2 * pts),
+      linkStart: new Int32Array(links.length + 1),
+      linkLoad: new Uint16Array(links.length),
+      linkFlags: new Uint8Array(links.length),
+      nodePos: new Float32Array(0),
+      nodeFill: new Uint16Array(0),
+      nodeFlags: new Uint8Array(0),
+    };
+    // Links that carry a batch right now, so bags on a belt show as flowing even before a period has counted them.
+    const moving = new Set<number>();
+    for (let b = 0; b < this.hi; b++) {
+      const st = this.stage[b];
+      if (st === BagStage.ToMachine || st === BagStage.ToCarousel) moving.add(this.origin[b] * LINK_KEY + this.node[b]);
+      else if (st === BagStage.ToBay) moving.add((net.machineOf(this.origin[b]) ?? -1) * LINK_KEY + this.node[b]);
+    }
+    let p = 0;
+    const perHour = 60 / LOAD_WINDOW_MIN;
+    for (let k = 0; k < links.length; k++) {
+      const l = links[k];
+      out.linkStart[k] = p;
+      for (const [x, y] of l.cells) {
+        out.linkPts[2 * p] = x + 0.5;
+        out.linkPts[2 * p + 1] = y + 0.5;
+        p++;
+      }
+      const key = l.src * LINK_KEY + l.dst;
+      // The busier of the last full period and the one running now, so a fresh rush shows at once.
+      const bags = Math.max(this.linkLast.get(key) ?? 0, this.linkNow.get(key) ?? 0);
+      out.linkLoad[k] = Math.min(65535, Math.round((100 * bags * perHour) / BAGGAGE.linkCapacityBagsPerHour));
+      const flowing = bags > 0 || moving.has(key);
+      out.linkFlags[k] = (flowing ? BAG_LINK_FLOW : 0) | (kinds.get(l.dst) === 'carousel' ? BAG_LINK_ARRIVAL : 0);
+    }
+    out.linkStart[links.length] = p;
+    const recs = this.nodesOf(building).sort((a, b) => a.id - b.id);
+    out.nodePos = new Float32Array(2 * recs.length);
+    out.nodeFill = new Uint16Array(recs.length);
+    out.nodeFlags = new Uint8Array(recs.length);
+    for (let k = 0; k < recs.length; k++) {
+      const rec = recs[k];
+      const c: [number, number] = rec.spec === null ? [rec.cell[0] + 0.5, rec.cell[1] + 0.5] : (drawCenter({ building, kind: rec.kind, cx: rec.spec.cx, cy: rec.spec.cy, rot: rec.spec.rot, widthCells: rec.spec.widthCells, linked: false }) ?? [rec.cell[0] + 0.5, rec.cell[1] + 0.5]);
+      out.nodePos[2 * k] = c[0];
+      out.nodePos[2 * k + 1] = c[1];
+      const cap = this.capacityOf(rec);
+      const held = this.heldAt(rec);
+      out.nodeFill[k] = cap > 0 ? Math.min(100, Math.round((100 * held) / cap)) : 0;
+      out.nodeFlags[k] = held >= cap && cap > 0 ? BAG_NODE_BLOCKED : 0;
+    }
+    return out;
+  }
+
+  /** Counts bags entering a link, for the overlay load. */
+  private countLink(src: number, dst: number, bags: number, tick: number): void {
+    this.rollLinkWindow(tick);
+    const key = src * LINK_KEY + dst;
+    this.linkNow.set(key, (this.linkNow.get(key) ?? 0) + bags);
+  }
+
+  /** Starts a new load period when the tick has moved past the current one; a gap of more than one period clears both. */
+  private rollLinkWindow(tick: number): void {
+    const w = Math.floor(tick / LOAD_WINDOW_TICKS);
+    if (w === this.linkWindow) return;
+    const swap = this.linkLast;
+    this.linkLast = this.linkNow;
+    this.linkNow = swap;
+    this.linkNow.clear();
+    if (w !== this.linkWindow + 1) this.linkLast.clear();
+    this.linkWindow = w;
+  }
+
+  /** Truck edge frame of a bay by id, null when it is gone (T78). */
+  bayFrameOf(id: number): BayFrame | null {
+    const rec = this.recById(id);
+    if (!rec || rec.kind !== 'bay' || rec.spec === null) return null;
+    const g = this.business.grids.find((x) => x.id === rec.building);
+    return g ? bayFrame(g, rec.spec) : null;
+  }
+
+  /** Road connection point of every bay, in bay id order, for the road net (T78). A bay whose grid is gone has none. */
+  bayAnchors(): BayAnchor[] {
+    const out: BayAnchor[] = [];
+    for (const rec of this.recs.slice().sort((a, b) => a.id - b.id)) {
+      if (rec.kind !== 'bay' || rec.spec === null) continue;
+      const g = this.business.grids.find((x) => x.id === rec.building);
+      const f = g ? bayFrame(g, rec.spec) : null;
+      if (!f) continue;
+      const p = bayRoadPoint(f);
+      out.push({ bay: rec.id, x: p.x, y: p.y });
+    }
+    return out;
   }
 
   /** Changes whenever a node, a drop link or a grid sync may have changed what drawList returns. Not saved. */
@@ -400,30 +558,37 @@ export class Baggage {
       const warnings = net
         .warnings()
         .filter((w) => w.id === rec.id)
-        .map((w) => w.code);
+        .map((w): BagWarningCode => w.code);
+      // A bay the road net does not reach from a depot gets no trains, so its stands lose their bags (T78).
+      const road = rec.kind !== 'bay' || this.host.bayConnected(rec.id);
+      if (!road) warnings.push('bayNoRoad');
+      // Info chip of docs/BAGGAGE.md 6.2: a full carousel makes its bays hold arriving bags.
+      if (rec.kind === 'carousel' && this.heldAt(rec) >= this.capacityOf(rec)) warnings.push('carouselFull');
       const cells: [number, number][] = rec.spec === null ? [[rec.cell[0], rec.cell[1]]] : nodeCells(rec.spec).map(([x, y]): [number, number] => [x, y]);
-      nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec.kind), links, warnings });
+      nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec), links, warnings });
       if (rec.kind === 'bay' && rec.spec !== null) {
-        bays.push({ id: rec.id, building: rec.building, slots: Math.floor((rec.spec.widthCells * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM), stands: node ? node.stands.slice() : [], carousel: net.carouselOf(rec.id) });
+        bays.push({ id: rec.id, building: rec.building, slots: Math.floor((rec.spec.widthCells * TERMINAL_CELL_M) / BAGGAGE.bay.slotWidthM), stands: node ? node.stands.slice() : [], carousel: net.carouselOf(rec.id), road });
       }
     }
     return { standBay: standIds.map((id) => this.bayOfStand(id) ?? -1), bays, nodes };
   }
 
-  private capacityOf(kind: BagNodeKind): number {
-    if (kind === 'drop') return BAGGAGE.dropPoint.bufferBags;
-    if (kind === 'machine') return BAGGAGE.screeningMachine.bufferBags;
-    if (kind === 'bay') return BAGGAGE.bay.bufferBags;
-    return BAGGAGE.carousel.capacityBags;
+  private capacityOf(rec: BagNodeRec): number {
+    if (rec.kind === 'drop') return BAGGAGE.dropPoint.bufferBags;
+    if (rec.kind === 'machine') return BAGGAGE.screeningMachine.bufferBags;
+    if (rec.kind === 'bay') return BAGGAGE.bay.bufferBags;
+    return carouselSize(rec.spec?.widthCells ?? 0).capacityBags;
   }
 
   /** Bags a node holds right now, counted straight from the batch store. */
   private heldAt(rec: BagNodeRec): number {
     if (rec.kind === 'drop') return this.dropBags(rec.id);
     if (rec.kind === 'carousel') return this.carouselHeld(rec.id);
+    // A bay holds departure bags staged for loading and arrival bags waiting for the carousel link.
     const stage = rec.kind === 'machine' ? BagStage.Queue : BagStage.Bay;
+    const arrival = rec.kind === 'bay' ? BagStage.BayIn : -1;
     let n = 0;
-    for (let b = 0; b < this.hi; b++) if (this.stage[b] === stage && this.node[b] === rec.id) n += this.count[b];
+    for (let b = 0; b < this.hi; b++) if ((this.stage[b] === stage || this.stage[b] === arrival) && this.node[b] === rec.id) n += this.count[b];
     return n;
   }
 
@@ -447,17 +612,18 @@ export class Baggage {
     return net ? net.routeDeparture(dropId, standId) : { problem: 'noMachine' };
   }
 
-  /** Places a machine, bay or carousel. Returns a problem code or null. */
-  place(cmd: PlaceBagNode): string | null {
+  /** Places a machine, bay or carousel. Returns a problem code or null. A free placement (the belt migration) costs nothing. */
+  place(cmd: PlaceBagNode, free = false): string | null {
     const g = this.business.grids.find((x) => x.id === cmd.building);
     if (!g) return 'nothingThere';
-    const spec: BagNodeSpec = { kind: cmd.kind, cx: cmd.cx, cy: cmd.cy, rot: cmd.rot, widthCells: cmd.widthCells };
+    // A carousel keeps its size in widthCells; an unlisted length places the default size.
+    const widthCells = cmd.kind === 'carousel' ? carouselSize(cmd.widthCells).w : cmd.widthCells;
+    const spec: BagNodeSpec = { kind: cmd.kind, cx: cmd.cx, cy: cmd.cy, rot: cmd.rot, widthCells };
     const problem = validateBagNode(g, spec);
     if (problem) return problem;
-    const costs = BAGGAGE.costs;
-    const cost = spec.kind === 'machine' ? costs.machine : spec.kind === 'carousel' ? costs.carousel : spec.widthCells * costs.bayPerCell;
+    const cost = free ? 0 : bagNodeCost(spec.kind, spec.widthCells);
     if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
-    this.host.book(-cost);
+    if (cost > 0) this.host.book(-cost);
     const key = bagKey(spec.kind);
     const id = keyId(key);
     const cells = nodeCells(spec);
@@ -475,6 +641,55 @@ export class Baggage {
     this.ensureNet(g.id).add(this.netNode(rec, g));
     this.syncBuilding(g.id);
     return null;
+  }
+
+  /**
+   * Save format 33 (T78): every legacy belt becomes the largest carousel whose footprint, in some rotation, covers the
+   * belt's cell and fits on the grid. The belts are cleared first, so neighbouring belts make room for one carousel, and
+   * a belt already under an earlier carousel is absorbed. A belt no size fits stays. Returns the belts kept.
+   */
+  convertBelts(): number {
+    const sizes = BAGGAGE.carousel.sizes.slice().sort((a, b) => b.w - a.w);
+    let kept = 0;
+    for (const g of this.business.grids.slice().sort((a, b) => a.id - b.id)) {
+      const belts: Cell[] = [];
+      for (let i = 0; i < g.fixture.length; i++) if (g.fixture[i] === BELT_ID) belts.push([g.x0 + (i % g.w), g.y0 + Math.floor(i / g.w)]);
+      if (belts.length === 0) continue;
+      for (const [x, y] of belts) this.setCell(g, x, y, 0);
+      this.refreshCells(g.id, belts);
+      const back: Cell[] = [];
+      for (const [x, y] of belts) {
+        if (g.fixture[cellIndex(g, x, y)] !== 0) continue;
+        if (!this.carouselOver(g, x, y, sizes)) back.push([x, y]);
+      }
+      for (const [x, y] of back) this.setCell(g, x, y, BELT_ID);
+      if (back.length > 0) this.refreshCells(g.id, back);
+      kept += back.length;
+    }
+    return kept;
+  }
+
+  /** Places, at no cost, the first size and rotation of carousel whose footprint covers the cell and fits. */
+  private carouselOver(g: TerminalGrid, x: number, y: number, sizes: readonly { w: number }[]): boolean {
+    for (const z of sizes) {
+      for (let rot = 0; rot < 4; rot++) {
+        const r = rot as 0 | 1 | 2 | 3;
+        for (const [dx, dy] of nodeCells({ kind: 'carousel', cx: 0, cy: 0, rot: r, widthCells: z.w })) {
+          if (this.place({ building: g.id, kind: 'carousel', cx: x - dx, cy: y - dy, rot: r, widthCells: z.w }, true) === null) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Sets a one cell fixture, or clears the cell with id 0. */
+  private setCell(g: TerminalGrid, x: number, y: number, id: number): void {
+    const i = cellIndex(g, x, y);
+    g.fixture[i] = id;
+    g.fixtureRot[i] = 0;
+    g.fixtureOff[i] = 0;
+    g.fixtureLevel[i] = id === 0 ? 0 : 1;
+    g.fixtureMode[i] = 0;
   }
 
   /** Removes a placed node and clears its cells. Drop points cannot be removed, they follow the grid. */
@@ -640,7 +855,8 @@ export class Baggage {
     for (const r of this.recs) {
       acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, r.id), KIND_INDEX.indexOf(r.kind)), r.building), r.cell[0] + 65536), r.cell[1] + 65536);
       if (r.spec === null) acc = foldU32(acc, 0);
-      else acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, 1), r.spec.cx + 65536), r.spec.cy + 65536), r.spec.rot), r.spec.widthCells);
+      // A carousel folds the size it has, so a save that migrates its length to the size it was drawn at hashes the same.
+      else acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, 1), r.spec.cx + 65536), r.spec.cy + 65536), r.spec.rot), r.spec.kind === 'carousel' ? carouselSize(r.spec.widthCells).w : r.spec.widthCells);
     }
     for (const n of this.nets) {
       for (const node of n.net.nodeList()) {
@@ -916,6 +1132,7 @@ export class Baggage {
       const bay = r.route[2];
       this.node[b] = bay;
       this.stage[b] = BagStage.ToBay;
+      this.countLink(r.route[1], bay, this.count[b], tick);
       this.ready[b] = tick + this.linkTicks(net.linkLengthM(r.route[1], bay));
     }
   }
@@ -944,6 +1161,12 @@ export class Baggage {
     }
   }
 
+  /** Bags the carousel holds at most, by its size. */
+  private carouselRoom(carouselId: number): number {
+    const rec = this.recById(carouselId);
+    return carouselSize(rec?.spec?.widthCells ?? 0).capacityBags;
+  }
+
   private carouselHeld(carouselId: number): number {
     let n = 0;
     for (let b = 0; b < this.hi; b++) if (this.stage[b] === BagStage.Carousel && this.node[b] === carouselId) n += this.count[b];
@@ -952,9 +1175,9 @@ export class Baggage {
 
   /** A batch at the end of its carousel link goes on the carousel while it has room, else it holds the link (back pressure). */
   private admitToCarousels(tick: number): void {
-    const room = BAGGAGE.carousel.capacityBags;
     for (let b = 0; b < this.hi; b++) {
       if (this.stage[b] !== BagStage.ToCarousel || this.ready[b] > tick) continue;
+      const room = this.carouselRoom(this.node[b]);
       const held = this.carouselHeld(this.node[b]);
       // An empty carousel takes any batch, so one large batch can always arrive.
       if (held !== 0 && held + this.count[b] > room) continue;
@@ -1017,6 +1240,7 @@ export class Baggage {
       if (net === null || carousel === null) continue;
       this.node[b] = carousel;
       this.stage[b] = BagStage.ToCarousel;
+      this.countLink(bay, carousel, this.count[b], tick);
       this.ready[b] = tick + this.linkTicks(net.linkLengthM(bay, carousel));
     }
   }
@@ -1037,6 +1261,7 @@ export class Baggage {
       if (machine === null) continue;
       this.node[b] = machine;
       this.stage[b] = BagStage.ToMachine;
+      this.countLink(this.origin[b], machine, this.count[b], tick);
       this.ready[b] = tick + this.linkTicks(net.linkLengthM(this.origin[b], machine));
     }
   }

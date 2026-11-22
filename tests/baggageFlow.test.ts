@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
-import { BAGGAGE, TURNAROUNDS } from '@data/index';
+import { BAGGAGE, GSE, GSE_INDEX, TURNAROUNDS } from '@data/index';
+import { BagStage } from '@sim/ops/baggage/baggage';
+import { MAX_VEHICLES } from '@sim/vehicles/gse';
+import { bayPoint } from '../src/shared/baggageNodes';
+import { BAG_LINK_ARRIVAL, BAG_LINK_FLOW } from '../src/shared/overlay';
 import { AcState } from '@sim/ops/traffic';
 import { Turnarounds } from '@sim/ops/turnaround';
 import { Sim } from '@sim/sim';
 import { TICKS_PER_MINUTE, WALL } from '../src/shared/business';
 import { CAUSE_BAGS } from '../src/shared/turnaround';
 import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '../src/shared/terminalOps';
-import { buildTestAirport, ownedSim, OPTIONS, run } from './helpers';
+import { buildTestAirport, connectBays, ownedSim, OPTIONS, run } from './helpers';
 
 const { ox, oy } = originFor(3960, 5440, 90);
 const A320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
@@ -29,7 +33,7 @@ type Edit = { op: 'foundation' | 'floor' | 'zone' | 'fixture' | 'erase'; x0: num
  * A hall with a check in desk, a closed staff room with a door for the machine, a carousel and a bay on the south wall,
  * the bay serving the first stand. With `openMachine` the machine stands in the public hall, so no screening room is valid.
  */
-function flow(o: { machine?: 'room' | 'open' | 'none'; secondBay?: boolean } = {}): Flow {
+function flow(o: { machine?: 'room' | 'open' | 'none'; secondBay?: boolean; road?: boolean } = {}): Flow {
   const sim = ownedSim();
   buildTestAirport(sim);
   const edit = (building: number, e: Edit): string[] => run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e });
@@ -61,6 +65,7 @@ function flow(o: { machine?: 'room' | 'open' | 'none'; secondBay?: boolean } = {
   const stands = sim.airfield.data.stands;
   expect(run(sim, { type: 'setStandBay', standId: stands[0].id, bayId: bays[0].id })).toEqual([]);
   if (o.secondBay) expect(run(sim, { type: 'setStandBay', standId: stands[1].id, bayId: bays[1].id })).toEqual([]);
+  if (o.road !== false) expect(connectBays(sim)).toEqual([]);
   return { sim, building, bay: bays[0].id, anchor: cellIndex(g, 60, 41) };
 }
 
@@ -230,3 +235,105 @@ describe('departure bag flow (T43)', () => {
     expect(hashes[0]).toBe(hashes[1]);
   });
 });
+
+describe('baggage trains between bay slots and stands (T78)', () => {
+  const cartHalf = GSE[GSE_INDEX.cart].lengthM / 2;
+
+  it('takes arriving bags from the stand to the bay and departing bags from a bay slot to the aircraft', () => {
+    const l = flow();
+    const f = flight(l);
+    const serial = l.sim.traffic.serialOf(f);
+    checkIn(l, f, 5);
+    const frame = l.sim.baggage.bayFrameOf(l.bay);
+    if (!frame) throw new Error('no bay frame');
+    const slot = bayPoint(frame, BAGGAGE.bay.slotWidthM / 2, cartHalf + 0.3);
+    const a = untilDocked(l.sim, f);
+    let onTrainIn = false;
+    let onTrainOut = false;
+    let atSlot = false;
+    for (let t = 0; t < 30000 && l.sim.traffic.state[a] === AcState.Turnaround; t++) {
+      l.sim.step();
+      if (l.sim.baggage.bagsOf(serial, BagStage.TrainIn) > 0) onTrainIn = true;
+      if (l.sim.baggage.bagsOf(serial, BagStage.TrainOut) > 0) onTrainOut = true;
+      const g = l.sim.gse;
+      for (let v = 0; v < MAX_VEHICLES && !atSlot; v++) {
+        if (g.active[v] === 1 && g.kind[v] === GSE_INDEX.cart && Math.hypot(g.x[v] - slot.x, g.y[v] - slot.y) < 0.5) atSlot = true;
+      }
+    }
+    expect(l.sim.traffic.state[a]).not.toBe(AcState.Turnaround);
+    expect(onTrainIn).toBe(l.sim.business.flightPaxOf(f) > 0);
+    expect(onTrainOut).toBe(true);
+    expect(atSlot).toBe(true);
+    expect(l.sim.baggage.loadedTotal).toBe(5);
+    expect(l.sim.baggage.missingFor(serial)).toBe(0);
+  });
+
+  it('loses every bag of a stand whose bay has no road, and the turnaround still ends', () => {
+    const l = flow({ road: false });
+    const f = flight(l);
+    const serial = l.sim.traffic.serialOf(f);
+    checkIn(l, f, 5);
+    const a = untilDocked(l.sim, f);
+    for (let t = 0; t < 30000 && l.sim.traffic.state[a] === AcState.Turnaround; t++) l.sim.step();
+    expect(l.sim.traffic.state[a]).not.toBe(AcState.Turnaround);
+    expect(l.sim.baggage.loadedTotal).toBe(0);
+    expect(l.sim.baggage.missingFor(serial)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('restores to the same hash after a save while a train is on its trip', () => {
+    const l = flow();
+    const f = flight(l);
+    const serial = l.sim.traffic.serialOf(f);
+    checkIn(l, f, 4);
+    untilDocked(l.sim, f);
+    for (let t = 0; t < 30000 && l.sim.baggage.bagsOf(serial, BagStage.TrainOut) === 0; t++) l.sim.step();
+    expect(l.sim.baggage.bagsOf(serial, BagStage.TrainOut)).toBe(4);
+    const data = JSON.parse(JSON.stringify(l.sim.serialize())) as unknown;
+    const copy = new Sim('GOLDEN-0001', OPTIONS);
+    copy.restore(data);
+    expect(copy.stateHash()).toBe(l.sim.stateHash());
+    for (let t = 0; t < 3000; t++) {
+      l.sim.step();
+      copy.step();
+    }
+    expect(copy.stateHash()).toBe(l.sim.stateHash());
+  });
+
+  it('is deterministic over 2000 ticks with trains running', () => {
+    const hashes = [0, 1].map(() => {
+      const l = flow();
+      const f = flight(l);
+      checkIn(l, f, 6);
+      untilDocked(l.sim, f);
+      for (let t = 0; t < 2000; t++) l.sim.step();
+      return l.sim.stateHash();
+    });
+    expect(hashes[0]).toBe(hashes[1]);
+  });
+});
+
+describe('baggage load overlay (T78)', () => {
+  it('shows every link with its path and direction, the load after bags flowed and the node buffer fill', () => {
+    const l = flow();
+    const f = flight(l);
+    for (let k = 0; k < 6; k++) checkIn(l, f, 5);
+    let flowing = false;
+    for (let t = 0; t < 1500 && !flowing; t++) {
+      l.sim.step();
+      flowing = Array.from(l.sim.baggage.overlay(l.building, l.sim.tick)?.linkFlags ?? []).some((x) => (x & BAG_LINK_FLOW) !== 0);
+    }
+    expect(flowing).toBe(true);
+    const o = l.sim.baggage.overlay(l.building, l.sim.tick);
+    if (!o) throw new Error('no overlay');
+    expect(o.linkLoad.length).toBe(3);
+    expect(o.linkStart[3]).toBe(o.linkPts.length / 2);
+    const arrival = Array.from(o.linkFlags).filter((x) => (x & BAG_LINK_ARRIVAL) !== 0).length;
+    expect(arrival).toBe(1);
+    expect(o.nodeFill.length).toBe(l.sim.baggage.nodesOf(l.building).length);
+    // Two windows later with no new bags every link is idle again.
+    for (let t = 0; t < 1200; t++) l.sim.step();
+    const later = l.sim.baggage.overlay(l.building, l.sim.tick)!;
+    expect(Array.from(later.linkFlags).every((x) => (x & BAG_LINK_FLOW) === 0)).toBe(true);
+  });
+});
+
