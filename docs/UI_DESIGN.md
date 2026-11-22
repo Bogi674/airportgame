@@ -179,6 +179,7 @@ Key O, or the overlay button in the top bar, opens a compact list anchored under
 * **Apron** (`docs/DESIGN_REVISION_2.md` section 4): two modes, free polygon and rectangle, switched with A or the two buttons in the context bar. Edge lengths and the area show live as small tags; Ctrl cuts instead of building. The apron inspector shows its name and area.
 * **Terminal interior**: drag rectangles for walls and rooms on the grid. Fixtures follow the cursor. R rotates 90 degrees.
 * **Zones and transitions** (`docs/TERMINAL_ZONING.md`): the zone sub tool paints Public, Secure, Commercial, Staff and International as a rectangle or with a brush that paints every cell along the drag. The door sub tool picks a plain door or a staff door. The Transitions tab holds the security exit, eGate, customs and the staff door. The context bar offers the exit level, the passport and eGate mode (departure or arrival) and the security lane use (passengers or staff). A transition ghost that would face the wrong way shows a warning by the cursor.
+* **Furnishing** (T76, `docs/TERMINAL_FIXTURES.md` section 6): a Furnishing category in the tool rail with a tab per prop category (seating, lounge, washroom, decoration, vending, screens and signs, service, office, back of house). Each card shows the kit sprite and the price; the last card of every tab removes items. The prop ghost is the footprint on the 0.5 m grid with a diamond on the side people use and the name and price by the cursor; it turns red with the reason (needs a wall, needs a desk, overlap, across a wall, blocks a door). Click places, R turns it 90 degrees, and the context bar shows the item, its price and a Rotate button. Remove highlights the item under the cursor in amber and refunds its full price on click.
 * **Fixture inspector**: selecting a fixture in a terminal shows its name, the level of a security exit and a two way switch for the mode of passport control, eGates and security lanes. The readiness list names zone breaches, transitions facing the wrong way, secure floor with no way out and staff bypasses.
 * **Validation**: errors show as a red outline on the offending object plus a short label by the cursor ("Too close to runway 09/27, max code C here"). Hovering the label shows the full rule.
 * **Costs** show before confirming, with build time and monthly upkeep.
@@ -196,6 +197,7 @@ Key O, or the overlay button in the top bar, opens a compact list anchored under
 | Q and E | Rotate placement or view |
 | R | Rotate 90 degrees |
 | R (terminal fixture, two cell fixture chosen) | Turn the fixture 90 degrees, the ghost follows |
+| R (furnishing item chosen) | Turn the item 90 degrees, the ghost follows |
 | Shift (hold) | Snap to 15 degree steps |
 | Alt (hold) | Free placement, no snapping, including the construction grid |
 | A | Apron tool: switch free polygon and rectangle |
