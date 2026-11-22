@@ -7,11 +7,11 @@ import { BAGGAGE, GROUND, NEEDS, PROFILES } from '@data/index';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { FLAG_SLOW } from '../cohorts/cohorts';
 import { FIXTURE_KEYS } from '@shared/business';
-import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, type ServiceSave } from '../terminal/serviceNodes';
+import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave } from '../terminal/serviceNodes';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 33;
+export const SAVE_VERSION = 34;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -311,7 +311,7 @@ export function migrate(raw: unknown): SaveData {
     for (let i = 0; i < tables.length; i++) {
       const g = grids[i];
       if (g?.fixture === undefined || g.fixtureRot === undefined) continue;
-      tables[i] = insertNewServiceRows(tables[i]!, unpackTyped(g.fixture, Uint8Array), unpackTyped(g.fixtureRot, Uint8Array));
+      tables[i] = insertNewServiceRows(tables[i]!, unpackTyped(g.fixture, Uint8Array), unpackTyped(g.fixtureRot, Uint8Array), LEGACY_SERVICE_IDS, V31_SERVICE_IDS).table;
     }
     save.version = 31;
   }
@@ -327,31 +327,62 @@ export function migrate(raw: unknown): SaveData {
     (save as { convertBelts?: boolean }).convertBelts = true;
     save.version = 33;
   }
+  // Version 33 to 34: security exits became service nodes (T80). Each saved service table gets an empty row per exit
+  // anchor, inserted in cell order, and the node index every saved cohort holds moves to the renumbered row.
+  if (save.version < 34) {
+    const biz = (save as { business?: { grids?: { fixture?: string; fixtureRot?: string }[]; service?: ServiceSave[] } }).business;
+    const grids = biz?.grids ?? [];
+    const tables = biz?.service ?? [];
+    const remaps: (Int32Array | null)[] = [];
+    for (let i = 0; i < tables.length; i++) {
+      const g = grids[i];
+      remaps.push(null);
+      if (g?.fixture === undefined || g.fixtureRot === undefined) continue;
+      const out = insertNewServiceRows(tables[i]!, unpackTyped(g.fixture, Uint8Array), unpackTyped(g.fixtureRot, Uint8Array), V31_SERVICE_IDS, ALL_SERVICE_IDS);
+      tables[i] = out.table;
+      remaps[i] = out.newIndexOfOld;
+    }
+    const co = (save as { cohorts?: { hi?: number; arrays?: Record<string, string> } }).cohorts;
+    if (co?.arrays?.node !== undefined && co.arrays.building !== undefined && remaps.some((r) => r !== null)) {
+      const node = unpackTyped(co.arrays.node, Int32Array);
+      const building = unpackTyped(co.arrays.building, Uint8Array);
+      for (let c = 0; c < node.length; c++) {
+        const map = remaps[building[c]!];
+        if (map && node[c]! >= 0 && node[c]! < map.length) node[c] = map[node[c]!]!;
+      }
+      co.arrays.node = packTyped(node);
+    }
+    save.version = 34;
+  }
   return save as SaveData;
 }
 
-/** Fixture ids of the service keys that existed before save version 31, and of all service keys. */
+/** Fixture ids of the service keys that existed before save versions 31 and 34, and of all service keys. */
 const LEGACY_SERVICE_IDS: readonly number[] = SERVICE_KEYS.slice(0, LEGACY_SERVICE_COUNT).map((k) => FIXTURE_KEYS.indexOf(k) + 1);
+const V31_SERVICE_IDS: readonly number[] = SERVICE_KEYS.slice(0, V33_SERVICE_COUNT).map((k) => FIXTURE_KEYS.indexOf(k) + 1);
 const ALL_SERVICE_IDS: readonly number[] = SERVICE_KEYS.map((k) => FIXTURE_KEYS.indexOf(k) + 1);
 /** fixtureRot below this marks the anchor of a fixture, as in serviceNodes. */
 const ANCHOR_ROT_LIMIT = 5;
 
 /**
- * Rebuilds a version 30 service table for the node set of version 31: the row of every old node moves to its new
- * index, and each eGate or customs anchor gets an empty row. Both lists are in ascending cell order.
+ * Rebuilds a saved service table whose nodes are the anchors of `oldIds` for the node set of `newIds`: the row of every
+ * old node moves to its new index, and each anchor of a new kind gets an empty row. Both lists are in ascending cell
+ * order. Also returns the new index of every old node, null when nothing moved.
  */
-function insertNewServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8Array): ServiceSave {
+function insertNewServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8Array, oldIds: readonly number[], newIds: readonly number[]): { table: ServiceSave; newIndexOfOld: Int32Array | null } {
   const oldIndexOfNew: number[] = [];
   let oldCount = 0;
   for (let c = 0; c < fixture.length; c++) {
     if (rot[c]! >= ANCHOR_ROT_LIMIT) continue;
     const id = fixture[c]!;
-    if (!ALL_SERVICE_IDS.includes(id)) continue;
-    if (LEGACY_SERVICE_IDS.includes(id)) oldIndexOfNew.push(oldCount++);
+    if (!newIds.includes(id)) continue;
+    if (oldIds.includes(id)) oldIndexOfNew.push(oldCount++);
     else oldIndexOfNew.push(-1);
   }
-  if (oldCount !== old.count || oldIndexOfNew.length === oldCount) return old;
+  if (oldCount !== old.count || oldIndexOfNew.length === oldCount) return { table: old, newIndexOfOld: null };
   const count = oldIndexOfNew.length;
+  const newIndexOfOld = new Int32Array(oldCount);
+  for (let k = 0; k < count; k++) if (oldIndexOfNew[k]! >= 0) newIndexOfOld[oldIndexOfNew[k]!] = k;
   const slots = oldCount > 0 ? Math.floor(unpackTyped(old.qCohort, Int32Array).length / oldCount) : 0;
   const rows = (text: string, ctor: Int32ArrayConstructor | Uint16ArrayConstructor, per: number, fill: number): string => {
     const src = unpackTyped(text, ctor as Int32ArrayConstructor);
@@ -362,7 +393,7 @@ function insertNewServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8A
     }
     return packTyped(out);
   };
-  return {
+  const table = {
     ...old,
     count,
     queueLen: rows(old.queueLen, Int32Array, 1, 0),
@@ -374,4 +405,5 @@ function insertNewServiceRows(old: ServiceSave, fixture: Uint8Array, rot: Uint8A
     qHead: rows(old.qHead, Uint16Array, 1, 0),
     qCount: rows(old.qCount, Uint16Array, 1, 0),
   };
+  return { table, newIndexOfOld };
 }

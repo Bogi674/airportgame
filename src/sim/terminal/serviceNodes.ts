@@ -7,10 +7,12 @@ import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
 
 /** Fixtures that serve people one at a time. Each anchor of these is a service node. */
-export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs'] as const;
+export const SERVICE_KEYS = ['checkIn', 'kiosk', 'bagDrop', 'security', 'passport', 'gateDesk', 'toilet', 'eGate', 'customs', 'securityExit'] as const;
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
 /** Keys before this index existed before save version 31, so the migration needs no hard coded list. */
 export const LEGACY_SERVICE_COUNT = 7;
+/** Keys before this index existed before save version 34, when security exits became service nodes (T80). */
+export const V33_SERVICE_COUNT = 9;
 
 /** fixtureRot below this marks the anchor of a fixture. 5 and up is the tail of a two cell fixture. */
 const TAIL_ROT = 5;
@@ -87,9 +89,13 @@ export interface ServiceNodes {
 
 /**
  * Module timing for a service key. Every service key carries both values in the data. A passport booth or eGate in
- * departure mode (mode 0) takes its own departure values (T79).
+ * departure mode (mode 0) takes its own departure values (T79), and a security exit the values of its level (T80).
  */
-function timing(key: ServiceKey, mode: number): { servers: number; meanS: number } {
+function timing(key: ServiceKey, mode: number, level: number): { servers: number; meanS: number } {
+  if (key === 'securityExit') {
+    const lv = ARRIVALS.service.securityExit.levels[Math.min(Math.max(level, 1), 3) - 1]!;
+    return { servers: lv.servers, meanS: lv.serviceSeconds };
+  }
   if ((key === 'passport' || key === 'eGate') && mode === 0) return { servers: DEPARTURES.service[key].servers, meanS: DEPARTURES.service[key].serviceSeconds };
   if (key === 'eGate' || key === 'customs') return { servers: ARRIVALS.service[key].servers, meanS: ARRIVALS.service[key].serviceSeconds };
   const m = BUSINESS.modules[key];
@@ -204,7 +210,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     const c = anchors[k]!;
     const id = g.fixture[c]!;
     const key = fixtureKey(id) as ServiceKey;
-    const t = timing(key, g.fixtureMode[c]!);
+    const t = timing(key, g.fixtureMode[c]!, g.fixtureLevel[c]!);
     const x = c % g.w;
     nodes.kind[k] = id;
     nodes.cell[k] = c;

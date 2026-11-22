@@ -64,6 +64,11 @@ export const Stage = {
   ToEmigration: 24,
   /** Waiting in a departure passport queue or being served (a queued stage). */
   Emigration: 25,
+  // Security exit stages (T80), appended: a domestic arrival leaves the secure zone through an exit queue.
+  /** Walking from the aircraft to a security exit. */
+  ToSecExit: 26,
+  /** Waiting in a security exit queue or being served (a queued stage). */
+  SecExit: 27,
 } as const;
 
 /** Timer wheel buckets and the tick step between bucket visits. */
@@ -91,6 +96,7 @@ const TOILET = FIXTURE_KEYS.indexOf('toilet') + 1;
 const PASSPORT = FIXTURE_KEYS.indexOf('passport') + 1;
 const EGATE = FIXTURE_KEYS.indexOf('eGate') + 1;
 const CUSTOMS = FIXTURE_KEYS.indexOf('customs') + 1;
+const SEC_EXIT = FIXTURE_KEYS.indexOf('securityExit') + 1;
 
 /** Side step of a sampled walker in cells, the squared least gap between drawn groups in metres, and the lanes tried in order. */
 const LANE = PROFILES.walkSample.laneOffsetCells;
@@ -483,14 +489,18 @@ export class Cohorts {
 
   /** True for the stages in which a cohort waits in a service queue, off the timer wheel. */
   private queued(st: number): boolean {
-    return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs || st === Stage.Emigration;
+    return (
+      st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs ||
+      st === Stage.Emigration || st === Stage.SecExit
+    );
   }
 
   /** True for the stages in which a cohort walks between two walk nodes. */
   private walking(st: number): boolean {
     return (
       st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin ||
-      st === Stage.ToImmigration || st === Stage.ToClaim || st === Stage.ToCustoms || st === Stage.ToExit || st === Stage.ToEmigration
+      st === Stage.ToImmigration || st === Stage.ToClaim || st === Stage.ToCustoms || st === Stage.ToExit || st === Stage.ToEmigration ||
+      st === Stage.ToSecExit
     );
   }
 
@@ -505,7 +515,7 @@ export class Cohorts {
 
   /** True for the stages of an arriving passenger. */
   private arriving(st: number): boolean {
-    return st >= Stage.Deboard && st <= Stage.ToExit;
+    return (st >= Stage.Deboard && st <= Stage.ToExit) || st === Stage.ToSecExit || st === Stage.SecExit;
   }
 
   /** Group size for a uniform float: the first size whose cumulative weight exceeds it. */
@@ -840,7 +850,7 @@ export class Cohorts {
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate || (st === Stage.ToVisit && this.visitNeed[c] === NEED_TOILET)) this.node[c] = -1;
-      else if (st === Stage.ToImmigration || st === Stage.ToCustoms || st === Stage.ToEmigration) {
+      else if (st === Stage.ToImmigration || st === Stage.ToCustoms || st === Stage.ToEmigration || st === Stage.ToSecExit) {
         this.node[c] = -1;
         this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
         this.keepAnchor(c);
@@ -909,6 +919,10 @@ export class Cohorts {
       this.stage[c] = Stage.ToEmigration;
       this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
       this.keepAnchor(c);
+    } else if (st === Stage.SecExit) {
+      this.stage[c] = Stage.ToSecExit;
+      this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+      this.keepAnchor(c);
     } else return;
     this.node[c] = -1;
     this.waitStart[c] = -1;
@@ -963,6 +977,10 @@ export class Cohorts {
     }
     if (st === Stage.Emigration) {
       this.finishEmigration(g, c, t);
+      return;
+    }
+    if (st === Stage.SecExit) {
+      this.finishSecExit(g, c, t);
       return;
     }
     if (st === Stage.Security) {
@@ -1074,13 +1092,47 @@ export class Cohorts {
         else this.join(g, c, t.kind[this.node[c]!]!, t.kind[this.node[c]!]!, Stage.Emigration);
         break;
       }
+      case Stage.ToSecExit: {
+        const t = this.table(g);
+        if (this.flags[c]! & FLAG_PASSED) this.toClaim(g, c);
+        else if (this.node[c]! < 0 || !t) this.toSecExit(g, c);
+        else this.join(g, c, SEC_EXIT, SEC_EXIT, Stage.SecExit);
+        break;
+      }
     }
   }
 
   /** The cohort has left the aircraft. */
   private afterDeboard(g: number, c: number): void {
     if (this.flags[c]! & FLAG_INTL) this.toImmigration(g, c);
-    else this.toClaim(g, c);
+    else this.toSecExit(g, c);
+  }
+
+  /**
+   * Walks a domestic arrival to the cheapest security exit it can reach, by walk time plus wait (T80). A grid with no
+   * exit, or none reachable from where the cohort stands, skips the exit as one with no customs skips customs.
+   */
+  private toSecExit(g: number, c: number): void {
+    const here = this.hereNode(g, c);
+    const n = this.pickNode(g, SEC_EXIT, SEC_EXIT, here, c);
+    if (n < 0) this.toClaim(g, c);
+    else this.walk(g, c, n, here, Stage.ToSecExit);
+  }
+
+  /**
+   * A domestic arrival was served at a security exit. It stands on the first cell past the exit along its flow, in
+   * Public, and leaves the queued stage, so a retry of the claim step is a wheel stage that never queues again.
+   */
+  private finishSecExit(g: number, c: number, t: ServiceNodes): void {
+    const wg = this.business.walkGraphs[g]!;
+    const node = this.node[c]!;
+    const at = this.exitNode(g, t.cell[node]!, t.walkNode[node]!);
+    this.flags[c] = this.flags[c]! | FLAG_PASSED | FLAG_AT_VISIT;
+    this.walkToX[c] = wg.nodeX[at]!;
+    this.walkToY[c] = wg.nodeY[at]!;
+    this.node[c] = -1;
+    this.stage[c] = Stage.ToSecExit;
+    this.toClaim(g, c);
   }
 
   /** Walks an international arrival to the cheapest immigration node. With none it retries, and strands after the limit. */
