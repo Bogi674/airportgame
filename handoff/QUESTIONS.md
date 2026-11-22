@@ -398,3 +398,4 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 | Chaining | Separate trips: arrival train depot, stand, bay, depot; departure train depot, bay, stand, depot |
 
 Implementer choices, stated for the owner: carousel S is a 10 m loop (6 by 2 cells, 30 bags), M is today's 20 m loop (11 by 2 cells, 60 bags), L is a 30 m loop (16 by 2 cells, 90 bags). A bay's road connection point sits on its center line, beyond the staging lanes by two turn radii; the train turns along the bay face and reverses into its slot so the last cart is on the truck edge, then leaves forward. Link load in the overlay is bags per hour over the last 10 minutes against `linkCapacityBagsPerHour`.
+| Claim give up | Raised from 45 to 75 game minutes (`arrivals.json` claim.giveUpMin), because the train trip to the bay adds 15 to 25 minutes after the unload task (owner, 2026-11-22) |

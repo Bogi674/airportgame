@@ -212,8 +212,26 @@ export function buildArrivalTerminal(sim: Sim, o: { eGate?: boolean; passport?: 
     const bay = sim.baggage.nodesOf(id).find((r) => r.kind === 'bay');
     const stand = sim.airfield.data.stands[0];
     if (bay && stand) problems.push(...run(sim, { type: 'setStandBay', standId: stand.id, bayId: bay.id }));
+    // Trains carry the bags between the bay and the stand, so the bay needs its road (T78).
+    problems.push(...connectBays(sim));
   }
   if (o.customs) edit(id, { op: 'fixture', x0: 60, y0: 56, x1: 62, y1: 58, variant: 22 });
   problems.push(...run(sim, { type: 'buildTower', x: 2700, y: 4800, level: 5 }));
   return problems;
+}
+
+/**
+ * One service road from the first stand's connection point round to the bays' road connection points (T78), for test
+ * terminals east of the stand row whose bays face south and line up. Returns problems.
+ */
+export function connectBays(sim: Sim): string[] {
+  sim.flushCommands();
+  const anchors = sim.airfield.data.bayAnchors ?? [];
+  if (anchors.length === 0) return ['noBays'];
+  const conn = standRoadAnchors(sim.airfield.data.stands[0])?.conn;
+  if (!conn) return ['noStands'];
+  const y = anchors[0].y;
+  if (anchors.some((a) => Math.abs(a.y - y) > 1e-6)) return ['baysNotInLine'];
+  const west = anchors.reduce((m, a) => Math.min(m, a.x), Infinity);
+  return run(sim, { type: 'buildRoad', points: [conn, { x: conn.x, y }, { x: west, y }] });
 }

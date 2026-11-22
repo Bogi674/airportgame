@@ -2,7 +2,7 @@ import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import type { BayAnchor } from '@shared/airfield';
 import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BagWarningCode, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, bagNodeCost, bayFrame, bayRoadPoint, carouselSize, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { bagKey, bagNodeCost, bayFrame, bayRoadPoint, carouselSize, type BayFrame, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
@@ -96,7 +96,10 @@ const DECI_PER_SECOND = 10;
 const MISS_ROWS = 64;
 
 /** Where a batch is. Free slots are 0. */
-export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5, BayIn: 6, ToCarousel: 7, Carousel: 8 } as const;
+export const BagStage = { Free: 0, Drop: 1, ToMachine: 2, Queue: 3, ToBay: 4, Bay: 5, BayIn: 6, ToCarousel: 7, Carousel: 8, TrainOut: 9, TrainIn: 10 } as const;
+
+/** True for the stages of arriving bags: on the train to the bay, in the bay, on the carousel link and on the carousel. */
+const isArrival = (stage: number): boolean => (stage >= BagStage.BayIn && stage <= BagStage.Carousel) || stage === BagStage.TrainIn;
 
 /** Bags per passenger of an arriving flight: the mean of the profile table weighted by the profile mix. */
 const ARRIVAL_BAGS_PER_PAX = (() => {
@@ -216,15 +219,16 @@ export class Baggage {
   }
 
   /**
-   * The unload task of a flight finished. Its arriving bags become one batch in the bay of the flight's stand,
-   * resolved once here so the batch never follows another flight's stand. No bay counts them missing. GA flights carry no passengers.
+   * The unload task of a flight finished. Its arriving bags become one batch on the train to the bay of the flight's
+   * stand, resolved once here so the batch never follows another flight's stand. Without a train that makes the trip
+   * (no bay, or no road between the depot, the bay and the stand, T78) they count missing. GA flights carry no passengers.
    */
-  unloaded(serial: number, pax: number, tick: number): void {
+  unloaded(serial: number, pax: number, tick: number, onTrain: boolean): void {
     const bags = Math.round(pax * ARRIVAL_BAGS_PER_PAX);
     if (bags <= 0 || serial <= 0) return;
     this.checkedToday += bags;
     const standId = this.host.standOfSerial(serial);
-    const bay = standId < 0 ? null : this.bayOfStand(standId);
+    const bay = standId < 0 || !onTrain ? null : this.bayOfStand(standId);
     const b = bay === null ? -1 : this.allocBatch();
     if (b < 0 || bay === null) {
       this.addMissing(serial, bags);
@@ -232,7 +236,7 @@ export class Baggage {
     }
     this.serial[b] = serial;
     this.count[b] = bags;
-    this.stage[b] = BagStage.BayIn;
+    this.stage[b] = BagStage.TrainIn;
     this.node[b] = bay;
     this.origin[b] = bay;
     this.ready[b] = 0;
@@ -317,16 +321,51 @@ export class Baggage {
     return !onTheWay || tick >= departTick + Math.round(BAGGAGE.lateBagHoldMin * TICKS_PER_MINUTE);
   }
 
-  /** The flight is loaded or has pushed back: bags in its bay count as loaded, all others as missing. */
+  /**
+   * The flight is loaded or has pushed back: bags its train brought count as loaded, all others as missing, those left in
+   * the bay too (T78: bags reach the aircraft only by train).
+   */
   freeFlight(serial: number): void {
     if (serial <= 0 || this.live === 0) return;
     for (let b = 0; b < this.hi; b++) {
       // Arrival bags leave through the carousel, a departing flight's load does not settle them.
-      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free || this.stage[b] >= BagStage.BayIn) continue;
-      if (this.stage[b] === BagStage.Bay) this.loadedTotal += this.count[b];
+      if (this.serial[b] !== serial || this.stage[b] === BagStage.Free || isArrival(this.stage[b])) continue;
+      if (this.stage[b] === BagStage.TrainOut) this.loadedTotal += this.count[b];
       else this.addMissing(serial, this.count[b]);
       this.freeBatch(b);
     }
+  }
+
+  /** A departure train loaded at its bay slot: the flight's bags staged in the bay go onto it (T78). */
+  pickUp(serial: number): void {
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.Bay) this.stage[b] = BagStage.TrainOut;
+  }
+
+  /** A departure train that will not reach its stand brings its bags back to the bay they came from. */
+  putBack(serial: number): void {
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.TrainOut) this.stage[b] = BagStage.Bay;
+  }
+
+  /**
+   * An arrival train unloads at its bay slot: its bags wait in the bay for the carousel link. False while the bay holds
+   * arriving bags up to its buffer, so the train waits at its slot; force puts them in regardless.
+   */
+  dropOff(serial: number, force: boolean): boolean {
+    let n = 0;
+    let bay = -1;
+    for (let b = 0; b < this.hi; b++) {
+      if (this.serial[b] !== serial || this.stage[b] !== BagStage.TrainIn) continue;
+      n += this.count[b];
+      bay = this.node[b];
+    }
+    if (n === 0) return true;
+    if (!force) {
+      let held = 0;
+      for (let b = 0; b < this.hi; b++) if (this.stage[b] === BagStage.BayIn && this.node[b] === bay) held += this.count[b];
+      if (held > 0 && held + n > BAGGAGE.bay.bufferBags) return false;
+    }
+    for (let b = 0; b < this.hi; b++) if (this.serial[b] === serial && this.stage[b] === BagStage.TrainIn) this.stage[b] = BagStage.BayIn;
+    return true;
   }
 
   /** One run of the subsystem, every BAG_RUN_TICKS ticks. */
@@ -354,6 +393,14 @@ export class Baggage {
 
   nodesOf(building: number): BagNodeRec[] {
     return this.recs.filter((r) => r.building === building);
+  }
+
+  /** Truck edge frame of a bay by id, null when it is gone (T78). */
+  bayFrameOf(id: number): BayFrame | null {
+    const rec = this.recById(id);
+    if (!rec || rec.kind !== 'bay' || rec.spec === null) return null;
+    const g = this.business.grids.find((x) => x.id === rec.building);
+    return g ? bayFrame(g, rec.spec) : null;
   }
 
   /** Road connection point of every bay, in bay id order, for the road net (T78). A bay whose grid is gone has none. */

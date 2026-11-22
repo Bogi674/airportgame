@@ -3,7 +3,7 @@ import { ACCEPT_COMMERCIAL, ACCEPT_GA, type CodeLetter } from '@shared/airfield'
 import { sizeCode, sizeForCode } from '@shared/standSizes';
 import { packTyped, unpackTyped } from './pack';
 import { ROT_STEP } from '@shared/terminalOps';
-import { GROUND, NEEDS, PROFILES } from '@data/index';
+import { BAGGAGE, GROUND, NEEDS, PROFILES } from '@data/index';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { FLAG_SLOW } from '../cohorts/cohorts';
 import { FIXTURE_KEYS } from '@shared/business';
@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, type ServiceSave } from '../termina
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 32;
+export const SAVE_VERSION = 33;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -315,6 +315,14 @@ export function migrate(raw: unknown): SaveData {
   }
   // Version 31 to 32: airport staff as individuals (T68). Older saves have none; the first staffing pass hires the running shift on its stations.
   if (save.version < 32) save.version = 32;
+  // Version 32 to 33: baggage trains and carousel sizes (T78). A carousel keeps its size in widthCells, so every saved
+  // carousel becomes the medium size it was drawn as. Vehicles gain the trip arrays, which start empty.
+  if (save.version < 33) {
+    const nodes = (save as { baggage?: { nodes?: { kind: string; spec: { widthCells: number } | null }[] } }).baggage?.nodes ?? [];
+    const medium = BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w;
+    for (const n of nodes) if (n.kind === 'carousel' && n.spec) n.spec.widthCells = medium;
+    save.version = 33;
+  }
   return save as SaveData;
 }
 

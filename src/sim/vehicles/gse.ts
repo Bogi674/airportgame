@@ -1,8 +1,10 @@
 import { AIRCRAFT, SPRITE_BASES, standGeometry } from '@data/aircraft';
-import { GROUND, GSE, GSE_INDEX, type GseSpec } from '@data/index';
+import { BAGGAGE, GROUND, GSE, GSE_INDEX, type GseSpec } from '@data/index';
 import { STAND_UPGRADE } from '@shared/airfield';
 import { aircraftBoundary, footprintClash, footprintSpecSchema, type AircraftBoundary, type Poly } from '@shared/aircraftFootprint';
 import type { Pt } from '@shared/geom';
+import { bayPoint, type BayFrame } from '@shared/baggageNodes';
+import { gameSecondsToTicks } from '@shared/time';
 import { followHitch, type TowPose } from '@shared/trailer';
 import { atan2Det, cosLut, PI, sinLut } from '@shared/trig';
 import { AcState, MAX_AIRCRAFT, type Traffic } from '../ops/traffic';
@@ -24,6 +26,27 @@ const RoadIn = 5;
 const RoadOut = 6;
 /** A cart towed behind the vehicle in `lead`. */
 const Towed = 7;
+/**
+ * A baggage train at a bay (T78): waiting at the road connection point for a free slot, turning along the bay face,
+ * reversing into its slot with the carts led from the rear, loading or unloading there, and driving out to the road.
+ */
+const BayWait = 8;
+const BayIn = 9;
+const BayRev = 10;
+const BayWork = 11;
+const BayOut = 12;
+
+/** Trip of a baggage train (T78): none, arriving bags from the stand to the bay, departing bags from the bay to the stand. */
+const TRIP_ARR = 1;
+const TRIP_DEP = 2;
+/** Leg of a trip: on the road to the bay, at the bay, on the road from the bay, docked or driving to the dock at the stand. */
+const LEG_TO_BAY = 0;
+const LEG_AT_BAY = 1;
+const LEG_FROM_BAY = 2;
+const LEG_STAND = 3;
+/** Cosine and sine of 30 and 60 degrees, for the arcs of a bay approach. */
+const C30 = 0.8660254037844386;
+const S30 = 0.5;
 
 /** Meters per tick on the apron lanes and stand paths, and over the last meters to the dock (D17). */
 const APRON_STEP_M = (GROUND.apronLane.speedKmh / 3.6) * 0.1;
@@ -106,6 +129,26 @@ const trainOutN = new Uint8Array(TYPES);
 const crewMask = new Uint32Array(TYPES);
 let pathsReady = false;
 
+/** What the trains read from and tell the baggage system (T78). */
+export interface BagTrips {
+  /** Truck edge frame of bay b, its index in `af.bayAnchors`, or null when the bay is gone. */
+  frame(b: number): BayFrame | null;
+  /** Flight serial of the aircraft's current flight, 0 when it has none. */
+  serialOf(a: number): number;
+  /** True once the departure bags of the aircraft's flight are all in the bay, or the late bag hold has run out. */
+  ready(a: number): boolean;
+  /** True once the unload task of the aircraft's turnaround is done. */
+  unloadDone(a: number): boolean;
+  /** Bags of the serial a train moves at the bay now: on the train for arrivals, staged in the bay for departures. */
+  bags(serial: number, arrival: boolean): number;
+  /** The departure bags staged in the bay go onto the train. */
+  pickUp(serial: number): void;
+  /** The departure bags on a train that will not reach the stand go back to the bay. */
+  putBack(serial: number): void;
+  /** The arrival bags on the train go into the bay; false while the bay has no room, unless forced. */
+  dropOff(serial: number, force: boolean): boolean;
+}
+
 /** Hooks the vehicles read from the rest of the sim: the road net, the stand of an aircraft, carts per train and the fleet. */
 export interface GseHost {
   roads: RoadNet;
@@ -121,6 +164,8 @@ export interface GseHost {
   upgradesOf(a: number): number;
   /** Boarding mode of the aircraft's stand, see `BOARDING` in the turnaround engine. */
   boardingOf(a: number): number;
+  /** Baggage trips, missing where the bags need no trains (tests of other systems). */
+  trips?: BagTrips;
 }
 
 /**
@@ -197,6 +242,15 @@ export class Gse {
   readonly dockedMask = new Uint32Array(MAX_AIRCRAFT);
   /** 1 when the vehicle counts against the owned fleet of its kind while it is out. */
   private readonly counted = new Uint8Array(MAX_VEHICLES);
+  /** Baggage trip of a train (T78): TRIP_ARR, TRIP_DEP or 0, its leg, the flight serial, the bay index, slot and ticks left at the slot. */
+  private readonly trip = new Uint8Array(MAX_VEHICLES);
+  private readonly tripLeg = new Uint8Array(MAX_VEHICLES);
+  private readonly tripSer = new Int32Array(MAX_VEHICLES);
+  private readonly tripBay = new Int32Array(MAX_VEHICLES).fill(-1);
+  private readonly slot = new Int32Array(MAX_VEHICLES).fill(-1);
+  private readonly tripT = new Int32Array(MAX_VEHICLES);
+  /** Flight each aircraft slot last sent a departure train for, so a turnaround sends one. */
+  private readonly depSent = new Int32Array(MAX_AIRCRAFT).fill(-1);
   /** Turnaround task state: an airline flight's crew leaves once its vehicle tasks are done. Set by the sim. */
   turns: { readonly vehDone: Uint8Array } | null = null;
   private readonly pose: TowPose = { x: 0, y: 0, heading: 0 };
@@ -229,6 +283,13 @@ export class Gse {
     this.count = 0;
     this.dockedMask.fill(0);
     this.counted.fill(0);
+    this.trip.fill(0);
+    this.tripLeg.fill(0);
+    this.tripSer.fill(0);
+    this.tripBay.fill(-1);
+    this.slot.fill(-1);
+    this.tripT.fill(0);
+    this.depSent.fill(-1);
   }
 
   /** True when the type's crew has a vehicle of the kind with a drive path to its dock. */
@@ -295,6 +356,7 @@ export class Gse {
       ahead: this.ahead, turnBack: this.turnBack, out: this.out, served: this.served, cleared: this.cleared, turnAt: this.turnAt,
       front: this.front, tugged: this.tugged, pending: this.pending, waiting: this.waiting, last: this.last, prev: this.prev,
       dockedMask: this.dockedMask, counted: this.counted,
+      trip: this.trip, tripLeg: this.tripLeg, tripSer: this.tripSer, tripBay: this.tripBay, slot: this.slot, tripT: this.tripT, depSent: this.depSent,
     };
   }
 
@@ -370,6 +432,11 @@ export class Gse {
     this.held.fill(-1);
     for (let v = 0; v < MAX_VEHICLES; v++) {
       if (this.active[v] === 0) continue;
+      // A train on a baggage trip has no route on the new net; its bags settle and it goes (T78).
+      if (this.trip[v] !== 0 && this.lead[v] < 0 && this.tripLeg[v] !== LEG_STAND) {
+        this.abortTrip(v);
+        continue;
+      }
       if (this.state[v] === RoadIn) this.reachStand(v);
       else if (this.state[v] === RoadOut) this.free(v);
     }
@@ -394,6 +461,7 @@ export class Gse {
       }
       if (this.served[a] !== -1) {
         for (let side = SIDE_R; side <= SIDE_L; side++) if (this.waiting[a * 2 + side] === 1) this.advance(a, side);
+        if (st === AcState.Turnaround && f >= 0 && this.depSent[a] !== f && t.tasked[a] === 1 && this.host?.trips && this.cleared[a] === 0 && this.sendDeparture(a)) this.depSent[a] = f;
       }
       if (st === AcState.Pushback && f >= 0 && this.tugged[a] !== f) {
         this.tugged[a] = f;
@@ -453,11 +521,24 @@ export class Gse {
         this.stepRoad(v);
       } else if (s === Drive || s === Leave) {
         this.step(v);
+      } else if (s === BayWait) {
+        this.takeSlot(v);
+      } else if (s === BayIn) {
+        if (this.stepPath(v, this.wpX, this.wpY, this.wpN[v], APRON_STEP_M)) {
+          this.ti[v] = 0;
+          this.state[v] = BayRev;
+        }
+      } else if (s === BayRev) {
+        if (this.stepReverse(v)) this.startSlotWork(v);
+      } else if (s === BayWork) {
+        this.stepSlotWork(v);
+      } else if (s === BayOut) {
+        if (this.stepPath(v, this.wpX, this.wpY, this.wpN[v], APRON_STEP_M)) this.leaveBay(v);
       }
     }
-    // Carts follow their lead after every lead has moved.
+    // Carts follow their lead after every lead has moved; a reversing train moves its carts itself.
     for (let v = 0; v < MAX_VEHICLES; v++) {
-      if (this.active[v] === 0 || this.lead[v] >= 0 || this.tail[v] < 0) continue;
+      if (this.active[v] === 0 || this.lead[v] >= 0 || this.tail[v] < 0 || this.state[v] === BayRev) continue;
       let lead = v;
       for (let c = this.tail[v]; c >= 0; c = this.tail[c]) {
         const g = GSE[this.kind[lead]];
@@ -506,7 +587,8 @@ export class Gse {
     this.releasePassed(v);
     const s0 = this.rStand[v];
     // Home: a returning vehicle drives into the depot once its front reaches the door.
-    if (this.state[v] === RoadOut && k === roads.outStart[s0] + roads.outLen[s0] - 1 && d <= GSE[this.kind[v]].lengthM / 2) {
+    const toBay = this.trip[v] !== 0 && this.tripLeg[v] === LEG_TO_BAY;
+    if (this.state[v] === RoadOut && !toBay && k === roads.outStart[s0] + roads.outLen[s0] - 1 && d <= GSE[this.kind[v]].lengthM / 2) {
       this.free(v);
       return;
     }
@@ -520,14 +602,20 @@ export class Gse {
         this.ri[v] = k + 1;
         return;
       }
-      if (this.state[v] === RoadIn) this.reachStand(v);
+      if (toBay) this.takeSlot(v);
+      else if (this.state[v] === RoadIn && this.trip[v] === TRIP_DEP) this.trainAtStand(v);
+      else if (this.state[v] === RoadIn) this.reachStand(v);
       else this.free(v);
       return;
     }
     // On the way out, the leg is free once the vehicle is past the first lane point; then the one before it may go.
-    if (this.state[v] === RoadOut && k > roads.outStart[this.rStand[v]] + 1 && this.front[this.owner[v]] === v) {
+    if (this.state[v] === RoadOut && k > roads.outStart[this.rStand[v]] + 1 && this.owner[v] >= 0 && this.front[this.owner[v]] === v) {
       this.leaveFront(v);
       this.sendPrev(v);
+    }
+    if (this.trip[v] === TRIP_ARR && this.owner[v] >= 0 && this.state[v] === RoadOut && k > roads.outStart[this.rStand[v]] + 1) {
+      this.leaveFront(v);
+      this.disown(v);
     }
     this.heading[v] = atan2Det(dy, dx);
     this.x[v] += (dx / d) * step;
@@ -645,6 +733,7 @@ export class Gse {
         this.state[v] = Work;
         this.dockedMask[this.owner[v]] |= 1 << this.kind[v];
         this.heading[v] = this.dockHead[v];
+        if (this.trip[v] === TRIP_DEP) this.joinCrew(v);
         this.advance(this.owner[v], sideOf[this.kind[v]]);
       } else {
         this.ti[v]++;
@@ -699,6 +788,8 @@ export class Gse {
       this.rStand[c] = -1;
       this.outN[c] = 0;
       this.turnBack[c] = 0;
+      this.trip[c] = 0;
+      this.slot[c] = -1;
       this.count--;
       c = next;
     }
@@ -780,6 +871,10 @@ export class Gse {
         this.counted[v] = 0;
         this.ahead[v] = -1;
         this.waited[v] = 0;
+        this.trip[v] = 0;
+        this.tripLeg[v] = 0;
+        this.tripBay[v] = -1;
+        this.slot[v] = -1;
         return v;
       }
     }
@@ -823,6 +918,42 @@ export class Gse {
     if (routed && !this.clearAt(roads!.ptX[roads!.inStart[r]], roads!.ptY[roads!.inStart[r]])) return -2;
     const v = this.alloc();
     if (v < 0) return -1;
+    this.dockPathFor(v, a, kind, s);
+    this.kind[v] = kind;
+    this.owner[v] = a;
+    this.prev[v] = -1;
+    if (counted) {
+      this.out[kind]++;
+      this.counted[v] = 1;
+    }
+    if (routed) {
+      this.rStand[v] = r;
+      this.rVer[v] = roads!.version;
+      if (fromUnit) this.outUnit++;
+      // The vehicle, and its train, start just outside the depot door, so no part of them is in the building.
+      const trainM = GSE[kind].lengthM + carts * (GSE[CART].lengthM + GROUND.train.hitchGapM);
+      this.placeAlong(v, roads!, roads!.inStart[r], roads!.inStart[r] + roads!.inLen[r], trainM);
+      this.state[v] = RoadIn;
+    } else {
+      this.ti[v] = 1;
+      this.x[v] = this.wpX[v * MAX_WP];
+      this.y[v] = this.wpY[v * MAX_WP];
+      this.heading[v] = atan2Det(this.wpY[v * MAX_WP + 1] - this.y[v], this.wpX[v * MAX_WP + 1] - this.x[v]);
+      this.state[v] = Drive;
+    }
+    if (carts > 0) this.hitchCarts(v, counted ? Math.min(carts, host!.owned(CART) - this.out[CART]) : carts, counted);
+    return v;
+  }
+
+  /**
+   * Fills a vehicle's stand path for aircraft a on stand index s: from the stand's road line to its waiting point and
+   * on to the dock, with a train's forward leave path, and the heading it takes at the dock.
+   */
+  private dockPathFor(v: number, a: number, kind: number, s: number): void {
+    const t = this.traffic;
+    const type = t.type[a];
+    const pk = type * KINDS + kind;
+    const n = pathN[pk];
     const h = t.heading[a];
     const c = cosLut(h);
     const sn = sinLut(h);
@@ -851,31 +982,346 @@ export class Gse {
       for (let i = 0; i < m; i++) toWorld(trainOutX[type * MAX_WP + i], trainOutY[type * MAX_WP + i], this.outX, this.outY, i);
       this.outN[v] = m + 2;
     }
-    this.kind[v] = kind;
-    this.owner[v] = a;
     this.dockHead[v] = h + dockRel[pk];
+  }
+
+  // Baggage trains between bay slots and stands (T78) -------------------------------------------
+
+  /**
+   * The unload task of aircraft a is done: its docked train leaves the stand and takes the arriving bags of the flight
+   * with this serial to the stand's bay. False when no train can make the trip, and the bags are then lost.
+   */
+  sendArrival(a: number, serial: number): boolean {
+    const host = this.host;
+    if (!host?.trips || this.traffic.tasked[a] !== 1) return false;
+    const roads = host.roads;
+    const s = host.standIndexOf(a);
+    if (!roads.tripOk(s)) return false;
+    let v = -1;
+    for (let i = 0; i < MAX_VEHICLES && v < 0; i++) if (this.active[i] === 1 && this.owner[i] === a && this.kind[i] === TRACTOR && this.state[i] === Work) v = i;
+    if (v < 0) return false;
+    this.unchain(a, v);
+    this.trip[v] = TRIP_ARR;
+    this.tripLeg[v] = LEG_TO_BAY;
+    this.tripSer[v] = serial;
+    this.tripBay[v] = roads.standBay[s];
+    this.slot[v] = -1;
+    // Its way out of the stand now ends on the route to the bay, driven from the stand to the bay.
+    this.rStand[v] = roads.bayRoute(s);
+    this.rVer[v] = roads.version;
+    this.leave(v);
+    return true;
+  }
+
+  /** A docked departure train becomes the newest crew member on its side, and leaves with the crew. */
+  private joinCrew(v: number): void {
+    const side = this.owner[v] * 2 + sideOf[this.kind[v]];
+    this.prev[v] = this.last[side];
+    this.last[side] = v;
+    this.trip[v] = 0;
+    this.tripLeg[v] = 0;
+  }
+
+  /** Takes a vehicle out of its side's crew order, so the ones docked after it no longer wait for it. */
+  private unchain(a: number, v: number): void {
+    const side = a * 2 + sideOf[this.kind[v]];
+    for (let o = 0; o < MAX_VEHICLES; o++) if (this.active[o] === 1 && this.prev[o] === v) this.prev[o] = this.prev[v];
+    if (this.last[side] === v) this.last[side] = this.prev[v];
     this.prev[v] = -1;
-    if (counted) {
-      this.out[kind]++;
-      this.counted[v] = 1;
+  }
+
+  /**
+   * Sends a departure train from a depot to the bay of aircraft a once its arrival train has left and its bags are ready.
+   * Returns false while it waits for a train or the depot exit.
+   */
+  private sendDeparture(a: number): boolean {
+    const host = this.host!;
+    const trips = host.trips!;
+    const roads = host.roads;
+    const s = host.standIndexOf(a);
+    const docked = (this.dockedMask[a] & (1 << TRACTOR)) !== 0;
+    if (!roads.tripOk(s)) {
+      // No trip any more, so the load task needs a crew train again once the arrival train has gone; the bags are lost.
+      if (docked) return true;
+      if (!trips.unloadDone(a) || this.hasTrain(a)) return false;
+      this.pending[a] |= 1 << TRACTOR;
+      this.advance(a, sideOf[TRACTOR]);
+      return true;
     }
-    if (routed) {
-      this.rStand[v] = r;
-      this.rVer[v] = roads!.version;
-      if (fromUnit) this.outUnit++;
-      // The vehicle, and its train, start just outside the depot door, so no part of them is in the building.
-      const trainM = GSE[kind].lengthM + carts * (GSE[CART].lengthM + GROUND.train.hitchGapM);
-      this.placeAlong(v, roads!, roads!.inStart[r], roads!.inStart[r] + roads!.inLen[r], trainM);
-      this.state[v] = RoadIn;
+    if (docked || !trips.unloadDone(a) || !trips.ready(a)) return false;
+    const b = roads.standBay[s];
+    const r = roads.depotBayRoute(b);
+    if (this.out[TRACTOR] >= host.owned(TRACTOR)) return false;
+    if (!this.clearAt(roads.ptX[roads.inStart[r]], roads.ptY[roads.inStart[r]])) return false;
+    const v = this.alloc();
+    if (v < 0) return false;
+    const carts = host.cartsFor(a);
+    this.kind[v] = TRACTOR;
+    this.owner[v] = a;
+    this.prev[v] = -1;
+    this.out[TRACTOR]++;
+    this.counted[v] = 1;
+    this.trip[v] = TRIP_DEP;
+    this.tripLeg[v] = LEG_TO_BAY;
+    this.tripSer[v] = trips.serialOf(a);
+    this.tripBay[v] = b;
+    this.slot[v] = -1;
+    this.rStand[v] = r;
+    this.rVer[v] = roads.version;
+    const trainM = GSE[TRACTOR].lengthM + carts * (GSE[CART].lengthM + GROUND.train.hitchGapM);
+    this.placeAlong(v, roads, roads.inStart[r], roads.inStart[r] + roads.inLen[r], trainM);
+    this.state[v] = RoadIn;
+    if (carts > 0) this.hitchCarts(v, Math.min(carts, host.owned(CART) - this.out[CART]), true);
+    return true;
+  }
+
+  /** True while a tractor of the aircraft is out: driving in, docked or leaving its stand. */
+  private hasTrain(a: number): boolean {
+    for (let v = 0; v < MAX_VEHICLES; v++) if (this.active[v] === 1 && this.owner[v] === a && this.kind[v] === TRACTOR) return true;
+    return false;
+  }
+
+  /** Meters from a tractor's center to the center of its last cart. */
+  private trainReach(v: number): number {
+    let m = 0;
+    let lead = v;
+    for (let c = this.tail[v]; c >= 0; c = this.tail[c]) {
+      m += GSE[this.kind[lead]].lengthM / 2 + GROUND.train.hitchGapM + GSE[CART].lengthM / 2;
+      lead = c;
+    }
+    return m;
+  }
+
+  private lastOf(v: number): number {
+    let c = v;
+    while (this.tail[c] >= 0) c = this.tail[c];
+    return c;
+  }
+
+  /**
+   * A train at its bay's road connection point takes the lowest free slot: it turns along the bay face toward the slot,
+   * drives on until its carts are straight, then reverses into the slot so its last cart stands on the truck edge
+   * (docs/BAGGAGE.md 4.7). With every slot taken it waits.
+   */
+  private takeSlot(v: number): void {
+    const trips = this.host!.trips!;
+    const f = trips.frame(this.tripBay[v]);
+    if (!f) {
+      this.abortTrip(v);
+      return;
+    }
+    let k = -1;
+    for (let q = 0; q < f.slots && k < 0; q++) {
+      let used = false;
+      for (let o = 0; o < MAX_VEHICLES && !used; o++) if (o !== v && this.active[o] === 1 && this.trip[o] !== 0 && this.tripBay[o] === this.tripBay[v] && this.slot[o] === q) used = true;
+      if (!used) k = q;
+    }
+    if (k < 0) {
+      this.state[v] = BayWait;
+      return;
+    }
+    this.dropHeld(v);
+    this.slot[v] = k;
+    this.tripLeg[v] = LEG_AT_BAY;
+    const lane = BAGGAGE.bay.stagingLaneM;
+    const R = BAGGAGE.bay.turnRadiusM;
+    const uc = f.widthM / 2;
+    const uk = BAGGAGE.bay.slotWidthM * (k + 0.5);
+    const sg = uk >= uc ? 1 : -1;
+    const reach = this.trainReach(v);
+    const set = (xs: Float64Array, ys: Float64Array, i: number, u: number, w: number): void => {
+      const p = bayPoint(f, u, w);
+      xs[v * MAX_WP + i] = p.x;
+      ys[v * MAX_WP + i] = p.y;
+    };
+    // Forward: a quarter turn from the connection point onto the line along the bay face, then straight past the slot.
+    set(this.wpX, this.wpY, 0, uc + sg * R * (1 - C30), lane + 2 * R - R * S30);
+    set(this.wpX, this.wpY, 1, uc + sg * R * (1 - S30), lane + 2 * R - R * C30);
+    set(this.wpX, this.wpY, 2, uc + sg * R, lane + R);
+    set(this.wpX, this.wpY, 3, uk + sg * (R + reach + 2), lane + R);
+    this.wpN[v] = 4;
+    // Reverse, as the last cart runs: back along the face, a quarter turn into the lane, and down it to the truck edge.
+    set(this.outX, this.outY, 0, uk + sg * R, lane + R);
+    set(this.outX, this.outY, 1, uk + sg * R * (1 - S30), lane + R * C30);
+    set(this.outX, this.outY, 2, uk + sg * R * (1 - C30), lane + R * S30);
+    set(this.outX, this.outY, 3, uk, lane);
+    set(this.outX, this.outY, 4, uk, GSE[CART].lengthM / 2 + 0.3);
+    this.outN[v] = 5;
+    this.ti[v] = 0;
+    this.state[v] = BayIn;
+  }
+
+  /** Drives a vehicle forward along its waypoints; true once it stands on the last one. */
+  private stepPath(v: number, xs: Float64Array, ys: Float64Array, n: number, stepM: number): boolean {
+    const k = v * MAX_WP + this.ti[v];
+    const dx = xs[k] - this.x[v];
+    const dy = ys[k] - this.y[v];
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d <= stepM) {
+      this.x[v] = xs[k];
+      this.y[v] = ys[k];
+      if (this.ti[v] + 1 >= n) return true;
+      this.ti[v]++;
+      return false;
+    }
+    this.heading[v] = atan2Det(dy, dx);
+    this.x[v] += (dx / d) * stepM;
+    this.y[v] += (dy / d) * stepM;
+    return false;
+  }
+
+  /**
+   * One tick of a train reversing into its slot. The last cart runs the reverse path backward, and every unit ahead
+   * of it is dragged after the one behind it, hitch to hitch, as a train pushed back by its tractor tracks.
+   */
+  private stepReverse(v: number): boolean {
+    const c = this.lastOf(v);
+    const k = v * MAX_WP + this.ti[v];
+    const dx = this.outX[k] - this.x[c];
+    const dy = this.outY[k] - this.y[c];
+    const d = Math.sqrt(dx * dx + dy * dy);
+    let done = false;
+    if (d <= SLOW_STEP_M) {
+      this.x[c] = this.outX[k];
+      this.y[c] = this.outY[k];
+      if (this.ti[v] + 1 >= this.outN[v]) done = true;
+      else this.ti[v]++;
     } else {
-      this.ti[v] = 1;
-      this.x[v] = this.wpX[v * MAX_WP];
-      this.y[v] = this.wpY[v * MAX_WP];
-      this.heading[v] = atan2Det(this.wpY[v * MAX_WP + 1] - this.y[v], this.wpX[v * MAX_WP + 1] - this.x[v]);
-      this.state[v] = Drive;
+      // A cart faces the way it is towed, so backing up it faces away from where it goes.
+      this.heading[c] = atan2Det(-dy, -dx);
+      this.x[c] += (dx / d) * SLOW_STEP_M;
+      this.y[c] += (dy / d) * SLOW_STEP_M;
     }
-    if (carts > 0) this.hitchCarts(v, counted ? Math.min(carts, host!.owned(CART) - this.out[CART]) : carts, counted);
-    return v;
+    for (let j = c; this.lead[j] >= 0; j = this.lead[j]) {
+      const i = this.lead[j];
+      const front = GSE[this.kind[j]].lengthM / 2 + GROUND.train.hitchGapM;
+      const px = this.x[j] + cosLut(this.heading[j]) * front;
+      const py = this.y[j] + sinLut(this.heading[j]) * front;
+      const ex = this.x[i] - px;
+      const ey = this.y[i] - py;
+      const e = Math.sqrt(ex * ex + ey * ey);
+      if (e < 1e-6) continue;
+      const half = GSE[this.kind[i]].lengthM / 2;
+      this.x[i] = px + (ex / e) * half;
+      this.y[i] = py + (ey / e) * half;
+      this.heading[i] = atan2Det(ey, ex);
+    }
+    return done;
+  }
+
+  /** A train in its slot starts loading or unloading: one batch of bags at the bay's rate per bag. */
+  private startSlotWork(v: number): void {
+    const trips = this.host!.trips!;
+    const bags = trips.bags(this.tripSer[v], this.trip[v] === TRIP_ARR);
+    this.tripT[v] = bags > 0 ? gameSecondsToTicks(bags * BAGGAGE.bay.loadSecondsPerBag) : 1;
+    this.state[v] = BayWork;
+  }
+
+  /** Counts down the work at the slot, then hands the bags over and drives out to the connection point. */
+  private stepSlotWork(v: number): void {
+    const trips = this.host!.trips!;
+    if (this.tripT[v] > 0) {
+      this.tripT[v]--;
+      return;
+    }
+    if (this.trip[v] === TRIP_ARR) {
+      // A full bay keeps the train at its slot until the carousel takes bags away (docs/BAGGAGE.md 4.5).
+      if (!trips.dropOff(this.tripSer[v], false)) return;
+    } else {
+      trips.pickUp(this.tripSer[v]);
+    }
+    const f = trips.frame(this.tripBay[v]);
+    if (!f) {
+      this.abortTrip(v);
+      return;
+    }
+    const lane = BAGGAGE.bay.stagingLaneM;
+    const R = BAGGAGE.bay.turnRadiusM;
+    const uc = f.widthM / 2;
+    const uk = BAGGAGE.bay.slotWidthM * (this.slot[v] + 0.5);
+    const set = (i: number, u: number, w: number): void => {
+      const p = bayPoint(f, u, w);
+      this.wpX[v * MAX_WP + i] = p.x;
+      this.wpY[v * MAX_WP + i] = p.y;
+    };
+    set(0, uk, lane + R);
+    set(1, (uk + uc) / 2, lane + 1.6 * R);
+    const c = bayPoint(f, uc, lane + 2 * R);
+    this.wpX[v * MAX_WP + 2] = c.x;
+    this.wpY[v * MAX_WP + 2] = c.y;
+    this.wpN[v] = 3;
+    this.ti[v] = 0;
+    this.state[v] = BayOut;
+  }
+
+  /** At the connection point after the slot: an arrival train drives home, a departure train to its stand. */
+  private leaveBay(v: number): void {
+    const host = this.host!;
+    const roads = host.roads;
+    this.slot[v] = -1;
+    this.tripLeg[v] = LEG_FROM_BAY;
+    const b = this.tripBay[v];
+    if (this.trip[v] === TRIP_ARR) {
+      const r = roads.depotBayRoute(b);
+      if (!roads.bayConnected(b)) {
+        this.free(v);
+        return;
+      }
+      this.rStand[v] = r;
+      this.rVer[v] = roads.version;
+      this.ri[v] = roads.outStart[r];
+      this.state[v] = RoadOut;
+      return;
+    }
+    const a = this.owner[v];
+    const s = a >= 0 ? host.standIndexOf(a) : -1;
+    if (!roads.tripOk(s) || roads.standBay[s] !== b || host.trips!.serialOf(a) !== this.tripSer[v]) {
+      host.trips!.putBack(this.tripSer[v]);
+      if (a >= 0) this.depSent[a] = -1;
+      this.free(v);
+      return;
+    }
+    const r = roads.bayRoute(s);
+    this.rStand[v] = r;
+    this.rVer[v] = roads.version;
+    this.ri[v] = roads.inStart[r];
+    this.state[v] = RoadIn;
+  }
+
+  /** A departure train at its stand's road point takes the crew's stand path to the dock, or goes away when its flight left. */
+  private trainAtStand(v: number): void {
+    const host = this.host!;
+    const a = this.owner[v];
+    const st = a >= 0 ? this.traffic.state[a] : -1;
+    if (a < 0 || st !== AcState.Turnaround || host.trips!.serialOf(a) !== this.tripSer[v]) {
+      this.free(v);
+      return;
+    }
+    if (this.tripLeg[v] !== LEG_STAND) {
+      const s = host.standIndexOf(a);
+      this.dockPathFor(v, a, TRACTOR, s);
+      this.tripLeg[v] = LEG_STAND;
+      // Home from the stand is the depot route of the stand, as for the rest of the crew.
+      this.rStand[v] = host.roads.standRoad[s] === 1 ? s : -1;
+      this.rVer[v] = host.roads.version;
+    }
+    this.reachStand(v);
+  }
+
+  /** Ends a trip the road net no longer carries: arriving bags go into the bay, departing bags back to it, and the train goes. */
+  private abortTrip(v: number): void {
+    const trips = this.host?.trips;
+    if (trips) {
+      if (this.trip[v] === TRIP_ARR) trips.dropOff(this.tripSer[v], true);
+      else if (this.tripLeg[v] >= LEG_FROM_BAY) trips.putBack(this.tripSer[v]);
+    }
+    if (this.trip[v] === TRIP_DEP && this.owner[v] >= 0) this.depSent[this.owner[v]] = -1;
+    this.free(v);
+  }
+
+  /** The train no longer belongs to its aircraft once it is on its way to the bay, so it never holds up the pushback. */
+  private disown(v: number): void {
+    for (let c = v; c >= 0; c = this.tail[c]) this.owner[c] = -1;
   }
 
   /** Puts a vehicle the given distance along a lane from its first point, heading along it, with ri on the next point. */

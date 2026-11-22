@@ -158,6 +158,11 @@ export class Turnarounds {
     this.done[i] = allDone;
   }
 
+  /** True once the unload task of the aircraft's current turnaround is done (T78: its train then takes the bags to the bay). */
+  unloadDone(i: number): boolean {
+    return this.flightOf[i] >= 0 && this.phase[i * N + UNLOAD] === Done;
+  }
+
   /** The cause of a vehicle task waiting now, else the last one waited on, else 0. */
   blocker(i: number): number {
     const upgrades = this.vehicles.upgradesOf(i);

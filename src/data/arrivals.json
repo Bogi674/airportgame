@@ -4,7 +4,7 @@
   "deboardSecondsPerPax": 2.5,
   "remoteBusS": 480,
   "strandedMin": 60,
-  "claim": { "pollS": 30, "giveUpMin": 45 },
+  "claim": { "pollS": 30, "giveUpMin": 75 },
   "service": {
     "note": "eGate and customs as service nodes (docs/TERMINAL_ZONING.md section 6, TERMINAL_FIXTURES catalog).",
     "eGate": { "servers": 1, "serviceSeconds": 20, "referralShare": 0.08, "noGateProfiles": ["family"] },
