@@ -1,4 +1,5 @@
 import { FIXTURE_KEYS, WALL, ZONE, type TerminalGrid } from './business';
+import { seatCells } from './props';
 import { AUD, stepAud, zoneAccess, zoneIssues } from './terminalZones';
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
@@ -163,6 +164,19 @@ export function terminalIssues(g: TerminalGrid): string[] {
       queue[tail++] = j;
       if (g.fixture[j] === SEATING) seats = true;
       if (g.fixture[j] === GATE_DESK && g.fixtureRot[j] < TAIL_ROT) gateReached = true;
+    }
+  }
+  // Seat props (T76) block their cells, so a seat counts when its cell or a cell beside it is reached.
+  for (const c of seatCells(g)) {
+    if (seats) break;
+    const x = c % W;
+    const y = (c - x) / W;
+    if (g.zone[c] !== ZONE.Secure) continue;
+    if (air[c] === 1) seats = true;
+    for (let d = 0; d < 4 && !seats; d++) {
+      const nx = x + DX[d];
+      const ny = y + DY[d];
+      if (nx >= 0 && ny >= 0 && nx < W && ny < g.h && air[ny * W + nx] === 1) seats = true;
     }
   }
   if (!seats) issues.push('noSeatingLink');

@@ -241,7 +241,7 @@ describe('toilet visits', () => {
     const co = sim.cohorts;
     const v = queueAtToilet(sim);
     const g = sim.business.grids[0]!;
-    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'erase', x0: 84, y0: 46, x1: 86, y1: 47, variant: 0 } })).toEqual([]);
+    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'erase', x0: 84, y0: 40, x1: 86, y1: 41, variant: 0 } })).toEqual([]);
     for (let t = 0; t < 10; t++) sim.step();
     expect(co.stage[v]).not.toBe(Stage.VisitQueue);
     for (let t = 0; t < 6000; t++) {

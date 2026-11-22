@@ -71,18 +71,30 @@ describe('service tables follow the terminal', () => {
       if (id > 0 && SERVICE_KEYS.includes(FIXTURE_KEYS[id - 1] as ServiceKey) && g.fixtureRot[i]! < 5) anchors++;
     }
     expect(anchors).toBeGreaterThan(0);
-    expect(sim.business.serviceTable(gid)!.count).toBe(anchors);
+    // The stall props of the hall form one washroom node (T76).
+    expect(sim.business.serviceTable(gid)!.count).toBe(anchors + 1);
   });
 
-  it('adding a toilet adds a node, erasing it removes one, and the version moves each time', () => {
+  it('adding a toilet stall adds a server, removing it takes it away, and the version moves each time', () => {
     const { sim, gid } = terminalSim();
     const before = sim.business.serviceTable(gid)!.count;
     const v0 = sim.business.serviceVersion;
-    expect(terminalEdit(sim, gid, { op: 'fixture', x0: 60, y0: 46, x1: 61, y1: 47, variant: KEY('toilet') })).toEqual([]);
-    expect(sim.business.serviceTable(gid)!.count).toBe(before + 1);
+    // Walls only part the halls at the lanes, so the building is one room and its stalls one washroom (T76). Without
+    // stalls there is no washroom, and every stall adds a server to it.
+    const servers = (): number => {
+      const sn = sim.business.serviceTable(gid)!;
+      let n = 0;
+      for (let k = 0; k < sn.count; k++) if (sn.kind[k] === KEY('toilet')) n += sn.servers[k]!;
+      return n;
+    };
+    expect(servers()).toBe(4);
+    expect(run(sim, { type: 'placeProp', building: gid, asset: 'washroom.wcStall', x: 120, y: 80, rot: 0 })).toEqual([]);
+    expect(servers()).toBe(5);
+    expect(sim.business.serviceTable(gid)!.count).toBe(before);
     expect(sim.business.serviceVersion).toBeGreaterThan(v0);
     const v1 = sim.business.serviceVersion;
-    expect(terminalEdit(sim, gid, { op: 'erase', x0: 60, y0: 46, x1: 61, y1: 47, variant: 0 })).toEqual([]);
+    expect(run(sim, { type: 'removeProp', building: gid, x: 120.5, y: 80.5 })).toEqual([]);
+    expect(servers()).toBe(4);
     expect(sim.business.serviceTable(gid)!.count).toBe(before);
     expect(sim.business.serviceVersion).toBeGreaterThan(v1);
   });

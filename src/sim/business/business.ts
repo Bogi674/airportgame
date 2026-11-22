@@ -29,7 +29,8 @@ import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells,
 import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type StaffRow } from '@shared/business';
+import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
+import { cellsOfRect, convertLegacyFixtures, planProp, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { Market } from '../market/market';
@@ -49,6 +50,7 @@ const CAT_INDEX: Record<LedgerCategory, number> = Object.fromEntries(LEDGER_CATE
 const FEE_MULT = [0.8, 1, 1.25] as const;
 const FEE_LF = [0.08, 0, -0.08] as const;
 const TERMINAL_SEAT_THRESHOLD = 15;
+const TOILET_ID = FIXTURE_KEYS.indexOf('toilet') + 1;
 /** Rows the flights board and the offers sheet show for scheduled flights. Display only, the sim keeps every flight. */
 const SCHEDULE_ROWS = 60;
 const MINUTES_PER_DAY = 24 * 60;
@@ -199,6 +201,13 @@ export class Business {
   /** Layout problems of the main terminal building, from the walls, doors and zones laid. */
   roomIssues: string[] = [];
   secureSeating = 0;
+  /** Passenger amenities from props (T76), 0 to 1 each: seats against gate desks, ambience against passenger floor. */
+  comfortScore = 0;
+  ambienceScore = 0;
+  /** Servers of every washroom, the summed capacity of their toilet props. */
+  private toiletServers = 0;
+  /** Summed price of every prop, for upkeep and the demolition refund. */
+  private propCost = 0;
   /** True when some building has a gate desk, and whether some building with security and secure seating has none. */
   private anyGateDesk = false;
   private gatelessHall = false;
@@ -337,11 +346,15 @@ export class Business {
 
   private computeFacilities(): void {
     let cells = 0;
+    let comfort = 0;
+    let ambience = 0;
+    let area = 0;
+    let propCostSum = 0;
+    let gateDesks = 0;
     this.secureSeating = 0;
     this.anyGateDesk = false;
     this.gatelessHall = false;
     for (const g of this.grids) {
-      let seats = 0;
       let lanes = 0;
       let gates = 0;
       for (let i = 0; i < g.fixture.length; i++) {
@@ -350,16 +363,36 @@ export class Business {
         const k = fixtureKey(f);
         if (k === 'atc') {
           cells++;
-        } else if (k === 'seating' && g.zone[i] === ZONE.Secure) {
-          this.secureSeating++;
-          seats++;
         } else if (k === 'security') lanes++;
         else if (k === 'gateDesk' && g.fixtureRot[i] < 5) gates++;
       }
+      const t = propTotals(g);
+      const seats = t.secureSeats;
+      this.secureSeating += t.secureSeats;
+      comfort += t.comfortSeats;
+      ambience += t.ambience;
+      area += t.passengerAreaM2;
+      propCostSum += t.cost;
+      gateDesks += gates;
       if (gates > 0) this.anyGateDesk = true;
       if (seats > 0 && lanes > 0 && gates === 0) this.gatelessHall = true;
     }
     this.atcCells = cells;
+    const P = BUSINESS.props;
+    this.comfortScore = Math.min(1, comfort / (P.seatsPerGateDesk * Math.max(1, gateDesks)));
+    this.ambienceScore = area > 0 ? Math.min(1, ambience / (area / P.ambienceAreaM2)) : 0;
+    this.propCost = propCostSum;
+    // Washrooms are toilet nodes of the service tables, one per room with toilet props (T76).
+    let washrooms = 0;
+    this.toiletServers = 0;
+    for (const sn of this.serviceNodes) {
+      for (let k = 0; k < sn.count; k++) {
+        if (sn.kind[k] !== TOILET_ID) continue;
+        washrooms++;
+        this.toiletServers += sn.servers[k]!;
+      }
+    }
+    this.totals.toilet = washrooms;
     let main: TerminalGrid | null = null;
     for (const g of this.grids) if (main === null || cellCountOf(g) > cellCountOf(main)) main = g;
     this.roomIssues = main ? terminalIssues(main) : [];
@@ -564,6 +597,60 @@ export class Business {
     return removed;
   }
 
+  // Props (T76) ----------------------------------------------------------------
+
+  /** Places a prop on a floor of a building, paying its price. Returns a problem code or null. */
+  placeProp(building: number, p: Prop): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const prop: Prop = { asset: p.asset, x: p.x, y: p.y, rot: p.rot };
+    const plan = planProp(g, prop);
+    if (plan.problem) return plan.problem.code + argsOf(plan.problem.args);
+    if (plan.cost > this.host.getCash()) return `insufficientFunds|cost=${plan.cost}`;
+    if (plan.cost > 0) this.host.book('construction', -plan.cost);
+    g.props.push(prop);
+    this.refreshProp(g, prop);
+    return null;
+  }
+
+  /** Removes the topmost prop under the point (x, y) in grid meters and refunds its full price, which stands in for undo. */
+  removeProp(building: number, x: number, y: number): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const i = propAt(g.props, x, y);
+    if (i < 0) return 'nothingThere';
+    const [prop] = g.props.splice(i, 1);
+    this.host.book('construction', propCost(prop!.asset));
+    this.refreshProp(g, prop!);
+    return null;
+  }
+
+  /** Rebuilds the derived data of a grid around one prop that came or went. */
+  private refreshProp(g: TerminalGrid, p: Prop): void {
+    const r = propRect(p)!;
+    const c = cellsOfRect(r);
+    this.refreshGrid(g.id, c.x0, c.y0, c.x1, c.y1);
+    this.onGridEdited?.(g.id);
+  }
+
+  /**
+   * Turns the seating and toilet fixtures of a save from before version 36 into props (T76, owner 2026-11-22). Cohorts
+   * queued at the old toilet blocks are evicted and choose again. Returns the number of cells converted.
+   */
+  convertLegacyProps(): number {
+    let n = 0;
+    for (let gi = 0; gi < this.grids.length; gi++) {
+      const g = this.grids[gi]!;
+      const k = convertLegacyFixtures(g);
+      if (k === 0) continue;
+      n += k;
+      this.walkGraphs[gi] = buildWalkGraph(g);
+      this.serviceNodes[gi] = rebuildServiceNodes(this.serviceNodes[gi]!, g, this.walkGraphs[gi]!, this.closedCells(g));
+    }
+    if (n > 0) this.bumpTerminals();
+    return n;
+  }
+
   private bumpTerminals(): void {
     this.walkVersion++;
     this.serviceVersion++;
@@ -573,7 +660,7 @@ export class Business {
   demolishTerminal(id: number): string | null {
     const i = this.grids.findIndex((x) => x.id === id);
     if (i < 0) return 'nothingThere';
-    this.host.book('construction', Math.round(this.grids[i].cost * 0.25));
+    this.host.book('construction', Math.round((this.grids[i].cost + propTotals(this.grids[i]).cost) * 0.25));
     this.grids.splice(i, 1);
     this.gridRemoved?.(i);
     this.walkGraphs.splice(i, 1);
@@ -1065,6 +1152,7 @@ export class Business {
     for (const t of af.taxiways) upkeep += (t.cost * SURFACE_SPEC[t.surface].upkeepPct) / 100 / 365;
     for (const a of af.aprons) upkeep += (a.cost * SURFACE_SPEC[a.surface].upkeepPct) / 100 / 365;
     for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
+    upkeep += (this.propCost * BUSINESS.props.upkeepPctPerMonth * 12) / 100 / 365;
     for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
     for (const b of af.buildings ?? []) upkeep += b.cost * GROUND.buildingUpkeepShare;
     this.host.book('upkeep', -Math.round(upkeep));
@@ -1093,7 +1181,7 @@ export class Business {
 
   /**
    * The rating follows two experiences (user, 2026-11-17). Passengers judge toilets, shops and food,
-   * queues (the share of passengers served in time) and punctuality; airlines judge ground handling
+   * queues (the share of passengers served in time), punctuality and the amenities of the props (T76); airlines judge ground handling
    * support (turnarounds with no vehicle or crew delay), airside infrastructure and punctuality. Cleanliness joins both (T63).
    * Each experience is the mean of its parts, the rating target the mean of the two.
    */
@@ -1106,12 +1194,13 @@ export class Business {
   private updateRating(): void {
     const leased = this.terminals.reduce((n, t) => n + t.leased, 0);
     const hasTerminal = this.terminals.length > 0;
-    const toilets = hasTerminal ? Math.min(1, this.totals.toilet / 4) : 0;
+    const toilets = hasTerminal ? Math.min(1, this.toiletServers / BUSINESS.props.toiletServersTarget) : 0;
+    const amenities = hasTerminal ? (this.comfortScore + this.ambienceScore) / 2 : 0;
     const shops = hasTerminal ? Math.min(1, leased / 4) : 0;
     const queues = hasTerminal ? this.satisfaction : 0;
     // Missing bags weigh missingBagWeight each against the bags checked today. With none checked the term is a full score.
     const bagScore = Math.max(0, 1 - BAGGAGE.missingBagWeight * (this.bagMissingShare ? this.bagMissingShare() : 0));
-    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore + bagScore) / 6;
+    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore + bagScore + amenities) / 7;
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
     this.airlineScore = (this.handlingScore + infra + this.onTime + this.cleanScore) / 4;
     const target = 100 * (this.paxScore + this.airlineScore) / 2;
@@ -1374,6 +1463,10 @@ export class Business {
         if (g.fixtureLevel[i] > 1 || g.fixtureMode[i] > 0) acc = foldU32(foldU32(acc, g.fixtureLevel[i]), g.fixtureMode[i]);
       }
     }
+    // Props hash in placement order (T76). Grids without props keep their hash.
+    for (const g of this.grids) {
+      for (const p of g.props) acc = foldU32(foldU32(foldU32(foldU32(acc, propHashId(p.asset)), Math.round(p.x * 2) + 65536), Math.round(p.y * 2) + 65536), p.rot);
+    }
     for (const w of this.fixtureWorks) acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, w.building), w.x + 65536), w.y + 65536), w.to), w.doneTick % 0xffffffff);
     // Queues only enter the hash once someone waits, so idle games keep their hashes.
     if (this.serviceNodes.some((sn) => sn.active > 0 || sn.evictedCount > 0)) {
@@ -1410,6 +1503,8 @@ const argsOf = (args?: Record<string, string | number>): string => {
 
 interface SavedGrid {
   id: number;
+  /** Props, since version 36 (T76). */
+  props?: Prop[];
   ox: number;
   oy: number;
   headingDeg: number;
@@ -1435,11 +1530,18 @@ interface SavedGrid {
 }
 
 const cellCountOf = (g: TerminalGrid): number => cellCount(g);
+
+/** A stable 32 bit number for a prop asset id, folded character by character. */
+function propHashId(asset: string): number {
+  let h = 0;
+  for (let i = 0; i < asset.length; i++) h = foldU32(h, asset.charCodeAt(i));
+  return h;
+}
 /** Size of the fixed grid that saves before format 6 used. */
 const LEGACY_GRID = 160;
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost, props: g.props.map((p) => ({ ...p })) };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
@@ -1462,6 +1564,7 @@ function loadGrid(sg: SavedGrid): TerminalGrid {
   unpackInto(sg.vWall, g.vWall, Uint8Array);
   unpackInto(sg.leased, g.leased, Uint8Array);
   g.cost = sg.cost;
+  g.props = (sg.props ?? []).map((p) => ({ ...p }));
   return g;
 }
 

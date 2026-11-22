@@ -4,6 +4,9 @@ import { isLeveled, levelServiceSeconds } from '@shared/fixtureLevels';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { fixtureCells } from '@shared/terminalOps';
 import { AUD, flowStep, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
+import { washrooms, type Washroom } from '@shared/props';
+import { labelRooms } from '@shared/terminalRooms';
+import { nearestNode } from './walkDistance';
 import type { Rng } from '../rng';
 import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
@@ -28,6 +31,7 @@ const NORMAL_ROLLS = 12;
 export const DONE_PER_NODE = 16;
 
 const SERVICE_IDS: readonly number[] = SERVICE_KEYS.map((k) => FIXTURE_KEYS.indexOf(k) + 1);
+const TOILET_ID = FIXTURE_KEYS.indexOf('toilet') + 1;
 const AREA_PER_CELL = TERMINAL_CELL_M * TERMINAL_CELL_M;
 const DX = [-1, 1, 0, 0];
 const DY = [0, 0, -1, 1];
@@ -129,7 +133,7 @@ export function stationNeed(key: FixtureKey, level: number): number {
  */
 function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, start: number, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): { counted: number; seeds: number } {
   const W = g.w;
-  const transition = transitionOf(fixtureKey(g.fixture[start]!), g.fixtureMode[start]!);
+  const transition = g.fixture[start] === 0 ? null : transitionOf(fixtureKey(g.fixture[start]!), g.fixtureMode[start]!);
   // The audience whose walk toward the anchor must be possible: passengers unless the fixture is staff only.
   const need = transition && (transition.aud & AUD.Pax) !== 0 ? AUD.Pax : AUD.Staff;
   let tail = 0;
@@ -185,14 +189,17 @@ function cellIndexArray(g: TerminalGrid, x: number, y: number): number {
 }
 
 /**
- * Builds the service node table of one terminal floor. Nodes are the anchors of the service fixtures, in cell order.
- * Anchors at the array cells in `closed` are under works: they keep their node but take no queue and need no staff.
+ * Builds the service node table of one terminal floor. Nodes are the anchors of the service fixtures and the washrooms
+ * of the toilet props (T76), a toilet node each, in cell order. Anchors at the array cells in `closed` are under works:
+ * they keep their node but take no queue and need no staff.
  */
 export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readonly number[] = []): ServiceNodes {
   const n = g.w * g.h;
   const anchors: number[] = [];
+  const wash = new Map<number, Washroom>();
+  if (g.props.length > 0) for (const w of washrooms(g, labelRooms(g), wg.blocked)) wash.set(w.cell, w);
   for (let c = 0; c < n; c++) {
-    if (SERVICE_IDS.includes(g.fixture[c]!) && g.fixtureRot[c]! < TAIL_ROT) anchors.push(c);
+    if ((SERVICE_IDS.includes(g.fixture[c]!) && g.fixtureRot[c]! < TAIL_ROT) || wash.has(c)) anchors.push(c);
   }
   const count = anchors.length;
   const slots = BUSINESS.terminal.service.queueSlots;
@@ -245,9 +252,10 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readon
 
   for (let k = 0; k < count; k++) {
     const c = anchors[k]!;
-    const id = g.fixture[c]!;
+    const w = wash.get(c);
+    const id = w ? TOILET_ID : g.fixture[c]!;
     const key = fixtureKey(id) as ServiceKey;
-    const t = timing(key, g.fixtureMode[c]!, g.fixtureLevel[c]!);
+    const t = w ? { servers: w.servers, meanS: w.meanS } : timing(key, g.fixtureMode[c]!, g.fixtureLevel[c]!);
     const x = c % g.w;
     nodes.kind[k] = id;
     nodes.cell[k] = c;
@@ -268,7 +276,8 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readon
       // A queue cell reached from position p stores p - seeds, and one reached from a start cell stores -1.
       cellParent.push(parent[i]! < seeds ? -1 : parent[i]! - seeds);
     }
-    nodes.walkNode[k] = wg.cellNode[c]!;
+    // A washroom node stands on plain floor, which is a walk node only when it holds its lattice node.
+    nodes.walkNode[k] = w ? nearestNode(wg, c) : wg.cellNode[c]!;
     if (closed.includes(c)) {
       nodes.closed[k] = 1;
       nodes.queueCap[k] = 0;

@@ -51,7 +51,8 @@ describe('zoned terminal in the sim', () => {
     const wg = a.business.walkGraphs[0]!;
     const at = (x: number, y: number): number => a.business.nearestNode(g.id, cellIndex(g, x, y));
     const curb = a.business.curbNode(0);
-    const seat = at(76, 46);
+    // Seat props block row 46 (T76), so the walk ends in front of them.
+    const seat = at(76, 47);
     expect(curb).toBeGreaterThanOrEqual(0);
     // Passengers walk in through a lane and out through the exit.
     expect(Number.isFinite(a.business.walkDistance(g.id, curb, seat))).toBe(true);

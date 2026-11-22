@@ -22,6 +22,7 @@ import {
 } from './business';
 import { distToSegment, type Pt } from './geom';
 import { isLeveled, levelCost } from './fixtureLevels';
+import { cellsOfRect, propRect } from './props';
 import { cosLut, sinLut } from './trig';
 import { checkPoint, type BuildContext, type Problem } from './validate';
 
@@ -124,7 +125,7 @@ export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: numb
 
 /** An empty building. Its grid is allocated as edits reach into it. */
 export function newGrid(id: number, ox: number, oy: number, headingDeg: number): TerminalGrid {
-  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), fixtureOff: new Uint8Array(0), fixtureLevel: new Uint8Array(0), fixtureMode: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0 };
+  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), fixtureOff: new Uint8Array(0), fixtureLevel: new Uint8Array(0), fixtureMode: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0, props: [] };
 }
 
 /** The grid of one floor of one building, or undefined. */
@@ -283,6 +284,8 @@ function hasDirection(key: FixtureKey, level: number): boolean {
 }
 
 const MODE_KEYS: readonly FixtureKey[] = ['passport', 'eGate', 'security'];
+/** Fixtures that became props in T76. Their ids stay in FIXTURE_KEYS, since ids are saved, but they are never built. */
+export const RETIRED_KEYS: readonly FixtureKey[] = ['seating', 'toilet'];
 
 export interface Env {
   ctx: BuildContext;
@@ -398,6 +401,8 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
     if (x1 <= x0 || y1 <= y0) return none({ code: 'terminalBounds' });
     if (e.op === 'fixture' && isBaggageFixture(e.variant)) return none({ code: 'baggageNodeTool' });
     if (e.op === 'fixture' && (e.variant < 1 || e.variant > FIXTURE_COUNT)) return none({ code: 'nothingThere' });
+    // Seating and toilets are props since T76: seats and washroom items on the 0.5 m grid.
+    if (e.op === 'fixture' && RETIRED_KEYS.includes(fixtureKey(e.variant))) return none({ code: 'fixtureIsProp' });
     let blocked: Problem | null = null;
     const key = e.op === 'fixture' && e.variant >= 1 && e.variant <= FIXTURE_COUNT ? fixtureKey(e.variant) : null;
     const level = e.level ?? 1;
@@ -537,7 +542,16 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       apply: () => {
         if (e.op === 'foundation') ensureCells(g, x0, y0, x1, y1);
         for (const w of writes) w();
-        if (e.op === 'erase') pruneWalls(g);
+        if (e.op === 'erase') {
+          pruneWalls(g);
+          // Props lose their floor with the cells under them, with no refund, as fixtures do (T76).
+          g.props = g.props.filter((p) => {
+            const r = propRect(p);
+            if (!r) return false;
+            const c = cellsOfRect(r);
+            return c.x1 < x0 || c.x0 >= x1 || c.y1 < y0 || c.y0 >= y1;
+          });
+        }
         g.cost += cost;
       },
     };

@@ -152,8 +152,19 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   // Passengers leave the secure hall through one exit that flows west, from secure to public.
   if (lanes > 0) edit(id, { op: 'fixture', x0: 72, y0: 51, x1: 73, y1: 52, variant: 20, rot: 3, level: 1 });
   row(3, o.belt ?? 2, 62, 42);
-  row(4, o.seating ?? 6, 76, 46);
-  row(5, o.toilet ?? 2, 84, 46);
+  // Seating and toilets are props (T76): two beam seats of 3 per former seating cell, two stalls per former toilet cell
+  // against the north wall.
+  const prop = (asset: string, x: number, y: number): void => {
+    problems.push(...run(sim, { type: 'placeProp', building: id, asset, x, y, rot: 0 }));
+  };
+  for (let k = 0; k < (o.seating ?? 6); k++) {
+    prop('bench.beam3', (76 + k) * 2, 92);
+    prop('bench.beam3', (76 + k) * 2, 93);
+  }
+  for (let k = 0; k < (o.toilet ?? 2); k++) {
+    prop('washroom.wcStall', (84 + k) * 2, 80);
+    prop('washroom.wcStall', (84 + k) * 2 + 1, 80);
+  }
   row(16, o.gateDesk ?? 0, 76, 42);
   if (o.shop) row(6, 1, 86, 46);
   if (o.atc !== false) problems.push(...run(sim, { type: 'buildTower', x: TEST_TOWER.x, y: TEST_TOWER.y, level: 5 }));

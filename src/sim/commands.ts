@@ -73,6 +73,10 @@ export type Command =
   | { type: 'upgradeFixture'; building: number; x: number; y: number }
   /** Cancels the upgrade works of the fixture covering logical cell (x, y), with a full refund (T74). */
   | { type: 'cancelFixtureUpgrade'; building: number; x: number; y: number }
+  /** Places a prop of the kit on floor 0 of a building (T76): x and y in grid meters on the 0.5 m grid, rot in quarter turns. */
+  | { type: 'placeProp'; building: number; asset: string; x: number; y: number; rot: 0 | 1 | 2 | 3 }
+  /** Removes the topmost prop under the point (x, y) in grid meters with a full refund (T76). */
+  | { type: 'removeProp'; building: number; x: number; y: number }
   /** Baggage network (T43): place a node on a building grid, remove it, assign a stand to a bay (bayId -1 unassigns), or rerun the link rule of a node. */
   | { type: 'placeBaggageNode'; building: number; kind: 'machine' | 'bay' | 'carousel'; cx: number; cy: number; rot: 0 | 1 | 2 | 3; widthCells: number }
   | { type: 'removeBaggageNode'; id: number }

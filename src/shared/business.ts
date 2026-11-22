@@ -141,6 +141,18 @@ export const TERMINAL_MARGIN = 40;
 export const TERMINAL_LEVEL_MIN = -2;
 export const TERMINAL_LEVEL_MAX = 3;
 
+/**
+ * A prop on the 0.5 m sub grid (T76). asset is a catalog id. x and y are the corner of its footprint with the smallest
+ * coordinates, in meters of the grid's logical frame (logical cell x starts at 2 x meters), multiples of 0.5. rot is the
+ * number of quarter turns clockwise; rot 0 has the side people use at the bottom (+y) and the back at the top.
+ */
+export interface Prop {
+  asset: string;
+  x: number;
+  y: number;
+  rot: 0 | 1 | 2 | 3;
+}
+
 /** One floor of one terminal building: the floor, fixtures and walls the player laid. */
 export interface TerminalGrid {
   id: number;
@@ -181,8 +193,10 @@ export interface TerminalGrid {
   vWall: Uint8Array;
   /** 1 when a shop fixture has a tenant. */
   leased: Uint8Array;
-  /** Money spent on this building, for demolition refunds. */
+  /** Money spent on this building, for demolition refunds. Props keep their own price, see propCost. */
   cost: number;
+  /** Props on this floor in placement order (T76): furniture, washroom items, decoration and the like on the 0.5 m grid. */
+  props: Prop[];
   /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
   bagNodes?: BagDrawNode[];
   /** Fixtures of this building under upgrade works, set only on the copies sent to the renderer (T74). */

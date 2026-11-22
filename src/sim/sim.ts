@@ -495,6 +495,12 @@ export class Sim {
       case 'cancelFixtureUpgrade':
         this.report(this.business.cancelFixtureUpgrade(cmd.building, cmd.x, cmd.y));
         break;
+      case 'placeProp':
+        this.report(this.business.placeProp(cmd.building, { asset: cmd.asset, x: cmd.x, y: cmd.y, rot: cmd.rot }));
+        break;
+      case 'removeProp':
+        this.report(this.business.removeProp(cmd.building, cmd.x, cmd.y));
+        break;
       case 'placeBaggageNode':
         this.report(this.baggage.place(cmd));
         break;
@@ -669,6 +675,7 @@ export class Sim {
       hWall: g.hWall.slice(),
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),
+      props: g.props.map((p) => ({ ...p })),
     }));
   }
 
@@ -804,6 +811,10 @@ export class Sim {
     this.turns.loadState(save.turnarounds);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
     this.staff.loadState(save.staff as StaffSave | undefined);
+    if (save.convertProps) {
+      const n = this.business.convertLegacyProps();
+      if (n > 0) this.eventQueue.push(`propsConverted|n=${n}`);
+    }
     if (save.legacyLanes) {
       const n = this.business.removeLegacyLanes(save.legacyLanes);
       if (n > 0) this.eventQueue.push(`lanesRemoved|n=${n}`);

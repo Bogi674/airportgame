@@ -58,6 +58,20 @@ const SCENARIOS: Scenario[] = [
   { name: 'people20k', seed: 'STRESS-PEOPLE', stands: 30, perHour: 240, budgetMsPerTick: 4, peopleTerminal: true, minCohorts: 20_000, minPeople: 40_000, arrivals: { type: 'b777_300er', count: 200, gapTicks: 30, turnTicks: 14_000 } },
 ];
 
+/** Two beam seats of 3 in each cell of a row of logical cells [x0, x1) at row y, as a seating fixture row was before T76. */
+function seatRow(sim: Sim, building: number, x0: number, x1: number, y: number): void {
+  for (let x = x0; x < x1; x++) {
+    for (const dy of [0, 1]) sim.enqueue({ type: 'placeProp', building, asset: 'bench.beam3', x: x * 2, y: y * 2 + dy, rot: 0 });
+  }
+}
+
+/** Two stalls in each cell of a row of logical cells [x0, x1) whose top edge is the wall at row y (T76). */
+function stallRow(sim: Sim, building: number, x0: number, x1: number, y: number): void {
+  for (let x = x0; x < x1; x++) {
+    for (const dx of [0, 1]) sim.enqueue({ type: 'placeProp', building, asset: 'washroom.wcStall', x: x * 2 + dx, y: y * 2, rot: 0 });
+  }
+}
+
 /** A 640 by 120 m terminal south of the stands, with check in, security, seating and shops laid in it. */
 function buildBigTerminal(sim: Sim): void {
   const { ox, oy } = originFor(3200, 5600, 90);
@@ -75,7 +89,7 @@ function buildBigTerminal(sim: Sim): void {
   edit(id, { op: 'wall', x0: 172, y0: 92, x1: 172, y1: 100, variant: 1 });
   edit(id, { op: 'fixture', x0: 172, y0: 60, x1: 173, y1: 80, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 172, y0: 91, x1: 173, y1: 92, variant: 20, rot: 3, level: 1 });
-  edit(id, { op: 'fixture', x0: 200, y0: 60, x1: 340, y1: 64, variant: 4 });
+  for (let y = 60; y < 64; y++) seatRow(sim, id, 200, 340, y);
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 360, y1: 40, variant: 1 });
   sim.step();
 }
@@ -109,13 +123,14 @@ function buildCohortTerminal(sim: Sim): void {
   edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 48, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 51, x1: 73, y1: 52, variant: 20, rot: 3, level: 1 });
   edit(id, { op: 'fixture', x0: 76, y0: 44, x1: 84, y1: 45, variant: 16 });
-  edit(id, { op: 'fixture', x0: 76, y0: 46, x1: 82, y1: 47, variant: 4 });
+  seatRow(sim, id, 76, 82, 46);
+  sim.step();
   if (sim.business.cohortGrid(0) < 0) throw new Error('cohort terminal has no eligible grid');
 }
 
 /**
  * A 120 by 30 cell terminal at the cohort terminal origin: a public hall with a curb door and 24 check in desks, a secure
- * hall behind a wall with 12 security lanes and a security exit, and in the secure hall 16 gate desks, seating, toilets
+ * hall behind a wall with 12 security lanes and a security exit, and in the secure hall 16 gate desks, seat props, stalls
  * and one of each shop kind in a commercial area. Departing cohorts walk through every service point and visit the shops.
  */
 function buildPeopleTerminal(sim: Sim): void {
@@ -143,8 +158,10 @@ function buildPeopleTerminal(sim: Sim): void {
   edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 54, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 57, x1: 73, y1: 58, variant: 20, rot: 3, level: 1 });
   edit(id, { op: 'fixture', x0: 76, y0: 44, x1: 92, y1: 45, variant: 16 });
-  edit(id, { op: 'fixture', x0: 76, y0: 48, x1: 124, y1: 49, variant: 4 });
-  edit(id, { op: 'fixture', x0: 76, y0: 52, x1: 88, y1: 53, variant: 5 });
+  seatRow(sim, id, 76, 124, 48);
+  // The toilet blocks of before T76 are stalls against the north wall now.
+  stallRow(sim, id, 76, 88, 40);
+  sim.step();
   edit(id, { op: 'zone', x0: 100, y0: 56, x1: 112, y1: 58, variant: 2 });
   for (let k = 0; k < 6; k++) edit(id, { op: 'fixture', x0: 100 + 2 * k, y0: 56, x1: 101 + 2 * k, y1: 57, variant: 6 + k });
   if (sim.business.cohortGrid(0) < 0) throw new Error('people terminal has no eligible grid');

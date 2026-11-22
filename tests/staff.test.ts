@@ -209,7 +209,7 @@ describe('staff stations and service factor', () => {
     expect(m).toBeGreaterThanOrEqual(0);
     const g = sim.business.grids[0]!;
     const before = sim.business.serviceVersion;
-    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'fixture', x0: 88, y0: 48, x1: 89, y1: 49, variant: 5 } })).toEqual([]);
+    expect(run(sim, { type: 'placeProp', building: g.id, asset: 'decor.planterSmall', x: 176, y: 96, rot: 0 })).toEqual([]);
     expect(sim.business.serviceVersion).toBeGreaterThan(before);
     expect(st.stIdx[m]).toBeGreaterThanOrEqual(0);
     expect(sim.business.serviceNodes[0]!.staffFactor[st.sNode[st.stIdx[m]!]!]).toBeGreaterThan(0);

@@ -16,6 +16,7 @@ import standSizesJson from './stand_sizes.json';
 import standAccessJson from './stand_access.json';
 import surfacesJson from './surfaces.json';
 import turnaroundsJson from './turnarounds.json';
+import fixtureCatalogJson from './fixtures/catalog.json';
 import {
   airfieldCodesSchema,
   baggageSchema,
@@ -35,6 +36,8 @@ import {
   standSizesSchema,
   surfacesSchema,
   turnaroundsSchema,
+  fixtureCatalogSchema,
+  type FixtureCatalog,
   type AirfieldCodes,
   type ArrivalsData,
   type DeparturesData,
@@ -96,6 +99,9 @@ export const TURNAROUNDS: TurnaroundsData = turnaroundsSchema.parse(turnaroundsJ
 
 /** Service roads, apron lanes, the ground handling depot and vehicle trains. */
 export const GROUND: GroundData = groundSchema.parse(groundJson);
+
+/** The terminal asset kit catalog: every fixture and prop with its size, mount, zones and stats (T73, T76). */
+export const FIXTURE_CATALOG: FixtureCatalog = fixtureCatalogSchema.parse(fixtureCatalogJson);
 
 export type GseSpec = GseData['vehicles'][number];
 

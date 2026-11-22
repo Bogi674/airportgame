@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 35;
+export const SAVE_VERSION = 36;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -45,6 +45,8 @@ export interface SaveData {
    * removes them and refunds their cost, since a lane now has the kit footprint. Never written by a save.
    */
   legacyLanes?: number[][];
+  /** Set by the migration to version 36 (T76): seating and toilet fixtures become props on restore. Never written by a save. */
+  convertProps?: boolean;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -385,6 +387,12 @@ export function migrate(raw: unknown): SaveData {
     }
     if (lanes.some((l) => l.length > 0)) (save as { legacyLanes?: number[][] }).legacyLanes = lanes;
     save.version = 35;
+  }
+  // Version 35 to 36: props on the 0.5 m grid (T76). Grids gain a props list, which loads empty, and every seating and
+  // toilet fixture becomes props on restore, since both are props now.
+  if (save.version < 36) {
+    (save as { convertProps?: boolean }).convertProps = true;
+    save.version = 36;
   }
   return save as SaveData;
 }
