@@ -1,4 +1,4 @@
-import { ARRIVALS, BUSINESS, STAFF } from '@data/index';
+import { ARRIVALS, BUSINESS, DEPARTURES, STAFF } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
@@ -85,8 +85,12 @@ export interface ServiceNodes {
   staffFactor: Float32Array;
 }
 
-/** Module timing for a service key. Every service key carries both values in the data. */
-function timing(key: ServiceKey): { servers: number; meanS: number } {
+/**
+ * Module timing for a service key. Every service key carries both values in the data. A passport booth or eGate in
+ * departure mode (mode 0) takes its own departure values (T79).
+ */
+function timing(key: ServiceKey, mode: number): { servers: number; meanS: number } {
+  if ((key === 'passport' || key === 'eGate') && mode === 0) return { servers: DEPARTURES.service[key].servers, meanS: DEPARTURES.service[key].serviceSeconds };
   if (key === 'eGate' || key === 'customs') return { servers: ARRIVALS.service[key].servers, meanS: ARRIVALS.service[key].serviceSeconds };
   const m = BUSINESS.modules[key];
   if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error(`${key} has no service timing`);
@@ -200,7 +204,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     const c = anchors[k]!;
     const id = g.fixture[c]!;
     const key = fixtureKey(id) as ServiceKey;
-    const t = timing(key);
+    const t = timing(key, g.fixtureMode[c]!);
     const x = c % g.w;
     nodes.kind[k] = id;
     nodes.cell[k] = c;

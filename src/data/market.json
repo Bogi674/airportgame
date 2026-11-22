@@ -42,6 +42,7 @@
     "min": 0,
     "max": 100,
     "unplacedFlight": -2,
+    "cancelledFlight": -2,
     "delayedFlight": -1,
     "onTimeFlight": 0.5,
     "outsideWindowFlight": -1,

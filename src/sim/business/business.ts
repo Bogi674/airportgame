@@ -266,6 +266,7 @@ export class Business {
       emit: (e) => host.emit(e),
       stars: () => this.stars(),
       movementBudget: () => traffic.movementBudget(),
+      internationalReady: () => this.internationalReady(),
     });
     this.market.generateAirlines();
     traffic.hooks = {
@@ -592,6 +593,48 @@ export class Business {
       };
     }
     return null;
+  }
+
+  private intlReady = false;
+  private intlReadyAt = -1;
+  private intlReadyWalk = -1;
+
+  /**
+   * True when some terminal with a curb holds the whole international flow (T79): a passport booth or eGate in
+   * departure mode reachable from the curb, a gate desk in an International zone reachable from it, a booth or eGate in
+   * arrival mode reachable from that desk, and a customs channel reachable from that booth with the curb beyond it.
+   * Cached per walk and service version.
+   */
+  internationalReady(): boolean {
+    if (this.intlReadyAt === this.serviceVersion && this.intlReadyWalk === this.walkVersion) return this.intlReady;
+    this.intlReadyAt = this.serviceVersion;
+    this.intlReadyWalk = this.walkVersion;
+    this.intlReady = false;
+    for (let i = 0; i < this.grids.length && !this.intlReady; i++) this.intlReady = this.intlFlowIn(i);
+    return this.intlReady;
+  }
+
+  private intlFlowIn(i: number): boolean {
+    const curb = this.curbNode(i);
+    const t = this.serviceNodes[i];
+    const wg = this.walkGraphs[i];
+    const g = this.grids[i]!;
+    if (curb < 0 || !t || !wg) return false;
+    const dep: number[] = [];
+    const desk: number[] = [];
+    const arr: number[] = [];
+    const cus: number[] = [];
+    for (let n = 0; n < t.count; n++) {
+      if (t.queueCap[n] <= 0) continue;
+      const key = fixtureKey(t.kind[n]!);
+      const w = t.walkNode[n]!;
+      if (key === 'passport' || key === 'eGate') (g.fixtureMode[t.cell[n]!] === 1 ? arr : dep).push(w);
+      else if (key === 'gateDesk' && wg.effective[t.cell[n]!] === ZONE.International) desk.push(w);
+      else if (key === 'customs') cus.push(w);
+    }
+    const reach = (from: readonly number[], to: readonly number[]): number[] => to.filter((b) => from.some((a) => Number.isFinite(walkDistance(wg, a, b, AUD.Pax))));
+    const back = reach(reach(reach(reach([curb], dep), desk), arr), cus);
+    return reach(back, [curb]).length > 0;
   }
 
   /** Result of arrivalEntry: grid index, walk node of the entry desk, 1 when the route is international. */

@@ -1,4 +1,4 @@
-import { ARRIVALS, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
+import { ARRIVALS, DEPARTURES, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
 import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
@@ -18,6 +18,7 @@ import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
 import { COHORT_DRAW, TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, traitU, writeTraits } from './traits';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
+import { flowStep } from '@shared/terminalZones';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
@@ -58,6 +59,11 @@ export const Stage = {
   CustomsRed: 22,
   /** Walking to the curb. Reaching it ends the journey. */
   ToExit: 23,
+  // International departure stages (T79), appended: after security the cohort passes passport control in departure mode.
+  /** Walking from security to a passport booth or eGate in departure mode. */
+  ToEmigration: 24,
+  /** Waiting in a departure passport queue or being served (a queued stage). */
+  Emigration: 25,
 } as const;
 
 /** Timer wheel buckets and the tick step between bucket visits. */
@@ -65,6 +71,8 @@ const WHEEL = 4096;
 const STEP = 5;
 /** Ticks a cohort waits before it tries a step again when no service node or path is free. */
 const RETRY_TICKS = 100;
+/** Cells scanned past a transition fixture's anchor for the first cell outside it. */
+const EXIT_SCAN = 8;
 /** Ticks a cohort waits before it tries to join a full service queue again. */
 const JOIN_RETRY_TICKS = 50;
 /** Service tables finish cohorts every this many ticks, so the done buffers are read on the same beat. */
@@ -109,6 +117,8 @@ const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
 const WALK_SPEED = Float32Array.from(PROFILE_ROWS, (r) => r.walkSpeed);
 /** 1 for the profiles that never use an automated passport gate, by profile id. */
 const NO_GATE = Uint8Array.from(PROFILE_KEYS, (k) => (ARRIVALS.service.eGate.noGateProfiles.includes(k) ? 1 : 0));
+/** The same for eGates in departure mode (T79). */
+const NO_GATE_DEP = Uint8Array.from(PROFILE_KEYS, (k) => (DEPARTURES.service.eGate.noGateProfiles.includes(k) ? 1 : 0));
 /** Cumulative profile mix, so one uniform float picks a profile in a fixed order. */
 const MIX_CUM = (() => {
   const out = new Float64Array(PROFILE_ROWS.length);
@@ -132,13 +142,13 @@ const M = PROFILES.maxGroup;
 const FLAG_SUB = 1;
 export const FLAG_SLOW = 2;
 const FLAG_AT_VISIT = 4;
-/** Arrival cohort of an international flight. */
+/** Cohort of an international flight, arriving or departing (T79). */
 const FLAG_INTL = 8;
-/** An arrival an eGate sent to an officer: it queues at a passport booth only. */
+/** A cohort an eGate sent to an officer: it queues at a passport booth only. */
 const FLAG_REFERRED = 16;
 /** An arrival that is done with the baggage claim, so a retry of the next step never claims again. */
 const FLAG_CLAIMED = 32;
-/** An arrival that was served at immigration and is on its way to the next step, so a retry of that step is a wheel stage and never queues again. */
+/** A cohort that was served at passport control and is on its way to the next step, so a retry of that step is a wheel stage and never queues again. */
 const FLAG_PASSED = 64;
 const SLOW = NEEDS.mobility.slowFactor;
 /** Cumulative group size weights per profile, normalised to 1. Index 0 is size 1. */
@@ -372,6 +382,7 @@ export class Cohorts {
     if (grid < 0) return;
     let remaining = this.business.paxFor(f);
     const dep = this.traffic.fEta[f] + this.traffic.fTurn[f];
+    const intl = this.business.market.isInternational(f);
     while (remaining > 0) {
       const c = this.alloc();
       if (c < 0) break;
@@ -389,7 +400,7 @@ export class Cohorts {
       this.spendBudget[c] = size * row.spend;
       this.satisfaction[c] = PERCENT;
       this.recipeSeed[c] = Math.floor(this.rng.next() * RECIPE_RANGE);
-      this.flags[c] = 0;
+      this.flags[c] = intl ? FLAG_INTL : 0;
       this.node[c] = -1;
       this.walkStart[c] = -1;
       this.parent[c] = -1;
@@ -467,19 +478,19 @@ export class Cohorts {
 
   /** True for the stages a passenger can be in before boarding or missing the flight. */
   private live(st: number): boolean {
-    return (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin);
+    return (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin) || st === Stage.ToEmigration || st === Stage.Emigration;
   }
 
   /** True for the stages in which a cohort waits in a service queue, off the timer wheel. */
   private queued(st: number): boolean {
-    return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs;
+    return st === Stage.CheckIn || st === Stage.Security || st === Stage.Gate || st === Stage.VisitQueue || st === Stage.Immigration || st === Stage.Customs || st === Stage.Emigration;
   }
 
   /** True for the stages in which a cohort walks between two walk nodes. */
   private walking(st: number): boolean {
     return (
       st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin ||
-      st === Stage.ToImmigration || st === Stage.ToClaim || st === Stage.ToCustoms || st === Stage.ToExit
+      st === Stage.ToImmigration || st === Stage.ToClaim || st === Stage.ToCustoms || st === Stage.ToExit || st === Stage.ToEmigration
     );
   }
 
@@ -489,7 +500,7 @@ export class Cohorts {
    */
   private zoneRule(st: number): number {
     if (this.arriving(st)) return 0;
-    return st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit ? 1 : 2;
+    return st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit || st === Stage.ToEmigration ? 1 : 2;
   }
 
   /** True for the stages of an arriving passenger. */
@@ -829,7 +840,7 @@ export class Cohorts {
     for (let c = 0; c < this.hi; c++) {
       const st = this.stage[c];
       if (st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.Airside || st === Stage.ToGate || (st === Stage.ToVisit && this.visitNeed[c] === NEED_TOILET)) this.node[c] = -1;
-      else if (st === Stage.ToImmigration || st === Stage.ToCustoms) {
+      else if (st === Stage.ToImmigration || st === Stage.ToCustoms || st === Stage.ToEmigration) {
         this.node[c] = -1;
         this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
         this.keepAnchor(c);
@@ -894,6 +905,10 @@ export class Cohorts {
       this.stage[c] = Stage.ToCustoms;
       this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
       this.keepAnchor(c);
+    } else if (st === Stage.Emigration) {
+      this.stage[c] = Stage.ToEmigration;
+      this.flags[c] = this.flags[c]! | FLAG_AT_VISIT;
+      this.keepAnchor(c);
     } else return;
     this.node[c] = -1;
     this.waitStart[c] = -1;
@@ -946,7 +961,15 @@ export class Cohorts {
       this.finishCustoms(g, c, t);
       return;
     }
+    if (st === Stage.Emigration) {
+      this.finishEmigration(g, c, t);
+      return;
+    }
     if (st === Stage.Security) {
+      if (this.flags[c]! & FLAG_INTL) {
+        this.toEmigration(g, c);
+        return;
+      }
       this.stage[c] = Stage.Airside;
       this.schedule(c, this.tick + STEP);
       return;
@@ -1045,6 +1068,12 @@ export class Cohorts {
         else this.join(g, c, t.kind[this.node[c]!]!, t.kind[this.node[c]!]!, Stage.Immigration);
         break;
       }
+      case Stage.ToEmigration: {
+        const t = this.table(g);
+        if (this.node[c]! < 0 || !t) this.toEmigration(g, c);
+        else this.join(g, c, t.kind[this.node[c]!]!, t.kind[this.node[c]!]!, Stage.Emigration);
+        break;
+      }
     }
   }
 
@@ -1067,17 +1096,22 @@ export class Cohorts {
    * cohorts skip the gates. Ascending scan with a strict comparison, as pickNode does. -1 when none.
    */
   private pickImmigration(g: number, from: number, c: number): number {
+    return this.pickPassport(g, from, c, 1);
+  }
+
+  /** Cheapest passport booth or eGate in a mode (0 departure, 1 arrival) for the cohort, by walk time plus wait. -1 when none. */
+  private pickPassport(g: number, from: number, c: number, mode: number): number {
     const t = this.table(g);
     const grid = this.business.grids[g];
     if (!t || !grid) return -1;
     const id = this.gridId(g);
     const speed = this.speed(c);
-    const noGate = NO_GATE[this.profile[c]!] === 1 || (this.flags[c]! & FLAG_REFERRED) !== 0;
+    const noGate = (mode === 1 ? NO_GATE : NO_GATE_DEP)[this.profile[c]!] === 1 || (this.flags[c]! & FLAG_REFERRED) !== 0;
     let best = -1;
     let bestCost = Infinity;
     for (let n = 0; n < t.count; n++) {
       const k = t.kind[n];
-      if ((k !== PASSPORT && k !== EGATE) || t.queueCap[n] <= 0 || grid.fixtureMode[t.cell[n]!] !== 1) continue;
+      if ((k !== PASSPORT && k !== EGATE) || t.queueCap[n] <= 0 || grid.fixtureMode[t.cell[n]!] !== mode) continue;
       if (k === EGATE && noGate) continue;
       const cost = this.business.walkDistance(id, from, t.walkNode[n]) / speed + this.business.serviceWait(id, n, this.tick) / CLOCK_SCALE;
       if (cost < bestCost) {
@@ -1111,6 +1145,84 @@ export class Cohorts {
     this.node[c] = -1;
     this.stage[c] = Stage.ToImmigration;
     this.afterImmigration(g, c);
+  }
+
+  /**
+   * An international departure left security (T79): it walks to the cheapest passport booth or eGate in departure mode.
+   * With none, because the flow was removed after the flight was scheduled, it skips passport control and goes airside.
+   */
+  private toEmigration(g: number, c: number): void {
+    const here = this.hereNode(g, c);
+    const n = this.pickPassport(g, here, c, 0);
+    if (n >= 0) {
+      this.walk(g, c, n, here, Stage.ToEmigration);
+      return;
+    }
+    // Booths exist but none takes this cohort now (full, or only eGates for a family): it tries again until the flight leaves.
+    if (this.hasPassport(g, 0)) {
+      this.stage[c] = Stage.ToEmigration;
+      this.schedule(c, this.tick + RETRY_TICKS);
+      return;
+    }
+    this.stage[c] = Stage.Airside;
+    this.schedule(c, this.tick + STEP);
+  }
+
+  /** True when the grid has a passport booth or eGate in the mode. */
+  private hasPassport(g: number, mode: number): boolean {
+    const t = this.table(g);
+    const grid = this.business.grids[g];
+    if (!t || !grid) return false;
+    for (let n = 0; n < t.count; n++) if ((t.kind[n] === PASSPORT || t.kind[n] === EGATE) && grid.fixtureMode[t.cell[n]!] === mode) return true;
+    return false;
+  }
+
+  /**
+   * A departure was served at passport control: an eGate may send it to an officer, else it stands on the exit side of
+   * the booth, in the International zone, and goes airside.
+   */
+  private finishEmigration(g: number, c: number, t: ServiceNodes): void {
+    const node = this.node[c]!;
+    const wg = this.business.walkGraphs[g]!;
+    if (t.kind[node] === EGATE && !(this.flags[c]! & FLAG_REFERRED) && traitU(this.recipeSeed[c]!, COHORT_DRAW.Referral) < DEPARTURES.service.eGate.referralShare) {
+      const at = t.walkNode[node]!;
+      this.flags[c] = this.flags[c]! | FLAG_REFERRED | FLAG_AT_VISIT;
+      this.walkToX[c] = wg.nodeX[at]!;
+      this.walkToY[c] = wg.nodeY[at]!;
+      this.node[c] = -1;
+      this.stage[c] = Stage.ToEmigration;
+      this.toEmigration(g, c);
+      return;
+    }
+    const at = this.exitNode(g, t.cell[node]!, t.walkNode[node]!);
+    this.flags[c] = (this.flags[c]! & ~FLAG_REFERRED) | FLAG_AT_VISIT;
+    this.walkToX[c] = wg.nodeX[at]!;
+    this.walkToY[c] = wg.nodeY[at]!;
+    this.node[c] = -1;
+    this.stage[c] = Stage.Airside;
+    this.schedule(c, this.tick + STEP);
+  }
+
+  /**
+   * Walk node just past a transition fixture along its flow, so a cohort that passed it stands in the zone it leads
+   * into. Steps from the anchor cell until the first cell outside the fixture. Falls back to the anchor's node.
+   */
+  private exitNode(g: number, anchor: number, fallback: number): number {
+    const grid = this.business.grids[g]!;
+    const wg = this.business.walkGraphs[g]!;
+    const [fx, fy] = flowStep(grid.fixtureRot[anchor]!);
+    let x = anchor % grid.w;
+    let y = (anchor - x) / grid.w;
+    for (let k = 0; k < EXIT_SCAN; k++) {
+      x += fx;
+      y += fy;
+      if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) break;
+      const cell = y * grid.w + x;
+      if (grid.fixture[cell] !== 0) continue;
+      const n = wg.cellNode[cell]!;
+      return n >= 0 ? n : fallback;
+    }
+    return fallback;
   }
 
   /** Immigration is done, the cohort stands at its node. */

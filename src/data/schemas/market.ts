@@ -41,6 +41,8 @@ export const marketSchema = z
         min: z.number(),
         max: z.number(),
         unplacedFlight: z.number(),
+        /** Happiness change of an international flight cancelled because the international flow is missing (T79). */
+        cancelledFlight: z.number(),
         delayedFlight: z.number(),
         onTimeFlight: z.number(),
         outsideWindowFlight: z.number(),

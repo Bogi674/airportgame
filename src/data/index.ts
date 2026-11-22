@@ -8,6 +8,7 @@ import paintJson from './paint.json';
 import peopleJson from './people.json';
 import needsJson from './needs.json';
 import arrivalsJson from './arrivals.json';
+import departuresJson from './departures.json';
 import profilesJson from './profiles.json';
 import spritesJson from './sprites.json';
 import staffJson from './staff.json';
@@ -26,6 +27,7 @@ import {
   peopleSchema,
   needsSchema,
   arrivalsSchema,
+  departuresSchema,
   profilesSchema,
   spritesSchema,
   staffSchema,
@@ -35,6 +37,7 @@ import {
   turnaroundsSchema,
   type AirfieldCodes,
   type ArrivalsData,
+  type DeparturesData,
   type BaggageData,
   type BusinessData,
   type MarketData,
@@ -72,6 +75,8 @@ export const PROFILES: ProfilesData = profilesSchema.parse(profilesJson);
 export const NEEDS: NeedsData = needsSchema.parse(needsJson);
 /** Arrival journey: deboarding, claim, outcomes and arrival service nodes (T20). */
 export const ARRIVALS: ArrivalsData = arrivalsSchema.parse(arrivalsJson);
+/** International departures: passport control in departure mode (T79). */
+export const DEPARTURES: DeparturesData = departuresSchema.parse(departuresJson);
 /** Staff roles, stations, shifts and breaks (T68). */
 export const STAFF: StaffData = staffSchema.parse(staffJson);
 /** Aircraft sprite tiers, cache limit and liveries. */
