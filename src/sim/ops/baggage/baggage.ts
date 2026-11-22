@@ -128,6 +128,7 @@ interface NodeState {
 const KIND_INDEX: readonly BagNodeKind[] = ['drop', 'machine', 'bay', 'carousel'];
 const keyId = (key: FixtureKey): number => FIXTURE_KEYS.indexOf(key) + 1;
 const CHECK_IN_ID = keyId('checkIn');
+const BELT_ID = keyId('belt');
 const BAG_DROP_ID = keyId('bagDrop');
 
 interface Anchor {
@@ -514,8 +515,8 @@ export class Baggage {
     return net ? net.routeDeparture(dropId, standId) : { problem: 'noMachine' };
   }
 
-  /** Places a machine, bay or carousel. Returns a problem code or null. */
-  place(cmd: PlaceBagNode): string | null {
+  /** Places a machine, bay or carousel. Returns a problem code or null. A free placement (the belt migration) costs nothing. */
+  place(cmd: PlaceBagNode, free = false): string | null {
     const g = this.business.grids.find((x) => x.id === cmd.building);
     if (!g) return 'nothingThere';
     // A carousel keeps its size in widthCells; an unlisted length places the default size.
@@ -523,9 +524,9 @@ export class Baggage {
     const spec: BagNodeSpec = { kind: cmd.kind, cx: cmd.cx, cy: cmd.cy, rot: cmd.rot, widthCells };
     const problem = validateBagNode(g, spec);
     if (problem) return problem;
-    const cost = bagNodeCost(spec.kind, spec.widthCells);
+    const cost = free ? 0 : bagNodeCost(spec.kind, spec.widthCells);
     if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
-    this.host.book(-cost);
+    if (cost > 0) this.host.book(-cost);
     const key = bagKey(spec.kind);
     const id = keyId(key);
     const cells = nodeCells(spec);
@@ -543,6 +544,55 @@ export class Baggage {
     this.ensureNet(g.id).add(this.netNode(rec, g));
     this.syncBuilding(g.id);
     return null;
+  }
+
+  /**
+   * Save format 33 (T78): every legacy belt becomes the largest carousel whose footprint, in some rotation, covers the
+   * belt's cell and fits on the grid. The belts are cleared first, so neighbouring belts make room for one carousel, and
+   * a belt already under an earlier carousel is absorbed. A belt no size fits stays. Returns the belts kept.
+   */
+  convertBelts(): number {
+    const sizes = BAGGAGE.carousel.sizes.slice().sort((a, b) => b.w - a.w);
+    let kept = 0;
+    for (const g of this.business.grids.slice().sort((a, b) => a.id - b.id)) {
+      const belts: Cell[] = [];
+      for (let i = 0; i < g.fixture.length; i++) if (g.fixture[i] === BELT_ID) belts.push([g.x0 + (i % g.w), g.y0 + Math.floor(i / g.w)]);
+      if (belts.length === 0) continue;
+      for (const [x, y] of belts) this.setCell(g, x, y, 0);
+      this.refreshCells(g.id, belts);
+      const back: Cell[] = [];
+      for (const [x, y] of belts) {
+        if (g.fixture[cellIndex(g, x, y)] !== 0) continue;
+        if (!this.carouselOver(g, x, y, sizes)) back.push([x, y]);
+      }
+      for (const [x, y] of back) this.setCell(g, x, y, BELT_ID);
+      if (back.length > 0) this.refreshCells(g.id, back);
+      kept += back.length;
+    }
+    return kept;
+  }
+
+  /** Places, at no cost, the first size and rotation of carousel whose footprint covers the cell and fits. */
+  private carouselOver(g: TerminalGrid, x: number, y: number, sizes: readonly { w: number }[]): boolean {
+    for (const z of sizes) {
+      for (let rot = 0; rot < 4; rot++) {
+        const r = rot as 0 | 1 | 2 | 3;
+        for (const [dx, dy] of nodeCells({ kind: 'carousel', cx: 0, cy: 0, rot: r, widthCells: z.w })) {
+          if (this.place({ building: g.id, kind: 'carousel', cx: x - dx, cy: y - dy, rot: r, widthCells: z.w }, true) === null) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Sets a one cell fixture, or clears the cell with id 0. */
+  private setCell(g: TerminalGrid, x: number, y: number, id: number): void {
+    const i = cellIndex(g, x, y);
+    g.fixture[i] = id;
+    g.fixtureRot[i] = 0;
+    g.fixtureOff[i] = 0;
+    g.fixtureLevel[i] = id === 0 ? 0 : 1;
+    g.fixtureMode[i] = 0;
   }
 
   /** Removes a placed node and clears its cells. Drop points cannot be removed, they follow the grid. */
@@ -708,7 +758,8 @@ export class Baggage {
     for (const r of this.recs) {
       acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, r.id), KIND_INDEX.indexOf(r.kind)), r.building), r.cell[0] + 65536), r.cell[1] + 65536);
       if (r.spec === null) acc = foldU32(acc, 0);
-      else acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, 1), r.spec.cx + 65536), r.spec.cy + 65536), r.spec.rot), r.spec.widthCells);
+      // A carousel folds the size it has, so a save that migrates its length to the size it was drawn at hashes the same.
+      else acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, 1), r.spec.cx + 65536), r.spec.cy + 65536), r.spec.rot), r.spec.kind === 'carousel' ? carouselSize(r.spec.widthCells).w : r.spec.widthCells);
     }
     for (const n of this.nets) {
       for (const node of n.net.nodeList()) {

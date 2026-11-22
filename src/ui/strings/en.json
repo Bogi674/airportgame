@@ -778,6 +778,7 @@
   "notice.bayNoExteriorWall": "The truck side of a bay must stand on an exterior wall with open ground outside.",
   "notice.bagScreeningRoom": "Needs a closed staff screening room of {area} m2 with a door",
   "alert.noAtc": "{name} cannot fly here until an ATC tower stands at the airport.",
+  "alert.beltsKept": "{n} old baggage belts had no room for a carousel and still work as before. Replace them with a baggage carousel fed by a bay.",
   "alert.atcLost": "Your old control room no longer provides ATC. Build an ATC tower to bring the airlines back.",
   "alert.atcOverload": "The tower is at its movement limit. {n} movements are waiting. Upgrade the tower to handle more.",
   "fixture.12": "Control room (ATC)",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BAGGAGE } from '@data/index';
 import { Sim } from '@sim/sim';
-import { WALL } from '../src/shared/business';
+import { FIXTURE_KEYS, WALL } from '../src/shared/business';
 import { dropOutCell, nodeCells } from '../src/shared/baggageNodes';
 import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '../src/shared/terminalOps';
 import { roadSnapPoints, standRoadAnchors } from '../src/shared/roadGraph';
@@ -250,4 +250,24 @@ describe('baggage subsystem', () => {
     expect(l.sim.roads.tripOk(0)).toBe(true);
     expect(roadSnapPoints(l.sim.airfield.data)).toContainEqual({ x: anchor!.x, y: anchor!.y });
   });
+
+  it('turns a legacy belt into the largest carousel that fits when an older save loads (T78)', () => {
+    const l = layout();
+    const edit = { op: 'fixture' as const, x0: 64, y0: 42, x1: 65, y1: 43, variant: FIXTURE_KEYS.indexOf('belt') + 1 };
+    expect(run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit })).toEqual([]);
+    const g0 = l.sim.business.grids[0];
+    expect(g0.fixture[cellIndex(g0, 64, 42)]).toBe(FIXTURE_KEYS.indexOf('belt') + 1);
+    const data = JSON.parse(JSON.stringify(l.sim.serialize())) as { version: number };
+    data.version = 32;
+    const copy = new Sim('GOLDEN-0001', OPTIONS);
+    copy.restore(data);
+    const g = copy.business.grids[0];
+    expect(g.fixture.some((f) => f === FIXTURE_KEYS.indexOf('belt') + 1)).toBe(false);
+    const rec = copy.baggage.nodesOf(l.building).find((r) => r.kind === 'carousel');
+    const large = BAGGAGE.carousel.sizes.reduce((m, z) => Math.max(m, z.w), 0);
+    expect(rec?.spec?.widthCells).toBe(large);
+    expect(nodeCells(rec!.spec!).some(([x, y]) => x === 64 && y === 42)).toBe(true);
+    expect(copy.cash).toBe(l.sim.cash);
+  });
 });
+

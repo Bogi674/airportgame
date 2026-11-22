@@ -784,6 +784,10 @@ export class Sim {
     this.traffic.loadState(save.traffic);
     this.business.loadState(save.business);
     this.baggage.loadState(save.baggage as BaggageSave | undefined);
+    if (save.convertBelts) {
+      const kept = this.baggage.convertBelts();
+      if (kept > 0) this.eventQueue.push(`beltsKept|n=${kept}`);
+    }
     this.roadSeen.fill(-1);
     this.bagRoadStamp = -1;
     this.syncRoads(true);

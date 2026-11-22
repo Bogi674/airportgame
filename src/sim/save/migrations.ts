@@ -38,6 +38,8 @@ export interface SaveData {
   baggage?: unknown;
   /** Airport staff, since version 31 (T68). */
   staff?: unknown;
+  /** Set by the migration to version 33 (T78): legacy belts become carousels on restore. Never written by a save. */
+  convertBelts?: boolean;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -321,6 +323,8 @@ export function migrate(raw: unknown): SaveData {
     const nodes = (save as { baggage?: { nodes?: { kind: string; spec: { widthCells: number } | null }[] } }).baggage?.nodes ?? [];
     const medium = BAGGAGE.carousel.sizes[BAGGAGE.carousel.defaultSize].w;
     for (const n of nodes) if (n.kind === 'carousel' && n.spec) n.spec.widthCells = medium;
+    // Legacy belts become carousels once the sim has the grids, see Sim.restore.
+    (save as { convertBelts?: boolean }).convertBelts = true;
     save.version = 33;
   }
   return save as SaveData;
