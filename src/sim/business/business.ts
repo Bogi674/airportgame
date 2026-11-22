@@ -25,7 +25,8 @@ import {
 } from '@shared/business';
 import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
-import { cellCount, cellIndex, cellOf, cornerWorld, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
 import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type StaffRow } from '@shared/business';
@@ -438,9 +439,129 @@ export class Business {
     const grid = this.grids[i]!;
     if (cellCount(grid) > 0) {
       this.walkGraphs[i] = updateWalkGraph(this.walkGraphs[i]!, grid, Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1));
-      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!);
+      this.dropStaleWorks(grid);
+      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, grid, this.walkGraphs[i]!, this.closedCells(grid));
     }
     this.bumpTerminals();
+  }
+
+  // Fixture levels (T74) ----------------------------------------------------
+
+  /** Fixtures under upgrade works, in the order they started. Saved. */
+  fixtureWorks: FixtureWorks[] = [];
+
+  /** The works on the fixture anchored at logical cell (x, y) of a building, undefined when there are none. */
+  worksAt(building: number, x: number, y: number): FixtureWorks | undefined {
+    return this.fixtureWorks.find((w) => w.building === building && w.x === x && w.y === y);
+  }
+
+  /** Array cells of the anchors of a grid that are closed for works. */
+  private closedCells(g: TerminalGrid): number[] {
+    const out: number[] = [];
+    for (const w of this.fixtureWorks) if (w.building === g.id) out.push(cellIndex(g, w.x, w.y));
+    return out;
+  }
+
+  /** Forgets the works of fixtures that an edit removed: the anchor no longer holds a leveled fixture at the works' old level. */
+  private dropStaleWorks(g: TerminalGrid): void {
+    this.fixtureWorks = this.fixtureWorks.filter((w) => {
+      if (w.building !== g.id) return true;
+      const c = cellIndex(g, w.x, w.y);
+      return c >= 0 && g.fixture[c] !== 0 && g.fixtureRot[c] < 5 && isLeveled(fixtureKey(g.fixture[c])) && g.fixtureLevel[c] === w.from;
+    });
+  }
+
+  /** Anchor array cell of the leveled fixture covering logical cell (x, y) of a grid, -1 when there is none. */
+  private leveledAnchor(g: TerminalGrid, x: number, y: number): number {
+    const a = fixtureAnchor(g, cellIndex(g, x, y));
+    return a >= 0 && isLeveled(fixtureKey(g.fixture[a])) ? a : -1;
+  }
+
+  /**
+   * Starts the works that raise a fixture one level (T74): pays the difference of the two build costs, closes the
+   * fixture, whose queue moves to other fixtures of its kind, and finishes after the family's works days.
+   */
+  startFixtureUpgrade(building: number, x: number, y: number, tick: number): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const a = this.leveledAnchor(g, x, y);
+    if (a < 0) return 'notLeveled';
+    const at = cellOf(g, a);
+    if (this.worksAt(building, at.x, at.y)) return 'fixtureWorksRunning';
+    const key = fixtureKey(g.fixture[a]) as LeveledKey;
+    const from = g.fixtureLevel[a];
+    if (from >= MAX_FIXTURE_LEVEL) return 'fixtureMaxLevel';
+    const cost = upgradeCost(key, from);
+    if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
+    this.host.book('construction', -cost);
+    g.cost += cost;
+    this.fixtureWorks.push({ building, floor: g.level, x: at.x, y: at.y, from, to: from + 1, cost, doneTick: tick + upgradeDays(key) * TICKS_PER_DAY });
+    this.refreshGrid(building, at.x, at.y, at.x, at.y);
+    return null;
+  }
+
+  /** Cancels running works: the fixture keeps its old level and reopens, and the price is refunded in full. */
+  cancelFixtureUpgrade(building: number, x: number, y: number): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const a = this.leveledAnchor(g, x, y);
+    if (a < 0) return 'notLeveled';
+    const at = cellOf(g, a);
+    const w = this.worksAt(building, at.x, at.y);
+    if (!w) return 'noWorks';
+    this.fixtureWorks.splice(this.fixtureWorks.indexOf(w), 1);
+    this.host.book('construction', w.cost);
+    g.cost -= w.cost;
+    this.refreshGrid(building, at.x, at.y, at.x, at.y);
+    return null;
+  }
+
+  /** Finishes the works that are due: the fixture takes its new level on every cell and reopens. Cheap when none run. */
+  private finishFixtureWorks(tick: number): void {
+    if (this.fixtureWorks.length === 0) return;
+    for (let i = 0; i < this.fixtureWorks.length; ) {
+      const w = this.fixtureWorks[i]!;
+      if (w.doneTick > tick) {
+        i++;
+        continue;
+      }
+      this.fixtureWorks.splice(i, 1);
+      const g = this.grids.find((q) => q.id === w.building);
+      if (!g) continue;
+      const a = cellIndex(g, w.x, w.y);
+      for (const c of fixtureCells(g, a)) g.fixtureLevel[c] = w.to;
+      this.refreshGrid(w.building, w.x, w.y, w.x, w.y);
+      this.onGridEdited?.(w.building);
+      this.host.emit(`fixtureUpgraded|level=${w.to}`);
+    }
+  }
+
+  /**
+   * Removes the one cell security lanes of a save from before version 35 and refunds their level 1 cost (T74, owner
+   * 2026-11-22). Cohorts queued at them are evicted and choose again. Returns the number of lanes removed.
+   */
+  removeLegacyLanes(lanes: readonly (readonly number[])[]): number {
+    let removed = 0;
+    for (let gi = 0; gi < this.grids.length; gi++) {
+      const g = this.grids[gi]!;
+      const cells = lanes[gi] ?? [];
+      if (cells.length === 0) continue;
+      for (const c of cells) {
+        g.fixture[c] = 0;
+        g.fixtureRot[c] = 0;
+        g.fixtureOff[c] = 0;
+        g.fixtureLevel[c] = 0;
+        g.fixtureMode[c] = 0;
+      }
+      const refund = cells.length * levelCost('security', 1);
+      this.host.book('construction', refund);
+      g.cost = Math.max(0, g.cost - refund);
+      removed += cells.length;
+      this.walkGraphs[gi] = buildWalkGraph(g);
+      this.serviceNodes[gi] = rebuildServiceNodes(this.serviceNodes[gi]!, g, this.walkGraphs[gi]!, this.closedCells(g));
+    }
+    if (removed > 0) this.bumpTerminals();
+    return removed;
   }
 
   private bumpTerminals(): void {
@@ -473,9 +594,9 @@ export class Business {
    * Joins a cohort to a service node of a grid. False when no grid has that id or the node refuses the cohort.
    * Node ids are stale after serviceVersion changes, so look them up again after an edit.
    */
-  serviceJoin(grid: number, node: number, cohort: number, size: number): boolean {
+  serviceJoin(grid: number, node: number, cohort: number, size: number, ahead?: (cohort: number) => boolean): boolean {
     const i = this.gridIndex(grid);
-    return i >= 0 && serviceJoin(this.serviceNodes[i]!, node, cohort, size);
+    return i >= 0 && serviceJoin(this.serviceNodes[i]!, node, cohort, size, ahead);
   }
 
   /** Seconds a person joining a node of a grid now would wait, Infinity when no grid or node has that id. Stale after serviceVersion changes. */
@@ -876,6 +997,7 @@ export class Business {
   update(tick: number): void {
     if (tick % 100 === 0) this.updateServiceLevel();
     if (tick % (60 * TICKS_PER_MINUTE) === 0) this.updateFuel(tick);
+    this.finishFixtureWorks(tick);
     if (tick % 10 === 0) for (let i = 0; i < this.serviceNodes.length; i++) serviceUpdate(this.serviceNodes[i]!, tick, this.serviceRng);
     if (tick % TICKS_PER_DAY === dayStartOffset()) this.dailyClose(tick);
     if (this.weather !== 'clear' && tick >= this.weatherEnd) this.setWeather('clear', tick);
@@ -1164,7 +1286,7 @@ export class Business {
       flightsToday: this.flightsToday, lostToday: this.lostToday,
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
       rng: this.rng.getState(), marketRng: this.marketRng.getState(), market: this.market.saveState(),
-      service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(),
+      service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(), fixtureWorks: this.fixtureWorks.map((w) => ({ ...w })),
     };
   }
 
@@ -1188,7 +1310,8 @@ export class Business {
     for (const g of this.grids) this.walkGraphs.push(buildWalkGraph(g));
     this.walkVersion++;
     this.serviceNodes.length = 0;
-    for (let i = 0; i < this.grids.length; i++) this.serviceNodes.push(buildServiceNodes(this.grids[i]!, this.walkGraphs[i]!));
+    this.fixtureWorks = ((raw as { fixtureWorks?: FixtureWorks[] }).fixtureWorks ?? []).map((w) => ({ ...w }));
+    for (let i = 0; i < this.grids.length; i++) this.serviceNodes.push(buildServiceNodes(this.grids[i]!, this.walkGraphs[i]!, this.closedCells(this.grids[i]!)));
     const savedService = o.service ?? [];
     for (let i = 0; i < this.serviceNodes.length; i++) if (savedService[i]) serviceLoad(this.serviceNodes[i]!, savedService[i]!);
     if (o.serviceRng !== undefined) this.serviceRng.setState(o.serviceRng);
@@ -1251,6 +1374,7 @@ export class Business {
         if (g.fixtureLevel[i] > 1 || g.fixtureMode[i] > 0) acc = foldU32(foldU32(acc, g.fixtureLevel[i]), g.fixtureMode[i]);
       }
     }
+    for (const w of this.fixtureWorks) acc = foldU32(foldU32(foldU32(foldU32(foldU32(acc, w.building), w.x + 65536), w.y + 65536), w.to), w.doneTick % 0xffffffff);
     // Queues only enter the hash once someone waits, so idle games keep their hashes.
     if (this.serviceNodes.some((sn) => sn.active > 0 || sn.evictedCount > 0)) {
       for (const sn of this.serviceNodes) {

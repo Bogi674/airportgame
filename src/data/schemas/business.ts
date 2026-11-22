@@ -31,6 +31,17 @@ const tower = z
     }
   });
 
+const levelTriple = z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]);
+/** One fixture family in three levels (T74). Higher levels never cost less or serve slower. */
+const fixtureLevel = z
+  .strictObject({ cost: levelTriple, serviceSeconds: levelTriple, worksDays: z.number().int().positive() })
+  .superRefine((f, ctx) => {
+    for (let i = 1; i < 3; i++) {
+      if (f.cost[i] < f.cost[i - 1]) ctx.addIssue({ code: 'custom', message: `level ${i + 1} costs less than level ${i}` });
+      if (f.serviceSeconds[i] > f.serviceSeconds[i - 1]) ctx.addIssue({ code: 'custom', message: `level ${i + 1} serves slower than level ${i}` });
+    }
+  });
+
 export const businessSchema = z.object({
   version: z.literal(1),
   note: z.string(),
@@ -55,6 +66,16 @@ export const businessSchema = z.object({
     'securityExit.revolving': z.number().nonnegative(),
     eGate: z.number().nonnegative(),
     customs: z.number().nonnegative(),
+  }),
+  fixtureLevels: z.strictObject({
+    note: z.string(),
+    checkIn: fixtureLevel,
+    security: fixtureLevel,
+    passport: fixtureLevel,
+    gateDesk: fixtureLevel,
+    premiumLevel: z.number().int().min(1).max(3),
+    premiumPenalty: z.number().nonnegative(),
+    priorityLevel: z.number().int().min(1).max(3),
   }),
   tower,
   shops: z.object({ convenience: shop, quickFood: shop, cafe: shop, dutyFree: shop, booksGifts: shop, pharmacy: shop }),

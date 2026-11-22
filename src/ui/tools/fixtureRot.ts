@@ -1,4 +1,5 @@
 import { TRANSITION_KEYS, footprintOf, fixtureKey, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { isLeveled } from '@shared/fixtureLevels';
 import { ACROSS, planEdit, ROT_STEP, type Env, type TerminalEdit } from '@shared/terminalOps';
 import { zoneAccess, zoneIssues } from '@shared/terminalZones';
 
@@ -19,11 +20,11 @@ export function hasRotation(fixtureId: number, level: number): boolean {
   return along * across > 1 || TRANSITION_KEYS.includes(key);
 }
 
-/** The level and mode a fixture edit carries. Only the security exit has levels and only mode fixtures have a mode; others carry 1 and 0. */
+/** The level and mode a fixture edit carries. The security exit and the leveled fixtures have levels and only mode fixtures have a mode; others carry 1 and 0. */
 export function fixtureOptions(fixtureId: number, level: number, mode: number): { level: number; mode: number } {
   const key = fixtureKey(fixtureId);
   return {
-    level: key === 'securityExit' ? level : 1,
+    level: key === 'securityExit' || isLeveled(key) ? level : 1,
     mode: MODE_FIXTURES.includes(key) ? mode : 0,
   };
 }

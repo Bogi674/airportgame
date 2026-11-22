@@ -1,4 +1,4 @@
-import { ARRIVALS, DEPARTURES, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
+import { ARRIVALS, BUSINESS, DEPARTURES, NEEDS, PROFILES, STAND_ACCESS } from '@data/index';
 import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
@@ -119,6 +119,14 @@ const SPIRAL = (() => {
 const DWELL_TRIES = Math.min(PROFILES.walkSample.dwellTries, SPIRAL.length / 2);
 
 const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
+/** Profile index of premium passengers, whom fixture levels treat apart (T74). */
+const PREMIUM = PROFILE_KEYS.indexOf('premium');
+const LEVELS = BUSINESS.fixtureLevels;
+
+/** Satisfaction points a passenger of a profile loses at a check in desk of a level: premium passengers expect a premium desk (T74). */
+export function checkInPenalty(profile: number, level: number): number {
+  return profile === PREMIUM && level < LEVELS.premiumLevel ? LEVELS.premiumPenalty : 0;
+}
 /** Walk speed in metres per second, by profile id. */
 const WALK_SPEED = Float32Array.from(PROFILE_ROWS, (r) => r.walkSpeed);
 /** 1 for the profiles that never use an automated passport gate, by profile id. */
@@ -945,6 +953,11 @@ export class Cohorts {
           this.penalize(c, queuePoints(this.tick - this.waitStart[c]!, PROFILE_ROWS[this.profile[c]!]!.patienceS), DAY.PenQueue);
           this.waitStart[c] = -1;
         }
+        // Premium passengers expect a premium desk: a check in below the premium level costs them points (T74).
+        if (st === Stage.CheckIn && t.kind[t.doneNode[k]!] === CHECK_IN) {
+          const points = checkInPenalty(this.profile[c]!, this.business.grids[g]!.fixtureLevel[t.cell[t.doneNode[k]!]!]!);
+          if (points > 0) this.penalize(c, points, DAY.PenQueue);
+        }
         this.finish(g, c, st, t);
       }
     }
@@ -1414,6 +1427,17 @@ export class Cohorts {
     this.rollUp(c, false);
   }
 
+  private readonly isPremium = (c: number): boolean => this.profile[c] === PREMIUM;
+
+  /** True when a cohort joins its node through the priority lane: premium passengers at a gate desk of the priority level (T74). */
+  private priorityJoin(g: number, c: number, queued: number): boolean {
+    if (queued !== Stage.Gate || this.profile[c] !== PREMIUM) return false;
+    const t = this.table(g);
+    const n = this.node[c];
+    if (!t || n < 0 || n >= t.count || t.kind[n] !== GATE_DESK) return false;
+    return this.business.grids[g]!.fixtureLevel[t.cell[n]!]! >= LEVELS.priorityLevel;
+  }
+
   /** A due cohort joins the queue of its node, or walks to a node first when it has none. */
   private join(g: number, c: number, kindA: number, kindB: number, queued: number): void {
     if (this.node[c] < 0) {
@@ -1423,7 +1447,7 @@ export class Cohorts {
       else this.walk(g, c, n, from, this.stage[c]);
       return;
     }
-    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c])) {
+    if (this.business.serviceJoin(this.gridId(g), this.node[c], c, this.size[c], this.priorityJoin(g, c, queued) ? this.isPremium : undefined)) {
       this.stage[c] = queued;
       this.waitStart[c] = this.tick;
     } else this.schedule(c, this.tick + JOIN_RETRY_TICKS);

@@ -21,10 +21,11 @@ function prepared(): Sim {
   const sim = ownedSim();
   sim.cash = 80_000_000;
   buildTestAirport(sim, { standsPerRow: 6 });
-  expect(buildTestTerminal(sim, { shop: true, gateDesk: 1 })).toEqual([]);
+  expect(buildTestTerminal(sim, { shop: true, gateDesk: 1, security: 2 })).toEqual([]);
   expect(edit(sim, { op: 'wall', x0: 60, y0: 46, x1: 60, y1: 47, variant: WALL.StaffDoor })).toEqual([]);
-  expect(edit(sim, { op: 'removeWall', x0: 72, y0: 45, x1: 72, y1: 46, variant: 0 })).toEqual([]);
-  expect(edit(sim, { op: 'fixture', x0: 72, y0: 45, x1: 73, y1: 46, variant: SECURITY, rot: 1, mode: 1 })).toEqual([]);
+  // A staff lane of 2 by 8 cells (T74) below the two passenger lanes, in a new opening at rows 46 and 47.
+  expect(edit(sim, { op: 'removeWall', x0: 72, y0: 46, x1: 72, y1: 48, variant: 0 })).toEqual([]);
+  expect(edit(sim, { op: 'fixture', x0: 72, y0: 46, x1: 73, y1: 47, variant: SECURITY, rot: 1, mode: 1 })).toEqual([]);
   run(sim, { type: 'signAirline', airlineId: 0, sign: true });
   run(sim, { type: 'signAirline', airlineId: 1, sign: true });
   run(sim, { type: 'setTestTraffic', perHour: 20, turnScale: 0.1 });
@@ -56,7 +57,7 @@ describe('zoned terminal in the sim', () => {
     expect(Number.isFinite(a.business.walkDistance(g.id, curb, seat))).toBe(true);
     expect(Number.isFinite(a.business.walkDistance(g.id, seat, curb))).toBe(true);
     // Staff walk into the secure hall too, and their layer holds a cached row.
-    expect(Number.isFinite(a.business.walkDistance(g.id, at(70, 45), at(74, 45), AUD.Staff))).toBe(true);
+    expect(Number.isFinite(a.business.walkDistance(g.id, at(62, 46), at(74, 46), AUD.Staff))).toBe(true);
     expect(wg.staffCache.rowSource.some((s) => s >= 0)).toBe(true);
     const topA = stepTop(a, 2000);
     const topB = stepTop(b, 2000);
@@ -85,10 +86,10 @@ describe('zoned terminal in the sim', () => {
     const breaches = (): number => zoneBreaches(g, sim.business.walkGraphs[0]!.access).length;
     expect(sim.business.readiness()).not.toContain('zoneBreach');
     expect(breaches()).toBe(0);
-    expect(edit(sim, { op: 'wall', x0: 72, y0: 46, x1: 72, y1: 47, variant: WALL.Door })).toEqual([]);
+    expect(edit(sim, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: WALL.Door })).toEqual([]);
     expect(sim.business.readiness()).toContain('zoneBreach');
     expect(breaches()).toBe(1);
-    expect(edit(sim, { op: 'wall', x0: 72, y0: 46, x1: 72, y1: 47, variant: WALL.Wall })).toEqual([]);
+    expect(edit(sim, { op: 'wall', x0: 72, y0: 48, x1: 72, y1: 49, variant: WALL.Wall })).toEqual([]);
     expect(sim.business.readiness()).not.toContain('zoneBreach');
     expect(breaches()).toBe(0);
   });

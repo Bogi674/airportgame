@@ -107,13 +107,14 @@ describe('walk graph audiences', () => {
 
   it('keeps a passenger queue out of a room part cut off by a staff door', () => {
     const g = hall();
-    wallOff(g, [4]);
+    wallOff(g, [4, 5]);
+    // The 2 by 8 cell lane covers columns 3 to 10 (T74), so the staff door line runs just west of its entrance.
     put(g, 'security', 10, 4, 1);
-    for (let y = 0; y < 10; y++) wall(g, false, 8, y, 4);
+    for (let y = 0; y < 10; y++) wall(g, false, 2, y, 4);
     const wg = buildWalkGraph(g);
     const sn = buildServiceNodes(g, wg);
     expect(sn.qCellLen[0]).toBeGreaterThan(0);
-    for (let q = 0; q < sn.qCellLen[0]!; q++) expect(sn.qCellX[sn.qCellOffset[0]! + q]).toBeGreaterThanOrEqual(8);
+    for (let q = 0; q < sn.qCellLen[0]!; q++) expect(sn.qCellX[sn.qCellOffset[0]! + q]).toBeGreaterThanOrEqual(2);
   });
 
   it('queues a lane on its public side only', () => {
@@ -144,7 +145,7 @@ describe('regional update with zones', () => {
   const base = (): TerminalGrid => {
     const g = grid(128, 64);
     paint(g, 100, 0, 128, 64, 3);
-    for (let y = 0; y < 64; y++) if (y !== 4) wall(g, false, 100, y, 1);
+    for (let y = 0; y < 64; y++) if (y !== 4 && y !== 5) wall(g, false, 100, y, 1);
     put(g, 'security', 100, 4, 1);
     return g;
   };
@@ -170,8 +171,9 @@ describe('regional update with zones', () => {
     check((g) => paint(g, 10, 30, 31, 31, 2), [10, 30, 10, 30]);
   });
 
-  it('matches a fresh build when a commercial region comes to touch both sides of a lane', () => {
-    check((g) => paint(g, 80, 4, 100, 5, 2), [80, 4, 80, 4]);
+  it('matches a fresh build when a commercial region comes to touch the entrance of a lane', () => {
+    // The lane covers columns 93 to 100 on rows 4 and 5 (T74), so the strip ends at its entrance.
+    check((g) => paint(g, 80, 4, 93, 5, 2), [80, 4, 80, 4]);
   });
 
   it('matches a fresh build after a staff door', () => {

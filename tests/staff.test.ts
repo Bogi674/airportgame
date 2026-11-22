@@ -306,7 +306,8 @@ describe('screening machine staffing', () => {
     }
     for (let x = 50; x <= 57; x++) g.hWall[hEdgeIndex(g, x, 53)] = WALL.Wall;
     expect(edit(building, { op: 'fixture', x0: 60, y0: 41, x1: 61, y1: 42, variant: 1 })).toEqual([]);
-    expect(edit(building, { op: 'fixture', x0: 64, y0: 41, x1: 65, y1: 42, variant: 2, rot: 1 })).toEqual([]);
+    // The 2 by 8 cell lane (T74) covers columns 61 to 68 on rows 41 and 42, east of the check in desk.
+    expect(edit(building, { op: 'fixture', x0: 68, y0: 41, x1: 69, y1: 42, variant: 2, rot: 1 })).toEqual([]);
     const place = (kind: 'machine' | 'bay' | 'carousel', cx: number, cy: number): void => {
       expect(run(sim, { type: 'placeBaggageNode', building, kind, cx, cy, rot: 0, widthCells: 4 })).toEqual([]);
     };

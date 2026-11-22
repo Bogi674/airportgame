@@ -489,6 +489,12 @@ export class Sim {
       case 'demolishTerminal':
         this.report(this.business.demolishTerminal(cmd.id));
         break;
+      case 'upgradeFixture':
+        this.report(this.business.startFixtureUpgrade(cmd.building, cmd.x, cmd.y, this.tick));
+        break;
+      case 'cancelFixtureUpgrade':
+        this.report(this.business.cancelFixtureUpgrade(cmd.building, cmd.x, cmd.y));
+        break;
       case 'placeBaggageNode':
         this.report(this.baggage.place(cmd));
         break;
@@ -659,6 +665,7 @@ export class Sim {
       fixtureOff: g.fixtureOff.slice(),
       fixtureLevel: g.fixtureLevel.slice(),
       fixtureMode: g.fixtureMode.slice(),
+      works: this.business.fixtureWorks.filter((w) => w.building === g.id).map((w) => ({ ...w })),
       hWall: g.hWall.slice(),
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),
@@ -797,6 +804,10 @@ export class Sim {
     this.turns.loadState(save.turnarounds);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
     this.staff.loadState(save.staff as StaffSave | undefined);
+    if (save.legacyLanes) {
+      const n = this.business.removeLegacyLanes(save.legacyLanes);
+      if (n > 0) this.eventQueue.push(`lanesRemoved|n=${n}`);
+    }
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;

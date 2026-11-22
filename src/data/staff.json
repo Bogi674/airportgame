@@ -10,9 +10,9 @@
   "border": { "wagePerDay": 130, "sprites": [4] }
  },
  "stations": {
-  "note": "Fixture key: role and officers on duty.",
-  "checkIn": { "role": "agent", "need": 1 }, "bagDrop": { "role": "agent", "need": 1 }, "gateDesk": { "role": "agent", "need": 1 },
-  "security": { "role": "security", "need": 2 }, "screeningMachine": { "role": "security", "need": 1 },
+  "note": "Fixture key: role and officers on duty. needByLevel, when given, replaces need per fixture level 1 to 3 (T74).",
+  "checkIn": { "role": "agent", "need": 1 }, "bagDrop": { "role": "agent", "need": 1 }, "gateDesk": { "role": "agent", "need": 1, "needByLevel": [1, 2, 2] },
+  "security": { "role": "security", "need": 2, "needByLevel": [2, 3, 2] }, "screeningMachine": { "role": "security", "need": 1 },
   "passport": { "role": "border", "need": 1 }, "customs": { "role": "border", "need": 1 }
  },
  "shifts": { "note": "Start hours of the three shifts, length in hours, clock in or out minutes, longest wait for a relief past the shift end.", "startsH": [6, 14, 22], "lengthH": 8, "changeMin": 10, "overtimeMaxMin": 60 },

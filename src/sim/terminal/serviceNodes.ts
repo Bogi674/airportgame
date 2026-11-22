@@ -1,7 +1,9 @@
 import { ARRIVALS, BUSINESS, DEPARTURES, STAFF } from '@data/index';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type TerminalGrid } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { isLeveled, levelServiceSeconds } from '@shared/fixtureLevels';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
-import { AUD, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
+import { fixtureCells } from '@shared/terminalOps';
+import { AUD, flowStep, stepAud, transitionOf, type ZoneAccess } from '@shared/terminalZones';
 import type { Rng } from '../rng';
 import { packTyped, unpackTyped } from '../save/pack';
 import type { WalkGraph } from './walkGraph';
@@ -85,11 +87,13 @@ export interface ServiceNodes {
   staffPresent: Uint8Array;
   /** Service speed factor of the staff on the node, 1 for nodes that need no staff. Derived, not saved. */
   staffFactor: Float32Array;
+  /** 1 on a node closed for upgrade works (T74): it takes no queue and needs no staff. */
+  closed: Uint8Array;
 }
 
 /**
  * Module timing for a service key. Every service key carries both values in the data. A passport booth or eGate in
- * departure mode (mode 0) takes its own departure values (T79), and a security exit the values of its level (T80).
+ * departure mode (mode 0) takes its own departure values (T79), a security exit the values of its level (T80), and a leveled fixture above level 1 the values of its level (T74).
  */
 function timing(key: ServiceKey, mode: number, level: number): { servers: number; meanS: number } {
   if (key === 'securityExit') {
@@ -100,7 +104,16 @@ function timing(key: ServiceKey, mode: number, level: number): { servers: number
   if (key === 'eGate' || key === 'customs') return { servers: ARRIVALS.service[key].servers, meanS: ARRIVALS.service[key].serviceSeconds };
   const m = BUSINESS.modules[key];
   if (m.servers === undefined || m.serviceSeconds === undefined) throw new Error(`${key} has no service timing`);
+  // Levels 2 and 3 of a leveled fixture serve at their own speed in every mode (T74).
+  if (isLeveled(key) && level > 1) return { servers: m.servers, meanS: levelServiceSeconds(key, level) };
   return { servers: m.servers, meanS: m.serviceSeconds };
+}
+
+/** Staff a station needs at a fixture level, 0 for a fixture without a station. */
+export function stationNeed(key: FixtureKey, level: number): number {
+  const entry = STAFF.stations[key];
+  if (!entry) return 0;
+  return entry.needByLevel ? entry.needByLevel[Math.min(Math.max(level, 1), 3) - 1]! : entry.need;
 }
 
 /**
@@ -109,20 +122,35 @@ function timing(key: ServiceKey, mode: number, level: number): { servers: number
  * of its from zone. Its own first step may cross any edge that lets one of its audiences through in either direction,
  * and every later step needs the audience the fixture serves (passengers, or staff for a staff lane) to be able to
  * walk back toward the anchor, so a staff only door never extends a passenger queue. Every other anchor steps over
- * edges that are open to everyone. The anchor is the start and is not counted. The counted cells are left in
- * queue[1..count], in the order found, so nearest the anchor first. parent[p] is the queue position the cell at
- * queue[p] was reached from.
+ * edges that are open to everyone. The start is the anchor, or for a transition fixture over several cells its entry
+ * cells, the cells whose upstream neighbour lies outside the fixture (a 16 m security lane queues at its entrance,
+ * T74). Start cells are not counted. They are left in queue[0..seeds - 1] and the counted cells after them, in the
+ * order found, so nearest the start first. parent[p] is the queue position the cell at queue[p] was reached from.
  */
-function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, start: number, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): number {
+function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, start: number, reach: number, seen: Uint8Array, dist: Int32Array, queue: Int32Array, parent: Int32Array): { counted: number; seeds: number } {
   const W = g.w;
   const transition = transitionOf(fixtureKey(g.fixture[start]!), g.fixtureMode[start]!);
   // The audience whose walk toward the anchor must be possible: passengers unless the fixture is staff only.
   const need = transition && (transition.aud & AUD.Pax) !== 0 ? AUD.Pax : AUD.Staff;
-  seen[start] = 1;
-  dist[start] = 0;
-  queue[0] = start;
+  let tail = 0;
+  if (transition) {
+    const [fx, fy] = flowStep(g.fixtureRot[start]!);
+    const cells = fixtureCells(g, start);
+    for (const c of cells) {
+      const x = c % W;
+      const up = cellIndexArray(g, x - fx, (c - x) / W - fy);
+      if (up >= 0 && cells.includes(up)) continue;
+      seen[c] = 1;
+      dist[c] = 0;
+      queue[tail++] = c;
+    }
+  } else {
+    seen[start] = 1;
+    dist[start] = 0;
+    queue[tail++] = start;
+  }
+  const seeds = tail;
   let head = 0;
-  let tail = 1;
   let counted = 0;
   while (head < tail) {
     const pos = head;
@@ -137,7 +165,7 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
       const back = stepAud(acc, g, x + DX[d], y + DY[d], d ^ 1);
       if (transition) {
         if (effective[j] !== transition.from) continue;
-        if (i === start ? ((out | back) & transition.aud) === 0 : (back & need) === 0) continue;
+        if (pos < seeds ? ((out | back) & transition.aud) === 0 : (back & need) === 0) continue;
       } else if (out !== 3) continue;
       if (seen[j] === 1 || g.fixture[j] !== 0) continue;
       seen[j] = 1;
@@ -148,11 +176,19 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
     }
   }
   for (let i = 0; i < tail; i++) seen[queue[i]!] = 0;
-  return counted;
+  return { counted, seeds };
 }
 
-/** Builds the service node table of one terminal floor. Nodes are the anchors of the service fixtures, in cell order. */
-export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes {
+/** Array index of array cell (x, y), -1 outside the grid. */
+function cellIndexArray(g: TerminalGrid, x: number, y: number): number {
+  return x < 0 || y < 0 || x >= g.w || y >= g.h ? -1 : y * g.w + x;
+}
+
+/**
+ * Builds the service node table of one terminal floor. Nodes are the anchors of the service fixtures, in cell order.
+ * Anchors at the array cells in `closed` are under works: they keep their node but take no queue and need no staff.
+ */
+export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readonly number[] = []): ServiceNodes {
   const n = g.w * g.h;
   const anchors: number[] = [];
   for (let c = 0; c < n; c++) {
@@ -204,6 +240,7 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     staffNeed: new Uint8Array(count),
     staffPresent: new Uint8Array(count),
     staffFactor: new Float32Array(count).fill(1),
+    closed: new Uint8Array(count),
   };
 
   for (let k = 0; k < count; k++) {
@@ -218,20 +255,25 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph): ServiceNodes 
     nodes.ly[k] = g.y0 + (c - x) / g.w;
     nodes.servers[k] = t.servers;
     nodes.meanS[k] = t.meanS;
-    nodes.staffNeed[k] = STAFF.stations[key]?.need ?? 0;
-    const cells = queueCells(g, wg.access, wg.effective, c, reach, seen, dist, queue, parent);
+    nodes.staffNeed[k] = stationNeed(key, g.fixtureLevel[c]!);
+    const { counted: cells, seeds } = queueCells(g, wg.access, wg.effective, c, reach, seen, dist, queue, parent);
     nodes.queueCap[k] = Math.floor(cells * AREA_PER_CELL * density);
     nodes.qCellOffset[k] = cellX.length;
     nodes.qCellLen[k] = cells;
-    for (let i = 1; i <= cells; i++) {
+    for (let i = seeds; i < seeds + cells; i++) {
       const j = queue[i]!;
       const jx = j % g.w;
       cellX.push(g.x0 + jx);
       cellY.push(g.y0 + (j - jx) / g.w);
-      // Queue position p is the cell reached from position p - 1 of the queue, so its stored index is p - 1 and the start is -1.
-      cellParent.push(parent[i]! - 1);
+      // A queue cell reached from position p stores p - seeds, and one reached from a start cell stores -1.
+      cellParent.push(parent[i]! < seeds ? -1 : parent[i]! - seeds);
     }
     nodes.walkNode[k] = wg.cellNode[c]!;
+    if (closed.includes(c)) {
+      nodes.closed[k] = 1;
+      nodes.queueCap[k] = 0;
+      nodes.staffNeed[k] = 0;
+    }
   }
   nodes.qCellX = Int32Array.from(cellX);
   nodes.qCellY = Int32Array.from(cellY);
@@ -247,16 +289,16 @@ function findNode(sn: ServiceNodes, lx: number, ly: number, kind: number): numbe
 
 /**
  * Builds the table of a grid after a change and carries the queues of `prev` over. A node is the same when its
- * logical cell and fixture kind match. Cohorts at a node that no longer exists are evicted: its serving cohort,
- * then its queue in order. Evicted cohorts are kept on the new table, after the ones already evicted before.
- * Allocates, so it runs at command time only.
+ * logical cell and fixture kind match. Cohorts at a node that no longer exists or that closes for works are evicted:
+ * its serving cohort, then its queue in order. Evicted cohorts are kept on the new table, after the ones already
+ * evicted before. Allocates, so it runs at command time only.
  */
-export function rebuildServiceNodes(prev: ServiceNodes, g: TerminalGrid, wg: WalkGraph): ServiceNodes {
-  const next = buildServiceNodes(g, wg);
+export function rebuildServiceNodes(prev: ServiceNodes, g: TerminalGrid, wg: WalkGraph, closed: readonly number[] = []): ServiceNodes {
+  const next = buildServiceNodes(g, wg, closed);
   const evicted: number[] = Array.from(prev.evicted.subarray(0, prev.evictedCount));
   for (let p = 0; p < prev.count; p++) {
     const k = findNode(next, prev.lx[p]!, prev.ly[p]!, prev.kind[p]!);
-    if (k < 0) {
+    if (k < 0 || next.closed[k] === 1) {
       if (prev.serving[p]! >= 0) evicted.push(prev.serving[p]!);
       for (let q = 0; q < prev.qCount[p]!; q++) evicted.push(prev.qCohort[p * prev.slots + ((prev.qHead[p]! + q) % prev.slots)]!);
       continue;
@@ -336,11 +378,25 @@ function lognormalDraw(rng: Rng, sigma: number, s2: number): number {
  * but an empty queue takes any size so one large cohort can always start.
  */
 // hot
-export function serviceJoin(sn: ServiceNodes, node: number, cohort: number, size: number): boolean {
+export function serviceJoin(sn: ServiceNodes, node: number, cohort: number, size: number, ahead?: (cohort: number) => boolean): boolean {
   if (node < 0 || node >= sn.count || size < 1) return false;
   if (sn.queueCap[node] === 0 || sn.qCount[node] === sn.slots) return false;
   if (sn.queueLen[node] > 0 && sn.queueLen[node] + size > sn.queueCap[node]) return false;
-  const slot = node * sn.slots + ((sn.qHead[node] + sn.qCount[node]) % sn.slots);
+  const base = node * sn.slots;
+  const head = sn.qHead[node];
+  // A priority join (T74) goes behind the priority cohorts at the head and ahead of everyone else: later entries shift back one.
+  let at = sn.qCount[node];
+  if (ahead) {
+    at = 0;
+    while (at < sn.qCount[node] && ahead(sn.qCohort[base + ((head + at) % sn.slots)]!)) at++;
+    for (let q = sn.qCount[node]; q > at; q--) {
+      const to = base + ((head + q) % sn.slots);
+      const from = base + ((head + q - 1) % sn.slots);
+      sn.qCohort[to] = sn.qCohort[from]!;
+      sn.qSize[to] = sn.qSize[from]!;
+    }
+  }
+  const slot = base + ((head + at) % sn.slots);
   sn.qCohort[slot] = cohort;
   sn.qSize[slot] = size;
   sn.qCount[node] += 1;

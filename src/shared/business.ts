@@ -21,6 +21,8 @@ export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
+import type { FixtureWorks } from './fixtureLevels';
+
 export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
@@ -95,7 +97,7 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
  */
 export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, number])[]> = {
   checkIn: [[1, 1]],
-  security: [[1, 1]],
+  security: [[2, 8]],
   belt: [[1, 1]],
   seating: [[1, 1]],
   toilet: [[1, 1]],
@@ -183,6 +185,8 @@ export interface TerminalGrid {
   cost: number;
   /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
   bagNodes?: BagDrawNode[];
+  /** Fixtures of this building under upgrade works, set only on the copies sent to the renderer (T74). */
+  works?: FixtureWorks[];
 }
 
 /** A building in the business payload: counts only, the grids travel separately. */
