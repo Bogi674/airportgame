@@ -2,7 +2,29 @@
 export const OVERLAY_MAX = 65535;
 
 /** The terminal overlay the player picked. One at a time, `none` shows no overlay. */
-export type OverlayKind = 'none' | 'density' | 'queue' | 'walk' | 'zones' | 'staffing';
+export type OverlayKind = 'none' | 'density' | 'queue' | 'walk' | 'zones' | 'staffing' | 'baggage';
+
+/** Link flag bits of the baggage load overlay. */
+export const BAG_LINK_FLOW = 1;
+export const BAG_LINK_ARRIVAL = 2;
+/** Node flag bit of the baggage load overlay: the buffer is full and blocks the node upstream (back pressure). */
+export const BAG_NODE_BLOCKED = 1;
+
+/**
+ * The Baggage load overlay of one building (docs/BAGGAGE.md 6.1, T78). Points are logical cell coordinates, cell centers
+ * at half cells. Link k runs through points linkStart[k] to linkStart[k + 1] - 1. Load is in percent of the link capacity.
+ */
+export interface BagOverlay {
+  linkPts: Float32Array;
+  linkStart: Int32Array;
+  linkLoad: Uint16Array;
+  linkFlags: Uint8Array;
+  /** Node centers, x then y per node. */
+  nodePos: Float32Array;
+  /** Buffer fill of each node in percent. */
+  nodeFill: Uint16Array;
+  nodeFlags: Uint8Array;
+}
 
 /**
  * Read only view of one terminal building for the debug overlays. Density, queue, wait and gate distance are
@@ -30,4 +52,6 @@ export interface OverlayData {
   stationNeed: Uint8Array;
   /** Officers on duty at each station. */
   stationPresent: Uint8Array;
+  /** The baggage network, missing for a building without one. */
+  bag?: BagOverlay;
 }

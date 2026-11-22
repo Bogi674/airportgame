@@ -14,10 +14,11 @@ const NAME: Record<Shown, StringKey> = {
   walk: 'hud.overlay.walk',
   zones: 'hud.overlay.zones',
   staffing: 'hud.overlay.staffing',
+  baggage: 'hud.overlay.baggage',
 };
 
 /** Units of the ramp overlays. The zones legend has no scale, so it has no unit. */
-const UNIT: Record<Exclude<Shown, 'zones'>, StringKey> = {
+const UNIT: Record<Exclude<Shown, 'zones' | 'baggage'>, StringKey> = {
   density: 'hud.overlay.unitDensity',
   queue: 'hud.overlay.unitWait',
   walk: 'hud.overlay.unitWalk',
@@ -32,6 +33,29 @@ const ZONE_SWATCHES: readonly [StringKey, string][] = [
   ['zone.4', '--zone-staff'],
   ['zone.5', '--zone-international'],
 ];
+
+/** Load colors, chevron styles and the buffer ring of the Baggage load overlay (docs/BAGGAGE.md 6.1). */
+function BagKey() {
+  const swatch = (token: string): string => `width:10px;height:10px;border-radius:2px;background:var(${token})`;
+  return (
+    <span data-testid="overlay-legend-baggage" style="display:inline-flex;flex-wrap:wrap;gap:4px 10px;white-space:normal;max-width:360px">
+      <span style="display:inline-flex;align-items:center;gap:4px">
+        <i style={swatch('--baggage-load-low')} aria-hidden="true" />
+        {t('hud.overlay.bagLow')}
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:4px">
+        <i style={swatch('--baggage-load-mid')} aria-hidden="true" />
+        {t('hud.overlay.bagMid')}
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:4px">
+        <i style={swatch('--baggage-load-high')} aria-hidden="true" />
+        {t('hud.overlay.bagHigh')}
+      </span>
+      <span>{t('hud.overlay.bagChevrons')}</span>
+      <span>{t('hud.overlay.bagRing')}</span>
+    </span>
+  );
+}
 
 /** Ramp steps shown in the legend bar. Matches the 16 step colour ramp of the map. */
 const STEPS = 16;
@@ -110,6 +134,8 @@ export function OverlayLegend() {
       <b style="min-width:0;overflow:hidden;text-overflow:ellipsis">{t(NAME[overlay])}</b>
       {overlay === 'zones' ? (
         <ZoneKey />
+      ) : overlay === 'baggage' ? (
+        <BagKey />
       ) : (
         <>
           <span style="display:inline-flex;gap:1px;width:150px;flex:0 1 150px;min-width:0" aria-hidden="true">

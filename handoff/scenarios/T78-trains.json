@@ -1,0 +1,763 @@
+{
+ "preset": "flatCoastal",
+ "buy": [
+  [
+   2500,
+   4700,
+   4700,
+   5700
+  ]
+ ],
+ "commands": [
+  {
+   "type": "buildRunway",
+   "x": 3000,
+   "y": 5000,
+   "headingDeg": 90,
+   "lengthM": 2600,
+   "code": "C",
+   "approach": "precision",
+   "surface": "asphalt",
+   "tier": 2
+  },
+  {
+   "type": "buildParallelTaxiway",
+   "runwayId": 1,
+   "side": "right",
+   "offsetM": 190,
+   "code": "C",
+   "connectors": 4,
+   "surface": "asphalt",
+   "tier": 2
+  },
+  {
+   "type": "buildRapidExit",
+   "runwayId": 1,
+   "distM": 1300,
+   "side": "right",
+   "angleDeg": 30,
+   "code": "C",
+   "surface": "asphalt",
+   "tier": 2
+  },
+  {
+   "type": "buildApron",
+   "polygon": [
+    {
+     "x": 3800,
+     "y": 5260
+    },
+    {
+     "x": 4260,
+     "y": 5260
+    },
+    {
+     "x": 4260,
+     "y": 5400
+    },
+    {
+     "x": 3800,
+     "y": 5400
+    }
+   ],
+   "surface": "concrete",
+   "tier": 2
+  },
+  {
+   "type": "buildStands",
+   "x": 4210,
+   "y": 5330,
+   "headingDeg": 180,
+   "count": 8,
+   "spacingM": 45,
+   "standType": "remote",
+   "size": "medium"
+  },
+  {
+   "type": "buildDepot",
+   "x": 3775,
+   "y": 5343.9,
+   "headingDeg": 90
+  },
+  {
+   "type": "buildRoad",
+   "points": [
+    {
+     "x": 3799,
+     "y": 5343.9
+    },
+    {
+     "x": 3895,
+     "y": 5343.9
+    },
+    {
+     "x": 3940,
+     "y": 5343.9
+    },
+    {
+     "x": 3985,
+     "y": 5343.9
+    },
+    {
+     "x": 4030,
+     "y": 5343.9
+    },
+    {
+     "x": 4075,
+     "y": 5343.9
+    },
+    {
+     "x": 4120,
+     "y": 5343.9
+    },
+    {
+     "x": 4165,
+     "y": 5343.9
+    },
+    {
+     "x": 4210,
+     "y": 5343.9
+    }
+   ]
+  },
+  {
+   "type": "buildBuilding",
+   "kind": "fire",
+   "x": 3775,
+   "y": 5398.9,
+   "headingDeg": 90
+  },
+  {
+   "type": "buyFireVehicle",
+   "id": 23
+  },
+  {
+   "type": "buyFireVehicle",
+   "id": 23
+  },
+  {
+   "type": "buyFireVehicle",
+   "id": 23
+  },
+  {
+   "type": "buyGse",
+   "kind": "beltloader",
+   "count": 1
+  },
+  {
+   "type": "buyGse",
+   "kind": "refueller",
+   "count": 1
+  },
+  {
+   "type": "buyGse",
+   "kind": "gpu",
+   "count": 1
+  },
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 40,
+    "y0": 40,
+    "x1": 100,
+    "y1": 60,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 40,
+    "y0": 40,
+    "x1": 100,
+    "y1": 60,
+    "variant": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 40,
+    "y0": 40,
+    "x1": 100,
+    "y1": 40,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 40,
+    "y0": 60,
+    "x1": 100,
+    "y1": 60,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 50,
+    "y0": 60,
+    "x1": 52,
+    "y1": 60,
+    "variant": 3
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 48,
+    "y0": 60,
+    "x1": 54,
+    "y1": 61,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 48,
+    "y0": 60,
+    "x1": 54,
+    "y1": 61,
+    "variant": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "zone",
+    "x0": 72,
+    "y0": 40,
+    "x1": 100,
+    "y1": 50,
+    "variant": 3
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "zone",
+    "x0": 72,
+    "y0": 50,
+    "x1": 100,
+    "y1": 60,
+    "variant": 5
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 72,
+    "y0": 40,
+    "x1": 72,
+    "y1": 42,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 72,
+    "y0": 43,
+    "x1": 72,
+    "y1": 47,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 72,
+    "y0": 48,
+    "x1": 72,
+    "y1": 52,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 72,
+    "y0": 53,
+    "x1": 72,
+    "y1": 55,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 72,
+    "y0": 56,
+    "x1": 72,
+    "y1": 60,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 72,
+    "y0": 50,
+    "x1": 100,
+    "y1": 50,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 72,
+    "y0": 42,
+    "x1": 73,
+    "y1": 43,
+    "variant": 2,
+    "rot": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 72,
+    "y0": 47,
+    "x1": 73,
+    "y1": 48,
+    "variant": 20,
+    "rot": 3,
+    "level": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 72,
+    "y0": 52,
+    "x1": 73,
+    "y1": 53,
+    "variant": 15,
+    "rot": 3,
+    "mode": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 72,
+    "y0": 55,
+    "x1": 73,
+    "y1": 56,
+    "variant": 21,
+    "rot": 3,
+    "mode": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 80,
+    "y0": 42,
+    "x1": 82,
+    "y1": 43,
+    "variant": 16
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 80,
+    "y0": 57,
+    "x1": 82,
+    "y1": 58,
+    "variant": 16
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 42,
+    "y0": 42,
+    "x1": 44,
+    "y1": 43,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "zone",
+    "x0": 62,
+    "y0": 54,
+    "x1": 70,
+    "y1": 60,
+    "variant": 4
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 62,
+    "y0": 54,
+    "x1": 62,
+    "y1": 60,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 70,
+    "y0": 54,
+    "x1": 70,
+    "y1": 60,
+    "variant": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 3880,
+   "oy": 5360,
+   "headingDeg": 90,
+   "edit": {
+    "op": "wall",
+    "x0": 62,
+    "y0": 54,
+    "x1": 70,
+    "y1": 54,
+    "variant": 1
+   }
+  },
+  {
+   "type": "placeBaggageNode",
+   "building": 1,
+   "kind": "carousel",
+   "cx": 56,
+   "cy": 44,
+   "rot": 0,
+   "widthCells": 4
+  },
+  {
+   "type": "placeBaggageNode",
+   "building": 1,
+   "kind": "bay",
+   "cx": 64,
+   "cy": 56,
+   "rot": 0,
+   "widthCells": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 13,
+   "bayId": 4
+  },
+  {
+   "type": "buildRoad",
+   "points": [
+    {
+     "x": 4210,
+     "y": 5343.9
+    },
+    {
+     "x": 4210,
+     "y": 5508
+    },
+    {
+     "x": 4012.0000000000005,
+     "y": 5508
+    }
+   ]
+  },
+  {
+   "type": "buildTower",
+   "x": 2700,
+   "y": 4800,
+   "level": 5
+  },
+  {
+   "type": "setStandBay",
+   "standId": 13,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 14,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 15,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 16,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 17,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 18,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 19,
+   "bayId": 4
+  },
+  {
+   "type": "setStandBay",
+   "standId": 20,
+   "bayId": 4
+  },
+  {
+   "type": "signAirline",
+   "airlineId": 0,
+   "sign": true
+  },
+  {
+   "type": "signAirline",
+   "airlineId": 1,
+   "sign": true
+  },
+  {
+   "type": "setTestTraffic",
+   "perHour": 30,
+   "turnScale": 0.5
+  }
+ ],
+ "camera": {
+  "x": 4012.0000000000005,
+  "y": 5478,
+  "zoom": 7
+ },
+ "hideUi": false,
+ "actions": [
+  {
+   "key": "4"
+  },
+  {
+   "wait": 200000
+  },
+  {
+   "shot": "trains-0",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "wait": 8000
+  },
+  {
+   "shot": "trains-1",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "wait": 8000
+  },
+  {
+   "shot": "trains-2",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "wait": 8000
+  },
+  {
+   "shot": "trains-3",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "wait": 8000
+  },
+  {
+   "shot": "trains-4",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "wait": 8000
+  },
+  {
+   "shot": "trains-5",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "wait": 8000
+  },
+  {
+   "key": "o"
+  },
+  {
+   "tool": "overlay-baggage"
+  },
+  {
+   "wait": 2000
+  },
+  {
+   "shot": "overlay",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  },
+  {
+   "camera": {
+    "x": 4012.0000000000005,
+    "y": 5458,
+    "zoom": 14
+   }
+  },
+  {
+   "wait": 1500
+  },
+  {
+   "shot": "overlay-near",
+   "clip": {
+    "w": 1200,
+    "h": 800
+   }
+  }
+ ]
+}

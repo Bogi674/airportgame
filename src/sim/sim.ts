@@ -674,6 +674,8 @@ export class Sim {
   overlayData(gridIndex: number, out: OverlayData): OverlayData {
     const o = this.business.overlayData(gridIndex, this.tick, out, this.cohorts);
     this.staff.fillCoverage(o, gridIndex);
+    const g = this.business.grids[gridIndex];
+    o.bag = (g ? this.baggage.overlay(g.id, this.tick) : null) ?? undefined;
     return o;
   }
 

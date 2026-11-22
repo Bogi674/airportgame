@@ -227,7 +227,7 @@ export function App() {
 
   // The terminal overlay feed runs only while a simulated overlay is picked. The zones overlay draws from the grids alone.
   useEffect(() => {
-    client.setOverlaySub(store.overlay === 'density' || store.overlay === 'queue' || store.overlay === 'walk' || store.overlay === 'staffing');
+    client.setOverlaySub(store.overlay === 'density' || store.overlay === 'queue' || store.overlay === 'walk' || store.overlay === 'staffing' || store.overlay === 'baggage');
   }, [client, store.overlay]);
 
   // Theme tokens feed the overlay colour ramp and the zone colors. They are read again when the theme attribute changes.
@@ -245,6 +245,15 @@ export function App() {
         staff: token('--zone-staff'),
         breach: token('--zone-breach'),
         badge: token('--zone-badge'),
+      });
+      renderer.setBagColors({
+        departure: token('--baggage-departure'),
+        arrival: token('--baggage-arrival'),
+        warning: token('--baggage-warning'),
+        low: token('--baggage-load-low'),
+        mid: token('--baggage-load-mid'),
+        high: token('--baggage-load-high'),
+        idle: token('--baggage-idle'),
       });
     };
     readTheme();

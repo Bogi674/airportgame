@@ -1,8 +1,9 @@
 import { BAGGAGE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import type { BayAnchor } from '@shared/airfield';
+import { BAG_LINK_ARRIVAL, BAG_LINK_FLOW, BAG_NODE_BLOCKED, type BagOverlay } from '@shared/overlay';
 import { FIXTURE_KEYS, FIXTURE_ZONES, TERMINAL_CELL_M, TICKS_PER_MINUTE, type BagWarningCode, type BaggageInfo, type BagNodeInfo, type FixtureKey, type TerminalGrid } from '@shared/business';
-import { bagKey, bagNodeCost, bayFrame, bayRoadPoint, carouselSize, type BayFrame, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { bagKey, bagNodeCost, bayFrame, bayRoadPoint, carouselSize, drawCenter, type BayFrame, dropOutCell, nodeCells, nodeSize, rampCell, screeningRoomOk, validateBagNode, type BagDrawNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { cellIndex } from '@shared/terminalOps';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import { foldU32 } from '../../hash';
@@ -129,6 +130,11 @@ const KIND_INDEX: readonly BagNodeKind[] = ['drop', 'machine', 'bay', 'carousel'
 const keyId = (key: FixtureKey): number => FIXTURE_KEYS.indexOf(key) + 1;
 const CHECK_IN_ID = keyId('checkIn');
 const BELT_ID = keyId('belt');
+/** Window of the Baggage load overlay in game minutes, and in ticks (docs/BAGGAGE.md 6.1, T78). */
+const LOAD_WINDOW_MIN = 10;
+const LOAD_WINDOW_TICKS = LOAD_WINDOW_MIN * TICKS_PER_MINUTE;
+/** Node ids stay far below this, so src * LINK_KEY + dst names a link uniquely. */
+const LINK_KEY = 1 << 20;
 const BAG_DROP_ID = keyId('bagDrop');
 
 interface Anchor {
@@ -191,6 +197,10 @@ export class Baggage {
   private deliNext = 0;
   private states: NodeState[] = [];
   /** Bumped whenever a record is added or dropped, so the state table and the orphan sweep know to run. */
+  /** Bags that entered each link in the current and the last load period. Display only: never saved or hashed. */
+  private linkNow = new Map<number, number>();
+  private linkLast = new Map<number, number>();
+  private linkWindow = -1;
   private layoutStamp = 0;
   /** Bumped with every layout or link change for drawVersion. */
   private drawStamp = 0;
@@ -396,6 +406,89 @@ export class Baggage {
     return this.recs.filter((r) => r.building === building);
   }
 
+  /**
+   * The Baggage load overlay of one building (docs/BAGGAGE.md 6.1, T78): every link with its path, its load over the last
+   * full period against the link capacity and whether bags flow, and every node's buffer fill. Built at overlay cadence,
+   * never in the tick; null for a building with no baggage network.
+   */
+  overlay(building: number, tick: number): BagOverlay | null {
+    const net = this.netOf(building);
+    if (net === null) return null;
+    this.rollLinkWindow(tick);
+    const links = net.linkList();
+    const kinds = new Map(net.nodeList().map((n) => [n.id, n.kind]));
+    let pts = 0;
+    for (const l of links) pts += l.cells.length;
+    const out: BagOverlay = {
+      linkPts: new Float32Array(2 * pts),
+      linkStart: new Int32Array(links.length + 1),
+      linkLoad: new Uint16Array(links.length),
+      linkFlags: new Uint8Array(links.length),
+      nodePos: new Float32Array(0),
+      nodeFill: new Uint16Array(0),
+      nodeFlags: new Uint8Array(0),
+    };
+    // Links that carry a batch right now, so bags on a belt show as flowing even before a period has counted them.
+    const moving = new Set<number>();
+    for (let b = 0; b < this.hi; b++) {
+      const st = this.stage[b];
+      if (st === BagStage.ToMachine || st === BagStage.ToCarousel) moving.add(this.origin[b] * LINK_KEY + this.node[b]);
+      else if (st === BagStage.ToBay) moving.add((net.machineOf(this.origin[b]) ?? -1) * LINK_KEY + this.node[b]);
+    }
+    let p = 0;
+    const perHour = 60 / LOAD_WINDOW_MIN;
+    for (let k = 0; k < links.length; k++) {
+      const l = links[k];
+      out.linkStart[k] = p;
+      for (const [x, y] of l.cells) {
+        out.linkPts[2 * p] = x + 0.5;
+        out.linkPts[2 * p + 1] = y + 0.5;
+        p++;
+      }
+      const key = l.src * LINK_KEY + l.dst;
+      // The busier of the last full period and the one running now, so a fresh rush shows at once.
+      const bags = Math.max(this.linkLast.get(key) ?? 0, this.linkNow.get(key) ?? 0);
+      out.linkLoad[k] = Math.min(65535, Math.round((100 * bags * perHour) / BAGGAGE.linkCapacityBagsPerHour));
+      const flowing = bags > 0 || moving.has(key);
+      out.linkFlags[k] = (flowing ? BAG_LINK_FLOW : 0) | (kinds.get(l.dst) === 'carousel' ? BAG_LINK_ARRIVAL : 0);
+    }
+    out.linkStart[links.length] = p;
+    const recs = this.nodesOf(building).sort((a, b) => a.id - b.id);
+    out.nodePos = new Float32Array(2 * recs.length);
+    out.nodeFill = new Uint16Array(recs.length);
+    out.nodeFlags = new Uint8Array(recs.length);
+    for (let k = 0; k < recs.length; k++) {
+      const rec = recs[k];
+      const c: [number, number] = rec.spec === null ? [rec.cell[0] + 0.5, rec.cell[1] + 0.5] : (drawCenter({ building, kind: rec.kind, cx: rec.spec.cx, cy: rec.spec.cy, rot: rec.spec.rot, widthCells: rec.spec.widthCells, linked: false }) ?? [rec.cell[0] + 0.5, rec.cell[1] + 0.5]);
+      out.nodePos[2 * k] = c[0];
+      out.nodePos[2 * k + 1] = c[1];
+      const cap = this.capacityOf(rec);
+      const held = this.heldAt(rec);
+      out.nodeFill[k] = cap > 0 ? Math.min(100, Math.round((100 * held) / cap)) : 0;
+      out.nodeFlags[k] = held >= cap && cap > 0 ? BAG_NODE_BLOCKED : 0;
+    }
+    return out;
+  }
+
+  /** Counts bags entering a link, for the overlay load. */
+  private countLink(src: number, dst: number, bags: number, tick: number): void {
+    this.rollLinkWindow(tick);
+    const key = src * LINK_KEY + dst;
+    this.linkNow.set(key, (this.linkNow.get(key) ?? 0) + bags);
+  }
+
+  /** Starts a new load period when the tick has moved past the current one; a gap of more than one period clears both. */
+  private rollLinkWindow(tick: number): void {
+    const w = Math.floor(tick / LOAD_WINDOW_TICKS);
+    if (w === this.linkWindow) return;
+    const swap = this.linkLast;
+    this.linkLast = this.linkNow;
+    this.linkNow = swap;
+    this.linkNow.clear();
+    if (w !== this.linkWindow + 1) this.linkLast.clear();
+    this.linkWindow = w;
+  }
+
   /** Truck edge frame of a bay by id, null when it is gone (T78). */
   bayFrameOf(id: number): BayFrame | null {
     const rec = this.recById(id);
@@ -469,6 +562,8 @@ export class Baggage {
       // A bay the road net does not reach from a depot gets no trains, so its stands lose their bags (T78).
       const road = rec.kind !== 'bay' || this.host.bayConnected(rec.id);
       if (!road) warnings.push('bayNoRoad');
+      // Info chip of docs/BAGGAGE.md 6.2: a full carousel makes its bays hold arriving bags.
+      if (rec.kind === 'carousel' && this.heldAt(rec) >= this.capacityOf(rec)) warnings.push('carouselFull');
       const cells: [number, number][] = rec.spec === null ? [[rec.cell[0], rec.cell[1]]] : nodeCells(rec.spec).map(([x, y]): [number, number] => [x, y]);
       nodes.push({ id: rec.id, kind: rec.kind, building: rec.building, cells, held: this.heldAt(rec), capacity: this.capacityOf(rec), links, warnings });
       if (rec.kind === 'bay' && rec.spec !== null) {
@@ -489,9 +584,11 @@ export class Baggage {
   private heldAt(rec: BagNodeRec): number {
     if (rec.kind === 'drop') return this.dropBags(rec.id);
     if (rec.kind === 'carousel') return this.carouselHeld(rec.id);
+    // A bay holds departure bags staged for loading and arrival bags waiting for the carousel link.
     const stage = rec.kind === 'machine' ? BagStage.Queue : BagStage.Bay;
+    const arrival = rec.kind === 'bay' ? BagStage.BayIn : -1;
     let n = 0;
-    for (let b = 0; b < this.hi; b++) if (this.stage[b] === stage && this.node[b] === rec.id) n += this.count[b];
+    for (let b = 0; b < this.hi; b++) if ((this.stage[b] === stage || this.stage[b] === arrival) && this.node[b] === rec.id) n += this.count[b];
     return n;
   }
 
@@ -1035,6 +1132,7 @@ export class Baggage {
       const bay = r.route[2];
       this.node[b] = bay;
       this.stage[b] = BagStage.ToBay;
+      this.countLink(r.route[1], bay, this.count[b], tick);
       this.ready[b] = tick + this.linkTicks(net.linkLengthM(r.route[1], bay));
     }
   }
@@ -1142,6 +1240,7 @@ export class Baggage {
       if (net === null || carousel === null) continue;
       this.node[b] = carousel;
       this.stage[b] = BagStage.ToCarousel;
+      this.countLink(bay, carousel, this.count[b], tick);
       this.ready[b] = tick + this.linkTicks(net.linkLengthM(bay, carousel));
     }
   }
@@ -1162,6 +1261,7 @@ export class Baggage {
       if (machine === null) continue;
       this.node[b] = machine;
       this.stage[b] = BagStage.ToMachine;
+      this.countLink(this.origin[b], machine, this.count[b], tick);
       this.ready[b] = tick + this.linkTicks(net.linkLengthM(this.origin[b], machine));
     }
   }

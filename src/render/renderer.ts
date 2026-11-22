@@ -20,6 +20,7 @@ import { cornerWorld } from '@shared/terminalOps';
 import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
+import { blockedLinks, drawBagOverlay, type BagOverlayColors } from './bagOverlay';
 import { aircraftTier, SpriteCache } from './sprites/aircraftSprite';
 import { People } from './people';
 import { QualityGovernor, type QualityPreset } from './quality';
@@ -156,6 +157,9 @@ export class Renderer {
   /** Fill of unreachable gates, the muted token at the overlay alpha. */
   private overlayMutedFill = '';
   private zoneColors: ZoneColors | null = null;
+  /** Colors of the Baggage load overlay and, per published building, the links that end at a blocked node (T78). */
+  private bagColors: BagOverlayColors | null = null;
+  private bagBlocked: Uint8Array[] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -325,6 +329,10 @@ export class Renderer {
   }
 
   /** Theme colors of the zones overlay. */
+  setBagColors(colors: BagOverlayColors): void {
+    this.bagColors = colors;
+  }
+
   setZoneColors(colors: ZoneColors): void {
     this.zoneColors = colors;
   }
@@ -337,6 +345,7 @@ export class Renderer {
     if (data !== this.overlayData || kind !== this.overlayKind) {
       this.overlayScale = overlayMax(kind, data ?? []);
       this.rebuildOverlayLabels(kind, data ?? []);
+      this.bagBlocked = (data ?? []).map((d) => (d.bag ? blockedLinks(d.bag) : new Uint8Array(0)));
     }
     this.overlayKind = kind;
     this.overlayData = data;
@@ -514,6 +523,10 @@ export class Renderer {
       this.drawZoneOverlays(a, b, cc, d, e, f);
       return;
     }
+    if (this.overlayKind === 'baggage') {
+      this.drawBagOverlays(a, b, cc, d, e, f);
+      return;
+    }
     const data = this.overlayData;
     if (!data || this.overlayRamp.length === 0) return;
     const ctx = this.ctx;
@@ -557,6 +570,22 @@ export class Renderer {
       if (labelled && (kind === 'queue' || kind === 'walk')) this.labelOverlayCells(d0, kind, m, this.overlayLabels[k]!);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /** The Baggage load overlay of every published building, in logical cells of its grid. */
+  private drawBagOverlays(a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const data = this.overlayData;
+    const colors = this.bagColors;
+    if (!data || !colors) return;
+    const timeS = performance.now() / 1000;
+    for (let k = 0; k < data.length; k++) {
+      const d0 = data[k]!;
+      if (!d0.bag || !this.overlayGrids[d0.building]) continue;
+      const m = this.overlayMatrixFor(d0.building, a, b, cc, d, e, f);
+      this.ctx.setTransform(m[0]!, m[1]!, m[2]!, m[3]!, m[4]!, m[5]!);
+      drawBagOverlay(this.ctx, d0.bag, this.bagBlocked[k] ?? new Uint8Array(0), colors, timeS);
+    }
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   /** Zones of every overlay grid. The matrix maps logical cells, the zone overlay draws in grid meters, so it is divided by the cell size. */

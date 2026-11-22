@@ -4,6 +4,7 @@ import { BAGGAGE, GSE, GSE_INDEX, TURNAROUNDS } from '@data/index';
 import { BagStage } from '@sim/ops/baggage/baggage';
 import { MAX_VEHICLES } from '@sim/vehicles/gse';
 import { bayPoint } from '../src/shared/baggageNodes';
+import { BAG_LINK_ARRIVAL, BAG_LINK_FLOW } from '../src/shared/overlay';
 import { AcState } from '@sim/ops/traffic';
 import { Turnarounds } from '@sim/ops/turnaround';
 import { Sim } from '@sim/sim';
@@ -308,6 +309,31 @@ describe('baggage trains between bay slots and stands (T78)', () => {
       return l.sim.stateHash();
     });
     expect(hashes[0]).toBe(hashes[1]);
+  });
+});
+
+describe('baggage load overlay (T78)', () => {
+  it('shows every link with its path and direction, the load after bags flowed and the node buffer fill', () => {
+    const l = flow();
+    const f = flight(l);
+    for (let k = 0; k < 6; k++) checkIn(l, f, 5);
+    let flowing = false;
+    for (let t = 0; t < 1500 && !flowing; t++) {
+      l.sim.step();
+      flowing = Array.from(l.sim.baggage.overlay(l.building, l.sim.tick)?.linkFlags ?? []).some((x) => (x & BAG_LINK_FLOW) !== 0);
+    }
+    expect(flowing).toBe(true);
+    const o = l.sim.baggage.overlay(l.building, l.sim.tick);
+    if (!o) throw new Error('no overlay');
+    expect(o.linkLoad.length).toBe(3);
+    expect(o.linkStart[3]).toBe(o.linkPts.length / 2);
+    const arrival = Array.from(o.linkFlags).filter((x) => (x & BAG_LINK_ARRIVAL) !== 0).length;
+    expect(arrival).toBe(1);
+    expect(o.nodeFill.length).toBe(l.sim.baggage.nodesOf(l.building).length);
+    // Two windows later with no new bags every link is idle again.
+    for (let t = 0; t < 1200; t++) l.sim.step();
+    const later = l.sim.baggage.overlay(l.building, l.sim.tick)!;
+    expect(Array.from(later.linkFlags).every((x) => (x & BAG_LINK_FLOW) === 0)).toBe(true);
   });
 });
 

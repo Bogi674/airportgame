@@ -295,7 +295,7 @@ export interface BagLinkInfo {
   mode: 'auto' | 'manual';
 }
 
-export type BagWarningCode = 'dropNoMachine' | 'machineNoBay' | 'bayNoCarousel' | 'bayNoRoad';
+export type BagWarningCode = 'dropNoMachine' | 'machineNoBay' | 'bayNoCarousel' | 'bayNoRoad' | 'carouselFull';
 
 export interface BagNodeInfo {
   id: number;
