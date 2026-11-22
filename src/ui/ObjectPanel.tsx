@@ -15,6 +15,7 @@ import { standRefusal } from '@shared/standSizes';
 import { standFork, standLeadOut } from '@shared/standFork';
 import { ClassHelp } from './ClassHelp';
 import { AcceptToggles } from './AcceptToggles';
+import { FixtureLevel } from './FixtureLevel';
 import type { Command } from '@sim/commands';
 import { useState } from 'preact/hooks';
 import { useGameStore } from './stores/gameStore';
@@ -472,6 +473,7 @@ export function ObjectPanel({ send }: Props) {
           <div data-testid="fixture-block" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
             <div style="font-weight:600">{tDynamic(`fixture.${fixtureId}`)}</div>
             {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
+            <FixtureLevel grid={grid} cell={cell} name={fixtureName} send={send} />
             {MODE_FIXTURE_NAMES.includes(fixtureName) && (
               <div style="display:flex;gap:4px;margin-top:4px">
                 {[0, 1].map((m) => (
