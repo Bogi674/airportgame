@@ -1,3 +1,4 @@
+import { grid, paint, put } from './zoningGrid';
 import { describe, expect, it } from 'vitest';
 import { ARRIVALS, BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, WALL, ZONE, fixtureKey, type FixtureKey, type TerminalGrid } from '../src/shared/business';
@@ -140,14 +141,18 @@ describe('service nodes', () => {
     expect(nodes.queueCap[0]).toBeLessThan(40 * 4);
   });
 
-  it('security skips secure cells, which are neither counted nor passed through', () => {
-    const g = handGrid(0, 0, 20, 20);
-    setFloor(g, 0, 0, 20, 20);
-    place(g, 10, 10, 'security');
-    for (let y = 0; y < 20; y++) for (let x = 11; x < 20; x++) g.zone[cellIndex(g, x, y)] = ZONE.Secure;
+  it('security queues at the lane entrance and skips secure cells', () => {
+    const g = grid(20, 20);
+    paint(g, 11, 0, 20, 20, ZONE.Secure);
+    // A 2 by 8 cell lane flowing east (T74): anchor (10, 10) on the exit end, entrance cells (3, 10) and (3, 11).
+    put(g, 'security', 10, 10, 1);
     const { nodes } = nodesOf(g);
-    // Cells at x 6 to 10 within 4 steps of (10, 10), excluding the lane: 8 + 7 + 5 + 3 + 1 = 24.
-    expect(nodes.queueCap[0]).toBe(24 * 4);
+    // Public cells within 4 steps of an entrance cell, around the lane: 16 above, 16 below, 3 on each lane row to the west.
+    expect(nodes.queueCap[0]).toBe(38 * 4);
+    const first = nodes.qCellOffset[0]!;
+    expect(nodes.qCellX[first]).toBe(2);
+    expect(nodes.qCellParent[first]).toBe(-1);
+    for (let i = 0; i < nodes.qCellLen[0]!; i++) expect(nodes.qCellX[first + i]).toBeLessThan(11);
   });
 
   it('a fixture boxed in by walls has no queue', () => {

@@ -343,8 +343,8 @@ const BOARD_HOLD_TICKS = gameSecondsToTicks(PROFILES.boardingHoldS);
 const SMALL = AIRCRAFT.findIndex((a) => a.id === 'atr72_600');
 /** Turnaround that lets every passenger of a small aircraft board. */
 const FULL_TURN_TICKS = 50000;
-/** Turnaround that ends while some passengers are at the gate desks, so the push back holds. */
-const HOLD_TURN_TICKS = 3000;
+/** Turnaround that ends while some passengers are at the gate desks, so the push back holds. 2000 since the 16 m security lanes of T74 lengthen the walk airside. */
+const HOLD_TURN_TICKS = 2000;
 const ARRIVE_TICKS = 4000;
 const DEPART_TICKS = 100000;
 const PASSENGERS = LEDGER_CATEGORIES.indexOf('passengers');

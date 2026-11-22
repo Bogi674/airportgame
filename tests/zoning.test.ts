@@ -108,14 +108,25 @@ describe('zone access', () => {
   };
   const cell = (g: TerminalGrid, x: number, y: number): number => y * g.w + x;
 
+  // A security lane is 2 by 8 cells (T74), so its tests use a wider hall split at column 9: the lane anchored at
+  // (9, 2) flowing east covers columns 2 to 9 on rows 2 and 3.
+  const wide = () => {
+    const g = grid(16, 6);
+    paint(g, 0, 0, 9, 6, 1);
+    paint(g, 9, 0, 16, 6, 3);
+    return g;
+  };
+
   it('opens public to secure one way through a lane', () => {
-    const g = split();
-    put(g, 'security', 5, 2, 1);
+    const g = wide();
+    put(g, 'security', 9, 2, 1);
     const acc = zoneAccess(g);
-    expect(stepAud(acc, g, 4, 2, 1)).toBe(AUD.Pax | AUD.Staff);
-    expect(stepAud(acc, g, 5, 2, 0)).toBe(0);
-    expect(stepAud(acc, g, 4, 1, 1)).toBe(0);
-    expect(stepAud(acc, g, 4, 3, 1)).toBe(0);
+    for (const y of [2, 3]) {
+      expect(stepAud(acc, g, 8, y, 1)).toBe(AUD.Pax | AUD.Staff);
+      expect(stepAud(acc, g, 9, y, 0)).toBe(0);
+    }
+    expect(stepAud(acc, g, 8, 1, 1)).toBe(0);
+    expect(stepAud(acc, g, 8, 4, 1)).toBe(0);
   });
 
   it('closes a backwards security exit both ways', () => {
@@ -165,20 +176,20 @@ describe('zone access', () => {
   });
 
   it('keeps a staff door on a transition edge staff only', () => {
-    const g = split();
-    put(g, 'security', 5, 2, 1);
-    wall(g, false, 5, 2, 4);
+    const g = wide();
+    put(g, 'security', 9, 2, 1);
+    wall(g, false, 9, 2, 4);
     const acc = zoneAccess(g);
-    expect(stepAud(acc, g, 4, 2, 1)).toBe(AUD.Staff);
-    expect(stepAud(acc, g, 5, 2, 0)).toBe(AUD.Staff);
+    expect(stepAud(acc, g, 8, 2, 1)).toBe(AUD.Staff);
+    expect(stepAud(acc, g, 9, 2, 0)).toBe(AUD.Staff);
   });
 
   it('gives a security lane in staff mode to staff only', () => {
-    const g = split();
-    put(g, 'security', 5, 2, 1, 1, 1);
+    const g = wide();
+    put(g, 'security', 9, 2, 1, 1, 1);
     const acc = zoneAccess(g);
-    expect(stepAud(acc, g, 4, 2, 1)).toBe(AUD.Staff);
-    expect(stepAud(acc, g, 5, 2, 0)).toBe(0);
+    expect(stepAud(acc, g, 8, 2, 1)).toBe(AUD.Staff);
+    expect(stepAud(acc, g, 9, 2, 0)).toBe(0);
   });
 
   it('flips a passport desk and an automated gate between departure and arrival', () => {
@@ -212,6 +223,14 @@ describe('zone breaches and issues', () => {
     for (let y = 0; y < 5; y++) wall(g, false, 5, y, 1);
     return g;
   };
+  // A wider hall split at column 9 with a wall along the split, for the 2 by 8 cell security lane (T74).
+  const wide = () => {
+    const g = grid(16, 6);
+    paint(g, 0, 0, 9, 6, 1);
+    paint(g, 9, 0, 16, 6, 3);
+    for (let y = 0; y < 6; y++) wall(g, false, 9, y, 1);
+    return g;
+  };
 
   it('lists the three plain doors between zones as breaches', () => {
     const g = split();
@@ -222,12 +241,12 @@ describe('zone breaches and issues', () => {
   });
 
   it('has one badge per transition fixture at the front edge', () => {
-    const g = split();
-    put(g, 'security', 5, 2, 1);
-    put(g, 'securityExit', 5, 4, 3);
+    const g = wide();
+    put(g, 'security', 9, 2, 1);
+    put(g, 'securityExit', 9, 5, 3);
     const badges = transitionBadges(g);
     expect(badges.length).toBe(2);
-    expect(badges[0]).toEqual({ x: 12, y: 5, to: 3, dx: 1, dy: 0 });
+    expect(badges[0]).toEqual({ x: 20, y: 6, to: 3, dx: 1, dy: 0 });
     expect(badges[1].to).toBe(1);
   });
 
@@ -238,22 +257,24 @@ describe('zone breaches and issues', () => {
   });
 
   it('flags a secure hall without an exit and clears it with one', () => {
-    const g = split();
-    wall(g, false, 5, 2, 0);
-    put(g, 'security', 5, 2, 1);
+    const g = wide();
+    wall(g, false, 9, 2, 0);
+    wall(g, false, 9, 3, 0);
+    put(g, 'security', 9, 2, 1);
     expect(zoneIssues(g, zoneAccess(g))).toContain('paxCannotLeave');
-    wall(g, false, 5, 4, 0);
-    wall(g, false, 5, 3, 0);
-    put(g, 'securityExit', 5, 4, 3);
+    wall(g, false, 9, 5, 0);
+    wall(g, false, 9, 4, 0);
+    put(g, 'securityExit', 9, 5, 3);
     expect(zoneIssues(g, zoneAccess(g))).not.toContain('paxCannotLeave');
   });
 
   it('flags a staff door that bypasses screening and clears it with a staff lane', () => {
-    const g = split();
-    wall(g, false, 5, 2, 4);
+    const g = wide();
+    wall(g, false, 9, 2, 4);
     expect(zoneIssues(g, zoneAccess(g))).toContain('staffBypass');
-    wall(g, false, 5, 2, 0);
-    put(g, 'security', 5, 2, 1, 1, 1);
+    wall(g, false, 9, 2, 0);
+    wall(g, false, 9, 3, 0);
+    put(g, 'security', 9, 2, 1, 1, 1);
     expect(zoneIssues(g, zoneAccess(g))).not.toContain('staffBypass');
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import catalogJson from '../src/data/fixtures/catalog.json';
-import { FIXTURE_ASSET, FIXTURE_LEVEL_ASSET, STAFF_DOOR_ASSET, TERMINAL_KIT_PACKS } from '../src/render/markings/airfieldPaint';
+import { FIXTURE_ASSET, FIXTURE_LEVEL_ASSET, KIT_FLOW_TURN, STAFF_DOOR_ASSET, TERMINAL_KIT_PACKS } from '../src/render/markings/airfieldPaint';
 import { KIT_CATEGORIES } from '../src/render/sprites/fixtureKit';
 import { footprintOf, type FixtureKey } from '../src/shared/business';
 
@@ -37,7 +37,10 @@ describe('terminal kit map', () => {
 
   it('keeps kit footprints equal to the game footprint or inside it', () => {
     for (const { key, level, asset } of entries) {
-      const [w, d] = byId.get(asset)?.size ?? [0, 0];
+      const [sw, sd] = byId.get(asset)?.size ?? [0, 0];
+      // Art that flows along its x axis is drawn a quarter turn round, so its sides swap (the security lane, T74).
+      const turned = (KIT_FLOW_TURN[key] ?? 0) % 180 !== 0;
+      const [w, d] = turned ? [sd, sw] : [sw, sd];
       const [along, across] = footprintOf(key, level);
       if (FITS_KEYS.some(([k, l]) => k === key && l === level)) {
         expect(w <= along * 2 && d <= across * 2, asset).toBe(true);

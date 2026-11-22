@@ -124,7 +124,11 @@ describe('saves', () => {
     expect(loaded.fixtureLevel[at(3, 3)]).toBe(1);
     expect(loaded.fixtureLevel[at(4, 3)]).toBe(1);
     expect(loaded.fixtureLevel[at(5, 5)]).toBe(0);
-    expect(loaded.fixtureRot[at(10, 3)]).toBe(2);
+    // The migration to version 28 gave the lane its direction; the one to version 35 (T74) removes the one cell lane on restore.
+    const savedGrid = (migrated.business as { grids: { id: number; fixtureRot: string }[] }).grids.find((x) => x.id === 7)!;
+    expect(unpackTyped(savedGrid.fixtureRot, Uint8Array)[at(10, 3)]).toBe(2);
+    expect(migrated.legacyLanes?.some((cells) => cells.includes(at(10, 3)))).toBe(true);
+    expect(loaded.fixture[at(10, 3)]).toBe(0);
     const d = new Sim('GOLDEN-0001', OPTIONS);
     d.restore(JSON.parse(JSON.stringify(c.serialize())));
     expect(d.stateHash()).toBe(c.stateHash());

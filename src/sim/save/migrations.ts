@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 34;
+export const SAVE_VERSION = 35;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -40,6 +40,11 @@ export interface SaveData {
   staff?: unknown;
   /** Set by the migration to version 33 (T78): legacy belts become carousels on restore. Never written by a save. */
   convertBelts?: boolean;
+  /**
+   * Set by the migration to version 35 (T74): array cells of the one cell security lanes per grid index. Sim.restore
+   * removes them and refunds their cost, since a lane now has the kit footprint. Never written by a save.
+   */
+  legacyLanes?: number[][];
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -353,6 +358,33 @@ export function migrate(raw: unknown): SaveData {
       co.arrays.node = packTyped(node);
     }
     save.version = 34;
+  }
+  // Version 34 to 35: fixture levels and upgrade works (T74). The business gains the works list, which starts empty.
+  // A security lane is now 2 by 8 cells, so every saved one cell lane, an anchor with no tail beside it, is listed
+  // for removal on restore.
+  if (save.version < 35) {
+    const grids = (save as { business?: { grids?: { w?: number; fixture?: string; fixtureRot?: string }[] } }).business?.grids ?? [];
+    const security = FIXTURE_KEYS.indexOf('security') + 1;
+    const lanes: number[][] = [];
+    for (const g of grids) {
+      const cells: number[] = [];
+      if (g.fixture !== undefined && g.w !== undefined) {
+        const fixture = unpackTyped(g.fixture, Uint8Array);
+        const rot = g.fixtureRot !== undefined ? unpackTyped(g.fixtureRot, Uint8Array) : new Uint8Array(fixture.length);
+        const w = g.w;
+        for (let c = 0; c < fixture.length; c++) {
+          if (fixture[c] !== security || rot[c]! >= ANCHOR_ROT_LIMIT) continue;
+          const [ax, ay] = ROT_STEP[rot[c]! > 0 ? rot[c]! - 1 : 0]!;
+          const x = (c % w) + ax;
+          const tail = (Math.floor(c / w) + ay) * w + x;
+          const hasTail = x >= 0 && x < w && tail >= 0 && tail < fixture.length && fixture[tail] === security && rot[tail]! >= ANCHOR_ROT_LIMIT;
+          if (!hasTail) cells.push(c);
+        }
+      }
+      lanes.push(cells);
+    }
+    if (lanes.some((l) => l.length > 0)) (save as { legacyLanes?: number[][] }).legacyLanes = lanes;
+    save.version = 35;
   }
   return save as SaveData;
 }

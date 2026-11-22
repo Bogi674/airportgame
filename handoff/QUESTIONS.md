@@ -420,3 +420,12 @@ Implementer choice, stated for the owner: a cancelled international flight costs
 | Officer at a staffed exit | Not in T80. All three levels serve at their rate with no staff; staffed exits move to T81 |
 | Rates and save format | The rates accepted on 2026-11-18 (1 200, 900 and 1 500 people per hour, one server each); save format 34 with a migration; merge to main when verify is green |
 
+
+## 2026-11-22 T74: fixture levels
+
+| Question | Answer (owner, 2026-11-22) |
+| --- | --- |
+| Security lane footprint | Build as the roadmap says: the kit footprint of 8 by 2 cells (16 by 4 m) at every level. Old saves are disregarded: the migration removes saved 1 cell lanes and refunds their build cost |
+| Cost per level | L2 costs 1.6 times L1, L3 2.5 times L1 (check in 9 000, 14 400, 22 500; security 70 000, 112 000, 175 000; passport 18 000, 28 800, 45 000; gate desk 12 000, 19 200, 30 000). An upgrade costs the difference. Upkeep follows the build cost as today. Works take 1 game day, security 2 |
+| Undo and placement | While works run, Cancel restores the old level with a full refund. The fixture tool gets a level picker, so L2 and L3 can be placed new |
+| Premium and staff | Premium profile passengers checked in below level 3 lose 5 satisfaction points. At a level 3 gate desk premium cohorts go to the front of the queue. Gate desk needs 2 agents at L2 and L3; security needs 2, 3 and 2 officers; the remote screener waits for T81 |

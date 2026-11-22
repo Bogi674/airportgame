@@ -21,6 +21,7 @@ import {
   type TerminalGrid,
 } from './business';
 import { distToSegment, type Pt } from './geom';
+import { isLeveled, levelCost } from './fixtureLevels';
 import { cosLut, sinLut } from './trig';
 import { checkPoint, type BuildContext, type Problem } from './validate';
 
@@ -264,10 +265,11 @@ export function summarize(g: TerminalGrid): Terminal {
 
 const EXIT_COST_KEYS = ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'] as const;
 
-/** Build cost of one fixture. Levels only change the price of a security exit. */
+/** Build cost of one fixture. Levels change the price of a security exit and of the leveled fixtures (T74). */
 export function fixtureCost(id: number, level: number): number {
   const key = fixtureKey(id);
   const costs = BUSINESS.fixtureCosts;
+  if (isLeveled(key)) return levelCost(key, level);
   if (key === 'securityExit') return costs[EXIT_COST_KEYS[Math.min(Math.max(level, 1), 3) - 1]];
   if (key === 'eGate' || key === 'customs') return costs[key];
   if (isBaggageFixture(id)) return 0;

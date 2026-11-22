@@ -1,0 +1,291 @@
+{
+ "buy": [
+  [
+   3900,
+   4900,
+   4200,
+   5200
+  ]
+ ],
+ "commands": [
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 0,
+    "y0": 0,
+    "x1": 20,
+    "y1": 12,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 0,
+    "y0": 0,
+    "x1": 20,
+    "y1": 12,
+    "variant": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 1,
+    "y0": 1,
+    "x1": 2,
+    "y1": 2,
+    "variant": 1,
+    "level": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 2,
+    "y0": 1,
+    "x1": 3,
+    "y1": 2,
+    "variant": 1,
+    "level": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 3,
+    "y0": 1,
+    "x1": 4,
+    "y1": 2,
+    "variant": 1,
+    "level": 3
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 5,
+    "y0": 1,
+    "x1": 6,
+    "y1": 2,
+    "variant": 15,
+    "level": 1,
+    "rot": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 6,
+    "y0": 1,
+    "x1": 7,
+    "y1": 2,
+    "variant": 15,
+    "level": 2,
+    "rot": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 7,
+    "y0": 1,
+    "x1": 8,
+    "y1": 2,
+    "variant": 15,
+    "level": 3,
+    "rot": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 9,
+    "y0": 1,
+    "x1": 10,
+    "y1": 2,
+    "variant": 16,
+    "level": 1,
+    "rot": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 12,
+    "y0": 1,
+    "x1": 13,
+    "y1": 2,
+    "variant": 16,
+    "level": 2,
+    "rot": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 15,
+    "y0": 1,
+    "x1": 16,
+    "y1": 2,
+    "variant": 16,
+    "level": 3,
+    "rot": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 9,
+    "y0": 4,
+    "x1": 10,
+    "y1": 5,
+    "variant": 2,
+    "level": 1,
+    "rot": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 9,
+    "y0": 6,
+    "x1": 10,
+    "y1": 7,
+    "variant": 2,
+    "level": 2,
+    "rot": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 9,
+    "y0": 8,
+    "x1": 10,
+    "y1": 9,
+    "variant": 2,
+    "level": 3,
+    "rot": 1
+   }
+  },
+  {
+   "type": "upgradeFixture",
+   "building": 1,
+   "x": 12,
+   "y": 1
+  }
+ ],
+ "viewport": {
+  "w": 1600,
+  "h": 1000
+ },
+ "camera": {
+  "x": 4020,
+  "y": 5012,
+  "zoom": 28
+ },
+ "hideUi": true,
+ "actions": [
+  {
+   "wait": 1500
+  },
+  {
+   "shot": "levels-tier3",
+   "clip": {
+    "w": 1300,
+    "h": 800
+   }
+  },
+  {
+   "camera": {
+    "x": 4020,
+    "y": 5012,
+    "zoom": 14
+   }
+  },
+  {
+   "wait": 800
+  },
+  {
+   "shot": "levels-tier2",
+   "clip": {
+    "w": 900,
+    "h": 600
+   }
+  }
+ ],
+ "report": [
+  "cash"
+ ]
+}

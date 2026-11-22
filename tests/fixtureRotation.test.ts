@@ -11,6 +11,7 @@ const CHECK_IN = 1;
 const SECURITY = 2;
 const PASSPORT = 15;
 const GATE_DESK = 16;
+const TOILET = 5;
 const SECURITY_EXIT = 20;
 const E_GATE = 21;
 
@@ -48,9 +49,11 @@ describe('fixture rotation', () => {
 });
 
 describe('terminal edit command fields', () => {
-  it('carries the level only for the security exit', () => {
+  it('carries the level for the security exit and the leveled fixtures only', () => {
     expect(fixtureEdit(0, 0, 1, 1, SECURITY_EXIT, 0, 3, 0)).toMatchObject({ op: 'fixture', variant: SECURITY_EXIT, level: 3 });
-    expect(fixtureOptions(CHECK_IN, 3, 1)).toEqual({ level: 1, mode: 0 });
+    expect(fixtureOptions(CHECK_IN, 3, 1)).toEqual({ level: 3, mode: 0 });
+    expect(fixtureOptions(GATE_DESK, 2, 0)).toEqual({ level: 2, mode: 0 });
+    expect(fixtureOptions(TOILET, 3, 1)).toEqual({ level: 1, mode: 0 });
   });
 
   it('carries the mode for passport, eGate and security only', () => {
@@ -111,15 +114,22 @@ describe('transition orientation of a ghost', () => {
     paint(g, 5, 0, 10, 5, 3);
     return g;
   };
+  // A security lane is 2 by 8 cells (T74): a hall 16 wide split at column 9.
+  const wide = () => {
+    const g = grid(16, 5);
+    paint(g, 0, 0, 9, 5, 1);
+    paint(g, 9, 0, 16, 5, 3);
+    return g;
+  };
 
   it('warns about a security lane placed the wrong way round', () => {
-    // Rotation 3 flows west, from the secure side into public: no transition edge is open that way.
-    expect(transitionOrientationBreaks(split(), fixtureEdit(5, 2, 6, 3, SECURITY, 3, 1, 0), ENV)).toBe(true);
+    // Rotation 3 flows west, from the secure side into public: the lane on columns 2 to 9 opens no transition edge that way.
+    expect(transitionOrientationBreaks(wide(), fixtureEdit(2, 2, 3, 3, SECURITY, 3, 1, 0), ENV)).toBe(true);
   });
 
   it('does not warn about a security lane placed the right way round', () => {
     // Rotation 1 flows east, from public into secure.
-    expect(transitionOrientationBreaks(split(), fixtureEdit(5, 2, 6, 3, SECURITY, 1, 1, 0), ENV)).toBe(false);
+    expect(transitionOrientationBreaks(wide(), fixtureEdit(9, 2, 10, 3, SECURITY, 1, 1, 0), ENV)).toBe(false);
   });
 
   it('never warns about a fixture that is not a transition', () => {

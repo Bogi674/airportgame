@@ -99,6 +99,16 @@
   "eGate": 25000,
   "customs": 40000
  },
+ "fixtureLevels": {
+  "note": "Fixture levels 1 to 3 (T74, owner 2026-11-22). Index 0 is level 1. cost is the build cost of a level, an upgrade pays the difference. serviceSeconds of levels 2 and 3 from src/data/fixtures/catalog.json, level 1 keeps the module and mode values. worksDays closes the fixture while it is upgraded. premiumPenalty is lost by premium passengers checked in below premiumLevel.",
+  "checkIn": { "cost": [9000, 14400, 22500], "serviceSeconds": [120, 105, 95], "worksDays": 1 },
+  "security": { "cost": [70000, 112000, 175000], "serviceSeconds": [12, 10, 8], "worksDays": 2 },
+  "passport": { "cost": [18000, 28800, 45000], "serviceSeconds": [45, 38, 30], "worksDays": 1 },
+  "gateDesk": { "cost": [12000, 19200, 30000], "serviceSeconds": [5, 3.5, 3], "worksDays": 1 },
+  "premiumLevel": 3,
+  "premiumPenalty": 5,
+  "priorityLevel": 3
+ },
  "tower": {
   "note": "Free standing ATC tower, confirmed by the user on 2026-11-06. Money in the game currency, footprint side in meters. Index 0 of levels is level 1. movementsPerHour is the landing and takeoff budget per runway in a rolling 60 minute window. maxRunways is the most runways the level allows, minus 1 means unlimited.",
   "cost": 100000,

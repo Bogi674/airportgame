@@ -1,10 +1,10 @@
 import { PROFILES, STAFF } from '@data/index';
 import { STAFF_ROLE_COUNT, STAFF_ROLE_KEYS } from '@data/schemas/staff';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type StaffRow, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, footprintOf, type StaffRow, minuteOfDay, START_MINUTE, TICKS_PER_DAY, TICKS_PER_MINUTE } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
 import { gameSecondsToTicks } from '@shared/time';
 import type { OverlayData } from '@shared/overlay';
-import { cellIndex, cornerWorld } from '@shared/terminalOps';
+import { cellIndex, cornerWorld, ROT_STEP } from '@shared/terminalOps';
 import type { Airfield } from '../airfield/airfield';
 import { HEADING_STEPS, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
@@ -27,6 +27,13 @@ type SlotCtor = { new (buffer: ArrayBuffer): SavedArray; BYTES_PER_ELEMENT: numb
 
 const SHIFTS = STAFF.shifts.startsH.length;
 const MACHINE_KIND = FIXTURE_KEYS.indexOf('screeningMachine') + 1;
+const SECURITY_ID = FIXTURE_KEYS.indexOf('security') + 1;
+/** Cells a security lane runs along its flow, the across side of its footprint (T74). */
+const LANE_ACROSS = footprintOf('security', 1)[1];
+/** Cells from a lane anchor's centre to its walking strip across the lane: 2.6 m from its belt edge in the kit art. */
+const LANE_STRIP = 0.8;
+/** Cells between two officers along a security lane, 2.4 m. */
+const LANE_OFFICER_SPACING = 1.2;
 const MACHINE_STATION = STAFF.stations.screeningMachine!;
 const CREW_SPEED_MPS = PROFILES.profiles.crew.walkSpeed;
 const DEG = Math.PI / 180;
@@ -332,7 +339,7 @@ export class Staff {
         this.sKind[s] = sn.kind[k]!;
         this.sNode[s] = k;
         this.sRole[s] = STAFF_ROLE_KEYS.indexOf(entry.role);
-        this.sNeed[s] = entry.need;
+        this.sNeed[s] = sn.staffNeed[k]!;
         this.stationOf.set(`${g.id}|${sn.lx[k]}|${sn.ly[k]}|${sn.kind[k]}`, s);
         s++;
       }
@@ -923,8 +930,17 @@ export class Staff {
         // Sideways is the step turned a quarter, (1, 0) for a station with no queue cell.
         const px = sx === 0 && sy === 0 ? 1 : -sy;
         const py = sx === 0 && sy === 0 ? 0 : sx;
-        const lx = this.sX[s]! + 0.5 - sx * back + px * side;
-        const ly = this.sY[s]! + 0.5 - sy * back + py * side;
+        let lx = this.sX[s]! + 0.5 - sx * back + px * side;
+        let ly = this.sY[s]! + 0.5 - sy * back + py * side;
+        if (this.sKind[s] === SECURITY_ID) {
+          // Officers of a 16 m security lane (T74) stand on its walking strip, clear of the bag belt, spread along the
+          // lane round its middle, not past the anchor on the exit end.
+          const code = grid.fixtureRot[cellIndex(grid, this.sX[s]!, this.sY[s]!)]!;
+          const [ax, ay] = ROT_STEP[code > 0 && code < 5 ? code - 1 : 0]!;
+          const along = (k - (this.sNeed[s]! - 1) / 2) * LANE_OFFICER_SPACING + (LANE_ACROSS - 1) / 2;
+          lx = this.sX[s]! + 0.5 + ax * LANE_STRIP + sx * along;
+          ly = this.sY[s]! + 0.5 + ay * LANE_STRIP + sy * along;
+        }
         this.world[0] = grid.ox + (ux * lx + -uy * ly) * TERMINAL_CELL_M;
         this.world[1] = grid.oy + (uy * lx + ux * ly) * TERMINAL_CELL_M;
         this.putSample(views, n, m, axA, sx, sy === 0 && sx === 0 ? -1 : sy, PEOPLE_MODE.Dwelling);
