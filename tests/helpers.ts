@@ -1,7 +1,7 @@
 import { Sim } from '@sim/sim';
 import type { Command } from '@sim/commands';
 import type { StandType } from '@shared/airfield';
-import { GROUND, STAND_SIZES } from '@data/index';
+import { BAGGAGE, GROUND, STAND_SIZES } from '@data/index';
 import { sizeForCode } from '@shared/standSizes';
 import { originFor } from '@shared/terminalOps';
 import { standRoadAnchors } from '@shared/roadGraph';
@@ -234,4 +234,81 @@ export function connectBays(sim: Sim): string[] {
   if (anchors.some((a) => Math.abs(a.y - y) > 1e-6)) return ['baysNotInLine'];
   const west = anchors.reduce((m, a) => Math.min(m, a.x), Infinity);
   return run(sim, { type: 'buildRoad', points: [conn, { x: conn.x, y }, { x: west, y }] });
+}
+
+/**
+ * A terminal with the full baggage chain for the busy baggage stress scenario (T78): a hall with a curb and 12 check in
+ * desks as drop points, a staff screening room with a machine, an 8 cell bay on the south wall serving every stand, a
+ * large carousel and a road from the first stand to the bay. It has no security or gate desk, so no cohorts form and
+ * feedBaggage alone loads the chain. Returns problems.
+ */
+export function buildBaggageTerminal(sim: Sim): string[] {
+  const { ox, oy } = originFor(3200, 5600, 90);
+  const problems: string[] = [];
+  const edit = (building: number, e: { op: 'foundation' | 'floor' | 'wall' | 'fixture' | 'zone'; x0: number; y0: number; x1: number; y1: number; variant: number; rot?: 0 | 1 | 2 | 3; level?: number }): void => {
+    problems.push(...run(sim, { type: 'terminalBuild', building, ox, oy, headingDeg: 90, edit: e }));
+  };
+  edit(-1, { op: 'foundation', x0: 40, y0: 40, x1: 100, y1: 52, variant: 0 });
+  const id = sim.business.grids[sim.business.grids.length - 1]?.id ?? -1;
+  edit(id, { op: 'floor', x0: 40, y0: 40, x1: 100, y1: 52, variant: 2 });
+  edit(id, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
+  edit(id, { op: 'wall', x0: 40, y0: 52, x1: 100, y1: 52, variant: 1 });
+  edit(id, { op: 'wall', x0: 70, y0: 52, x1: 72, y1: 52, variant: 3 });
+  edit(id, { op: 'foundation', x0: 68, y0: 52, x1: 74, y1: 53, variant: 0 });
+  edit(id, { op: 'floor', x0: 68, y0: 52, x1: 74, y1: 53, variant: 2 });
+  edit(id, { op: 'fixture', x0: 42, y0: 42, x1: 54, y1: 43, variant: 1 });
+  // Staff screening room in the south west corner, 10 by 4 cells, with a door in its north wall.
+  edit(id, { op: 'zone', x0: 40, y0: 48, x1: 50, y1: 52, variant: 4 });
+  edit(id, { op: 'wall', x0: 40, y0: 48, x1: 44, y1: 48, variant: 1 });
+  edit(id, { op: 'wall', x0: 44, y0: 48, x1: 45, y1: 48, variant: 3 });
+  edit(id, { op: 'wall', x0: 45, y0: 48, x1: 50, y1: 48, variant: 1 });
+  edit(id, { op: 'wall', x0: 50, y0: 48, x1: 50, y1: 52, variant: 1 });
+  edit(id, { op: 'wall', x0: 40, y0: 48, x1: 40, y1: 52, variant: 1 });
+  // The bay room on the south wall, 8 cells wide and 4 deep.
+  edit(id, { op: 'zone', x0: 56, y0: 48, x1: 64, y1: 52, variant: 4 });
+  edit(id, { op: 'wall', x0: 56, y0: 48, x1: 56, y1: 52, variant: 1 });
+  edit(id, { op: 'wall', x0: 64, y0: 48, x1: 64, y1: 52, variant: 1 });
+  edit(id, { op: 'wall', x0: 56, y0: 48, x1: 64, y1: 48, variant: 1 });
+  const place = (kind: 'machine' | 'bay' | 'carousel', cx: number, cy: number, widthCells: number): void => {
+    problems.push(...run(sim, { type: 'placeBaggageNode', building: id, kind, cx, cy, rot: 0, widthCells }));
+  };
+  place('machine', 41, 49, 0);
+  place('carousel', 52, 44, BAGGAGE.carousel.sizes[BAGGAGE.carousel.sizes.length - 1].w);
+  place('bay', 56, 48, 8);
+  const bay = sim.baggage.nodesOf(id).find((r) => r.kind === 'bay');
+  if (!bay) return [...problems, 'noBay'];
+  for (const s of sim.airfield.data.stands) problems.push(...run(sim, { type: 'setStandBay', standId: s.id, bayId: bay.id }));
+  problems.push(...connectBays(sim));
+  // Two trains per turnaround: the depot's free room goes to tractors and their carts, one tractor per two carts.
+  const free = sim.business.depotCapacity - sim.business.fleet.reduce((n, k) => n + k, 0);
+  const tractors = Math.floor(free / 3);
+  if (tractors > 0) problems.push(...run(sim, { type: 'buyGse', kind: 'tractor', count: tractors }, { type: 'buyGse', kind: 'cart', count: 2 * tractors }));
+  return problems;
+}
+
+/**
+ * Keeps one airline flight of the given type booked on every stand of the baggage stress scenario: when a stand's last
+ * flight is gone, the next arrives a little later, staggered per stand, and its bags are checked in at once at the drop
+ * points, round robin, so the whole chain carries them by belt and train. `serials` holds the serial booked per stand
+ * index, 0 for none. Test traffic cannot do this, as its flights get a stand only when they land. Returns the bags checked in.
+ */
+export function bookBagFlights(sim: Sim, typeIdx: number, bagsPerFlight: number, serials: Int32Array): number {
+  const g = sim.business.grids[0];
+  if (!g) return 0;
+  const drops = sim.baggage.nodesOf(g.id).filter((r) => r.kind === 'drop');
+  if (drops.length === 0) return 0;
+  const t = sim.traffic;
+  const stands = sim.airfield.data.stands;
+  let n = 0;
+  for (let s = 0; s < stands.length && s < serials.length; s++) {
+    if (serials[s] > 0 && t.flightOfSerial(serials[s]) >= 0) continue;
+    const f = t.scheduleArrival(typeIdx, sim.tick + 50 + s * 20, 0, t.turnaroundTicks(typeIdx), 0);
+    if (f < 0) continue;
+    t.fStand[f] = stands[s].id;
+    serials[s] = t.serialOf(f);
+    const d = drops[s % drops.length];
+    sim.baggage.checkIn(g.id, (d.cell[1] - g.y0) * g.w + (d.cell[0] - g.x0), serials[s], bagsPerFlight);
+    n += bagsPerFlight;
+  }
+  return n;
 }

@@ -9,12 +9,14 @@ import { fileURLToPath } from 'node:url';
 import { Sim } from '../src/sim/sim';
 import { AIRCRAFT } from '../src/data/aircraft';
 import { createSnapshotBuffer, createSnapshotViews } from '../src/shared/snapshot';
-import { buildTestAirport } from '../tests/helpers';
+import { bookBagFlights, buildBaggageTerminal, buildTestAirport } from '../tests/helpers';
+import { GSE_INDEX } from '../src/data/index';
 import { buildWalkGraph, updateWalkGraph, type WalkGraph } from '../src/sim/terminal/walkGraph';
 import { originFor, type TerminalEdit } from '../src/shared/terminalOps';
 import { STAFF_STATE } from '../src/sim/staff/staff';
 
 const TICKS = 20_000;
+const TRACTOR = GSE_INDEX.tractor;
 const BASELINE_PATH = fileURLToPath(new URL('../perf-baseline.json', import.meta.url));
 /** Ignore regressions smaller than this many ms, which is below timer noise. */
 const NOISE_FLOOR_MS = 0.005;
@@ -40,6 +42,8 @@ interface Scenario {
   /** Live cohorts and active people the scenario must reach at once at some point. */
   minCohorts?: number;
   minPeople?: number;
+  /** Adds the baggage terminal of tests/helpers.ts and keeps an airline flight booked on every stand, with this many bags each (T78). */
+  baggageFeed?: number;
   /** Test arrivals queued at the start, so many flights hold cohorts at once. The airport cannot park that many aircraft, so most of their passengers wait or miss. */
   arrivals?: { type: string; count: number; gapTicks: number; turnTicks: number };
 }
@@ -49,6 +53,7 @@ const SCENARIOS: Scenario[] = [
   { name: 'medium', seed: 'STRESS-MEDIUM', stands: 20, perHour: 120, budgetMsPerTick: 4, cohortTerminal: true },
   { name: 'large', seed: 'STRESS-LARGE', stands: 30, perHour: 240, budgetMsPerTick: 8 },
   { name: 'busy50', seed: 'STRESS-BUSY', stands: 60, standCode: 'B', perHour: 720, budgetMsPerTick: 4, turnScale: 16, ticks: 60_000, minPeak: 50 },
+  { name: 'baggage20', seed: 'STRESS-BAGGAGE', stands: 20, standCode: 'C', perHour: 0, budgetMsPerTick: 4, ticks: 60_000, baggageFeed: 20 },
   { name: 'terminal640', seed: 'STRESS-TERMINAL', stands: 20, perHour: 120, budgetMsPerTick: 4, bigTerminal: true },
   { name: 'people20k', seed: 'STRESS-PEOPLE', stands: 30, perHour: 240, budgetMsPerTick: 4, peopleTerminal: true, minCohorts: 20_000, minPeople: 40_000, arrivals: { type: 'b777_300er', count: 200, gapTicks: 30, turnTicks: 14_000 } },
 ];
@@ -185,6 +190,7 @@ const peaks: Record<string, string> = {};
 const peakCounts: Record<string, number> = {};
 /** Scenarios whose cohort terminal generated no cohorts. */
 const cohortFailures: string[] = [];
+const baggageFailures: string[] = [];
 /** Peak live cohorts and active people of the scenarios with a people terminal. */
 const peopleReport: Record<string, { cohorts: number; people: number }> = {};
 
@@ -200,6 +206,13 @@ function runScenario(s: Scenario): Record<string, Stat> {
   }
   if (s.cohortTerminal) buildCohortTerminal(sim);
   if (s.peopleTerminal) buildPeopleTerminal(sim);
+  if (s.baggageFeed !== undefined) {
+    const problems = buildBaggageTerminal(sim);
+    if (problems.length > 0) throw new Error(`baggage terminal: ${problems.join(', ')}`);
+    // Airline flights run turnaround task lists, so their bags ride the trains.
+    sim.enqueue({ type: 'signAirline', airlineId: 0, sign: true });
+    sim.enqueue({ type: 'signAirline', airlineId: 1, sign: true });
+  }
   if (s.arrivals) {
     const type = AIRCRAFT.findIndex((a) => a.id === s.arrivals!.type);
     if (type < 0) throw new Error(`unknown aircraft ${s.arrivals.type}`);
@@ -227,6 +240,9 @@ function runScenario(s: Scenario): Record<string, Stat> {
   let peakArr = 0;
   let peakHired = 0;
   let peakOnDuty = 0;
+  let peakTrains = 0;
+  const booked = new Int32Array(s.stands);
+  const bagType = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
   const hasTerminal = Boolean(s.bigTerminal || s.cohortTerminal || s.peopleTerminal);
   const views = createSnapshotViews(createSnapshotBuffer());
   let snapNs = 0n;
@@ -252,6 +268,13 @@ function runScenario(s: Scenario): Record<string, Stat> {
       let onDuty = 0;
       for (let m = 0; m < st.hi; m++) if (st.state[m] === STAFF_STATE.OnDuty) onDuty++;
       if (onDuty > peakOnDuty) peakOnDuty = onDuty;
+    }
+    // Bags are fed and trains counted outside the timed section.
+    if (s.baggageFeed !== undefined && t % 100 === 0) bookBagFlights(sim, bagType, s.baggageFeed, booked);
+    if (s.baggageFeed !== undefined && t % 100 === 0) {
+      let trains = 0;
+      for (let v = 0; v < sim.gse.active.length; v++) if (sim.gse.active[v] === 1 && sim.gse.kind[v] === TRACTOR) trains++;
+      if (trains > peakTrains) peakTrains = trains;
     }
     let tickNs = 0n;
     for (let i = 0; i < n; i++) {
@@ -283,6 +306,11 @@ function runScenario(s: Scenario): Record<string, Stat> {
     peopleReport[s.name] = { cohorts: peakLive, people: peakPeople };
   }
   if (hasTerminal) console.log(`  staff peak ${peakHired} hired, ${peakOnDuty} on duty`);
+  if (s.baggageFeed !== undefined) {
+    const bg = sim.baggage;
+    console.log(`  baggage ${bg.checkedToday} checked today, ${bg.loadedTotal} loaded, ${bg.missingToday} missing today, ${bg.batchCount} batches live, peak ${peakTrains} tractors out`);
+    if (bg.loadedTotal === 0) baggageFailures.push(s.name);
+  }
   peakCounts[s.name] = peak;
   peaks[s.name] = `peak ${peak} aircraft, ${sim.traffic.completedFlights} flights completed, ${sim.traffic.divertedFlights} diverted, ${sim.traffic.deadlocks} deadlocks${s.bigTerminal ? `, terminal ${(sim.business.terminals[0]?.cells ?? 0) * 4} m2` : ''}`;
   const out: Record<string, Stat> = {};
@@ -320,6 +348,10 @@ function main(): void {
     }
     if (s.minPeak !== undefined && peakCounts[s.name] < s.minPeak) {
       console.error(`  PEAK TOO LOW: ${peakCounts[s.name]} aircraft, the scenario must reach ${s.minPeak}`);
+      failed = true;
+    }
+    if (baggageFailures.includes(s.name)) {
+      console.error(`  NO BAGS LOADED: ${s.name} loaded no bags through its baggage chain`);
       failed = true;
     }
     if (cohortFailures.includes(s.name)) {

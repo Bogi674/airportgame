@@ -251,6 +251,8 @@ export class Gse {
   private readonly tripT = new Int32Array(MAX_VEHICLES);
   /** Flight each aircraft slot last sent a departure train for, so a turnaround sends one. */
   private readonly depSent = new Int32Array(MAX_AIRCRAFT).fill(-1);
+  /** Serial whose arriving bags wait for the aircraft's crew train to dock, 0 for none. */
+  private readonly arrPending = new Int32Array(MAX_AIRCRAFT);
   /** Turnaround task state: an airline flight's crew leaves once its vehicle tasks are done. Set by the sim. */
   turns: { readonly vehDone: Uint8Array } | null = null;
   private readonly pose: TowPose = { x: 0, y: 0, heading: 0 };
@@ -290,6 +292,7 @@ export class Gse {
     this.slot.fill(-1);
     this.tripT.fill(0);
     this.depSent.fill(-1);
+    this.arrPending.fill(0);
   }
 
   /** True when the type's crew has a vehicle of the kind with a drive path to its dock. */
@@ -356,7 +359,7 @@ export class Gse {
       ahead: this.ahead, turnBack: this.turnBack, out: this.out, served: this.served, cleared: this.cleared, turnAt: this.turnAt,
       front: this.front, tugged: this.tugged, pending: this.pending, waiting: this.waiting, last: this.last, prev: this.prev,
       dockedMask: this.dockedMask, counted: this.counted,
-      trip: this.trip, tripLeg: this.tripLeg, tripSer: this.tripSer, tripBay: this.tripBay, slot: this.slot, tripT: this.tripT, depSent: this.depSent,
+      trip: this.trip, tripLeg: this.tripLeg, tripSer: this.tripSer, tripBay: this.tripBay, slot: this.slot, tripT: this.tripT, depSent: this.depSent, arrPending: this.arrPending,
     };
   }
 
@@ -734,7 +737,15 @@ export class Gse {
         this.dockedMask[this.owner[v]] |= 1 << this.kind[v];
         this.heading[v] = this.dockHead[v];
         if (this.trip[v] === TRIP_DEP) this.joinCrew(v);
-        this.advance(this.owner[v], sideOf[this.kind[v]]);
+        const a = this.owner[v];
+        this.advance(a, sideOf[this.kind[v]]);
+        if (this.kind[v] === TRACTOR && this.trip[v] === 0 && this.arrPending[a] > 0) {
+          const serial = this.arrPending[a];
+          this.arrPending[a] = 0;
+          // A road edit since the unload may have cut the trip: the bags then settle in the bay, as an aborted trip's do.
+          if (this.host!.roads.tripOk(this.host!.standIndexOf(a))) this.startArrival(v, a, serial);
+          else this.host!.trips!.dropOff(serial, true);
+        }
       } else {
         this.ti[v]++;
       }
@@ -993,13 +1004,21 @@ export class Gse {
    */
   sendArrival(a: number, serial: number): boolean {
     const host = this.host;
-    if (!host?.trips || this.traffic.tasked[a] !== 1) return false;
+    if (!host?.trips || this.traffic.tasked[a] !== 1 || (this.crewAt(a) & (1 << TRACTOR)) === 0) return false;
+    if (!host.roads.tripOk(host.standIndexOf(a))) return false;
+    let v = -1;
+    for (let i = 0; i < MAX_VEHICLES && v < 0; i++) if (this.active[i] === 1 && this.owner[i] === a && this.kind[i] === TRACTOR && this.state[i] === Work && this.trip[i] === 0) v = i;
+    // The unload runs on the belt loader, so the crew train may still be on its way: it takes the bags once it docks.
+    if (v < 0) this.arrPending[a] = serial;
+    else this.startArrival(v, a, serial);
+    return true;
+  }
+
+  /** A docked crew train leaves the stand with the arriving bags of the serial, to the stand's bay. */
+  private startArrival(v: number, a: number, serial: number): void {
+    const host = this.host!;
     const roads = host.roads;
     const s = host.standIndexOf(a);
-    if (!roads.tripOk(s)) return false;
-    let v = -1;
-    for (let i = 0; i < MAX_VEHICLES && v < 0; i++) if (this.active[i] === 1 && this.owner[i] === a && this.kind[i] === TRACTOR && this.state[i] === Work) v = i;
-    if (v < 0) return false;
     this.unchain(a, v);
     this.trip[v] = TRIP_ARR;
     this.tripLeg[v] = LEG_TO_BAY;
@@ -1010,7 +1029,6 @@ export class Gse {
     this.rStand[v] = roads.bayRoute(s);
     this.rVer[v] = roads.version;
     this.leave(v);
-    return true;
   }
 
   /** A docked departure train becomes the newest crew member on its side, and leaves with the crew. */
@@ -1048,7 +1066,8 @@ export class Gse {
       this.advance(a, sideOf[TRACTOR]);
       return true;
     }
-    if (docked || !trips.unloadDone(a) || !trips.ready(a)) return false;
+    // The arrival train must have taken its bags and left the stand first, so two trains never share the dock.
+    if (docked || !trips.unloadDone(a) || this.arrPending[a] > 0 || this.hasTrain(a) || !trips.ready(a)) return false;
     const b = roads.standBay[s];
     const r = roads.depotBayRoute(b);
     if (this.out[TRACTOR] >= host.owned(TRACTOR)) return false;
@@ -1075,9 +1094,9 @@ export class Gse {
     return true;
   }
 
-  /** True while a tractor of the aircraft is out: driving in, docked or leaving its stand. */
+  /** True while a crew train of the aircraft, one on no baggage trip, is out: driving in, docked or leaving its stand. */
   private hasTrain(a: number): boolean {
-    for (let v = 0; v < MAX_VEHICLES; v++) if (this.active[v] === 1 && this.owner[v] === a && this.kind[v] === TRACTOR) return true;
+    for (let v = 0; v < MAX_VEHICLES; v++) if (this.active[v] === 1 && this.owner[v] === a && this.kind[v] === TRACTOR && this.trip[v] === 0) return true;
     return false;
   }
 
@@ -1105,6 +1124,11 @@ export class Gse {
    */
   private takeSlot(v: number): void {
     const trips = this.host!.trips!;
+    // On a short route the train may reach its bay before it let go of its aircraft.
+    if (this.trip[v] === TRIP_ARR && this.owner[v] >= 0) {
+      this.leaveFront(v);
+      this.disown(v);
+    }
     const f = trips.frame(this.tripBay[v]);
     if (!f) {
       this.abortTrip(v);
@@ -1393,6 +1417,7 @@ export class Gse {
   /** Queues the crew of a turnaround and sends in the first vehicle on each side. Carts come with the tractor. */
   private spawnCrew(a: number): void {
     this.pending[a] = this.crewAt(a) & ~(1 << CART);
+    this.arrPending[a] = 0;
     this.last[a * 2 + SIDE_R] = -1;
     this.last[a * 2 + SIDE_L] = -1;
     this.advance(a, SIDE_R);
