@@ -41,13 +41,13 @@ export function generateDestinations(rng: Rng, intlRng: Rng): Destination[] {
  * Falls back to the in range destination closest to the band when none lies inside it. Returns -1
  * when no destination is in range at all.
  */
-export function pickDestination(rng: Rng, list: readonly Destination[], lo: number, hi: number, maxKm: number, avoid: ReadonlySet<number>): number {
+export function pickDestination(rng: Rng, list: readonly Destination[], lo: number, hi: number, maxKm: number, avoid: ReadonlySet<number>, domesticOnly = false): number {
   let total = 0;
-  for (const x of list) if (x.km >= lo && x.km <= Math.min(hi, maxKm) && !avoid.has(x.id)) total += x.size;
+  for (const x of list) if (x.km >= lo && x.km <= Math.min(hi, maxKm) && !avoid.has(x.id) && !(domesticOnly && x.international)) total += x.size;
   if (total > 0) {
     let r = rng.next() * total;
     for (const x of list) {
-      if (x.km < lo || x.km > Math.min(hi, maxKm) || avoid.has(x.id)) continue;
+      if (x.km < lo || x.km > Math.min(hi, maxKm) || avoid.has(x.id) || (domesticOnly && x.international)) continue;
       r -= x.size;
       if (r < 0) return x.id;
     }
@@ -55,7 +55,7 @@ export function pickDestination(rng: Rng, list: readonly Destination[], lo: numb
   let best = -1;
   let bestD = Infinity;
   for (const x of list) {
-    if (x.km > maxKm) continue;
+    if (x.km > maxKm || (domesticOnly && x.international)) continue;
     const dist = x.km < lo ? lo - x.km : x.km > hi ? x.km - hi : 0;
     if (dist < bestD) {
       bestD = dist;

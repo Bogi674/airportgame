@@ -15,6 +15,8 @@ export interface MarketHost {
   stars(): number;
   /** Landings plus takeoffs the tower allows per hour, 0 without a tower. */
   movementBudget(): number;
+  /** True when the airport holds the whole international passenger flow, so international flights may operate (T79). */
+  internationalReady(): boolean;
 }
 
 /** fAirline is an Int8Array, so the airline list stops growing before it overflows. A technical limit, not a game rule. */
@@ -126,12 +128,14 @@ export class Market {
     const avoid = new Set(this.series.filter((x) => x.airline === a.id).map((x) => x.dest));
     if (a.hub >= 0) avoid.add(a.hub);
     const [lo, hi] = S.stageKm[a.scope];
+    // No international offer goes out while the airport lacks the international flow (T79).
+    const domesticOnly = !this.host.internationalReady();
     let added = 0;
     for (let k = 0; k < n; k++) {
       const t = types[this.seriesRng.int(0, types.length - 1)];
       // Each series goes to a new destination while any is left in range; then destinations repeat.
-      let dest = pickDestination(this.seriesRng, this.destinations, lo, hi, maxStageKm(AIRCRAFT[t]), avoid);
-      if (dest < 0) dest = pickDestination(this.seriesRng, this.destinations, lo, hi, maxStageKm(AIRCRAFT[t]), new Set());
+      let dest = pickDestination(this.seriesRng, this.destinations, lo, hi, maxStageKm(AIRCRAFT[t]), avoid, domesticOnly);
+      if (dest < 0) dest = pickDestination(this.seriesRng, this.destinations, lo, hi, maxStageKm(AIRCRAFT[t]), new Set(), domesticOnly);
       if (dest < 0) continue;
       avoid.add(dest);
       const steps = Math.floor((S.windowStartLastMin - S.windowStartFirstMin) / S.slotStepMin);
@@ -305,6 +309,8 @@ export class Market {
     const midnight = tick - minuteOfDay(tick) * TICKS_PER_MINUTE;
     this.traffic.usableTypesPublic(this.usable);
     const idle = new Set<number>();
+    const intlIdle = new Set<number>();
+    const intlOk = this.host.internationalReady();
     for (const s of this.series) {
       const a = this.airlines[s.airline];
       if (!a?.signed || !seriesActive(s, day) || !operatesOn(s.days, wd)) continue;
@@ -322,6 +328,12 @@ export class Market {
         idle.add(a.id);
         continue;
       }
+      if (!intlOk && this.destinations[s.dest]?.international === true) {
+        this.happy(a, H.cancelledFlight);
+        if (!intlIdle.has(a.id)) this.host.emit(`intlFlowMissing|name=${a.name}`);
+        intlIdle.add(a.id);
+        continue;
+      }
       if (!inWindow(s.winMin, S.windowMin, s.minute)) this.happy(a, H.outsideWindowFlight);
       this.spawn(s, midnight + s.minute * TICKS_PER_MINUTE);
     }
@@ -335,6 +347,7 @@ export class Market {
     if (s.minute < now + SAME_DAY_LEAD_MIN) return;
     this.traffic.usableTypesPublic(this.usable);
     if (!this.usable.includes(s.typeIdx)) return;
+    if (this.destinations[s.dest]?.international === true && !this.host.internationalReady()) return;
     this.spawn(s, tick + (s.minute - now) * TICKS_PER_MINUTE);
   }
 

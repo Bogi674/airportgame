@@ -4,6 +4,7 @@ import airfieldCodesJson from '../src/data/airfield_codes.json';
 import paintJson from '../src/data/paint.json';
 import needsJson from '../src/data/needs.json';
 import arrivalsJson from '../src/data/arrivals.json';
+import departuresJson from '../src/data/departures.json';
 import marketJson from '../src/data/market.json';
 import profilesJson from '../src/data/profiles.json';
 import peopleJson from '../src/data/people.json';
@@ -14,6 +15,7 @@ import { AIRFIELD, PEOPLE, STAFF, STAND_SIZES, SURFACE_SPEC } from '../src/data/
 import { airfieldCodesSchema, paintSchema, standSizesSchema, surfacesSchema } from '../src/data/schemas';
 import { needsSchema } from '../src/data/schemas/needs';
 import { arrivalsSchema } from '../src/data/schemas/arrivals';
+import { departuresSchema } from '../src/data/schemas/departures';
 import { marketSchema } from '../src/data/schemas/market';
 import { peopleSchema } from '../src/data/schemas/people';
 import { profilesSchema } from '../src/data/schemas/profiles';
@@ -157,6 +159,24 @@ describe('passenger needs and group sizes', () => {
     const bad = structuredClone(profilesJson);
     bad.profiles.crew.groupSize = [0, 0, 0, 0, 0, 0];
     expect(profilesSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('departure journey values (T79)', () => {
+  it('departures.json validates', () => {
+    expect(departuresSchema.safeParse(departuresJson).success).toBe(true);
+  });
+
+  it('a referralShare above 1 fails', () => {
+    const bad = structuredClone(departuresJson);
+    bad.service.eGate.referralShare = 1.5;
+    expect(departuresSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('zero passport servers fail', () => {
+    const bad = structuredClone(departuresJson);
+    bad.service.passport.servers = 0;
+    expect(departuresSchema.safeParse(bad).success).toBe(false);
   });
 });
 

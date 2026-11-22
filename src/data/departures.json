@@ -1,0 +1,7 @@
+{
+  "note": "International departure journey (T79): passport control in departure mode after security. Game seconds. Values equal the arrival ones by the owner's answer of 2026-11-22 (handoff/QUESTIONS.md).",
+  "service": {
+    "passport": { "servers": 1, "serviceSeconds": 45 },
+    "eGate": { "servers": 1, "serviceSeconds": 20, "referralShare": 0.08, "noGateProfiles": ["family"] }
+  }
+}

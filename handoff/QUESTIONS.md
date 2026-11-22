@@ -399,3 +399,15 @@ Answer (owner, 2026-11-18): A, accept the proposals as a batch. Build costs are 
 
 Implementer choices, stated for the owner: carousel S is a 10 m loop (6 by 2 cells, 30 bags), M is today's 20 m loop (11 by 2 cells, 60 bags), L is a 30 m loop (16 by 2 cells, 90 bags). A bay's road connection point sits on its center line, beyond the staging lanes by two turn radii; the train turns along the bay face and reverses into its slot so the last cart is on the truck edge, then leaves forward. Link load in the overlay is bags per hour over the last 10 minutes against `linkCapacityBagsPerHour`.
 | Claim give up | Raised from 45 to 75 game minutes (`arrivals.json` claim.giveUpMin), because the train trip to the bay adds 15 to 25 minutes after the unload task (owner, 2026-11-22) |
+
+## 2026-11-22 T79: international departures
+
+| Question | Answer |
+| --- | --- |
+| International flight with no departure passport control | No international flight at all until the international passenger flow is built |
+| What counts as built | Full flow in one terminal with a curb: a gate desk in an International zone, passport booth or eGate in departure mode, one in arrival mode, and a customs channel |
+| Enforcement and signed series | No international offers or new series until built. Signed international flights are cancelled on any day the flow is missing, with a notice, costing airline happiness |
+| Departure service times | Same as arrival (desk 45 s, eGate 20 s, 8 percent referred, families use desks), stored as their own departure entries |
+| Order and placement | Passport control is entered from the Secure zone, so it comes after security by layout. Departure booths keep the Secure to International rule |
+
+Implementer choice, stated for the owner: a cancelled international flight costs the airline 2 happiness points, the same as an unplaced flight (`cancelledFlight` in `market.json`).
