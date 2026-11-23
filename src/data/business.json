@@ -125,7 +125,12 @@
   "ambienceAreaM2": 50,
   "toiletServersTarget": 8,
   "seatingAsset": "bench.beam3",
-  "toiletAsset": "washroom.wcStall"
+  "toiletAsset": "washroom.wcStall",
+  "effectsNote": "T82 (owner, 2026-11-23). vendingNeeds lists the passenger needs each vending machine meets, as a small shop whose sales share comes from the catalog. adPerPax is the income of an ad prop per daily passenger; one ad slot pays per paxPerAdSlot daily passengers, best paying ads first. Wayfinding counts props with the wayfinding stat against one per wayfindingAreaM2 of passenger floor.",
+  "vendingNeeds": { "vending.snack": ["hunger"], "vending.fresh": ["hunger"], "vending.coffee": ["hunger", "thirst"], "vending.drink": ["thirst"], "vending.travel": ["shop"] },
+  "adPerPax": { "screen.adTotem": 0.01, "screen.ledWall": 0.05 },
+  "paxPerAdSlot": 500,
+  "wayfindingAreaM2": 400
  },
  "tower": {
   "note": "Free standing ATC tower, confirmed by the user on 2026-11-06. Money in the game currency, footprint side in meters. Index 0 of levels is level 1. movementsPerHour is the landing and takeoff budget per runway in a rolling 60 minute window. maxRunways is the most runways the level allows, minus 1 means unlimited.",

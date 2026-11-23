@@ -10,7 +10,7 @@ import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import { BOARDING } from '../ops/turnaround';
 import type { ServiceNodes } from '../terminal/serviceNodes';
-import { SIDE, buildVisitPoints, pointAtCell, type VisitPoints } from '../terminal/visitPoints';
+import { SIDE, buildVisitPoints, findPoint, pointAtCell, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newSampleCache, type SampleCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
@@ -20,6 +20,7 @@ import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type 
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 import { flowStep } from '@shared/terminalZones';
 import { TRAVELATOR } from '@shared/travelator';
+import { VENDING_KIND } from '@shared/props';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
@@ -195,6 +196,8 @@ const fixtureId = (name: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.
 const NEED_KIND_A = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[0]!)));
 const NEED_KIND_B = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[1] ?? NEEDS.needs[k].fixtures[0]!)));
 const NEED_KIND_C = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[2] ?? NEEDS.needs[k].fixtures[0]!)));
+/** Vending kind that meets each need, 0 for none (T82). */
+const NEED_KIND_V = Int32Array.from(NEED_KEYS, (k) => (k === 'hunger' || k === 'thirst' || k === 'shop' ? VENDING_KIND[k] : 0));
 /** Counters of the current day: visits per need, visitor spend, the satisfaction of passengers rated today and their number, then the penalty points taken by cause, then the arrival counters (passengers exited and stranded, claim wait seconds and claims, passengers without bags) and their penalty points. */
 export const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, ArrExited: NEED_COUNT + 7, ArrStranded: NEED_COUNT + 8, ClaimWaitS: NEED_COUNT + 9, ClaimCount: NEED_COUNT + 10, NoBags: NEED_COUNT + 11, PenMissingBag: NEED_COUNT + 12, PenStranded: NEED_COUNT + 13, Count: NEED_COUNT + 14 } as const;
 const SAT = NEEDS.satisfaction;
@@ -1671,6 +1674,7 @@ export class Cohorts {
     const kindA = need === NEED_SHOP ? this.traits[TRAIT.Fav1]! : NEED_KIND_A[need]!;
     const kindB = need === NEED_SHOP ? this.traits[TRAIT.Fav2]! : NEED_KIND_B[need]!;
     const kindC = need === NEED_SHOP ? kindA : NEED_KIND_C[need]!;
+    const kindV = NEED_KIND_V[need]!;
     const here = this.hereNode(g, c);
     const id = this.gridId(g);
     const speed = this.speed(c);
@@ -1689,7 +1693,7 @@ export class Cohorts {
       // Ascending scan with a strict comparison, so ties go to the lowest point and an infinite walk never wins.
       for (let p = 0; p < vp.count; p++) {
         const kind = vp.kind[p]!;
-        if ((kind !== kindA && kind !== kindB && kind !== kindC) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
+        if ((kind !== kindA && kind !== kindB && kind !== kindC && kind !== kindV) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
         const seconds = this.business.walkDistance(id, here, vp.walkNode[p]!) / speed;
         if (seconds < bestSeconds) {
           bestSeconds = seconds;
@@ -1798,8 +1802,12 @@ export class Cohorts {
       spend += Math.floor(this.traits[TRAIT.Budget]! * NEED_SPEND_SHARE[k]!);
     }
     this.day[DAY.Spend] += spend;
-    // The spend is the sales of the tenant unit visited (T32).
-    if (k !== NEED_TOILET && this.target[c]! >= 0) this.business.tenantSale(g, this.target[c]!, spend);
+    if (k === NEED_TOILET || this.target[c]! < 0) return;
+    // A vending machine keeps the airport its sales share (T82); any other spend is the sales of the tenant unit visited (T32).
+    const vp = NEED_KIND_V[k]! > 0 ? this.visitTable(g) : null;
+    const p = vp ? findPoint(vp, this.target[c]!, NEED_KIND_V[k]!) : -1;
+    if (p >= 0) this.business.vendingSale(spend * vp!.share[p]!);
+    else this.business.tenantSale(g, this.target[c]!, spend);
   }
 
   /** Sets the level of need k of the live members to 0. */
