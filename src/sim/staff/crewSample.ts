@@ -2,7 +2,7 @@ import { AIRCRAFT } from '@data/aircraft';
 import { STAFF } from '@data/index';
 import { STAFF_ROLE_KEYS } from '@data/schemas/staff';
 import { HEADING_STEPS, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
-import { cosLut, sinLut, TWO_PI } from '@shared/trig';
+import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 import { mix32 } from '../cohorts/traits';
 import { MAX_AIRCRAFT, type Traffic } from '../ops/traffic';
 import type { Turnarounds } from '../ops/turnaround';
@@ -10,13 +10,17 @@ import type { Turnarounds } from '../ops/turnaround';
 const RAMP_PROFILE = STAFF_PROFILE_BASE + STAFF_ROLE_KEYS.indexOf('ramp');
 /** People ids of apron crew figures start past every staff slot id. */
 const CREW_ID_BASE = STAFF_ID_BASE + STAFF.capacity;
-/** Metres ahead of the nose tip and to each side of the centre line where the two crew figures of a turnaround stand. */
-const AHEAD_M = 1.5;
-const SIDE_M = 3.5;
+/** Metres behind the nose tip, and out from the side of the fuselage, where the crew figures of a turnaround stand: beside the nose, clear of the pushback tug ahead and of the stop bar labels on the centre line. */
+const BEHIND_NOSE_M = 2;
+const SIDE_GAP_M = 3.5;
+/** Least metres from the centre line, past the stop bar labels of every type. */
+const MIN_SIDE_M = 6;
+/** Metres between two crew figures on the same side. */
+const CREW_STEP_M = 1.5;
 
 /**
- * Adds the apron crew of every turnaround that holds one to the people sample (T81): the crew stands ahead of the
- * nose, one figure on each side of the centre line, clear of the pushback tug, facing the aircraft. Reads only.
+ * Adds the apron crew of every turnaround that holds one to the people sample (T81): the crew stands beside the nose,
+ * one figure on each side of the fuselage, facing the aircraft. Reads only.
  */
 export function writeCrewSample(views: SnapshotViews, turns: Turnarounds, traffic: Traffic): void {
   let n = views.header[SnapHeader.PeopleCount]!;
@@ -27,13 +31,16 @@ export function writeCrewSample(views: SnapshotViews, turns: Turnarounds, traffi
     const h = traffic.heading[i]!;
     const fx = cosLut(h);
     const fy = sinLut(h);
-    const ahead = spec.dimensions.lengthM / 2 + AHEAD_M;
-    // Facing back toward the aircraft, in the heading byte of the people sample (0 is up, clockwise).
-    const face = Math.round(((h + Math.PI + Math.PI / 2) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
+    const ahead = spec.dimensions.lengthM / 2 - BEHIND_NOSE_M;
+    const out = Math.max(MIN_SIDE_M, spec.dimensions.fuselageWidthM / 2 + SIDE_GAP_M);
     for (let k = 0; k < STAFF.ramp.crewSize && n < SNAPSHOT_PEOPLE_CAPACITY; k++) {
-      const side = (k - (STAFF.ramp.crewSize - 1) / 2) * 2 * SIDE_M / Math.max(1, STAFF.ramp.crewSize - 1);
-      views.peopleX[n] = traffic.x[i]! + fx * ahead - fy * side;
-      views.peopleY[n] = traffic.y[i]! + fy * ahead + fx * side;
+      // Sides alternate; a third and later figure stands a step further back on its side.
+      const side = k % 2 === 0 ? -out : out;
+      const along = ahead - (k >> 1) * CREW_STEP_M;
+      views.peopleX[n] = traffic.x[i]! + fx * along - fy * side;
+      views.peopleY[n] = traffic.y[i]! + fy * along + fx * side;
+      // Facing the fuselage, in the heading byte of the people sample, whose 0 faces up (world angle minus a quarter turn).
+      const face = Math.round(((atan2Det(-fx * side, fy * side) + Math.PI / 2) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
       views.peopleProfile[n] = RAMP_PROFILE;
       views.peopleSize[n] = 1;
       views.peopleSeed[n] = mix32(Math.imul(turns.flightOf[i]! * 8 + k + 1, 0x85ebca6b) >>> 0);
