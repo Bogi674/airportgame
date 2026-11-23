@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. Phases 1, 2 and 3b are done, T81 and T32 (tenants) closed on 2026-11-23. Phase 3 keeps **T83** (the rest of the staff follow up). Next is **T82** (prop effects) in phase 4, then **T50** (events), unless the owner takes T83 first. Run the `grill-me` skill and write the spec first.
+2. Phases 1, 2 and 3b are done, T81 and T32 (tenants) closed on 2026-11-23. Phase 3 keeps **T83** (the rest of the staff follow up). T50 (events) closed on 2026-11-23. T82 (prop effects) runs in another session. Next here is **T45** (asset sharpness), then phase 5 once phase 4 closes. Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
@@ -155,7 +155,7 @@ Goal: the commercial side and the daily surprises come from generators, not fixe
 | --- | --- | --- | --- | --- |
 | T32 | Tenants: zoned units, generated brands that apply, furnishing from templates, advertising, sales counted from individual visits, existing shop fixtures migrated (section 7.1, 7.2) |  | T67 | done b512a12 dfd1516 |
 | T82 | Prop effects left from T76: vending sales share and restocking, ad income from ad totems and the LED wall, wayfinding from flight boards, the charging want, office workplaces and pantry effects on staff |  | T76, T32, T81 | todo |
-| T50 | Seeded event director with the first deck of eight events, two choices each and a fallback (section 7.3) |  | T65, T68, T61 | doing |
+| T50 | Seeded event director with the first deck of eight events, two choices each and a fallback (section 7.3) |  | T65, T68, T61 | done 213c9ff |
 
 Exit: two seeds show different brands, shop income follows real visits, and each event of the deck can be played through both choices.
 
