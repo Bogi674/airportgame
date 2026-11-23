@@ -464,3 +464,16 @@ Implementer choices, stated for the owner: a travelator is one fixture key with 
 | Apron crews | A new role based at the ground handling depot, three shifts, hired automatically within the cap. Each airline turnaround claims a crew of 2 at chocks and frees it at door close; with no free crew chocks waits and the flights board shows a ramp crew delay owned by the airport. Crew figures stand at the aircraft. GA unchanged |
 | Cabin cleaning | Stays as today, with the cleaning depot. Cleaners keep only terminal rooms clean |
 | Values | Proposed by the orchestrator in data files, listed below, save version bump with a migration |
+
+### T81 proposed values (orchestrator, for the owner's review)
+
+| Subject | Proposed value |
+| --- | --- |
+| Security exit | 1 security officer at every level; 0.5 of the rate with nobody on it (owner) |
+| Apron crew | 2 ramp staff per crew (owner) and per commercial stand a depot reaches; wage 130 per day like the other roles; sprites ground handler and baggage handler |
+| Cleaners | cleanerBase from the catalog (2 per janitor room set); wage 130 per day; sprite cleaner |
+| Dirt | 1 unit per passenger per game minute, counted every 10 minutes; a room is fully dirty at 20 units per m2; a cleaner is called at 30 percent |
+| Cleaning time | 5 minutes plus 1 per 100 m2 of the room |
+| Rating | passenger cleanliness is the mean of the cabin score and the area weighted terminal cleanliness |
+
+Implementer choices, stated for the owner: the crew pool sits at the lowest id depot and its staff commute there from the nearest staff center; crew figures stand 2 m behind the nose tip, at least 6 m out from the centre line, one each side. A cleaner stands on the walkable cell of the janitor room nearest the set and serves one room at a time; rooms with only staff floor never get dirty.
