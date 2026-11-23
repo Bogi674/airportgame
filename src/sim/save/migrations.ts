@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 38;
+export const SAVE_VERSION = 39;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -48,6 +48,8 @@ export interface SaveData {
   legacyLanes?: number[][];
   /** Set by the migration to version 36 (T76): seating and toilet fixtures become props on restore. Never written by a save. */
   convertProps?: boolean;
+  /** Set by the migration to version 39 (T32): shop fixtures become tenant units on restore. Never written by a save. */
+  convertShops?: boolean;
 }
 
 /** Brings any older save up to the current shape. Newer saves are refused with a clear message. */
@@ -401,6 +403,12 @@ export function migrate(raw: unknown): SaveData {
   // Version 37 to 38: cleaners and terminal dirt (T81). The save gains the dirt of every room, which an older save
   // lacks, so its rooms load clean; the cleaner role and its janitor room stations are hired by the first pass.
   if (save.version < 38) save.version = 38;
+  // Version 38 to 39: tenant units (T32). The business gains the tenants block, which loads with no units, and every
+  // shop fixture becomes a unit over its cells with a generated tenant on restore.
+  if (save.version < 39) {
+    (save as { convertShops?: boolean }).convertShops = true;
+    save.version = 39;
+  }
   return save as SaveData;
 }
 

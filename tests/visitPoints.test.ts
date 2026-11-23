@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FIXTURE_KEYS, ZONE } from '@shared/business';
 import { Sim } from '@sim/sim';
 import { SIDE, findPoint, type VisitPoints } from '@sim/terminal/visitPoints';
-import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
+import { buildTestAirport, buildTestTerminal, leaseUnit, OPTIONS, ownedSim, run } from './helpers';
 
 const SEATING = FIXTURE_KEYS.indexOf('seating') + 1;
 const CONVENIENCE = FIXTURE_KEYS.indexOf('convenience') + 1;
@@ -48,9 +48,10 @@ describe('visit points', () => {
 
   it('a cafe in a commercial area inside the public hall is land side', () => {
     const sim = shopSim();
-    expect(paint(sim, 'zone', 50, 48, 52, 49, ZONE.Commercial)).toEqual([]);
-    expect(paint(sim, 'fixture', 50, 48, 51, 49, CAFE)).toEqual([]);
-    const p = pointAt(sim, 50, 48);
+    expect(paint(sim, 'zone', 50, 48, 55, 49, ZONE.Commercial)).toEqual([]);
+    expect(leaseUnit(sim, 50, 48, 5, 1, 'cafe')).toEqual([]);
+    const p = pointAt(sim, 52, 48);
+    expect(p.vp.kind[p.k]).toBe(CAFE);
     expect(p.vp.side[p.k]).toBe(SIDE.Land);
   });
 
@@ -58,17 +59,17 @@ describe('visit points', () => {
     const sim = shopSim();
     // Effective zones follow open edges, so the wall between the public and the secure hall opens here.
     expect(paint(sim, 'removeWall', 72, 48, 72, 49, 1)).toEqual([]);
-    expect(paint(sim, 'zone', 70, 48, 72, 49, ZONE.Commercial)).toEqual([]);
-    expect(paint(sim, 'fixture', 71, 48, 72, 49, CAFE)).toEqual([]);
-    const p = pointAt(sim, 71, 48);
+    expect(paint(sim, 'zone', 68, 48, 73, 49, ZONE.Commercial)).toEqual([]);
+    expect(leaseUnit(sim, 68, 48, 5, 1, 'cafe')).toEqual([]);
+    const p = pointAt(sim, 70, 48);
     expect(p.vp.side[p.k]).toBe(SIDE.None);
   });
 
   it('a commercial area touching only the secure hall is air side', () => {
     const sim = shopSim();
-    expect(paint(sim, 'zone', 90, 48, 92, 49, ZONE.Commercial)).toEqual([]);
-    expect(paint(sim, 'fixture', 90, 48, 91, 49, CAFE)).toEqual([]);
-    const p = pointAt(sim, 90, 48);
+    expect(paint(sim, 'zone', 90, 48, 95, 49, ZONE.Commercial)).toEqual([]);
+    expect(leaseUnit(sim, 90, 48, 5, 1, 'cafe')).toEqual([]);
+    const p = pointAt(sim, 92, 48);
     expect(p.vp.side[p.k]).toBe(SIDE.Air);
   });
 
@@ -77,8 +78,8 @@ describe('visit points', () => {
     const before = pointAt(sim, 86, 46);
     const cell = before.vp.cell[before.k]!;
     expect(findPoint(before.vp, cell, CONVENIENCE)).toBe(before.k);
-    paint(sim, 'zone', 50, 48, 52, 49, ZONE.Commercial);
-    paint(sim, 'fixture', 50, 48, 51, 49, CAFE);
+    paint(sim, 'zone', 50, 48, 55, 49, ZONE.Commercial);
+    leaseUnit(sim, 50, 48, 5, 1, 'cafe');
     const after = sim.cohorts.visitTable(0)!;
     expect(findPoint(after, cell, CONVENIENCE)).toBeGreaterThanOrEqual(0);
     expect(after.cell[findPoint(after, cell, CONVENIENCE)]).toBe(cell);

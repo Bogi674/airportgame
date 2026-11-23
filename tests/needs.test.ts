@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { PROFILES } from '@data/index';
-import { FIXTURE_KEYS, ZONE } from '@shared/business';
 import { Stage, queuePoints, unmetPoints, walkPoints, type Cohorts } from '@sim/cohorts/cohorts';
 import { memberSeedOf, writeTraits, TRAIT_COUNT } from '@sim/cohorts/traits';
 import { TICKS_PER_DAY } from '@shared/business';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { Sim } from '@sim/sim';
-import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
+import { buildTestAirport, buildTestTerminal, leaseUnit, OPTIONS, ownedSim, run } from './helpers';
 
 const WIDE = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
 const SMALL = AIRCRAFT.findIndex((a) => a.id === 'atr72_600');
-const QUICK_FOOD = FIXTURE_KEYS.indexOf('quickFood') + 1;
-const CAFE = FIXTURE_KEYS.indexOf('cafe') + 1;
 const THIRST = 1;
 const M = PROFILES.maxGroup;
 const HUNGER = 0;
@@ -22,18 +19,12 @@ const FOOD_Y = 46;
 const STARVING = 5000;
 const SUB = 1;
 
-/** A terminal with no seating or toilet and one quick food fixture in the secure hall. */
-function foodSim(seed?: string, withFood = true, desks = { checkIn: 4, security: 2, gateDesk: 2 }, fixture = QUICK_FOOD): Sim {
+/** A terminal with no seating or toilet and one leased quick food unit (5 by 2 cells) in the secure hall, centered on FOOD_X, FOOD_Y. */
+function foodSim(seed?: string, withFood = true, desks = { checkIn: 4, security: 2, gateDesk: 2 }, category: 'quickFood' | 'cafe' = 'quickFood'): Sim {
   const sim = ownedSim(seed);
   buildTestAirport(sim);
   expect(buildTestTerminal(sim, { ...desks, seating: 0, toilet: 0 })).toEqual([]);
-  if (withFood) {
-    const g = sim.business.grids[0]!;
-    const edit = (op: 'zone' | 'fixture', variant: number): string[] =>
-      run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op, x0: FOOD_X, y0: FOOD_Y, x1: FOOD_X + 1, y1: FOOD_Y + 1, variant } });
-    expect(edit('zone', ZONE.Commercial)).toEqual([]);
-    expect(edit('fixture', fixture)).toEqual([]);
-  }
+  if (withFood) expect(leaseUnit(sim, FOOD_X - 2, FOOD_Y, 5, category === 'cafe' ? 1 : 2, category)).toEqual([]);
   return sim;
 }
 
@@ -116,7 +107,7 @@ describe('needs and sub cohorts', () => {
   });
 
   it('a thirsty member has a short visit at a cafe and rejoins the group that waited airside', () => {
-    const sim = foodSim(undefined, true, undefined, CAFE);
+    const sim = foodSim(undefined, true, undefined, 'cafe');
     const co = sim.cohorts;
     const { c, size, v } = splitOff(sim, THIRST);
     untilVisitEnds(sim, v);

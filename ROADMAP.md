@@ -154,7 +154,7 @@ Goal: the commercial side and the daily surprises come from generators, not fixe
 
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
-| T32 | Tenants: zoned units, generated brands that apply, furnishing from templates, advertising, sales counted from individual visits, existing shop fixtures migrated (section 7.1, 7.2) |  | T67 | todo |
+| T32 | Tenants: zoned units, generated brands that apply, furnishing from templates, advertising, sales counted from individual visits, existing shop fixtures migrated (section 7.1, 7.2) |  | T67 | doing |
 | T82 | Prop effects left from T76: vending sales share and restocking, ad income from ad totems and the LED wall, wayfinding from flight boards, the charging want, office workplaces and pantry effects on staff |  | T76, T32, T81 | todo |
 | T50 | Seeded event director with the first deck of eight events, two choices each and a fallback (section 7.3) |  | T65, T68, T61 | todo |
 

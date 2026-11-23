@@ -1,9 +1,9 @@
 {
   "note": "Passenger needs, wants and satisfaction (docs/DESIGN_REVISION_4.md 6.2 and 6.3, D24 to D27, proposals of T67). Game hours and minutes are calendar time.",
   "needs": {
-    "note": "Hours until a need falls due, the fixtures that meet it, visit minutes and spend share.",
+    "note": "Hours until a need falls due, the fixtures that meet it (up to three, shop kinds are tenant units since T32), visit minutes and spend share.",
     "hunger": { "thresholdH": 3, "fixtures": ["quickFood", "cafe"], "visitMin": 20, "spendShare": 0.4 },
-    "thirst": { "thresholdH": 2, "fixtures": ["cafe", "convenience"], "visitMin": 10, "spendShare": 0.15 },
+    "thirst": { "thresholdH": 2, "fixtures": ["cafe", "convenience", "bar"], "visitMin": 10, "spendShare": 0.15 },
     "toilet": { "thresholdH": 2.5, "fixtures": ["toilet"], "visitMin": 0, "spendShare": 0 },
     "rest": { "thresholdH": 0.667, "fixtures": ["seating"], "visitMin": 20, "spendShare": 0 }
   },
@@ -14,7 +14,7 @@
     "visitMin": 15,
     "spendShare": 0.6,
     "favourites": 2,
-    "categories": ["convenience", "quickFood", "cafe", "dutyFree", "booksGifts", "pharmacy"]
+    "categories": ["convenience", "quickFood", "cafe", "bar", "booksGifts", "pharmacy"]
   },
   "budget": { "min": 0.5, "max": 1.5 },
   "gateLeadMin": { "min": 15, "max": 40 },

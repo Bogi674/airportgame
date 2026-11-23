@@ -477,3 +477,16 @@ Implementer choices, stated for the owner: a travelator is one fixture key with 
 | Rating | passenger cleanliness is the mean of the cabin score and the area weighted terminal cleanliness |
 
 Implementer choices, stated for the owner: the crew pool sits at the lowest id depot and its staff commute there from the nearest staff center; crew figures stand 2 m behind the nose tip, at least 6 m out from the centre line, one each side. A cleaner stands on the walkable cell of the janitor room nearest the set and serves one room at a time; rooms with only staff floor never get dirty.
+
+## 2026-11-23 T32: tenants
+
+Values D29 to D31 of the 2026-11-12 batch stand: six categories with unit sizes, one application per category per 10 days, brand pool growing by one per 100 000 yearly passengers, rent 1.2 per m2 per day plus 12 % of sales, old shop fixtures become units with a generated tenant.
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Unit shape | A Unit tool in the terminal build menu: pick a category, drag a rectangle of floor cells, live size check against the category limits |
+| Furnishing | Templates in `src/data/tenants.json` list counters, shelves, tables, seats and a storefront sign per category in meters, laid out to the unit and painted in the brand color. No change to the fixture kit |
+| Advertising | One off campaigns: each campaign costs 20 000 and brings one application at once |
+| Old shops and the bar | Old shop fixtures become units over their cells with a generated tenant (duty free becomes convenience, it moves to MVP 2); the fixture tool stops offering shops. The bar meets thirst like the cafe and can be a favourite shop |
+
+Implementer choices, stated for the owner: zoning a unit is free and the tenant pays its own fit out; a unit needs floored cells in the commercial, secure or international zone with no fixture, prop or other unit on them. Each category starts with a pool of 3 brands and gains one per 100 000 passengers of the trailing year (a running yearly sum). A unit keeps at most 3 pending applications, the oldest drops when a fourth arrives. A campaign needs a vacant unit of its category. People walk through units freely; the furnishing is painted, not a walking block. Removing a unit ends its lease with no cost.

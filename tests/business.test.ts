@@ -203,12 +203,13 @@ describe('airlines and money', () => {
     expect(sim.cash).toBe(c + 1_500_000);
   });
 
-  it('shop fixtures are rented once the rating allows', () => {
+  it('a leased tenant unit counts in the terminal and pays rent per m2 each day', () => {
     const sim = ownedSim();
     sim.cash = 100_000_000;
     buildTestAirport(sim, { standsPerRow: 8 });
-    buildTestTerminal(sim, { shop: true });
-    expect(sim.business.terminals[0].counts.convenience).toBe(1);
+    expect(buildTestTerminal(sim, { shop: true })).toEqual([]);
+    expect(sim.business.terminals[0].leased).toBe(1);
+    expect(sim.business.terminals[0].counts.convenience).toBe(0);
   });
 });
 
@@ -587,7 +588,7 @@ describe('two cell fixture footprints', () => {
   });
 
   it('a version 11 save migrates to version 12 with a zero footprint layer', () => {
-    expect(SAVE_VERSION).toBe(38);
+    expect(SAVE_VERSION).toBe(39);
     const { sim } = airportWithTerminal();
     const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { fixtureRot?: string }[] } };
     data.version = 11;

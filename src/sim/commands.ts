@@ -78,6 +78,15 @@ export type Command =
   /** Removes the topmost prop under the point (x, y) in grid meters with a full refund (T76). */
   | { type: 'removeProp'; building: number; x: number; y: number }
   /** Baggage network (T43): place a node on a building grid, remove it, assign a stand to a bay (bayId -1 unassigns), or rerun the link rule of a node. */
+  /** Zones a rectangle of logical cells on a terminal floor as a tenant unit of a category (T32). */
+  | { type: 'zoneUnit'; building: number; x: number; y: number; w: number; h: number; category: number }
+  /** Removes a tenant unit and ends its lease. */
+  | { type: 'removeUnit'; id: number }
+  /** Accepts or declines a pending application of a brand for a unit. */
+  | { type: 'acceptTenant'; unit: number; brand: number }
+  | { type: 'declineTenant'; unit: number; brand: number }
+  /** Buys a one off advertising campaign that brings one application for a vacant unit of the category. */
+  | { type: 'adCampaign'; category: number }
   | { type: 'placeBaggageNode'; building: number; kind: 'machine' | 'bay' | 'carousel'; cx: number; cy: number; rot: 0 | 1 | 2 | 3; widthCells: number }
   | { type: 'removeBaggageNode'; id: number }
   | { type: 'setStandBay'; standId: number; bayId: number }

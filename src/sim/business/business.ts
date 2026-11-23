@@ -29,11 +29,12 @@ import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells,
 import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
+import { GA_LABEL, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
 import { cellsOfRect, convertLegacyFixtures, planProp, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { travelatorCostOf } from '@shared/travelator';
+import { Tenants, type TenantsSave } from '../market/tenants';
 import { Market } from '../market/market';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
@@ -76,6 +77,8 @@ export class Business {
   version = 0;
   /** Full grids of every terminal building. */
   readonly grids: TerminalGrid[] = [];
+  /** Tenant units, brands and applications (T32). */
+  readonly tenants: Tenants;
   /** Walking graph of every grid, same order as grids. Derived, never saved. */
   readonly walkGraphs: WalkGraph[] = [];
   /** Counts walk graph rebuilds. Node ids are stale after a change. */
@@ -282,6 +285,15 @@ export class Business {
       internationalReady: () => this.internationalReady(),
     });
     this.market.generateAirlines();
+    this.tenants = new Tenants(rng, {
+      getCash: () => host.getCash(),
+      book: (c, a) => host.book(c, a),
+      emit: (e) => host.emit(e),
+      unitsChanged: () => {
+        this.serviceVersion++;
+        this.refreshTerminals();
+      },
+    });
     traffic.hooks = {
       docked: (f) => this.onDocked(f),
       pushback: (f) => this.onPushback(f),
@@ -329,6 +341,7 @@ export class Business {
   /** Rebuilds counts, totals and the reach sample after any change to the grids. */
   private refreshTerminals(): void {
     this.terminals = this.grids.map(summarize);
+    for (const t of this.terminals) t.leased = this.tenants.leasedIn(t.id);
     this.totals = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
     for (const t of this.terminals) for (const k of FIXTURE_KEYS) this.totals[k] += t.counts[k];
     this.reach = [];
@@ -461,6 +474,7 @@ export class Business {
     } else {
       this.refreshGrid(id, edit.x0, edit.y0, edit.x1, edit.y1);
     }
+    this.tenants.prune(this.grids);
     this.onGridEdited?.(id);
     return null;
   }
@@ -654,6 +668,27 @@ export class Business {
     return n;
   }
 
+  /** Turns the shop fixtures of a save from before version 39 into tenant units (T32, D31). Returns the units made. */
+  convertLegacyShops(): number {
+    const n = this.tenants.convertLegacyShops(this.grids);
+    if (n === 0) return 0;
+    for (let gi = 0; gi < this.grids.length; gi++) {
+      const g = this.grids[gi]!;
+      this.walkGraphs[gi] = buildWalkGraph(g);
+      this.serviceNodes[gi] = rebuildServiceNodes(this.serviceNodes[gi]!, g, this.walkGraphs[gi]!, this.closedCells(g));
+    }
+    this.bumpTerminals();
+    return n;
+  }
+
+  /** A visit to the tenant unit at array cell `cell` of grid index `gi` spent `amount` (T32). */
+  tenantSale(gi: number, cell: number, amount: number): void {
+    const g = this.grids[gi];
+    if (!g || amount <= 0) return;
+    const col = cell % g.w;
+    this.tenants.sale(g.id, g.x0 + col, g.y0 + (cell - col) / g.w, amount);
+  }
+
   private bumpTerminals(): void {
     this.walkVersion++;
     this.serviceVersion++;
@@ -670,6 +705,7 @@ export class Business {
     this.serviceNodes.splice(i, 1);
     this.walkVersion++;
     this.serviceVersion++;
+    this.tenants.prune(this.grids);
     this.refreshTerminals();
     this.onGridEdited?.(id);
     return null;
@@ -1123,6 +1159,8 @@ export class Business {
       this.updateRating();
       this.bagDayReset?.();
     }
+    // Applications of the new day (T32).
+    this.tenants.newDay(d);
     this.day = d;
     this.updateFire(d);
     this.paxToday = 0;
@@ -1160,19 +1198,8 @@ export class Business {
     for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
     for (const b of af.buildings ?? []) upkeep += b.cost * GROUND.buildingUpkeepShare;
     this.host.book('upkeep', -Math.round(upkeep));
-    // Shop tenants and rent, one lease per shop fixture.
-    let rent = 0;
-    for (const g of this.grids) {
-      for (let i = 0; i < g.fixture.length; i++) {
-        const f = g.fixture[i];
-        if (!isShopFixture(f)) continue;
-        const spec = BUSINESS.shops[fixtureKey(f) as keyof typeof BUSINESS.shops];
-        if (g.leased[i] === 0 && this.rating >= spec.minRating && this.rng.next() < 0.35) g.leased[i] = 1;
-        if (g.leased[i] === 1 && this.rating < spec.minRating - 15) g.leased[i] = 0;
-        if (g.leased[i] === 1) rent += spec.rentPerDay * Math.min(1.5, 0.5 + this.paxToday / 1500);
-      }
-    }
-    this.host.book('rent', Math.round(rent));
+    // Tenant rent and the sales share of the closed day (T32).
+    this.tenants.chargeDaily(this.paxToday);
     if (this.loan > 0) {
       const interest = Math.round((this.loan * fees.interestAnnualPct) / 100 / 365);
       this.host.book('interest', -interest);
@@ -1196,7 +1223,7 @@ export class Business {
   }
 
   private updateRating(): void {
-    const leased = this.terminals.reduce((n, t) => n + t.leased, 0);
+    const leased = this.tenants.leasedCount();
     const hasTerminal = this.terminals.length > 0;
     const toilets = hasTerminal ? Math.min(1, this.toiletServers / BUSINESS.props.toiletServersTarget) : 0;
     const amenities = hasTerminal ? (this.comfortScore + this.ambienceScore) / 2 : 0;
@@ -1344,6 +1371,7 @@ export class Business {
       minuteOfDay: minuteOfDay(tick),
       terminals: this.terminals,
       terminalVersion: this.terminalVersion,
+      tenants: this.tenants.payload(),
       airlines: this.airlines,
       rating: Math.round(this.rating * 10) / 10,
       satisfaction: Math.round(this.satisfaction * 100) / 100,
@@ -1382,6 +1410,7 @@ export class Business {
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
       rng: this.rng.getState(), marketRng: this.marketRng.getState(), market: this.market.saveState(),
       service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(), fixtureWorks: this.fixtureWorks.map((w) => ({ ...w })),
+      tenants: this.tenants.saveState(),
     };
   }
 
@@ -1444,6 +1473,7 @@ export class Business {
     unpackInto(o.flightDockedAt, this.flightDockedAt, Int32Array);
     this.rng.setState(o.rng);
     this.marketRng.setState(o.marketRng);
+    this.tenants.loadState((raw as { tenants?: TenantsSave }).tenants);
     this.refreshTerminals();
     this.version = Math.max(this.version, o.version + 1);
   }
@@ -1457,6 +1487,7 @@ export class Business {
     acc = foldU32(acc, Math.floor(this.handlingScore * 10000));
     for (const a of this.airlines) acc = foldU32(acc, a.pax);
     acc = this.market.hash(acc);
+    acc = this.tenants.hash(acc);
     for (const g of this.grids) {
       acc = foldU32(foldU32(foldU32(foldU32(acc, g.id), cellCount(g)), g.building), g.level - TERMINAL_LEVEL_MIN);
       for (let i = 0; i < g.fixture.length; i++) {

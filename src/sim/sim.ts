@@ -520,6 +520,23 @@ export class Sim {
       case 'cancelFixtureUpgrade':
         this.report(this.business.cancelFixtureUpgrade(cmd.building, cmd.x, cmd.y));
         break;
+      case 'zoneUnit': {
+        const g = this.business.grids.find((q) => q.id === cmd.building);
+        this.report(g ? this.business.tenants.zone(g, cmd.x, cmd.y, cmd.w, cmd.h, cmd.category) : 'nothingThere');
+        break;
+      }
+      case 'removeUnit':
+        this.report(this.business.tenants.remove(cmd.id));
+        break;
+      case 'acceptTenant':
+        this.report(this.business.tenants.accept(cmd.unit, cmd.brand));
+        break;
+      case 'declineTenant':
+        this.report(this.business.tenants.decline(cmd.unit, cmd.brand));
+        break;
+      case 'adCampaign':
+        this.report(this.business.tenants.campaign(cmd.category));
+        break;
       case 'placeProp':
         this.report(this.business.placeProp(cmd.building, { asset: cmd.asset, x: cmd.x, y: cmd.y, rot: cmd.rot }));
         break;
@@ -701,6 +718,7 @@ export class Sim {
       vWall: g.vWall.slice(),
       leased: g.leased.slice(),
       props: g.props.map((p) => ({ ...p })),
+      units: this.business.tenants.drawList(g),
     }));
   }
 
@@ -841,6 +859,10 @@ export class Sim {
     if (save.convertProps) {
       const n = this.business.convertLegacyProps();
       if (n > 0) this.eventQueue.push(`propsConverted|n=${n}`);
+    }
+    if (save.convertShops) {
+      const n = this.business.convertLegacyShops();
+      if (n > 0) this.eventQueue.push(`shopsConverted|n=${n}`);
     }
     if (save.legacyLanes) {
       const n = this.business.removeLegacyLanes(save.legacyLanes);

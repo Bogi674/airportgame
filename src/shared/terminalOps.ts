@@ -14,6 +14,7 @@ import {
   FIXTURE_ZONES,
   ZONES,
   isShopFixture,
+  isTenantKind,
   isBaggageFixture,
   fixtureKey,
   type FixtureKey,
@@ -407,6 +408,8 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
     if (e.op === 'fixture' && (e.variant < 1 || e.variant > FIXTURE_COUNT)) return none({ code: 'nothingThere' });
     // Seating and toilets are props since T76: seats and washroom items on the 0.5 m grid.
     if (e.op === 'fixture' && RETIRED_KEYS.includes(fixtureKey(e.variant))) return none({ code: 'fixtureIsProp' });
+    // Shops are tenant units since T32, zoned with the unit tool.
+    if (e.op === 'fixture' && isTenantKind(e.variant)) return none({ code: 'useUnitTool' });
     let blocked: Problem | null = null;
     const key = e.op === 'fixture' && e.variant >= 1 && e.variant <= FIXTURE_COUNT ? fixtureKey(e.variant) : null;
     const level = e.level ?? 1;

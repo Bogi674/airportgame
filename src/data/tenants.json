@@ -1,0 +1,64 @@
+{
+ "note": "Tenant units, generated brands, applications and furnishing (T32, docs/DESIGN_REVISION_4.md 7.1 and 7.2, D29 to D31). Areas in m2, money in the game currency, furnishing in meters.",
+ "rentPerM2Day": 1.2,
+ "salesShare": 0.12,
+ "applicationDays": 10,
+ "campaignCost": 20000,
+ "poolBase": 3,
+ "poolPaxPerBrand": 100000,
+ "maxApplications": 3,
+ "legacyCategory": { "note": "Old shop fixtures become units of this category; duty free moves to MVP 2.", "dutyFree": "convenience" },
+ "adjectives": ["Blue", "Golden", "Little", "North", "Silver", "Green", "Urban", "Harbor", "Sunny", "Maple", "Cedar", "Coral", "Amber", "Copper", "Juniper", "Sky"],
+ "colors": ["#2f6fb2", "#c0392b", "#27865a", "#d68910", "#7d3c98", "#16a085", "#a04000", "#34495e", "#b03a76", "#5d6d7e"],
+ "categories": {
+  "convenience": {
+   "minM2": 12, "maxM2": 60,
+   "nouns": ["Mart", "Market", "Corner", "Essentials", "Stop"],
+   "templates": [
+    [{ "kind": "shelf", "at": "back", "depthM": 0.6 }, { "kind": "shelf", "at": "sides", "depthM": 0.6 }, { "kind": "shelf", "at": "rows", "depthM": 0.9, "gapM": 1.6 }, { "kind": "counter", "at": "front", "depthM": 0.8 }],
+    [{ "kind": "counter", "at": "back", "depthM": 0.8 }, { "kind": "shelf", "at": "rows", "depthM": 0.9, "gapM": 1.4 }]
+   ]
+  },
+  "quickFood": {
+   "minM2": 40, "maxM2": 300,
+   "nouns": ["Grill", "Kitchen", "Burger", "Noodles", "Deli"],
+   "templates": [
+    [{ "kind": "counter", "at": "back", "depthM": 1.2 }, { "kind": "table", "at": "grid", "sizeM": 0.8, "gapM": 2.4 }],
+    [{ "kind": "counter", "at": "sides", "depthM": 1 }, { "kind": "table", "at": "grid", "sizeM": 1, "gapM": 2.6 }]
+   ]
+  },
+  "cafe": {
+   "minM2": 20, "maxM2": 120,
+   "nouns": ["Coffee", "Roasters", "Cafe", "Bean", "Espresso"],
+   "templates": [
+    [{ "kind": "counter", "at": "back", "depthM": 0.9 }, { "kind": "table", "at": "grid", "sizeM": 0.7, "gapM": 2 }],
+    [{ "kind": "counter", "at": "sides", "depthM": 0.9 }, { "kind": "table", "at": "grid", "sizeM": 0.6, "gapM": 1.8 }]
+   ]
+  },
+  "bar": {
+   "minM2": 40, "maxM2": 200,
+   "nouns": ["Taproom", "Bar", "Lounge", "Tavern", "Pub"],
+   "templates": [
+    [{ "kind": "counter", "at": "back", "depthM": 1.4 }, { "kind": "table", "at": "grid", "sizeM": 0.7, "gapM": 2.2 }],
+    [{ "kind": "counter", "at": "sides", "depthM": 1.2 }, { "kind": "table", "at": "grid", "sizeM": 0.9, "gapM": 2.4 }]
+   ]
+  },
+  "booksGifts": {
+   "minM2": 20, "maxM2": 80,
+   "nouns": ["Books", "Pages", "Gifts", "Souvenirs", "Reads"],
+   "templates": [
+    [{ "kind": "shelf", "at": "back", "depthM": 0.5 }, { "kind": "shelf", "at": "sides", "depthM": 0.5 }, { "kind": "display", "at": "grid", "sizeM": 1.2, "gapM": 2.2 }, { "kind": "counter", "at": "front", "depthM": 0.7 }],
+    [{ "kind": "shelf", "at": "sides", "depthM": 0.5 }, { "kind": "shelf", "at": "rows", "depthM": 0.6, "gapM": 1.5 }]
+   ]
+  },
+  "pharmacy": {
+   "minM2": 20, "maxM2": 80,
+   "nouns": ["Pharmacy", "Health", "Care", "Chemist", "Wellness"],
+   "templates": [
+    [{ "kind": "counter", "at": "back", "depthM": 0.9 }, { "kind": "shelf", "at": "sides", "depthM": 0.5 }, { "kind": "shelf", "at": "rows", "depthM": 0.7, "gapM": 1.6 }],
+    [{ "kind": "shelf", "at": "back", "depthM": 0.5 }, { "kind": "display", "at": "grid", "sizeM": 1, "gapM": 2 }, { "kind": "counter", "at": "front", "depthM": 0.8 }]
+   ]
+  }
+ },
+ "paint": { "note": "Unit look: outline width, wall margin and aisle widths of the furnishing layout, sign depth along the front, furnishing colors.", "outlineM": 0.15, "marginM": 0.2, "aisleM": 1.2, "frontCounterMaxM": 2.4, "signDepthM": 0.5, "floor": "#efe6d6", "counter": "#6b4f3a", "shelf": "#8a8f98", "table": "#a8794f", "display": "#9aa5b1" }
+}
