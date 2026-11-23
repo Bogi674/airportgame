@@ -706,6 +706,8 @@
   "finance.cat.interest": "Interest",
   "finance.cat.loan": "Loan",
   "finance.cat.advertising": "Advertising",
+  "finance.cat.vending": "Vending",
+  "finance.cat.ads": "Ad income",
   "finance.cat.incidents": "Incidents",
   "flights.title": "Flights",
   "flights.airline": "Airline",

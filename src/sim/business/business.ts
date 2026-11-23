@@ -217,6 +217,12 @@ export class Business {
   /** Passenger amenities from props (T76), 0 to 1 each: seats against gate desks, ambience against passenger floor. */
   comfortScore = 0;
   ambienceScore = 0;
+  /** Wayfinding props against passenger floor, 0 to 1 (T82). */
+  wayfindingScore = 0;
+  /** Income per daily passenger of every ad prop in passenger zones, best paying first (T82). */
+  private adRates: number[] = [];
+  /** The airport's share of the vending sales of the running day (T82). Saved. */
+  vendingToday = 0;
   /** Servers of every washroom, the summed capacity of their toilet props. */
   private toiletServers = 0;
   /** Summed price of every prop, for upkeep and the demolition refund. */
@@ -379,6 +385,8 @@ export class Business {
     let area = 0;
     let propCostSum = 0;
     let gateDesks = 0;
+    let wayfinding = 0;
+    const adRates: number[] = [];
     this.secureSeating = 0;
     this.anyGateDesk = false;
     this.gatelessHall = false;
@@ -401,6 +409,8 @@ export class Business {
       ambience += t.ambience;
       area += t.passengerAreaM2;
       propCostSum += t.cost;
+      wayfinding += t.wayfinding;
+      adRates.push(...t.adRates);
       gateDesks += gates;
       if (gates > 0) this.anyGateDesk = true;
       if (seats > 0 && lanes > 0 && gates === 0) this.gatelessHall = true;
@@ -409,6 +419,8 @@ export class Business {
     const P = BUSINESS.props;
     this.comfortScore = Math.min(1, comfort / (P.seatsPerGateDesk * Math.max(1, gateDesks)));
     this.ambienceScore = area > 0 ? Math.min(1, ambience / (area / P.ambienceAreaM2)) : 0;
+    this.wayfindingScore = area > 0 ? Math.min(1, wayfinding / (area / P.wayfindingAreaM2)) : 0;
+    this.adRates = adRates.sort((a, b) => b - a);
     this.propCost = propCostSum;
     // Washrooms are toilet nodes of the service tables, one per room with toilet props (T76).
     let washrooms = 0;
@@ -691,6 +703,19 @@ export class Business {
     }
     this.bumpTerminals();
     return n;
+  }
+
+  /** A visit to a vending machine left the airport `amount`, its sales share of the spend (T82). */
+  vendingSale(amount: number): void {
+    this.vendingToday += amount;
+  }
+
+  /** Ad income of a day with `pax` passengers: one paying slot per paxPerAdSlot passengers, best paying ads first (T82). */
+  adIncome(pax: number): number {
+    const slots = Math.min(this.adRates.length, Math.floor(pax / BUSINESS.props.paxPerAdSlot));
+    let rate = 0;
+    for (let k = 0; k < slots; k++) rate += this.adRates[k]!;
+    return rate * pax;
   }
 
   /** A visit to the tenant unit at array cell `cell` of grid index `gi` spent `amount` (T32). */
@@ -1207,6 +1232,12 @@ export class Business {
     this.host.book('upkeep', -Math.round(upkeep));
     // Tenant rent and the sales share of the closed day (T32).
     this.tenants.chargeDaily(this.paxToday);
+    // Vending sales share and ad income of the closed day (T82).
+    const vending = Math.round(this.vendingToday);
+    if (vending !== 0) this.host.book('vending', vending);
+    this.vendingToday = 0;
+    const ads = Math.round(this.adIncome(this.paxToday));
+    if (ads !== 0) this.host.book('ads', ads);
     if (this.loan > 0) {
       const interest = Math.round((this.loan * fees.interestAnnualPct) / 100 / 365);
       this.host.book('interest', -interest);
@@ -1233,7 +1264,7 @@ export class Business {
     const leased = this.tenants.leasedCount();
     const hasTerminal = this.terminals.length > 0;
     const toilets = hasTerminal ? Math.min(1, this.toiletServers / BUSINESS.props.toiletServersTarget) : 0;
-    const amenities = hasTerminal ? (this.comfortScore + this.ambienceScore) / 2 : 0;
+    const amenities = hasTerminal ? (this.comfortScore + this.ambienceScore + this.wayfindingScore) / 3 : 0;
     const shops = hasTerminal ? Math.min(1, leased / 4) : 0;
     const queues = hasTerminal ? this.satisfaction : 0;
     // Missing bags weigh missingBagWeight each against the bags checked today. With none checked the term is a full score.
@@ -1418,6 +1449,7 @@ export class Business {
       rng: this.rng.getState(), marketRng: this.marketRng.getState(), market: this.market.saveState(),
       service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(), fixtureWorks: this.fixtureWorks.map((w) => ({ ...w })),
       tenants: this.tenants.saveState(),
+      vendingToday: this.vendingToday,
     };
   }
 
@@ -1472,6 +1504,7 @@ export class Business {
       this.history.push(row);
     }
     this.paxToday = o.paxToday;
+    this.vendingToday = (raw as { vendingToday?: number }).vendingToday ?? 0;
     this.flightsToday = o.flightsToday;
     this.lostToday = o.lostToday;
     unpackInto(o.flightPax, this.flightPax, Int32Array);
@@ -1488,6 +1521,7 @@ export class Business {
     acc = foldU32(acc, Math.floor(this.rating * 100));
     acc = foldU32(acc, this.loan);
     acc = foldU32(acc, this.paxToday);
+    acc = foldU32(acc, Math.floor(this.vendingToday * 100));
     acc = foldU32(acc, Math.floor(this.cleanScore * 10000));
     acc = foldU32(acc, Math.floor(this.handlingScore * 10000));
     for (const a of this.airlines) acc = foldU32(acc, a.pax);

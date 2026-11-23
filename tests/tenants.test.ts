@@ -105,8 +105,7 @@ describe("tenant data", () => {
 
   it("appends the bar as the last fixture key and the advertising ledger category", () => {
     expect(FIXTURE_KEYS[FIXTURE_KEYS.length - 1]).toBe("bar");
-    // Appended after the advertising line by T50.
-    expect(LEDGER_CATEGORIES.slice(-2)).toEqual(["advertising", "incidents"]);
+    expect(LEDGER_CATEGORIES.indexOf("advertising")).toBe(11);
   });
 });
 

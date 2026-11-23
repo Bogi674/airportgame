@@ -491,6 +491,17 @@ Values D29 to D31 of the 2026-11-12 batch stand: six categories with unit sizes,
 
 Implementer choices, stated for the owner: zoning a unit is free and the tenant pays its own fit out; a unit needs floored cells in the commercial, secure or international zone with no fixture, prop or other unit on them. Each category starts with a pool of 3 brands and gains one per 100 000 passengers of the trailing year (a running yearly sum). A unit keeps at most 3 pending applications, the oldest drops when a fourth arrives. A campaign needs a vacant unit of its category. People walk through units freely; the furnishing is painted, not a walking block. Removing a unit ends its lease with no cost.
 
+## 2026-11-23 T82: prop effects
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Scope | Vending, ad income and wayfinding now. Office workplaces and pantry effects move to T83, where staff morale and fatigue arrive. The charging want is dropped: charging seats and towers stay decorative |
+| Vending | A vending machine is a small shop: snack and fresh food meet hunger, drink meets thirst, coffee meets both, travel essentials meet the shop want, in the passenger zones. The airport keeps the catalog sales share (15 %). No stock and no restocking |
+| Ad income | Ad totems earn 0.01 and the LED wall 0.05 per daily passenger, with one paying ad slot per 500 daily passengers, best paying ads first |
+| Wayfinding | Flight boards, info totems, gate displays and overhead signs in passenger zones against one per 400 m2 of passenger floor, capped at 1. It joins comfort and ambience in the Amenities term |
+
+Implementer choices, stated for the owner: vending sales are booked daily on a new ledger row Vending, ad income on a new row Ad income, both appended to the ledger. Daily passengers are counted over the whole airport, not per terminal. The water filler and the ATM pair keep no effect for now.
+
 ## 2026-11-23 T50: event director
 
 Values D32 and D33 of the 2026-11-12 batch stand: eight events, one draw per day, two choices each, fallback after 2 game hours, the D33 costs.
