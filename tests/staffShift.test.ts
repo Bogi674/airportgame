@@ -14,7 +14,8 @@ const at = (hour: number, minute = 0): number => (hour - 6) * HOUR + minute * TI
 
 function shiftSim(o: { center?: boolean; closedDesk?: boolean; perHour?: number } = {}): { sim: Sim; center: number } {
   const sim = ownedSim();
-  buildTestAirport(sim);
+  // No depot, so no apron crew pool (T81): the rosters and clock counts are the terminal staff only.
+  buildTestAirport(sim, { ground: false });
   expect(run(sim, { type: 'setTestTraffic', perHour: o.perHour ?? 0, turnScale: 1 })).toEqual([]);
   if (o.center !== false) expect(buildTestStaffCenter(sim)).toEqual([]);
   expect(buildTestTerminal(sim, { checkIn: 2, security: 1, gateDesk: 1 })).toEqual([]);
@@ -48,7 +49,7 @@ describe('shift cycle', () => {
     runTo(sim, at(13));
     const st = sim.staff;
     const next = membersOf(st, 1);
-    expect(next).toHaveLength(7);
+    expect(next).toHaveLength(8);
     for (const m of next) {
       expect(st.state[m]).toBe(STAFF_STATE.Off);
       expect(st.wake[m]).toBeLessThan(at(14));
@@ -63,8 +64,8 @@ describe('shift cycle', () => {
     const st = sim.staff;
     for (let s = 0; s < st.stCount; s++) expect(st.sPresent[s]).toBe(st.sNeed[s]);
     for (let m = 0; m < st.hi; m++) if (st.state[m] === STAFF_STATE.OnDuty) expect(st.shift[m]).toBe(1);
-    expect(st.clockIns.get(center)).toBe(7);
-    expect(st.clockOuts.get(center)).toBe(7);
+    expect(st.clockIns.get(center)).toBe(8);
+    expect(st.clockOuts.get(center)).toBe(8);
   }, 120_000);
 
   it('works without a staff center, with every event counted under -1', () => {
@@ -72,8 +73,8 @@ describe('shift cycle', () => {
     runTo(sim, at(14, 45));
     const st = sim.staff;
     for (let s = 0; s < st.stCount; s++) expect(st.sPresent[s]).toBe(st.sNeed[s]);
-    expect(st.clockIns.get(-1)).toBe(7);
-    expect(st.clockOuts.get(-1)).toBe(7);
+    expect(st.clockIns.get(-1)).toBe(8);
+    expect(st.clockOuts.get(-1)).toBe(8);
   }, 120_000);
 
   it('leaves a desk the staff cannot reach unstaffed and sends its staff back off', () => {
@@ -94,13 +95,12 @@ describe('shift cycle', () => {
   }, 120_000);
 });
 
-/** The agent on duty at a check in desk with the earliest break. */
+/** The agent on duty with the earliest break, the one the relief of the shift goes to first. */
 function firstBreaker(sim: Sim): number {
   const st = sim.staff;
-  const desk = FIXTURE_KEYS.indexOf('checkIn') + 1;
   let best = -1;
   for (let m = 0; m < st.hi; m++) {
-    if (st.role[m] !== 0 || st.state[m] !== STAFF_STATE.OnDuty || st.stKind[m] !== desk) continue;
+    if (st.role[m] !== 0 || st.state[m] !== STAFF_STATE.OnDuty) continue;
     if (best < 0 || st.breakAt[m]! < st.breakAt[best]!) best = m;
   }
   return best;

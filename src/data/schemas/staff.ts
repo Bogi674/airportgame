@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { FIXTURE_KEYS, type FixtureKey } from '@shared/business';
 
 /** Staff role ids. A role id is its index in this list, so the order is saved. Append only. */
-export const STAFF_ROLE_KEYS = ['agent', 'security', 'border'] as const;
+export const STAFF_ROLE_KEYS = ['agent', 'security', 'border', 'ramp', 'cleaner'] as const;
 export const STAFF_ROLE_COUNT = STAFF_ROLE_KEYS.length;
 export type StaffRole = (typeof STAFF_ROLE_KEYS)[number];
 
@@ -23,12 +23,15 @@ const roles = z.strictObject({
   agent: staffRole,
   security: staffRole,
   border: staffRole,
+  ramp: staffRole,
+  cleaner: staffRole,
 });
 
 const station = z.strictObject({
   role,
   need: z.number().int().min(1).max(8),
   needByLevel: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8), z.number().int().min(1).max(8)]).optional(),
+  unstaffedFactor: share.optional(),
 });
 
 /** One optional station entry per fixture key, so an unknown key fails. */
@@ -66,6 +69,21 @@ const operator = z.strictObject({
   spacingM: nonnegative,
 });
 
+const ramp = z.strictObject({
+  note: z.string(),
+  crewSize: z.number().int().min(1).max(8),
+});
+
+const cleaning = z.strictObject({
+  note: z.string(),
+  dirtPerPersonMin: z.number().int().positive(),
+  everyMin: z.number().int().positive(),
+  dirtyPerM2: z.number().int().positive(),
+  callShare: share,
+  cleanBaseMin: nonnegative,
+  cleanMinPer100M2: nonnegative,
+});
+
 /** Airport staff roles, stations, shifts, breaks and skill (T68). */
 export const staffSchema = z.strictObject({
   version: z.literal(1),
@@ -81,6 +99,8 @@ export const staffSchema = z.strictObject({
   skill,
   reliefShare: share,
   operator,
+  ramp,
+  cleaning,
 });
 
 export type StaffData = z.infer<typeof staffSchema>;

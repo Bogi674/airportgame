@@ -1,6 +1,6 @@
 import { GSE_INDEX, STAND_ACCESS, TURNAROUNDS } from '@data/index';
 import { STAND_UPGRADE } from '@shared/airfield';
-import { CAUSE_BAGS, VEHICLE_CAUSE } from '@shared/turnaround';
+import { CAUSE_BAGS, CAUSE_RAMP, VEHICLE_CAUSE } from '@shared/turnaround';
 import { foldInts } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { AcState, MAX_AIRCRAFT, type Traffic } from './traffic';
@@ -11,6 +11,7 @@ const N = TASKS.length;
 const KIND = TASKS.map((t) => (t.kind === null ? -1 : (GSE_INDEX[t.kind] ?? -1)));
 const AFTER = TASKS.map((t) => t.after.map((id) => TASKS.findIndex((o) => o.id === id)));
 const CLEAN = TASKS.findIndex((t) => t.id === 'clean');
+const CHOCKS = TASKS.findIndex((t) => t.id === 'chocks');
 const LOAD = TASKS.findIndex((t) => t.id === 'load');
 const UNLOAD = TASKS.findIndex((t) => t.id === 'unload');
 const FUEL = TASKS.findIndex((t) => t.id === 'fuel');
@@ -68,6 +69,12 @@ export class Turnarounds {
   readonly done = new Uint8Array(MAX_AIRCRAFT);
   /** Delay cause of the vehicle kind waited on most recently, 0 for none. */
   readonly lastBlock = new Int32Array(MAX_AIRCRAFT);
+  /** 1 while the turnaround holds an apron crew of the depot pool, from chocks to door close (T81). */
+  readonly crew = new Uint8Array(MAX_AIRCRAFT);
+  /** Crews held now, counted at the start of each update. */
+  private held = 0;
+  /** Crews of the pool on duty, or -1 when the airport has no pool and turnarounds need no crew (T81). */
+  crewPool: (() => number) | null = null;
   /** Called once per turnaround when cleaning ends; the business tells whether a cleaning depot did it. */
   cleaned: (() => void) | null = null;
   /** Asked with the flight before the load task starts; false holds it and names the bags as the delay cause (T43). */
@@ -89,10 +96,13 @@ export class Turnarounds {
   // hot
   update(): void {
     const t = this.traffic;
+    this.held = 0;
+    for (let i = 0; i < MAX_AIRCRAFT; i++) this.held += this.crew[i]!;
     for (let i = 0; i < MAX_AIRCRAFT; i++) {
       const f = t.flight[i];
       if (t.active[i] === 0 || t.state[i] !== AcState.Turnaround || t.tasked[i] === 0 || f < 0) {
         if (this.flightOf[i] !== -1) this.flightOf[i] = -1;
+        if (this.crew[i] !== 0) this.release(i);
         continue;
       }
       if (this.flightOf[i] !== f) this.start(i, f);
@@ -100,7 +110,27 @@ export class Turnarounds {
     }
   }
 
+  private release(i: number): void {
+    this.crew[i] = 0;
+    this.held--;
+  }
+
+  /** Claims a crew for chocks: true when one is held or none is needed, else names the ramp crew as the delay cause. */
+  private claimCrew(i: number): boolean {
+    if (this.crew[i] === 1 || this.crewPool === null) return true;
+    const pool = this.crewPool();
+    if (pool < 0) return true;
+    if (this.held >= pool) {
+      this.lastBlock[i] = CAUSE_RAMP;
+      return false;
+    }
+    this.crew[i] = 1;
+    this.held++;
+    return true;
+  }
+
   private start(i: number, f: number): void {
+    if (this.crew[i] !== 0) this.release(i);
     this.flightOf[i] = f;
     this.vehDone[i] = 0;
     this.done[i] = 0;
@@ -129,6 +159,7 @@ export class Turnarounds {
       if (ph === Waiting) {
         let ready = true;
         for (const d of AFTER[k]) if (this.phase[i * N + d] !== Done) ready = false;
+        if (ready && k === CHOCKS && !this.claimCrew(i)) ready = false;
         if (ready && k === LOAD && this.bagsReady !== null && !this.bagsReady(this.flightOf[i])) {
           ready = false;
           this.lastBlock[i] = CAUSE_BAGS;
@@ -156,6 +187,7 @@ export class Turnarounds {
     }
     this.vehDone[i] = vehDone;
     this.done[i] = allDone;
+    if (allDone === 1 && this.crew[i] !== 0) this.release(i);
   }
 
   /** True once the unload task of the aircraft's current turnaround is done (T78: its train then takes the bags to the bay). */
@@ -180,7 +212,7 @@ export class Turnarounds {
   }
 
   private arrays(): Record<string, Int32Array | Uint8Array> {
-    return { flightOf: this.flightOf, phase: this.phase, left: this.left, vehDone: this.vehDone, done: this.done, lastBlock: this.lastBlock };
+    return { flightOf: this.flightOf, phase: this.phase, left: this.left, vehDone: this.vehDone, done: this.done, lastBlock: this.lastBlock, crew: this.crew };
   }
 
   saveState(): unknown {
@@ -193,6 +225,7 @@ export class Turnarounds {
   /** Restores the task state. A save with another task count starts every list over at its next step. */
   loadState(raw: unknown): void {
     this.flightOf.fill(-1);
+    this.crew.fill(0);
     const o = raw as { tasks?: number; arrays?: Record<string, string> } | undefined;
     if (!o?.arrays || o.tasks !== N) return;
     const dst = this.arrays();
@@ -206,6 +239,7 @@ export class Turnarounds {
     let acc = foldInts(h, this.flightOf, MAX_AIRCRAFT);
     acc = foldInts(acc, this.phase, this.phase.length);
     acc = foldInts(acc, this.left, this.left.length);
+    acc = foldInts(acc, this.crew, MAX_AIRCRAFT);
     return acc;
   }
 }

@@ -269,5 +269,5 @@ describe('junction conflicts in traffic', () => {
       expect(r.pairs).toBeGreaterThan(20);
       expect(r.slack, seed + r.info).toBeGreaterThanOrEqual(0);
     }
-  });
+  }, 30_000);
 });

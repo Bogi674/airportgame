@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GROUND, GSE, STAND_ACCESS } from '@data/index';
-import { STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
@@ -19,6 +19,8 @@ import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
 import { Staff, type StaffSave } from './staff/staff';
+import { writeCrewSample } from './staff/crewSample';
+import { Cleaning, type CleaningSave } from './staff/cleaning';
 import { Baggage, BAG_RUN_TICKS, BagStage, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -75,6 +77,8 @@ export class Sim {
   readonly baggage: Baggage;
   /** Airport staff as individuals (T68). */
   readonly staff: Staff;
+  /** Terminal dirt per room that cleaners keep low (T81). */
+  readonly cleaning: Cleaning;
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -163,6 +167,7 @@ export class Sim {
     this.turns = new Turnarounds(this.traffic, this.gse);
     this.gse.turns = this.turns;
     this.turns.cleaned = () => this.business.cleanedTurnaround();
+    this.turns.crewPool = () => this.staff.rampCrews();
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
@@ -180,6 +185,9 @@ export class Sim {
       bayConnected: (id: number): boolean => this.roads.bayConnected((this.airfield.data.bayAnchors ?? []).findIndex((a) => a.bay === id)),
     }, this.rng);
     this.staff = new Staff(this.business, this.baggage, this.airfield);
+    this.cleaning = new Cleaning(this.business, this.cohorts);
+    this.staff.cleaning = this.cleaning;
+    this.business.terminalClean = () => this.cleaning.cleanliness;
     this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
     this.business.staffWages = () => this.staff.wagesPerDay();
     this.business.staffRows = () => this.staff.rows();
@@ -343,11 +351,28 @@ export class Sim {
     const factor = new Float64Array(af.stands.length);
     for (let s = 0; s < factor.length; s++) factor[s] = this.roads.standRoad[s] === 1 ? 1 : GROUND.noRoadTurnaroundFactor;
     this.traffic.standRoadFactor = factor;
+    this.syncRamp(af);
     const depots = af.depots?.length ?? 0;
     if (!restoring && depots !== this.depotsSeen) this.business.depotsChanged(depots - this.depotsSeen);
     this.depotsSeen = depots;
     this.business.depotCapacity = depots * GROUND.depot.capacity;
     this.business.refreshFire();
+  }
+
+  /** Hands the staff the apron crew pool: the lowest id depot and the commercial stands a depot reaches (T81). */
+  private syncRamp(af: AirfieldPayload): void {
+    let depot = -1;
+    let x = 0;
+    let y = 0;
+    for (const d of af.depots ?? []) {
+      if (depot >= 0 && d.id >= depot) continue;
+      depot = d.id;
+      x = d.x;
+      y = d.y;
+    }
+    let stands = 0;
+    for (let s = 0; s < af.stands.length; s++) if (this.roads.standRoad[s] === 1 && (af.stands[s]!.accepts & ACCEPT_COMMERCIAL) !== 0) stands++;
+    this.staff.setRamp(depot, x, y, stands);
   }
 
   /** Baggage layout stamp the bay anchors were last taken at, the stand to bay key, and a counter bumped when that key changes. */
@@ -779,6 +804,7 @@ export class Sim {
       vehicles: this.gse.saveState(),
       turnarounds: this.turns.saveState(),
       staff: this.staff.saveState(),
+      cleaning: this.cleaning.saveState(),
     };
     return save;
   }
@@ -811,6 +837,7 @@ export class Sim {
     this.turns.loadState(save.turnarounds);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
     this.staff.loadState(save.staff as StaffSave | undefined);
+    this.cleaning.loadState(save.cleaning as CleaningSave | undefined);
     if (save.convertProps) {
       const n = this.business.convertLegacyProps();
       if (n > 0) this.eventQueue.push(`propsConverted|n=${n}`);
@@ -819,6 +846,7 @@ export class Sim {
       const n = this.business.removeLegacyLanes(save.legacyLanes);
       if (n > 0) this.eventQueue.push(`lanesRemoved|n=${n}`);
     }
+    this.cleaning.refresh();
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
@@ -850,6 +878,7 @@ export class Sim {
     h = this.gse.hash(h);
     h = this.turns.hash(h);
     h = this.staff.hash(h);
+    h = this.cleaning.hash(h);
     return h;
   }
 
@@ -873,6 +902,7 @@ export class Sim {
     }
     views.header[SnapHeader.VehicleCount] = n;
     this.cohorts.writeSample(views, this.tick);
+    writeCrewSample(views, this.turns, this.traffic);
     this.staff.writeSample(views, this.tick);
   }
 }

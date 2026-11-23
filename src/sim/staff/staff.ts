@@ -15,9 +15,11 @@ import type { Baggage, BagNodeRec } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { breakJitterMin, staffSeed, staffSkill } from './staffTraits';
+import type { Cleaning } from './cleaning';
+import { janitorStations } from '@shared/props';
 
 /** Life cycle state of a staff slot. Saved values, append only. */
-export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation: 4, OnDuty: 5, Leaving: 6, CommuteHome: 7, ClockOut: 8, Break: 9, Standby: 10 } as const;
+export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation: 4, OnDuty: 5, Leaving: 6, CommuteHome: 7, ClockOut: 8, Break: 9, Standby: 10, ToClean: 11, Cleaning: 12, CleanBack: 13 } as const;
 
 /** Bits of the flags array. Saved values, append only. */
 export const STAFF_FLAG = { Tired: 1, BreakDone: 2, OnBreak: 4, Relief: 8 } as const;
@@ -45,6 +47,14 @@ const HOUR_TICKS = 60 * TICKS_PER_MINUTE;
 const STEP_TICKS = STAFF.stepMin * TICKS_PER_MINUTE;
 const BREAK_TICKS = Math.ceil(STAFF.breaks.lengthMin * TICKS_PER_MINUTE);
 const RELIEF_WAIT_TICKS = Math.ceil(STAFF.breaks.reliefWaitMin * TICKS_PER_MINUTE);
+/** stGrid of a member placed on the apron crew pool of a depot (T81), whose stX is the depot id. */
+const POOL_GRID = -2;
+const RAMP_ROLE = STAFF_ROLE_KEYS.indexOf('ramp');
+const CLEANER_ROLE = STAFF_ROLE_KEYS.indexOf('cleaner');
+/** stKind of a cleaner base, a janitor room set (T81), which is a prop and has no fixture id. */
+const JANITOR_KIND = 255;
+/** Cells around a janitor room set searched for the cell its cleaners stand on. */
+const JANITOR_REACH = 4;
 /** walkStart value of a member sent home because its station could not be reached. */
 const WALK_UNREACHABLE = -2;
 
@@ -149,11 +159,23 @@ export class Staff {
   /** Role id of each station. */
   sRole = new Uint8Array(0);
   /** Officers each station needs. */
-  sNeed = new Uint8Array(0);
+  sNeed = new Uint16Array(0);
+  /** Share of its rate each station serves with nobody on it (T81), 0 when it stops. */
+  sUnstaffed = new Float32Array(0);
   /** Officers on duty at each station. */
   sPresent = new Uint8Array(0);
   /** Summed skill of the officers on duty at each station. */
   sSkill = new Float64Array(0);
+  /** World point each station's staff commute to: the curb door of its grid, or the depot of the apron crew pool. */
+  sWX = new Float64Array(0);
+  sWY = new Float64Array(0);
+  /** Station index of the apron crew pool, -1 without one (T81). */
+  rampStation = -1;
+  /** Apron crew pool input from the road net (T81): lowest id depot, its point, and the commercial stands with a road. */
+  private rampDepot = -1;
+  private rampX = 0;
+  private rampY = 0;
+  private rampStands = 0;
   /** Walk node of the curb door of each grid, -1 for none. */
   curbNode = new Int32Array(0);
   /** World point of the curb door of each grid. */
@@ -162,7 +184,7 @@ export class Staff {
   /** Station index by `gridId|x|y|kind`, built at rebuild only. */
   private readonly stationOf = new Map<string, number>();
   /** serviceVersion, terminalVersion, grid count and baggage draw version the stations were built from. */
-  private readonly builtFor = new Int32Array(4).fill(-1);
+  private readonly builtFor = new Int32Array(6).fill(-1);
   /** Seats of each station and shift the pass keeps, and seats already held. Scratch sized at rebuild. */
   private keepSt = new Int32Array(0);
   private heldSt = new Int32Array(0);
@@ -186,6 +208,10 @@ export class Staff {
   private sSeen = new Int32Array(0);
   private readonly route = new Float64Array(ROUTE_OUT);
   private readonly world = new Float64Array(2);
+  /** Terminal dirt per room, handed over by the sim, that cleaners keep low (T81). */
+  cleaning: Cleaning | null = null;
+  /** Rooms with a cleaner on the way or at work, per grid, rebuilt at each dispatch. Scratch. */
+  private claimed: Uint8Array[] = [];
   /** Counts hires and releases, so the payload version moves when the roster changes. Not saved. */
   private churn = 0;
   /** True when a member state, a placement or the station set changed since the last applyPresence. Not saved. */
@@ -244,12 +270,18 @@ export class Staff {
    * Runs in subsystem 3 before the business, so service factors follow the staff state of the same tick (spec decision 18).
    */
   update(tick: number): void {
+    this.cleaning?.refresh();
     const changed = this.rebuildStationsIfStale();
     if (changed || this.capsDirty || tick % (STAFF.passEveryMin * TICKS_PER_MINUTE) === 0) {
       this.capsDirty = false;
       this.staffPass(tick);
     }
-    if (tick % STEP_TICKS === 0) this.stateStep(tick);
+    if (tick % STEP_TICKS === 0) {
+      if (tick % (STEP_TICKS * STAFF.cleaning.everyMin) === 0) this.cleaning?.accumulate();
+      this.stateStep(tick);
+      if (this.presenceDirty) this.applyPresence();
+      this.dispatchCleaners(tick);
+    }
     if (this.presenceDirty) this.applyPresence();
     if (this.churn !== this.churnSeen || tick % HOUR_TICKS === 0) {
       this.churnSeen = this.churn;
@@ -287,11 +319,14 @@ export class Staff {
 
   private rebuildStationsIfStale(): boolean {
     const b = this.business;
-    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length && this.builtFor[3] === this.baggage.drawVersion()) return false;
-    this.builtFor[0] = b.serviceVersion;
-    this.builtFor[1] = b.terminalVersion;
-    this.builtFor[2] = b.grids.length;
-    this.builtFor[3] = this.baggage.drawVersion();
+    const f = this.builtFor;
+    if (f[0] === b.serviceVersion && f[1] === b.terminalVersion && f[2] === b.grids.length && f[3] === this.baggage.drawVersion() && f[4] === this.rampDepot && f[5] === this.rampStands) return false;
+    f[0] = b.serviceVersion;
+    f[1] = b.terminalVersion;
+    f[2] = b.grids.length;
+    f[3] = this.baggage.drawVersion();
+    f[4] = this.rampDepot;
+    f[5] = this.rampStands;
     this.rebuildStations();
     return true;
   }
@@ -304,7 +339,10 @@ export class Staff {
       const sn = b.serviceNodes[gi]!;
       for (let k = 0; k < sn.count; k++) if (sn.staffNeed[k]! > 0) n++;
       n += this.machinesOf(b.grids[gi]!.id).length;
+      n += janitorStations(b.grids[gi]!).length;
     }
+    const rampNeed = this.rampDepot >= 0 ? Math.min(65535, STAFF.ramp.crewSize * this.rampStands) : 0;
+    if (rampNeed > 0) n++;
     this.stCount = n;
     this.sGridIdx = new Int32Array(n);
     this.sGridId = new Int32Array(n);
@@ -314,7 +352,11 @@ export class Staff {
     this.sNode = new Int32Array(n).fill(-1);
     this.sMachine = new Int32Array(n).fill(-1);
     this.sRole = new Uint8Array(n);
-    this.sNeed = new Uint8Array(n);
+    this.sNeed = new Uint16Array(n);
+    this.sWX = new Float64Array(n);
+    this.sWY = new Float64Array(n);
+    this.rampStation = -1;
+    this.sUnstaffed = new Float32Array(n);
     this.sPresent = new Uint8Array(n);
     this.sSkill = new Float64Array(n);
     this.sSeen = new Int32Array(n);
@@ -340,6 +382,7 @@ export class Staff {
         this.sNode[s] = k;
         this.sRole[s] = STAFF_ROLE_KEYS.indexOf(entry.role);
         this.sNeed[s] = sn.staffNeed[k]!;
+        this.sUnstaffed[s] = entry.unstaffedFactor ?? 0;
         this.stationOf.set(`${g.id}|${sn.lx[k]}|${sn.ly[k]}|${sn.kind[k]}`, s);
         s++;
       }
@@ -355,6 +398,20 @@ export class Staff {
         this.stationOf.set(`${g.id}|${rec.cell[0]}|${rec.cell[1]}|${MACHINE_KIND}`, s);
         s++;
       }
+      for (const j of janitorStations(g)) {
+        const at = this.standCell(gi, j.x, j.y);
+        const key = `${g.id}|${at % 65536}|${Math.floor(at / 65536)}|${JANITOR_KIND}`;
+        if (at < 0 || this.stationOf.has(key)) continue;
+        this.sGridIdx[s] = gi;
+        this.sGridId[s] = g.id;
+        this.sX[s] = at % 65536;
+        this.sY[s] = Math.floor(at / 65536);
+        this.sKind[s] = JANITOR_KIND;
+        this.sRole[s] = CLEANER_ROLE;
+        this.sNeed[s] = j.need;
+        this.stationOf.set(key, s);
+        s++;
+      }
       const curb = b.curbNode(gi);
       this.curbNode[gi] = curb;
       if (curb >= 0) {
@@ -365,9 +422,54 @@ export class Staff {
         this.curbY[gi] = p.y;
       }
     }
+    for (let k = 0; k < s; k++) {
+      this.sWX[k] = this.curbX[this.sGridIdx[k]!]!;
+      this.sWY[k] = this.curbY[this.sGridIdx[k]!]!;
+    }
+    if (rampNeed > 0) {
+      // The apron crew pool has no terminal cell: its staff commute to the depot and wait there for turnarounds.
+      this.sGridIdx[s] = -1;
+      this.sGridId[s] = POOL_GRID;
+      this.sX[s] = this.rampDepot;
+      this.sY[s] = 0;
+      this.sKind[s] = 0;
+      this.sRole[s] = RAMP_ROLE;
+      this.sNeed[s] = rampNeed;
+      this.sWX[s] = this.rampX;
+      this.sWY[s] = this.rampY;
+      this.stationOf.set(`${POOL_GRID}|${this.sX[s]}|0|0`, s);
+      this.rampStation = s;
+      s++;
+    }
+    this.stCount = s;
     for (let m = 0; m < this.hi; m++) {
       this.stIdx[m] = this.state[m] === STAFF_STATE.Free ? -1 : (this.stationOf.get(`${this.stGrid[m]}|${this.stX[m]}|${this.stY[m]}|${this.stKind[m]}`) ?? -1);
     }
+  }
+
+  /**
+   * Logical cell a cleaner of a janitor room set stands on (T81): the walkable cell of the set's room nearest its centre
+   * cell (x, y), within a few cells, packed as x + 65536 y, or -1 when there is none. The set itself blocks walking.
+   */
+  private standCell(gi: number, x: number, y: number): number {
+    const g = this.business.grids[gi];
+    const wg = this.business.walkGraphs[gi];
+    const room = this.cleaning ? this.cleaning.roomAt(gi, x, y) : -1;
+    if (!g || !wg || room < 0) return -1;
+    let best = -1;
+    let bestD = Infinity;
+    for (let dy = -JANITOR_REACH; dy <= JANITOR_REACH; dy++) {
+      for (let dx = -JANITOR_REACH; dx <= JANITOR_REACH; dx++) {
+        const c = cellIndex(g, x + dx, y + dy);
+        if (c < 0 || wg.cellNode[c]! < 0 || this.cleaning!.roomAt(gi, x + dx, y + dy) !== room) continue;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = x + dx + 65536 * (y + dy);
+        }
+      }
+    }
+    return best;
   }
 
   /** Sets seatStation and seatInStation for seat `q` of the stations of a role, counted in station order. */
@@ -481,7 +583,7 @@ export class Staff {
       if (this.state[m] !== STAFF_STATE.Off) continue;
       if (sh === run) {
         this.state[m] = station >= 0 ? STAFF_STATE.OnDuty : STAFF_STATE.Standby;
-        this.home[m] = this.homeOf(station >= 0 ? this.sGridIdx[station]! : 0);
+        this.home[m] = this.homeNear(station);
         this.breakAt[m] = shiftStartTick(tick, sh) + (STAFF.breaks.afterMin + breakJitterMin(this.seed[m]!)) * TICKS_PER_MINUTE;
         this.wake[m] = tick + STEP_TICKS;
       } else {
@@ -494,11 +596,37 @@ export class Staff {
     }
   }
 
-  /** Id of the staff center nearest by straight line to the curb of a grid, ties to the lowest id, -1 when there is none. */
-  homeOf(gridIdx: number): number {
+  /**
+   * Hands over the apron crew pool from the road net (T81): the lowest id depot and its centre, and the commercial stands
+   * a depot reaches. depot -1 means no pool.
+   */
+  setRamp(depot: number, x: number, y: number, stands: number): void {
+    this.rampDepot = depot;
+    this.rampX = x;
+    this.rampY = y;
+    this.rampStands = depot >= 0 ? stands : 0;
+  }
+
+  /** Crews of the apron crew pool on duty now, -1 when the airport has no pool and turnarounds need no crew (T81). */
+  rampCrews(): number {
+    if (this.rampStation < 0) return -1;
+    return Math.floor(this.sPresent[this.rampStation]! / STAFF.ramp.crewSize);
+  }
+
+  /** The point staff of a station commute to, or the curb of the first grid for a relief with none. */
+  private endX(s: number): number {
+    return s >= 0 ? this.sWX[s]! : (this.curbX[0] ?? 0);
+  }
+
+  private endY(s: number): number {
+    return s >= 0 ? this.sWY[s]! : (this.curbY[0] ?? 0);
+  }
+
+  /** Id of the staff center nearest by straight line to where the staff of a station commute, ties to the lowest id, -1 for none. */
+  homeNear(station: number): number {
     const buildings = this.airfield.data.buildings ?? [];
-    const cx = this.curbX[gridIdx] ?? 0;
-    const cy = this.curbY[gridIdx] ?? 0;
+    const cx = this.endX(station);
+    const cy = this.endY(station);
     let best = -1;
     let bestD = Infinity;
     for (let i = 0; i < buildings.length; i++) {
@@ -513,14 +641,15 @@ export class Staff {
     return best;
   }
 
-  /** Ticks to travel between a staff center and the curb of a grid, 0 without a center or when it is gone. */
-  private commuteTicks(home: number, gridIdx: number): number {
+  /** Ticks member m travels between a staff center and where its station's staff commute, 0 without a center or when it is gone. */
+  private commuteTicks(home: number, m: number): number {
     if (home < 0) return 0;
     const buildings = this.airfield.data.buildings ?? [];
+    const s = this.stIdx[m]!;
     for (let i = 0; i < buildings.length; i++) {
       const b = buildings[i]!;
       if (b.id !== home) continue;
-      const d = Math.hypot(b.x - (this.curbX[gridIdx] ?? 0), b.y - (this.curbY[gridIdx] ?? 0));
+      const d = Math.hypot(b.x - this.endX(s), b.y - this.endY(s));
       return gameSecondsToTicks(Math.ceil(d / CREW_SPEED_MPS));
     }
     return 0;
@@ -534,7 +663,7 @@ export class Staff {
     return d === Infinity ? Infinity : gameSecondsToTicks(Math.ceil(d / CREW_SPEED_MPS));
   }
 
-  /** Grid index a member works in: its station's grid, the first grid for a relief. */
+  /** Grid index a member works in: its station's grid, -1 on the apron crew pool, the first grid for a relief. */
   private gridOf(m: number): number {
     const s = this.stIdx[m]!;
     return s >= 0 ? this.sGridIdx[s]! : 0;
@@ -565,7 +694,7 @@ export class Staff {
       return;
     }
     const gi = this.gridOf(m);
-    let lead = CHANGE_TICKS + this.commuteTicks(this.homeOf(gi), gi);
+    let lead = CHANGE_TICKS + this.commuteTicks(this.homeNear(this.stIdx[m]!), m);
     const walk = this.walkTicks(gi, this.business.curbNode(gi), this.stationNode(m));
     if (walk !== Infinity) lead += walk;
     this.wake[m] = Math.max(tick, shiftStartTick(tick, sh) + TICKS_PER_DAY - lead);
@@ -607,7 +736,7 @@ export class Staff {
   private sendHome(m: number, tick: number): void {
     this.state[m] = STAFF_STATE.CommuteHome;
     this.walkStart[m] = WALK_UNREACHABLE;
-    this.wake[m] = tick + this.commuteTicks(this.home[m]!, this.gridOf(m));
+    this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
   }
 
   /** Advances every member whose wake tick has come by one state, in slot order. */
@@ -623,7 +752,7 @@ export class Staff {
             this.free(m);
             break;
           }
-          this.home[m] = this.homeOf(gi);
+          this.home[m] = this.homeNear(this.stIdx[m]!);
           this.count(this.clockIns, this.home[m]!);
           this.flags[m] &= ~(STAFF_FLAG.Tired | STAFF_FLAG.BreakDone);
           this.state[m] = STAFF_STATE.ClockIn;
@@ -635,10 +764,15 @@ export class Staff {
             this.wake[m] = this.dutyEnd(tick, sh);
           } else {
             this.state[m] = STAFF_STATE.Commute;
-            this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+            this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
           }
           break;
         case STAFF_STATE.Commute: {
+          if (gi < 0 && this.stIdx[m]! >= 0) {
+            // The apron crew pool has no walk: the member takes over at the depot.
+            this.arrive(m, tick);
+            break;
+          }
           const walk = this.walkTicks(gi, this.business.curbNode(gi), this.stationNode(m));
           if (walk === Infinity) {
             this.sendHome(m, tick);
@@ -665,7 +799,7 @@ export class Staff {
         case STAFF_STATE.Leaving:
           this.walkStart[m] = -1;
           this.state[m] = STAFF_STATE.CommuteHome;
-          this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+          this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
           break;
         case STAFF_STATE.CommuteHome:
           if (this.stIdx[m]! >= 0 && (this.flags[m]! & STAFF_FLAG.Relief) !== 0) {
@@ -692,7 +826,7 @@ export class Staff {
             this.wake[m] = tick + CHANGE_TICKS;
           } else {
             this.state[m] = STAFF_STATE.Commute;
-            this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+            this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
           }
           break;
         case STAFF_STATE.ClockOut: {
@@ -710,6 +844,40 @@ export class Staff {
           this.plan(m, tick, unreachable);
           break;
         }
+        case STAFF_STATE.ToClean: {
+          const r = this.cleaning ? this.cleaning.roomAt(gi, this.walkToX[m]!, this.walkToY[m]!) : -1;
+          this.walkStart[m] = -1;
+          this.state[m] = STAFF_STATE.Cleaning;
+          this.wake[m] = tick + Math.ceil((r >= 0 && this.cleaning ? this.cleaning.cleanMinutes(gi, r) : 0) * TICKS_PER_MINUTE);
+          break;
+        }
+        case STAFF_STATE.Cleaning: {
+          if (this.cleaning) this.cleaning.clean(gi, this.cleaning.roomAt(gi, this.walkToX[m]!, this.walkToY[m]!));
+          const s = this.stIdx[m]!;
+          const wg = this.business.walkGraphs[gi];
+          const g = this.business.grids[gi];
+          const back = s >= 0 && wg && g ? this.walkTicks(gi, nearestNode(wg, cellIndex(g, this.walkToX[m]!, this.walkToY[m]!)), this.nodeOfStation(s)) : Infinity;
+          this.state[m] = STAFF_STATE.CleanBack;
+          this.walkFromX[m] = this.walkToX[m]!;
+          this.walkFromY[m] = this.walkToY[m]!;
+          this.walkToX[m] = s >= 0 ? this.sX[s]! : this.walkToX[m]!;
+          this.walkToY[m] = s >= 0 ? this.sY[s]! : this.walkToY[m]!;
+          this.walkStart[m] = tick;
+          this.wake[m] = tick + (back === Infinity ? 0 : back);
+          break;
+        }
+        case STAFF_STATE.CleanBack:
+          this.walkStart[m] = -1;
+          if (this.stIdx[m]! < 0) {
+            this.sendHome(m, tick);
+          } else if (tick >= this.dutyEnd(tick, sh)) {
+            this.state[m] = STAFF_STATE.OnDuty;
+            this.startLeaving(m, tick);
+          } else {
+            this.state[m] = STAFF_STATE.OnDuty;
+            this.wake[m] = tick;
+          }
+          break;
         case STAFF_STATE.Standby:
           if (tick >= this.dutyEnd(tick, sh)) {
             this.state[m] = STAFF_STATE.ClockOut;
@@ -746,7 +914,7 @@ export class Staff {
       this.stIdx[r] = this.stIdx[m]!;
       this.flags[r] |= STAFF_FLAG.BreakDone;
       this.state[r] = STAFF_STATE.Commute;
-      this.wake[r] = tick + this.commuteTicks(this.home[r]!, this.gridOf(r));
+      this.wake[r] = tick + this.commuteTicks(this.home[r]!, r);
       return;
     }
   }
@@ -781,7 +949,7 @@ export class Staff {
     this.sSkill.fill(0);
     for (let m = 0; m < this.hi; m++) {
       const s = this.stIdx[m]!;
-      if (this.state[m] !== STAFF_STATE.OnDuty || s < 0) continue;
+      if (s < 0 || (this.state[m] !== STAFF_STATE.OnDuty && !this.onJob(m))) continue;
       this.sPresent[s]++;
       this.sSkill[s] += staffSkill(this.seed[m]!) * ((this.flags[m]! & STAFF_FLAG.Tired) !== 0 ? STAFF.breaks.tiredSkill : 1);
     }
@@ -790,8 +958,86 @@ export class Staff {
       if (node < 0) continue;
       const table = this.business.serviceNodes[this.sGridIdx[s]!]!;
       table.staffPresent[node] = this.sPresent[s]!;
-      table.staffFactor[node] = this.sPresent[s]! > 0 ? this.sSkill[s]! / this.sNeed[s]! : 0;
+      table.staffFactor[node] = this.sPresent[s]! > 0 ? this.sSkill[s]! / this.sNeed[s]! : this.sUnstaffed[s]!;
     }
+  }
+
+  /** True while a cleaner walks to a room, cleans it or walks back to its janitor room: still on duty at its base. */
+  private onJob(m: number): boolean {
+    const st = this.state[m];
+    return st === STAFF_STATE.ToClean || st === STAFF_STATE.Cleaning || st === STAFF_STATE.CleanBack;
+  }
+
+  /** Walk node of a station in its grid, -1 when it has none. */
+  private nodeOfStation(s: number): number {
+    const g = this.business.grids[this.sGridIdx[s]!];
+    const wg = this.business.walkGraphs[this.sGridIdx[s]!];
+    return g && wg ? nearestNode(wg, cellIndex(g, this.sX[s]!, this.sY[s]!)) : -1;
+  }
+
+  /**
+   * Once a game minute after the state step (T81): every passenger room dirty enough with no cleaner on it gets the
+   * free cleaner of the janitor room nearest by staff walking time on its floor, so a farther base answers later.
+   */
+  private dispatchCleaners(tick: number): void {
+    const cl = this.cleaning;
+    if (!cl) return;
+    const b = this.business;
+    if (this.claimed.length !== cl.rooms.length) this.claimed = cl.rooms.map((r) => new Uint8Array(r.count));
+    for (let gi = 0; gi < cl.rooms.length; gi++) {
+      if (this.claimed[gi]!.length !== cl.rooms[gi]!.count) this.claimed[gi] = new Uint8Array(cl.rooms[gi]!.count);
+      else this.claimed[gi]!.fill(0);
+    }
+    let bases = 0;
+    for (let s = 0; s < this.stCount; s++) if (this.sRole[s] === CLEANER_ROLE && this.sPresent[s]! > 0) bases++;
+    if (bases === 0) return;
+    for (let m = 0; m < this.hi; m++) {
+      if (this.state[m] !== STAFF_STATE.ToClean && this.state[m] !== STAFF_STATE.Cleaning) continue;
+      const gi = this.gridOf(m);
+      const r = cl.roomAt(gi, this.walkToX[m]!, this.walkToY[m]!);
+      if (r >= 0 && this.claimed[gi]) this.claimed[gi]![r] = 1;
+    }
+    for (let gi = 0; gi < cl.rooms.length; gi++) {
+      const rooms = cl.rooms[gi]!;
+      const g = b.grids[gi];
+      const wg = b.walkGraphs[gi];
+      if (!g || !wg) continue;
+      for (let r = 0; r < rooms.count; r++) {
+        if (this.claimed[gi]![r] === 1 || !cl.needsCleaner(gi, r)) continue;
+        const to = nearestNode(wg, rooms.target[r]!);
+        let best = -1;
+        let bestT = Infinity;
+        for (let s = 0; s < this.stCount; s++) {
+          if (this.sRole[s] !== CLEANER_ROLE || this.sGridIdx[s] !== gi) continue;
+          const t = this.walkTicks(gi, this.nodeOfStation(s), to);
+          if (t < bestT && this.freeCleaner(s) >= 0) {
+            bestT = t;
+            best = s;
+          }
+        }
+        if (best < 0) continue;
+        const m = this.freeCleaner(best);
+        const tx = g.x0 + (rooms.target[r]! % g.w);
+        const ty = g.y0 + Math.floor(rooms.target[r]! / g.w);
+        this.state[m] = STAFF_STATE.ToClean;
+        this.walkFromX[m] = this.sX[best]!;
+        this.walkFromY[m] = this.sY[best]!;
+        this.walkToX[m] = tx;
+        this.walkToY[m] = ty;
+        this.walkStart[m] = tick;
+        this.wake[m] = tick + bestT;
+        this.claimed[gi]![r] = 1;
+        this.presenceDirty = true;
+      }
+    }
+  }
+
+  /** Lowest slot cleaner standing on duty at a janitor room, not waiting for a break relief, or -1. */
+  private freeCleaner(s: number): number {
+    for (let m = 0; m < this.hi; m++) {
+      if (this.stIdx[m] === s && this.state[m] === STAFF_STATE.OnDuty && (this.flags[m]! & STAFF_FLAG.OnBreak) === 0) return m;
+    }
+    return -1;
   }
 
   /** Allocates a slot for a new member in state Off, or returns -1 at capacity. */
@@ -947,7 +1193,23 @@ export class Staff {
         n++;
         continue;
       }
-      if ((state !== STAFF_STATE.ToStation && state !== STAFF_STATE.Leaving) || this.walkStart[m]! < 0) continue;
+      if (state === STAFF_STATE.Cleaning) {
+        // A cleaner at work stands on the target cell of its room (T81).
+        const grid = grids[this.gridOf(m)];
+        if (!grid) continue;
+        const axA = grid.headingDeg * DEG;
+        const ux = sinLut(axA);
+        const uy = -cosLut(axA);
+        const lx = this.walkToX[m]! + 0.5;
+        const ly = this.walkToY[m]! + 0.5;
+        this.world[0] = grid.ox + (ux * lx + -uy * ly) * TERMINAL_CELL_M;
+        this.world[1] = grid.oy + (uy * lx + ux * ly) * TERMINAL_CELL_M;
+        this.putSample(views, n, m, axA, 0, 1, PEOPLE_MODE.Dwelling);
+        n++;
+        continue;
+      }
+      const walking = state === STAFF_STATE.ToStation || state === STAFF_STATE.Leaving || state === STAFF_STATE.ToClean || state === STAFF_STATE.CleanBack;
+      if (!walking || this.walkStart[m]! < 0) continue;
       const gi = this.gridOf(m);
       const grid = grids[gi];
       const wg = this.business.walkGraphs[gi];
