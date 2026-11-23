@@ -163,6 +163,20 @@ export class Renderer {
   private bagColors: BagOverlayColors | null = null;
   private bagBlocked: Uint8Array[] = [];
 
+  /** A small JPEG of the current view, cropped to fill w by h, for the save cards (T35). Empty when the canvas cannot be read. */
+  thumbnail(w: number, h: number): string {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx || this.canvas.width === 0 || this.canvas.height === 0) return '';
+    const s = Math.max(w / this.canvas.width, h / this.canvas.height);
+    const sw = w / s;
+    const sh = h / s;
+    ctx.drawImage(this.canvas, (this.canvas.width - sw) / 2, (this.canvas.height - sh) / 2, sw, sh, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.7);
+  }
+
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D is not available');

@@ -3,7 +3,8 @@ import type { AirfieldPayload } from '@shared/airfield';
 import { EMPTY_AIRFIELD } from '@shared/airfield';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
 import type { OverlayData, OverlayKind } from '@shared/overlay';
-import type { PerfReport } from '@shared/protocol';
+import type { AirportIdentity, GameMode, PerfReport } from '@shared/protocol';
+import { airportFromSeed } from '../airportIdentity';
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
 
@@ -51,7 +52,8 @@ interface GameState extends PerfReport {
   setCrash(c: { message: string; tick: number; seed: string; commands: unknown[] } | null): void;
   toggleDebugOverlay(): void;
   toggleWalkOverlay(): void;
-  game: { seed: string; preset: Preset };
+  /** The running game: seed, preset and the options of the new game panel (T35). */
+  game: GameInfo;
   setScreen(screen: 'menu' | 'game'): void;
   setPerf(report: PerfReport, tick: number): void;
   setSpeed(speed: Speed): void;
@@ -72,7 +74,15 @@ interface GameState extends PerfReport {
   dismissAlert(id: number): void;
   setPauseOpen(open: boolean): void;
   setGuideHidden(hidden: boolean): void;
-  setGame(seed: string, preset: Preset): void;
+  setGame(game: GameInfo): void;
+}
+
+/** The running game as the UI knows it (T35). */
+export interface GameInfo {
+  seed: string;
+  preset: Preset;
+  mode: GameMode;
+  airport: AirportIdentity;
 }
 
 let alertId = 1;
@@ -131,7 +141,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setOverlay: (overlay) => set({ overlay }),
   toggleOverlayMenu: () => set((s) => ({ overlayMenuOpen: !s.overlayMenuOpen })),
   closeOverlayMenu: () => set({ overlayMenuOpen: false }),
-  game: { seed: 'GOLDEN-0001', preset: 'flatCoastal' },
+  game: { seed: 'GOLDEN-0001', preset: 'flatCoastal', mode: 'career', airport: airportFromSeed('GOLDEN-0001') },
   simMsPerTick: 0,
   tickBacklog: 0,
   aircraftCount: 0,
@@ -190,5 +200,5 @@ export const useGameStore = create<GameState>((set, get) => ({
   dismissAlert: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),
   setPauseOpen: (pauseOpen) => set({ pauseOpen }),
   setGuideHidden: (guideHidden) => set({ guideHidden }),
-  setGame: (seed, preset) => set({ game: { seed, preset } }),
+  setGame: (game) => set({ game }),
 }));

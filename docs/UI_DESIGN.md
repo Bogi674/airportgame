@@ -68,6 +68,8 @@ Version number and a small "What's new" link at the bottom. Nothing else on scre
 
 ### New game, three steps in one panel
 
+MVP 1 (owner, 2026-11-23) builds the Site and Airport steps; the Rules step waits for MVP 2. New career and Sandbox both open this panel. Load cards always show Load, Rename, Duplicate and Delete, so they work without hover. Settings in MVP 1: Display (quality, theme), Gameplay (autosave), Accessibility (reduced motion).
+
 1. **Site**: seed field with a shuffle button, terrain preset cards, and a live mini map showing terrain, owned land, the wind rose and the ideal runway heading. Share code such as `TIDE-4471`.
 2. **Rules**: difficulty cards (Relaxed, Standard, Demanding) and optional rules as toggles (night curfew, strict wind, realistic construction time).
 3. **Airport**: airport name, generated IATA and ICAO style codes (editable), brand color.

@@ -56,7 +56,7 @@ function prevailingWind(freq: Float32Array, mean: Float32Array): { deg: number; 
 
 /** Floating HUD: information chips at the top left, game controls at the top right. No bar. */
 export function TopBar({ onSpeed, onMenu }: Props) {
-  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, walkOverlay, toggleWalkOverlay, quality, setQuality, overlay, overlayMenuOpen, toggleOverlayMenu } = useGameStore();
+  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, debugOverlay, toggleDebugOverlay, walkOverlay, toggleWalkOverlay, quality, setQuality, overlay, overlayMenuOpen, toggleOverlayMenu, game } = useGameStore();
   const [settings, setSettings] = useState(false);
   const rating = business ? business.rating : 0;
   const rate = Math.max(0, Math.min(100, rating));
@@ -78,13 +78,18 @@ export function TopBar({ onSpeed, onMenu }: Props) {
   return (
     <div data-testid="top-bar" style="position:absolute;inset:0;pointer-events:none;z-index:5">
       <div class="hud hud-left">
+        <span class="chip" data-testid="airport" title={game.airport.name}>
+          <span aria-hidden="true" style={`width:10px;height:10px;border-radius:50%;flex:none;background:${game.airport.color}`} />
+          <b>{game.airport.iata}</b>
+          <span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{game.airport.name}</span>
+        </span>
         <span class="chip" data-testid="clock">
           <Icon name={night ? 'moon' : 'sun'} size={14} />
           {formatClock(tick)}
         </span>
         <Chip label={t('hud.weather')} testId="weather" value={business ? tDynamic(`weather.${business.weather}`) : '-'} />
         {wind && <Chip label={t('hud.wind')} testId="wind" title={t('hud.windTip')} value={`${String(wind.deg).padStart(3, '0')}° ${wind.kt} kt`} />}
-        <Chip label={t('hud.cash')} testId="cash" value={formatMoney(cash)} />
+        <Chip label={t('hud.cash')} testId="cash" value={game.mode === 'sandbox' ? t('hud.unlimited') : formatMoney(cash)} />
         <Chip label={t('hud.cashflow')} testId="cashflow" title={t('hud.cashflowTip')} value={`${net >= 0 ? '+' : ''}${formatMoney(net)}`} tone={net >= 0 ? 'var(--ok)' : 'var(--bad)'} />
         <span class="chip" data-testid="rating" title={t('top.rating')}>
           <span class="lbl">{t('top.rating')}</span>

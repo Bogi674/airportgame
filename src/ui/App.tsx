@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Renderer } from '@render/renderer';
 import type { Command } from '@sim/commands';
 import { dayIndex, type TerminalGrid } from '@shared/business';
-import type { GameOptions, WalkGraphView } from '@shared/protocol';
-import type { Preset } from '@shared/site';
+import type { AirportIdentity, GameMode, GameOptions, WalkGraphView } from '@shared/protocol';
+import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
 import { SimClient } from '../worker/client';
 import { alertText, ALERT_CODES, parseEvent } from './alerts';
@@ -13,13 +13,16 @@ import { ContextBar } from './ContextBar';
 import { CrashPanel } from './CrashPanel';
 import { Guide } from './Guide';
 import { MapView } from './MapView';
-import { Menu } from './Menu';
+import { Menu, type MenuView } from './Menu';
 import { Minimap } from './Minimap';
 import { ObjectPanel } from './ObjectPanel';
 import { OverlayLegend } from './OverlayLegend';
 import { ParcelPanel } from './ParcelPanel';
 import { PauseMenu } from './PauseMenu';
-import { exportToFile, importFromFile, loadSave, putSave } from './saves';
+import { exportToFile, importFromFile, loadSave, putSave, type SaveHeader } from './saves';
+import { reducedMotion } from './theme';
+import { airportFromSeed } from './airportIdentity';
+import { DEMO, DEMO_COMMANDS } from './demoAirport';
 import { Sheets } from './Sheets';
 import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
@@ -31,10 +34,17 @@ import { t, tFormat } from './strings';
 const ALERT_MS = 9000;
 const AUTOSAVE_KEY = 'airfield.autosave';
 
+/** What a requested save does when the state arrives: an autosave, Save into the current slot, Save as a new named slot, or a file. */
+type SaveKind = 'auto' | 'save' | 'saveAs' | 'file';
+
 interface Pending {
-  auto: boolean;
-  toFile: boolean;
+  kind: SaveKind;
+  name?: string;
 }
+
+/** Size of the map thumbnail on the save cards, in pixels. */
+const THUMB_W = 240;
+const THUMB_H = 150;
 
 function readAutosave(): boolean {
   try {
@@ -52,6 +62,15 @@ export function App() {
   const [savedFlash, setSavedFlash] = useState(false);
   const pending = useRef(new Map<number, Pending>());
   const saveId = useRef(1);
+  /** The manual slot the game was loaded from or last saved to, which Save overwrites (T35). */
+  const slot = useRef<{ id: string; name: string } | null>(null);
+  /** The career the running game belongs to, which groups its saves and names its autosave slots. */
+  const career = useRef('');
+  /** True while the demo airport runs behind the main menu. */
+  const demo = useRef(false);
+  /** The menu screen shown when the menu opens, and the site of the new game panel preview. */
+  const [menuView, setMenuView] = useState<MenuView>('main');
+  const [preview, setPreview] = useState<SitePayload | null>(null);
   const speedBefore = useRef<Speed>(1);
   const lastAutoDay = useRef(-1);
   const rendererRef = useRef<Renderer | null>(null);
@@ -67,6 +86,7 @@ export function App() {
         onError: (message) => useGameStore.getState().setError(message),
         onCrash: (c) => useGameStore.getState().setCrash(c),
         onSite: (site) => useGameStore.getState().setSite(site),
+        onPreview: (site) => setPreview(site),
         onOwnership: (o) => useGameStore.getState().setOwnership(o.owner, o.cash),
         onAirfield: (m) => useGameStore.getState().setAirfield(m.airfield, m.canUndo, m.canRedo),
         onBusiness: (b) => {
@@ -103,23 +123,32 @@ export function App() {
           if (!p) return;
           const s = useGameStore.getState();
           const day = dayIndex(tick);
-          const name = p.auto ? tFormat('save.autoName', { n: day }) : tFormat('save.manualName', { seed: s.game.seed, n: day });
-          if (p.toFile) {
-            void exportToFile(data, `${s.game.seed}-day${day}`);
+          if (p.kind === 'file') {
+            void exportToFile(data, `${s.game.airport.name}-day${day}`);
             return;
           }
+          const auto = p.kind === 'auto';
+          const keep = p.kind === 'save' ? slot.current : null;
+          const slotId = auto ? `auto-${career.current}-${day % 3}` : (keep?.id ?? `manual-${Date.now()}`);
+          const name = auto ? tFormat('save.autoName', { n: day }) : (keep?.name ?? p.name ?? tFormat('save.manualName', { seed: s.game.airport.name, n: day }));
+          if (!auto) slot.current = { id: slotId, name };
           const header = {
-            id: p.auto ? `auto-${s.game.seed}-${day % 3}` : `manual-${Date.now()}`,
+            id: slotId,
             name,
             seed: s.game.seed,
             preset: s.game.preset,
             tick,
             cash: s.cash,
             savedAt: Date.now(),
-            auto: p.auto,
+            auto,
+            airport: s.game.airport.name,
+            mode: s.game.mode,
+            career: career.current,
+            thumb: rendererRef.current?.thumbnail(THUMB_W, THUMB_H) ?? '',
+            paxYear: s.business?.tenants.paxYear ?? 0,
           };
           void putSave(header, data).then(() => {
-            if (!p.auto) {
+            if (!auto) {
               setSavedFlash(true);
               setTimeout(() => setSavedFlash(false), 2500);
             }
@@ -135,9 +164,12 @@ export function App() {
   (window as unknown as { __send?: (c: Command) => void }).__send = (c) => client.send(c);
 
   const startGame = useCallback(
-    (seed: string, preset: Preset, saveData?: unknown) => {
+    (seed: string, preset: Preset, mode: GameMode, airport: AirportIdentity, saveData?: unknown, header?: SaveHeader | null) => {
       const s = useGameStore.getState();
-      s.setGame(seed, preset);
+      demo.current = false;
+      s.setGame({ seed, preset, mode, airport });
+      slot.current = header && !header.auto ? { id: header.id, name: header.name } : null;
+      career.current = header?.career ?? (saveData === undefined ? `${seed}-${Date.now().toString(36)}` : seed);
       s.setScreen('game');
       s.setPauseOpen(false);
       s.setGuideHidden(saveData !== undefined);
@@ -145,7 +177,7 @@ export function App() {
       useToolStore.getState().set({ tool: 'select', selection: null, hint: null, problem: null, buy: null });
       lastAutoDay.current = -1;
       setMenuError(null);
-      const options: GameOptions = { preset };
+      const options: GameOptions = { preset, mode, airport };
       client.init(seed, options, saveData);
       client.setSpeed(1);
     },
@@ -153,11 +185,12 @@ export function App() {
   );
 
   const loadFrom = useCallback(
-    async (get: () => Promise<unknown>) => {
+    async (get: () => Promise<unknown>, header?: SaveHeader | null) => {
       try {
         const raw = (await get()) as { seed?: string; options?: GameOptions };
         if (typeof raw !== 'object' || raw === null || typeof raw.seed !== 'string' || !raw.options) throw new Error('This is not an Airfield Tycoon save');
-        startGame(raw.seed, raw.options.preset, raw);
+        const o = raw.options;
+        startGame(raw.seed, o.preset, o.mode ?? 'career', o.airport ?? airportFromSeed(raw.seed), raw, header);
       } catch (e) {
         setMenuError(e instanceof Error ? e.message : String(e));
         useGameStore.getState().setScreen('menu');
@@ -166,11 +199,56 @@ export function App() {
     [startGame],
   );
 
-  const requestSave = (auto: boolean, toFile: boolean): void => {
+  const requestSave = (kind: SaveKind, name?: string): void => {
     const id = saveId.current++;
-    pending.current.set(id, { auto, toFile });
+    pending.current.set(id, { kind, name });
     client.requestSave(id);
   };
+
+  /** Runs the demo airport behind the main menu: a sandbox on a fixed seed with a small built airport and test traffic. */
+  const startDemo = useCallback(() => {
+    demo.current = true;
+    client.init(DEMO.seed, { preset: DEMO.preset, mode: 'sandbox' });
+    for (const c of DEMO_COMMANDS) client.send(c);
+    client.setSpeed(2);
+  }, [client]);
+
+  const changeAutosave = (on: boolean): void => {
+    setAutosave(on);
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, on ? '1' : '0');
+    } catch {
+      // Private mode: the setting just does not persist.
+    }
+  };
+
+  /** Leaves the game for the menu: an autosave first when it is on, then the demo airport behind the chosen screen. */
+  const exitToMenu = (view: MenuView): void => {
+    if (autosave) requestSave('auto');
+    const s = useGameStore.getState();
+    s.setPauseOpen(false);
+    setMenuView(view);
+    s.setScreen('menu');
+    startDemo();
+  };
+
+  // The demo airport runs behind the main menu from the first load.
+  useEffect(() => {
+    if (useGameStore.getState().screen === 'menu' && !demo.current) startDemo();
+  }, [startDemo]);
+
+  // The menu camera drifts slowly east and west over the demo apron, unless motion is reduced.
+  useEffect(() => {
+    if (!renderer || store.screen !== 'menu' || reducedMotion()) return;
+    let handle = 0;
+    const t0 = performance.now();
+    const step = (now: number): void => {
+      if (demo.current) renderer.camera.x = DEMO.camera.x + DEMO.driftM * Math.sin(((now - t0) / 1000 / DEMO.driftS) * 2 * Math.PI);
+      handle = requestAnimationFrame(step);
+    };
+    handle = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(handle);
+  }, [renderer, store.screen]);
 
   const onRenderer = useCallback((r: Renderer | null) => {
     (window as unknown as { __renderer?: Renderer | null }).__renderer = r;
@@ -185,9 +263,15 @@ export function App() {
     if (!renderer || !store.site) return;
     renderer.setSite(store.site);
     const c = store.site.corridor;
+    renderer.camera.faceNorth();
+    if (demo.current) {
+      renderer.camera.x = DEMO.camera.x;
+      renderer.camera.y = DEMO.camera.y;
+      renderer.camera.setZoom(DEMO.camera.zoom);
+      return;
+    }
     renderer.camera.x = c.cx;
     renderer.camera.y = c.cy;
-    renderer.camera.faceNorth();
     renderer.camera.setZoom(0.2);
   }, [renderer, store.site]);
 
@@ -287,7 +371,7 @@ export function App() {
   useEffect(() => {
     if (store.screen !== 'game' || !autosave || day <= 0 || day === lastAutoDay.current) return;
     lastAutoDay.current = day;
-    requestSave(true, false);
+    requestSave('auto');
   }, [day, autosave, store.screen]);
 
   // Hidden tab: pause and save, so nothing happens while the player is away.
@@ -296,7 +380,7 @@ export function App() {
       if (document.visibilityState !== 'hidden' || useGameStore.getState().screen !== 'game') return;
       const s = useGameStore.getState();
       if (s.speed !== 0) client.setSpeed(0);
-      if (autosave) requestSave(true, false);
+      if (autosave) requestSave('auto');
     };
     const onShow = (): void => {
       if (document.visibilityState === 'visible' && useGameStore.getState().screen === 'game' && !useGameStore.getState().pauseOpen) client.setSpeed(useGameStore.getState().speed);
@@ -403,32 +487,29 @@ export function App() {
           )}
           <PauseMenu
             saved={savedFlash}
+            defaultName={tFormat('save.manualName', { seed: store.game.airport.name, n: day })}
+            autosave={autosave}
+            onAutosave={changeAutosave}
             onResume={resume}
-            onSave={() => requestSave(false, false)}
-            onExport={() => requestSave(false, true)}
-            onExit={() => {
-              if (autosave) requestSave(true, false);
-              useGameStore.getState().setPauseOpen(false);
-              useGameStore.getState().setScreen('menu');
-              client.setSpeed(0);
-            }}
+            onSave={() => requestSave('save')}
+            onSaveAs={(name) => requestSave('saveAs', name)}
+            onExport={() => requestSave('file')}
+            onLoad={() => exitToMenu('load')}
+            onExit={() => exitToMenu('main')}
           />
         </>
       )}
       {!inGame && (
         <Menu
+          key={menuView}
+          initialView={menuView}
           error={menuError}
           autosave={autosave}
-          onAutosave={(on) => {
-            setAutosave(on);
-            try {
-              localStorage.setItem(AUTOSAVE_KEY, on ? '1' : '0');
-            } catch {
-              // Private mode: the setting just does not persist.
-            }
-          }}
-          onStart={(seed, preset) => startGame(seed, preset)}
-          onLoad={(id) => void loadFrom(() => loadSave(id))}
+          onAutosave={changeAutosave}
+          preview={preview}
+          onPreview={(seed, preset) => client.preview(seed, preset)}
+          onStart={(seed, preset, mode, airport) => startGame(seed, preset, mode, airport)}
+          onLoad={(h) => void loadFrom(() => loadSave(h.id), h)}
           onImport={(file) => void loadFrom(() => importFromFile(file))}
         />
       )}
