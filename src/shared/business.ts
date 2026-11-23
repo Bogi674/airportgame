@@ -214,6 +214,15 @@ export interface Terminal {
   /** Cells per zone, indexed by ZONE. */
   zones: number[];
   leased: number;
+  /** Janitor rooms (T77): rooms holding a janitor room set on staff floor, the cleaners they can base, and sets off staff floor. */
+  janitor: JanitorRooms;
+}
+
+/** Janitor rooms of a floor (T77). A room holding a janitor room set is a janitor room when the set stands on staff floor. */
+export interface JanitorRooms {
+  rooms: number;
+  cleaners: number;
+  misplaced: number;
 }
 
 export type AirlineScope = 'regional' | 'national' | 'international';

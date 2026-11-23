@@ -22,7 +22,8 @@ import {
 } from './business';
 import { distToSegment, type Pt } from './geom';
 import { isLeveled, levelCost } from './fixtureLevels';
-import { cellsOfRect, propRect } from './props';
+import { cellsOfRect, janitorRooms, propRect } from './props';
+import { labelRooms } from './terminalRooms';
 import { cosLut, sinLut } from './trig';
 import { travelatorCost } from './travelator';
 import { checkPoint, type BuildContext, type Problem } from './validate';
@@ -262,7 +263,8 @@ export function summarize(g: TerminalGrid): Terminal {
       if (g.leased[i] === 1) leased++;
     }
   }
-  return { id: g.id, cells: cellCount(g), counts, zones, leased };
+  const janitor = g.props.length > 0 ? janitorRooms(g, labelRooms(g)) : { rooms: 0, cleaners: 0, misplaced: 0 };
+  return { id: g.id, cells: cellCount(g), counts, zones, leased, janitor };
 }
 
 const EXIT_COST_KEYS = ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'] as const;

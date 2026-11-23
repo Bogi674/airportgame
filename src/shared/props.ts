@@ -1,6 +1,6 @@
 import { BUSINESS, FIXTURE_CATALOG } from '@data/index';
 import type { FixtureAsset } from '@data/schemas';
-import { FIXTURE_KEYS, TERMINAL_CELL_M, TRANSITION_KEYS, WALL, ZONE, ZONES, fixtureKey, type Prop, type TerminalGrid } from './business';
+import { FIXTURE_KEYS, TERMINAL_CELL_M, TRANSITION_KEYS, WALL, ZONE, ZONES, fixtureKey, type JanitorRooms, type Prop, type TerminalGrid } from './business';
 import type { Problem } from './validate';
 
 /** Catalog categories whose assets are props on the sub grid (docs/TERMINAL_FIXTURES.md section 8). */
@@ -355,6 +355,47 @@ export function washrooms(g: TerminalGrid, rooms: Int32Array, mask: Uint8Array):
     out.push({ cell: w.cell, servers: Math.min(255, w.cap), meanS: w.time / w.cap });
   }
   return out.sort((a, b) => a.cell - b.cell);
+}
+
+/** Catalog id of the janitor room set, the prop that makes its room a janitor room (T77). */
+export const JANITOR_SET = 'boh.janitorRoom';
+
+/**
+ * The janitor rooms of a floor (T77). A janitor room set whose every covered cell is staff zone makes its room
+ * (labelRooms) a janitor room and bases its catalog cleanerBase cleaners; a set with a covered cell off staff floor is
+ * misplaced. rooms is labelRooms of the grid.
+ */
+export function janitorRooms(g: TerminalGrid, rooms: Int32Array): JanitorRooms {
+  const spec = SPECS.get(JANITOR_SET);
+  const out: JanitorRooms = { rooms: 0, cleaners: 0, misplaced: 0 };
+  if (!spec) return out;
+  const seen = new Set<number>();
+  for (const p of g.props) {
+    if (p.asset !== JANITOR_SET) continue;
+    const c = cellsOfRect(propRect(p)!);
+    let staff = true;
+    for (let y = c.y0; y <= c.y1 && staff; y++) {
+      for (let x = c.x0; x <= c.x1; x++) {
+        const i = cellAt(g, x, y);
+        if (i < 0 || g.zone[i] !== ZONE.Staff) {
+          staff = false;
+          break;
+        }
+      }
+    }
+    if (!staff) {
+      out.misplaced++;
+      continue;
+    }
+    out.cleaners += num(spec, 'cleanerBase');
+    const [cx, cy] = centerCell(p);
+    const room = rooms[cellAt(g, cx, cy)]!;
+    if (!seen.has(room)) {
+      seen.add(room);
+      out.rooms++;
+    }
+  }
+  return out;
 }
 
 /** Array cells holding the center of a seat prop, ascending and without repeats. */

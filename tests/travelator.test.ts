@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, ZONE, type TerminalGrid } from '@shared/business';
-import { cellIndex, fixtureCost } from '@shared/terminalOps';
+import { cellIndex, fixtureCost, summarize } from '@shared/terminalOps';
+import { JANITOR_SET, janitorRooms } from '@shared/props';
+import { labelRooms } from '@shared/terminalRooms';
 import { zoneAccess, zoneIssues } from '@shared/terminalZones';
 import { rideLengthM, travelatorCostOf, travelatorLanes, travelatorLengthM, TRAVELATOR } from '@shared/travelator';
 import { effectiveZones } from '@shared/terminalZones';
@@ -155,5 +157,36 @@ describe('travelator in the sim', () => {
       b.step();
     }
     expect(b.stateHash()).toBe(a.stateHash());
+  });
+});
+
+describe('janitor rooms', () => {
+  /** A 10 by 6 hall, staff zone on columns 0 to 4 and public on the rest. */
+  const floor = (): TerminalGrid => {
+    const g = grid(10, 6);
+    paint(g, 0, 0, 5, 6, ZONE.Staff);
+    paint(g, 5, 0, 10, 6, ZONE.Public);
+    return g;
+  };
+
+  it('counts a set on staff floor as a janitor room with its cleaner base', () => {
+    const g = floor();
+    g.props.push({ asset: JANITOR_SET, x: 0, y: 0, rot: 0 });
+    expect(janitorRooms(g, labelRooms(g))).toEqual({ rooms: 1, cleaners: 2, misplaced: 0 });
+    expect(summarize(g).janitor.rooms).toBe(1);
+  });
+
+  it('counts two sets in one room as one room with both bases', () => {
+    const g = floor();
+    g.props.push({ asset: JANITOR_SET, x: 0, y: 0, rot: 0 }, { asset: JANITOR_SET, x: 0, y: 4, rot: 0 });
+    expect(janitorRooms(g, labelRooms(g))).toEqual({ rooms: 1, cleaners: 4, misplaced: 0 });
+  });
+
+  it('flags a set that reaches off staff floor', () => {
+    const g = floor();
+    // x 8 to 12 m covers cells 4 to 5, and cell 5 is public.
+    g.props.push({ asset: JANITOR_SET, x: 8, y: 0, rot: 0 });
+    expect(janitorRooms(g, labelRooms(g))).toEqual({ rooms: 0, cleaners: 0, misplaced: 1 });
+    expect(summarize(g).janitor.misplaced).toBe(1);
   });
 });

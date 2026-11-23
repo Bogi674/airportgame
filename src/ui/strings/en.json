@@ -881,6 +881,8 @@
   "terminal.summary": "{cells} cells, {area} m2",
   "terminal.arrivals": "Arrivals yesterday {n}",
   "terminal.leased": "{n} shops leased",
+  "terminal.janitor": "{n} janitor rooms, a base for {cleaners} cleaners",
+  "terminal.janitorMisplaced": "{n} janitor room sets stand off staff floor and base no cleaners",
   "inspector.terminalHint": "Use the terminal tool to add or change anything.",
   "inspector.level": "Level {n}",
   "inspector.fixtureUpgrade": "Upgrade to {name}: {cost}. Works: {days} d",
