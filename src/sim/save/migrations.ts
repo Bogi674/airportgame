@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 39;
+export const SAVE_VERSION = 40;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -409,6 +409,9 @@ export function migrate(raw: unknown): SaveData {
     (save as { convertShops?: boolean }).convertShops = true;
     save.version = 39;
   }
+  // Version 39 to 40: prop effects (T82). The business gains the vending sales of the running day, which loads as none,
+  // and the ledger gains the vending and ad income rows, which older ledgers count as zero.
+  if (save.version < 40) save.version = 40;
   return save as SaveData;
 }
 

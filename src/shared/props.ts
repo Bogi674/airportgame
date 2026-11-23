@@ -60,6 +60,25 @@ export const isToiletProp = (spec: FixtureAsset): boolean => spec.category === '
 /** True for a desk a desktop prop may stand on. */
 export const isDesk = (spec: FixtureAsset): boolean => spec.mount === 'floor' && (num(spec, 'workplaces') > 0 || spec.id === 'lounge.workDesk');
 
+/** True for a screen that lowers the wayfinding penalty: flight boards, info totems, gate displays and overhead signs (T82). */
+export const isWayfinding = (spec: FixtureAsset): boolean => spec.stats.wayfinding === true;
+/** Income of an ad prop per daily passenger, 0 for a prop that carries no advertising (T82). */
+export const adRateOf = (asset: string): number => P.adPerPax[asset] ?? 0;
+
+/**
+ * Visit kinds of vending machines (T82). Visit point kinds are fixture ids below 200, so these never clash. A machine
+ * that meets two needs gives one point of each kind.
+ */
+export const VENDING_KIND = { hunger: 201, thirst: 202, shop: 203 } as const;
+export type VendingNeed = keyof typeof VENDING_KIND;
+
+/** A visit point a vending machine offers: the array cell of its center, its visit kind and the airport's sales share. */
+export interface VendingPoint {
+  cell: number;
+  kind: number;
+  share: number;
+}
+
 /** Build cost of one prop: a per seat or per ambience price, a per id override, or the price of its category. */
 export function propCost(asset: string): number {
   const spec = SPECS.get(asset);
@@ -428,6 +447,27 @@ export function seatCells(g: TerminalGrid): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
+/**
+ * The vending points of a floor (T82): one per need each vending machine in a passenger zone meets, at the cell of its
+ * center, ascending by cell and then kind, without repeats.
+ */
+export function vendingPoints(g: TerminalGrid): VendingPoint[] {
+  const out: VendingPoint[] = [];
+  for (const p of g.props) {
+    const needs = P.vendingNeeds[p.asset];
+    const spec = SPECS.get(p.asset);
+    if (!needs || !spec) continue;
+    const [cx, cy] = centerCell(p);
+    const i = cellAt(g, cx, cy);
+    if (i < 0 || !passengerZone(g.zone[i]!)) continue;
+    for (const n of needs) {
+      const kind = VENDING_KIND[n];
+      if (!out.some((v) => v.cell === i && v.kind === kind)) out.push({ cell: i, kind, share: num(spec, 'salesShare') });
+    }
+  }
+  return out.sort((a, b) => a.cell - b.cell || a.kind - b.kind);
+}
+
 /** Sums that feed the passenger rating (T76), per floor. */
 export interface PropTotals {
   /** Seats on passenger floor, each weighted by 1 + comfortWeight times its comfort. */
@@ -440,12 +480,16 @@ export interface PropTotals {
   passengerAreaM2: number;
   /** Summed build cost of the props, for upkeep and demolition. */
   cost: number;
+  /** Wayfinding props on passenger floor (T82). */
+  wayfinding: number;
+  /** Income per daily passenger of each ad prop on passenger floor, in prop order (T82). */
+  adRates: number[];
 }
 
 const passengerZone = (z: number): boolean => z === ZONE.Public || z === ZONE.Commercial || z === ZONE.Secure || z === ZONE.International;
 
 export function propTotals(g: TerminalGrid): PropTotals {
-  const t: PropTotals = { comfortSeats: 0, ambience: 0, secureSeats: 0, passengerAreaM2: 0, cost: 0 };
+  const t: PropTotals = { comfortSeats: 0, ambience: 0, secureSeats: 0, passengerAreaM2: 0, cost: 0, wayfinding: 0, adRates: [] };
   for (let i = 0; i < g.floor.length; i++) if (g.floor[i]! > 0 && passengerZone(g.zone[i]!)) t.passengerAreaM2 += TERMINAL_CELL_M * TERMINAL_CELL_M;
   for (const p of g.props) {
     const spec = SPECS.get(p.asset);
@@ -459,6 +503,9 @@ export function propTotals(g: TerminalGrid): PropTotals {
     t.comfortSeats += seats * (1 + P.comfortWeight * comfortOf(spec));
     t.ambience += ambienceOf(spec);
     if (zone === ZONE.Secure) t.secureSeats += seats;
+    if (isWayfinding(spec)) t.wayfinding++;
+    const ad = adRateOf(p.asset);
+    if (ad > 0) t.adRates.push(ad);
   }
   return t;
 }
