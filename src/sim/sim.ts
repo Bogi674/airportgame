@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GROUND, GSE, STAND_ACCESS } from '@data/index';
-import { STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
+import { ACCEPT_COMMERCIAL, STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
 import { ParcelType, START_CASH } from '@shared/site';
@@ -19,6 +19,7 @@ import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
 import { Staff, type StaffSave } from './staff/staff';
+import { writeCrewSample } from './staff/crewSample';
 import { Baggage, BAG_RUN_TICKS, BagStage, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -163,6 +164,7 @@ export class Sim {
     this.turns = new Turnarounds(this.traffic, this.gse);
     this.gse.turns = this.turns;
     this.turns.cleaned = () => this.business.cleanedTurnaround();
+    this.turns.crewPool = () => this.staff.rampCrews();
     this.cohorts = new Cohorts(this.rng, this.business, this.traffic);
     this.business.boarded = (f) => this.cohorts.boardedFor(f);
     this.business.gridRemoved = (g) => this.cohorts.onGridRemoved(g);
@@ -343,11 +345,28 @@ export class Sim {
     const factor = new Float64Array(af.stands.length);
     for (let s = 0; s < factor.length; s++) factor[s] = this.roads.standRoad[s] === 1 ? 1 : GROUND.noRoadTurnaroundFactor;
     this.traffic.standRoadFactor = factor;
+    this.syncRamp(af);
     const depots = af.depots?.length ?? 0;
     if (!restoring && depots !== this.depotsSeen) this.business.depotsChanged(depots - this.depotsSeen);
     this.depotsSeen = depots;
     this.business.depotCapacity = depots * GROUND.depot.capacity;
     this.business.refreshFire();
+  }
+
+  /** Hands the staff the apron crew pool: the lowest id depot and the commercial stands a depot reaches (T81). */
+  private syncRamp(af: AirfieldPayload): void {
+    let depot = -1;
+    let x = 0;
+    let y = 0;
+    for (const d of af.depots ?? []) {
+      if (depot >= 0 && d.id >= depot) continue;
+      depot = d.id;
+      x = d.x;
+      y = d.y;
+    }
+    let stands = 0;
+    for (let s = 0; s < af.stands.length; s++) if (this.roads.standRoad[s] === 1 && (af.stands[s]!.accepts & ACCEPT_COMMERCIAL) !== 0) stands++;
+    this.staff.setRamp(depot, x, y, stands);
   }
 
   /** Baggage layout stamp the bay anchors were last taken at, the stand to bay key, and a counter bumped when that key changes. */
@@ -873,6 +892,7 @@ export class Sim {
     }
     views.header[SnapHeader.VehicleCount] = n;
     this.cohorts.writeSample(views, this.tick);
+    writeCrewSample(views, this.turns, this.traffic);
     this.staff.writeSample(views, this.tick);
   }
 }

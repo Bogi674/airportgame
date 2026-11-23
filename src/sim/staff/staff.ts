@@ -45,6 +45,9 @@ const HOUR_TICKS = 60 * TICKS_PER_MINUTE;
 const STEP_TICKS = STAFF.stepMin * TICKS_PER_MINUTE;
 const BREAK_TICKS = Math.ceil(STAFF.breaks.lengthMin * TICKS_PER_MINUTE);
 const RELIEF_WAIT_TICKS = Math.ceil(STAFF.breaks.reliefWaitMin * TICKS_PER_MINUTE);
+/** stGrid of a member placed on the apron crew pool of a depot (T81), whose stX is the depot id. */
+const POOL_GRID = -2;
+const RAMP_ROLE = STAFF_ROLE_KEYS.indexOf('ramp');
 /** walkStart value of a member sent home because its station could not be reached. */
 const WALK_UNREACHABLE = -2;
 
@@ -149,13 +152,23 @@ export class Staff {
   /** Role id of each station. */
   sRole = new Uint8Array(0);
   /** Officers each station needs. */
-  sNeed = new Uint8Array(0);
+  sNeed = new Uint16Array(0);
   /** Share of its rate each station serves with nobody on it (T81), 0 when it stops. */
   sUnstaffed = new Float32Array(0);
   /** Officers on duty at each station. */
   sPresent = new Uint8Array(0);
   /** Summed skill of the officers on duty at each station. */
   sSkill = new Float64Array(0);
+  /** World point each station's staff commute to: the curb door of its grid, or the depot of the apron crew pool. */
+  sWX = new Float64Array(0);
+  sWY = new Float64Array(0);
+  /** Station index of the apron crew pool, -1 without one (T81). */
+  rampStation = -1;
+  /** Apron crew pool input from the road net (T81): lowest id depot, its point, and the commercial stands with a road. */
+  private rampDepot = -1;
+  private rampX = 0;
+  private rampY = 0;
+  private rampStands = 0;
   /** Walk node of the curb door of each grid, -1 for none. */
   curbNode = new Int32Array(0);
   /** World point of the curb door of each grid. */
@@ -164,7 +177,7 @@ export class Staff {
   /** Station index by `gridId|x|y|kind`, built at rebuild only. */
   private readonly stationOf = new Map<string, number>();
   /** serviceVersion, terminalVersion, grid count and baggage draw version the stations were built from. */
-  private readonly builtFor = new Int32Array(4).fill(-1);
+  private readonly builtFor = new Int32Array(6).fill(-1);
   /** Seats of each station and shift the pass keeps, and seats already held. Scratch sized at rebuild. */
   private keepSt = new Int32Array(0);
   private heldSt = new Int32Array(0);
@@ -289,11 +302,14 @@ export class Staff {
 
   private rebuildStationsIfStale(): boolean {
     const b = this.business;
-    if (this.builtFor[0] === b.serviceVersion && this.builtFor[1] === b.terminalVersion && this.builtFor[2] === b.grids.length && this.builtFor[3] === this.baggage.drawVersion()) return false;
-    this.builtFor[0] = b.serviceVersion;
-    this.builtFor[1] = b.terminalVersion;
-    this.builtFor[2] = b.grids.length;
-    this.builtFor[3] = this.baggage.drawVersion();
+    const f = this.builtFor;
+    if (f[0] === b.serviceVersion && f[1] === b.terminalVersion && f[2] === b.grids.length && f[3] === this.baggage.drawVersion() && f[4] === this.rampDepot && f[5] === this.rampStands) return false;
+    f[0] = b.serviceVersion;
+    f[1] = b.terminalVersion;
+    f[2] = b.grids.length;
+    f[3] = this.baggage.drawVersion();
+    f[4] = this.rampDepot;
+    f[5] = this.rampStands;
     this.rebuildStations();
     return true;
   }
@@ -307,6 +323,8 @@ export class Staff {
       for (let k = 0; k < sn.count; k++) if (sn.staffNeed[k]! > 0) n++;
       n += this.machinesOf(b.grids[gi]!.id).length;
     }
+    const rampNeed = this.rampDepot >= 0 ? Math.min(65535, STAFF.ramp.crewSize * this.rampStands) : 0;
+    if (rampNeed > 0) n++;
     this.stCount = n;
     this.sGridIdx = new Int32Array(n);
     this.sGridId = new Int32Array(n);
@@ -316,7 +334,10 @@ export class Staff {
     this.sNode = new Int32Array(n).fill(-1);
     this.sMachine = new Int32Array(n).fill(-1);
     this.sRole = new Uint8Array(n);
-    this.sNeed = new Uint8Array(n);
+    this.sNeed = new Uint16Array(n);
+    this.sWX = new Float64Array(n);
+    this.sWY = new Float64Array(n);
+    this.rampStation = -1;
     this.sUnstaffed = new Float32Array(n);
     this.sPresent = new Uint8Array(n);
     this.sSkill = new Float64Array(n);
@@ -368,6 +389,24 @@ export class Staff {
         this.curbX[gi] = p.x;
         this.curbY[gi] = p.y;
       }
+    }
+    for (let k = 0; k < s; k++) {
+      this.sWX[k] = this.curbX[this.sGridIdx[k]!]!;
+      this.sWY[k] = this.curbY[this.sGridIdx[k]!]!;
+    }
+    if (rampNeed > 0) {
+      // The apron crew pool has no terminal cell: its staff commute to the depot and wait there for turnarounds.
+      this.sGridIdx[s] = -1;
+      this.sGridId[s] = POOL_GRID;
+      this.sX[s] = this.rampDepot;
+      this.sY[s] = 0;
+      this.sKind[s] = 0;
+      this.sRole[s] = RAMP_ROLE;
+      this.sNeed[s] = rampNeed;
+      this.sWX[s] = this.rampX;
+      this.sWY[s] = this.rampY;
+      this.stationOf.set(`${POOL_GRID}|${this.sX[s]}|0|0`, s);
+      this.rampStation = s;
     }
     for (let m = 0; m < this.hi; m++) {
       this.stIdx[m] = this.state[m] === STAFF_STATE.Free ? -1 : (this.stationOf.get(`${this.stGrid[m]}|${this.stX[m]}|${this.stY[m]}|${this.stKind[m]}`) ?? -1);
@@ -485,7 +524,7 @@ export class Staff {
       if (this.state[m] !== STAFF_STATE.Off) continue;
       if (sh === run) {
         this.state[m] = station >= 0 ? STAFF_STATE.OnDuty : STAFF_STATE.Standby;
-        this.home[m] = this.homeOf(station >= 0 ? this.sGridIdx[station]! : 0);
+        this.home[m] = this.homeNear(station);
         this.breakAt[m] = shiftStartTick(tick, sh) + (STAFF.breaks.afterMin + breakJitterMin(this.seed[m]!)) * TICKS_PER_MINUTE;
         this.wake[m] = tick + STEP_TICKS;
       } else {
@@ -498,11 +537,37 @@ export class Staff {
     }
   }
 
-  /** Id of the staff center nearest by straight line to the curb of a grid, ties to the lowest id, -1 when there is none. */
-  homeOf(gridIdx: number): number {
+  /**
+   * Hands over the apron crew pool from the road net (T81): the lowest id depot and its centre, and the commercial stands
+   * a depot reaches. depot -1 means no pool.
+   */
+  setRamp(depot: number, x: number, y: number, stands: number): void {
+    this.rampDepot = depot;
+    this.rampX = x;
+    this.rampY = y;
+    this.rampStands = depot >= 0 ? stands : 0;
+  }
+
+  /** Crews of the apron crew pool on duty now, -1 when the airport has no pool and turnarounds need no crew (T81). */
+  rampCrews(): number {
+    if (this.rampStation < 0) return -1;
+    return Math.floor(this.sPresent[this.rampStation]! / STAFF.ramp.crewSize);
+  }
+
+  /** The point staff of a station commute to, or the curb of the first grid for a relief with none. */
+  private endX(s: number): number {
+    return s >= 0 ? this.sWX[s]! : (this.curbX[0] ?? 0);
+  }
+
+  private endY(s: number): number {
+    return s >= 0 ? this.sWY[s]! : (this.curbY[0] ?? 0);
+  }
+
+  /** Id of the staff center nearest by straight line to where the staff of a station commute, ties to the lowest id, -1 for none. */
+  homeNear(station: number): number {
     const buildings = this.airfield.data.buildings ?? [];
-    const cx = this.curbX[gridIdx] ?? 0;
-    const cy = this.curbY[gridIdx] ?? 0;
+    const cx = this.endX(station);
+    const cy = this.endY(station);
     let best = -1;
     let bestD = Infinity;
     for (let i = 0; i < buildings.length; i++) {
@@ -517,14 +582,15 @@ export class Staff {
     return best;
   }
 
-  /** Ticks to travel between a staff center and the curb of a grid, 0 without a center or when it is gone. */
-  private commuteTicks(home: number, gridIdx: number): number {
+  /** Ticks member m travels between a staff center and where its station's staff commute, 0 without a center or when it is gone. */
+  private commuteTicks(home: number, m: number): number {
     if (home < 0) return 0;
     const buildings = this.airfield.data.buildings ?? [];
+    const s = this.stIdx[m]!;
     for (let i = 0; i < buildings.length; i++) {
       const b = buildings[i]!;
       if (b.id !== home) continue;
-      const d = Math.hypot(b.x - (this.curbX[gridIdx] ?? 0), b.y - (this.curbY[gridIdx] ?? 0));
+      const d = Math.hypot(b.x - this.endX(s), b.y - this.endY(s));
       return gameSecondsToTicks(Math.ceil(d / CREW_SPEED_MPS));
     }
     return 0;
@@ -538,7 +604,7 @@ export class Staff {
     return d === Infinity ? Infinity : gameSecondsToTicks(Math.ceil(d / CREW_SPEED_MPS));
   }
 
-  /** Grid index a member works in: its station's grid, the first grid for a relief. */
+  /** Grid index a member works in: its station's grid, -1 on the apron crew pool, the first grid for a relief. */
   private gridOf(m: number): number {
     const s = this.stIdx[m]!;
     return s >= 0 ? this.sGridIdx[s]! : 0;
@@ -569,7 +635,7 @@ export class Staff {
       return;
     }
     const gi = this.gridOf(m);
-    let lead = CHANGE_TICKS + this.commuteTicks(this.homeOf(gi), gi);
+    let lead = CHANGE_TICKS + this.commuteTicks(this.homeNear(this.stIdx[m]!), m);
     const walk = this.walkTicks(gi, this.business.curbNode(gi), this.stationNode(m));
     if (walk !== Infinity) lead += walk;
     this.wake[m] = Math.max(tick, shiftStartTick(tick, sh) + TICKS_PER_DAY - lead);
@@ -611,7 +677,7 @@ export class Staff {
   private sendHome(m: number, tick: number): void {
     this.state[m] = STAFF_STATE.CommuteHome;
     this.walkStart[m] = WALK_UNREACHABLE;
-    this.wake[m] = tick + this.commuteTicks(this.home[m]!, this.gridOf(m));
+    this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
   }
 
   /** Advances every member whose wake tick has come by one state, in slot order. */
@@ -627,7 +693,7 @@ export class Staff {
             this.free(m);
             break;
           }
-          this.home[m] = this.homeOf(gi);
+          this.home[m] = this.homeNear(this.stIdx[m]!);
           this.count(this.clockIns, this.home[m]!);
           this.flags[m] &= ~(STAFF_FLAG.Tired | STAFF_FLAG.BreakDone);
           this.state[m] = STAFF_STATE.ClockIn;
@@ -639,10 +705,15 @@ export class Staff {
             this.wake[m] = this.dutyEnd(tick, sh);
           } else {
             this.state[m] = STAFF_STATE.Commute;
-            this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+            this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
           }
           break;
         case STAFF_STATE.Commute: {
+          if (gi < 0 && this.stIdx[m]! >= 0) {
+            // The apron crew pool has no walk: the member takes over at the depot.
+            this.arrive(m, tick);
+            break;
+          }
           const walk = this.walkTicks(gi, this.business.curbNode(gi), this.stationNode(m));
           if (walk === Infinity) {
             this.sendHome(m, tick);
@@ -669,7 +740,7 @@ export class Staff {
         case STAFF_STATE.Leaving:
           this.walkStart[m] = -1;
           this.state[m] = STAFF_STATE.CommuteHome;
-          this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+          this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
           break;
         case STAFF_STATE.CommuteHome:
           if (this.stIdx[m]! >= 0 && (this.flags[m]! & STAFF_FLAG.Relief) !== 0) {
@@ -696,7 +767,7 @@ export class Staff {
             this.wake[m] = tick + CHANGE_TICKS;
           } else {
             this.state[m] = STAFF_STATE.Commute;
-            this.wake[m] = tick + this.commuteTicks(this.home[m]!, gi);
+            this.wake[m] = tick + this.commuteTicks(this.home[m]!, m);
           }
           break;
         case STAFF_STATE.ClockOut: {
@@ -750,7 +821,7 @@ export class Staff {
       this.stIdx[r] = this.stIdx[m]!;
       this.flags[r] |= STAFF_FLAG.BreakDone;
       this.state[r] = STAFF_STATE.Commute;
-      this.wake[r] = tick + this.commuteTicks(this.home[r]!, this.gridOf(r));
+      this.wake[r] = tick + this.commuteTicks(this.home[r]!, r);
       return;
     }
   }

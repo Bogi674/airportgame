@@ -14,7 +14,8 @@ const at = (hour: number, minute = 0): number => (hour - 6) * HOUR + minute * TI
 
 function shiftSim(o: { center?: boolean; closedDesk?: boolean; perHour?: number } = {}): { sim: Sim; center: number } {
   const sim = ownedSim();
-  buildTestAirport(sim);
+  // No depot, so no apron crew pool (T81): the rosters and clock counts are the terminal staff only.
+  buildTestAirport(sim, { ground: false });
   expect(run(sim, { type: 'setTestTraffic', perHour: o.perHour ?? 0, turnScale: 1 })).toEqual([]);
   if (o.center !== false) expect(buildTestStaffCenter(sim)).toEqual([]);
   expect(buildTestTerminal(sim, { checkIn: 2, security: 1, gateDesk: 1 })).toEqual([]);

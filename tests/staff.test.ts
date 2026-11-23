@@ -9,6 +9,7 @@ import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '@shared/terminalOp
 import { buildTestAirport, buildTestTerminal, ownedSim, run, OPTIONS } from './helpers';
 import { Staff, STAFF_FLAG, STAFF_STATE, type StaffSave } from '../src/sim/staff/staff';
 import { breakJitterMin, staffSeed, staffSkill } from '../src/sim/staff/staffTraits';
+import { STAFF_ROLE_COUNT } from '@data/schemas/staff';
 
 const freshStaff = (): Staff => {
   const sim = new Sim('STAFF-0001', OPTIONS);
@@ -120,7 +121,8 @@ const kindId = (key: string): number => FIXTURE_KEYS.indexOf(key as never) + 1;
 
 function terminalSim(): Sim {
   const sim = ownedSim();
-  buildTestAirport(sim);
+  // No depot, so no apron crew pool (T81): these tests count the terminal stations only.
+  buildTestAirport(sim, { ground: false });
   expect(buildTestTerminal(sim, { checkIn: 2, security: 1, gateDesk: 1 })).toEqual([]);
   return sim;
 }
@@ -377,10 +379,10 @@ describe('staff wages and payload', () => {
     expect(wages).toBe(-(Math.round(remainder * 130) + hired * 130));
   }, 120_000);
 
-  it('lists three staffing rows with the hired agents', () => {
+  it('lists one staffing row per role with the hired agents', () => {
     const sim = terminalSim();
     const p = sim.business.payload(sim.tick);
-    expect(p.staffing).toHaveLength(3);
+    expect(p.staffing).toHaveLength(STAFF_ROLE_COUNT);
     expect(p.staffing[0]!.hired).toBe(12);
     expect(p.staffing[1]!.hired).toBe(12);
     expect(p.staffing[0]!.onDuty).toBe(3);

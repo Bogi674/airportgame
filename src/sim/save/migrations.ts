@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 36;
+export const SAVE_VERSION = 37;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -394,6 +394,9 @@ export function migrate(raw: unknown): SaveData {
     (save as { convertProps?: boolean }).convertProps = true;
     save.version = 36;
   }
+  // Version 36 to 37: apron crews (T81). Turnarounds gain the crew held per aircraft, which loads as none, so a
+  // turnaround saved before chocks claims its crew on the next step and one saved after chocks runs on without one.
+  if (save.version < 37) save.version = 37;
   return save as SaveData;
 }
 

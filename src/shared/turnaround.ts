@@ -10,6 +10,8 @@ export const CAUSE_FUEL = 41;
 export const CAUSE_BOARDING = 42;
 export const CAUSE_ATC = 43;
 export const CAUSE_BAGS = 44;
+/** No apron crew of the depot pool was free when chocks could start (T81). */
+export const CAUSE_RAMP = 45;
 
 /** True when the cause is a vehicle that was not docked when its task could start. */
 export function isVehicleCause(code: number): boolean {
