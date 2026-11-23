@@ -1,5 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GROUND, GSE, STAND_ACCESS } from '@data/index';
+import { STAFF_ROLE_COUNT } from '@data/schemas/staff';
 import { ACCEPT_COMMERCIAL, STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { sizeForCode } from '@shared/standSizes';
@@ -14,7 +15,8 @@ import { SnapHeader, SNAPSHOT_VERSION, type SnapshotViews } from '@shared/snapsh
 import { TICK_SECONDS } from '@shared/time';
 import { CommandLog, type Command } from './commands';
 import { Airfield, isProblem } from './airfield/airfield';
-import { FlState, GA_AIRLINE, Traffic } from './ops/traffic';
+import { DIVERT_AIRLINE, FlState, GA_AIRLINE, Traffic } from './ops/traffic';
+import { Director, type DirectorSave } from './events/director';
 import { BOARDING, Turnarounds, TURN_STEP } from './ops/turnaround';
 import { Business } from './business/business';
 import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
@@ -79,6 +81,11 @@ export class Sim {
   readonly staff: Staff;
   /** Terminal dirt per room that cleaners keep low (T81). */
   readonly cleaning: Cleaning;
+  /** The seeded event director and its deck (T50). */
+  readonly director: Director;
+  /** True while a save is restored, so derived event effects do not schedule work the uninterrupted run did not have. */
+  private restoring = false;
+  private readonly divertTypes: number[] = [];
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -148,7 +155,7 @@ export class Sim {
         const st = this.airfield.data.stands.find((s) => s.id === this.traffic.standId[a]);
         return st ? this.boardingMode(st, this.traffic.flight[a]) : BOARDING.near;
       },
-      owned: (k) => this.business.fleet[k] ?? 0,
+      owned: (k) => this.business.available(k),
       cateringTrucks: () => (this.airfield.data.buildings ?? []).filter((b) => b.kind === 'catering').length * GROUND.catering.trucks,
       trips: {
         frame: (b) => this.baggage.bayFrameOf((this.airfield.data.bayAnchors ?? [])[b]?.bay ?? -1),
@@ -188,6 +195,61 @@ export class Sim {
     this.cleaning = new Cleaning(this.business, this.cohorts);
     this.staff.cleaning = this.cleaning;
     this.business.terminalClean = () => this.cleaning.cleanliness;
+    this.director = new Director(this.rng, {
+      emit: (code) => this.eventQueue.push(code),
+      book: (category, amount) => this.book(category, amount),
+      getCash: () => this.cash,
+      climate: () => this.site.climate,
+      has: (req) => {
+        switch (req) {
+          case 'fuelFarm':
+            return this.business.fuelCapacityL() > 0;
+          case 'vehicle':
+            return GSE.some((_, k) => this.business.available(k) > 0);
+          case 'airline':
+            return this.business.airlines.some((a) => a.signed);
+          case 'diversionType':
+            this.traffic.diversionTypes(this.divertTypes);
+            return this.divertTypes.length > 0;
+          case 'staff':
+            for (let r = 0; r < STAFF_ROLE_COUNT; r++) if (this.staff.hired(r) > 0) return true;
+            return false;
+          default:
+            return false;
+        }
+      },
+      pick: (req, rng) => {
+        const out: number[] = [];
+        if (req === 'vehicle') {
+          for (let k = 0; k < GSE.length; k++) if (this.business.available(k) > 0) out.push(k);
+        } else if (req === 'airline') {
+          for (const a of this.business.airlines) if (a.signed) out.push(a.id);
+        } else if (req === 'diversionType') this.traffic.diversionTypes(out);
+        return out.length === 0 ? -1 : out[rng.int(0, out.length - 1)]!;
+      },
+      label: (req, arg) => {
+        if (req === 'vehicle') return (GSE[arg]?.name ?? '').toLowerCase();
+        if (req === 'airline') return this.business.airlines.find((a) => a.id === arg)?.name ?? '';
+        return AIRCRAFT[arg]?.name ?? '';
+      },
+      startWeather: (kind, ticks) => this.business.setWeather(kind, ticks),
+      weatherActive: () => this.business.weather !== 'clear',
+      apply: (fx) => {
+        this.business.fuelHeldUntil = fx.fuelHeldUntil;
+        this.business.vehiclesOut = fx.vehiclesOut;
+        this.traffic.weatherSeverity = fx.weatherSeverity;
+        this.staff.setShortage(fx.staffShort, !this.restoring);
+      },
+      addAirlineSatisfaction: (id, points) => this.business.market.addHappiness(id, points),
+      divert: (type, eta, hold) => {
+        const f = this.traffic.scheduleArrival(type, eta, 0, hold, DIVERT_AIRLINE);
+        return f < 0 ? -1 : this.traffic.serialOf(f);
+      },
+      wagesPerDay: () => this.staff.wagesPerDay(),
+      changed: () => this.business.version++,
+    });
+    this.business.newDay = (tick) => this.director.newDay(tick);
+    this.business.diversionFee = (f) => this.director.takeFee(this.traffic.serialOf(f));
     this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
     this.business.staffWages = () => this.staff.wagesPerDay();
     this.business.staffRows = () => this.staff.rows();
@@ -287,6 +349,7 @@ export class Sim {
       case 3:
         this.staff.update(this.tick);
         this.business.update(this.tick);
+        this.director.update(this.tick);
         break;
       case 4:
         this.cohorts.update(this.tick);
@@ -499,6 +562,9 @@ export class Sim {
       case 'testArrival':
         this.traffic.scheduleArrival(cmd.typeIdx, this.tick + Math.max(0, cmd.inTicks), 0, cmd.turnTicks);
         break;
+      case 'testEvent':
+        this.report(this.director.plan(cmd.id, this.tick));
+        break;
       case 'testDockAt':
         this.testDockAt(cmd.standId, cmd.typeIdx, cmd.turnTicks);
         break;
@@ -616,6 +682,9 @@ export class Sim {
       case 'repayLoan':
         this.report(this.business.repayLoan(cmd.amount));
         break;
+      case 'eventChoice':
+        this.report(this.director.choose(cmd.seq, cmd.choice, this.tick));
+        break;
       default: {
         const towersBefore = this.airfield.towersVersion;
         const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids });
@@ -694,7 +763,7 @@ export class Sim {
     this.businessSent = this.business.version;
     this.businessAirfield = afVersion;
     this.businessSentTick = this.tick;
-    return { ...this.business.payload(this.tick), baggage: this.baggage.inspect(this.airfield.data.stands.map((st) => st.id)) };
+    return { ...this.business.payload(this.tick), baggage: this.baggage.inspect(this.airfield.data.stands.map((st) => st.id)), event: this.director.view(this.tick) };
   }
 
   /** Copies of the terminal grids when they changed since the last call, otherwise null. */
@@ -823,6 +892,7 @@ export class Sim {
       turnarounds: this.turns.saveState(),
       staff: this.staff.saveState(),
       cleaning: this.cleaning.saveState(),
+      events: this.director.saveState(),
     };
     return save;
   }
@@ -856,6 +926,9 @@ export class Sim {
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
     this.staff.loadState(save.staff as StaffSave | undefined);
     this.cleaning.loadState(save.cleaning as CleaningSave | undefined);
+    this.restoring = true;
+    this.director.loadState((save as { events?: DirectorSave }).events);
+    this.restoring = false;
     if (save.convertProps) {
       const n = this.business.convertLegacyProps();
       if (n > 0) this.eventQueue.push(`propsConverted|n=${n}`);
@@ -901,6 +974,7 @@ export class Sim {
     h = this.turns.hash(h);
     h = this.staff.hash(h);
     h = this.cleaning.hash(h);
+    h = this.director.hash(h);
     return h;
   }
 

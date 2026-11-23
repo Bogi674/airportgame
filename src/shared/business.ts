@@ -9,6 +9,8 @@ export const TICKS_PER_DAY = 24 * 60 * TICKS_PER_MINUTE;
 
 /** The airline name the flights board shows for general aviation flights. */
 export const GA_LABEL = 'GA';
+/** Airline column of a diverted aircraft on the flights board (T50). */
+export const DIVERT_LABEL = 'Diverted';
 
 /** The game starts at 06:00 on day 0. */
 export const START_MINUTE = 6 * 60;
@@ -16,7 +18,7 @@ export const START_MINUTE = 6 * 60;
 export const dayIndex = (tick: number): number => Math.floor((tick + START_MINUTE * TICKS_PER_MINUTE) / TICKS_PER_DAY);
 export const minuteOfDay = (tick: number): number => Math.floor(((tick + START_MINUTE * TICKS_PER_MINUTE) % TICKS_PER_DAY) / TICKS_PER_MINUTE);
 
-export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan', 'fuel', 'advertising'] as const;
+export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan', 'fuel', 'advertising', 'incidents'] as const;
 export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
@@ -303,6 +305,21 @@ export interface FlightSeries {
 
 export type WeatherKind = 'clear' | 'rain' | 'fog' | 'wind';
 
+/** The open event of the director for the event card (T50). */
+export interface EventView {
+  /** Sequence number the choice command names. */
+  seq: number;
+  /** Event id of the deck in src/data/events.json. */
+  id: string;
+  /** Vehicle id, airline name or aircraft type id the event is about, empty when it has none. */
+  subject: string;
+  /** Game minutes left to choose before the fallback applies. */
+  minutesLeft: number;
+  fallback: string;
+  /** The two choices with their cost, the wage premium included. */
+  choices: { id: string; cost: number }[];
+}
+
 export interface BoardRow {
   airline: string;
   type: string;
@@ -430,6 +447,8 @@ export interface BusinessPayload {
   /** Hired airport staff per role, see StaffRow. Empty before the staff store exists (T68). */
   staffing: StaffRow[];
   weather: WeatherKind;
+  /** The open event of the director, null when none waits for a choice (T50). Filled by the sim. */
+  event: EventView | null;
   /** Missing parts that stop flights, keys for the UI checklist. Empty when ready. */
   readiness: string[];
   /** When false flights only use stands assigned to them. */

@@ -369,6 +369,12 @@ export class Market {
     this.happy(a, late <= H.onTimeMin ? H.onTimeFlight : H.delayedFlight);
   }
 
+  /** Adds satisfaction points to an airline by id, within the D14 limits (T50). */
+  addHappiness(id: number, delta: number): void {
+    const a = this.airlines.find((x) => x.id === id);
+    if (a) this.happy(a, delta);
+  }
+
   private happy(a: Airline, delta: number): void {
     a.happiness = Math.max(H.min, Math.min(H.max, a.happiness + delta));
   }

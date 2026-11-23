@@ -12,6 +12,8 @@ export type Command =
   | { type: 'testArrival'; typeIdx: number; inTicks: number; turnTicks: number }
   /** Test arrival that lands now and takes the given stand, under the same refusal rules as a normal stand assignment. */
   | { type: 'testDockAt'; standId: number; typeIdx: number; turnTicks: number }
+  /** Test and scenario hook: plans the deck event with this id to fire on the next tick, in place of the day's draw (T50). */
+  | { type: 'testEvent'; id: string }
   | { type: 'buyParcel'; parcelId: number }
   | { type: 'buyParcels'; ids: number[] }
   | { type: 'buildRunway'; x: number; y: number; headingDeg: number; lengthM: number; code: CodeLetter; approach: Approach; surface: Surface; tier: number }
@@ -102,6 +104,8 @@ export type Command =
   | { type: 'setStaffCap'; role: number; cap: number }
   | { type: 'takeLoan'; amount: number }
   | { type: 'repayLoan'; amount: number }
+  /** Answers the open event of the director (T50): seq names the event, choice is a choice id of its deck entry. */
+  | { type: 'eventChoice'; seq: number; choice: string }
   | { type: 'undo' }
   | { type: 'redo' };
 

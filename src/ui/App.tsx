@@ -384,7 +384,7 @@ export function App() {
           <ParcelPanel onBuy={(id) => client.send({ type: 'buyParcel', parcelId: id })} />
           {!store.parcelOverlay && <BuildMenu send={(c) => client.send(c)} />}
           {!store.parcelOverlay && <ContextBar send={(c) => client.send(c)} />}
-          <Toasts />
+          <Toasts send={(c) => client.send(c)} />
           <ConfirmPopup />
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}

@@ -1,0 +1,14 @@
+{
+  "buy": [[2880, 4880, 5720, 5640]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 2600, "code": "C", "approach": "precision", "surface": "asphalt", "tier": 1 },
+    { "type": "testEvent", "id": "fog" }
+  ],
+  "camera": { "x": 4100, "y": 5100, "zoom": 0.6 },
+  "hideUi": false,
+  "actions": [
+    { "wait": 1500 },
+    { "shot": "event-card" }
+  ],
+  "report": ["cash"]
+}

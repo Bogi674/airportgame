@@ -1,0 +1,91 @@
+{
+  "note": "Event deck (T50, D32, D33, owner 2026-11-23). One draw per game day at the day start. The event fires a whole number of game hours later, below fireWithinHours. The player has choiceHours game hours to choose, then the fallback choice applies. An operational event weighs its weight; a weather event weighs its climate share of days (rain and fog days per year, windShare for strong wind) times climateWeight. Weather lasts a whole number of hours in weatherHours. A diverted aircraft lands diversionLeadMin after it is accepted. Costs in currency, durations in game minutes.",
+  "fireWithinHours": 12,
+  "choiceHours": 2,
+  "climateWeight": 5,
+  "windShare": 0.03,
+  "weatherHours": { "min": 3, "max": 8 },
+  "diversionLeadMin": 30,
+  "events": [
+    {
+      "id": "rain",
+      "weather": "rain",
+      "requires": [],
+      "fallback": "rideOut",
+      "choices": [
+        { "id": "prepare", "cost": 5000, "effects": [{ "kind": "weatherSeverity", "share": 0.5 }] },
+        { "id": "rideOut", "cost": 0, "effects": [] }
+      ]
+    },
+    {
+      "id": "fog",
+      "weather": "fog",
+      "requires": [],
+      "fallback": "rideOut",
+      "choices": [
+        { "id": "prepare", "cost": 5000, "effects": [{ "kind": "weatherSeverity", "share": 0.5 }] },
+        { "id": "rideOut", "cost": 0, "effects": [] }
+      ]
+    },
+    {
+      "id": "wind",
+      "weather": "wind",
+      "requires": [],
+      "fallback": "rideOut",
+      "choices": [
+        { "id": "prepare", "cost": 5000, "effects": [{ "kind": "weatherSeverity", "share": 0.5 }] },
+        { "id": "rideOut", "cost": 0, "effects": [] }
+      ]
+    },
+    {
+      "id": "fuelDelay",
+      "weight": 1,
+      "requires": ["fuelFarm"],
+      "fallback": "accept",
+      "choices": [
+        { "id": "priority", "cost": 15000, "effects": [] },
+        { "id": "accept", "cost": 0, "effects": [{ "kind": "fuelHold", "minutes": 90 }] }
+      ]
+    },
+    {
+      "id": "breakdown",
+      "weight": 1,
+      "requires": ["vehicle"],
+      "fallback": "lose",
+      "choices": [
+        { "id": "repair", "cost": 8000, "effects": [] },
+        { "id": "lose", "cost": 0, "effects": [{ "kind": "vehicleOut", "minutes": 2880 }] }
+      ]
+    },
+    {
+      "id": "vip",
+      "weight": 1,
+      "requires": ["airline"],
+      "fallback": "decline",
+      "choices": [
+        { "id": "host", "cost": 10000, "effects": [{ "kind": "airlineSatisfaction", "points": 3 }] },
+        { "id": "decline", "cost": 0, "effects": [] }
+      ]
+    },
+    {
+      "id": "diversion",
+      "weight": 1,
+      "requires": ["diversionType"],
+      "fallback": "refuse",
+      "choices": [
+        { "id": "accept", "cost": 0, "effects": [{ "kind": "diversion", "fee": 5000, "minutes": 180 }] },
+        { "id": "refuse", "cost": 0, "effects": [] }
+      ]
+    },
+    {
+      "id": "staffShortage",
+      "weight": 1,
+      "requires": ["staff"],
+      "fallback": "runShort",
+      "choices": [
+        { "id": "overtime", "cost": 0, "effects": [{ "kind": "wagePremium", "share": 0.5 }] },
+        { "id": "runShort", "cost": 0, "effects": [{ "kind": "staffShort", "share": 0.25, "minutes": 1440 }] }
+      ]
+    }
+  ]
+}

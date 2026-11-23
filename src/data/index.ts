@@ -17,6 +17,7 @@ import standAccessJson from './stand_access.json';
 import surfacesJson from './surfaces.json';
 import turnaroundsJson from './turnarounds.json';
 import tenantsJson from './tenants.json';
+import eventsJson from './events.json';
 import fixtureCatalogJson from './fixtures/catalog.json';
 import {
   airfieldCodesSchema,
@@ -39,6 +40,8 @@ import {
   turnaroundsSchema,
   tenantsSchema,
   type TenantsData,
+  eventsSchema,
+  type EventsData,
   fixtureCatalogSchema,
   type FixtureCatalog,
   type AirfieldCodes,
@@ -102,6 +105,9 @@ export const TURNAROUNDS: TurnaroundsData = turnaroundsSchema.parse(turnaroundsJ
 
 /** Tenant units, brands, applications and furnishing (T32). */
 export const TENANTS: TenantsData = tenantsSchema.parse(tenantsJson);
+
+/** The event deck: draws, choices, fallbacks and effects (T50). */
+export const EVENTS: EventsData = eventsSchema.parse(eventsJson);
 
 /** Service roads, apron lanes, the ground handling depot and vehicle trains. */
 export const GROUND: GroundData = groundSchema.parse(groundJson);

@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 39;
+export const SAVE_VERSION = 40;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -39,6 +39,8 @@ export interface SaveData {
   /** Airport staff, since version 31 (T68). */
   staff?: unknown;
   cleaning?: unknown;
+  /** The event director (T50), since version 40. */
+  events?: unknown;
   /** Set by the migration to version 33 (T78): legacy belts become carousels on restore. Never written by a save. */
   convertBelts?: boolean;
   /**
@@ -409,6 +411,10 @@ export function migrate(raw: unknown): SaveData {
     (save as { convertShops?: boolean }).convertShops = true;
     save.version = 39;
   }
+  // Version 39 to 40: the event director (T50). Older saves load with nothing planned, so the next game day draws
+  // the first event. A weather event planned for later today in the old business fields is dropped; one already
+  // under way keeps its end tick.
+  if (save.version < 40) save.version = 40;
   return save as SaveData;
 }
 
