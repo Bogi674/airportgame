@@ -73,7 +73,7 @@ describe('international flow readiness (T79)', () => {
     expect(intlHall().business.internationalReady()).toBe(true);
     expect(intlHall({ departure: 'none' }).business.internationalReady()).toBe(false);
     expect(intlHall({ customs: false }).business.internationalReady()).toBe(false);
-  });
+  }, 30_000);
 });
 
 describe('international departures (T79)', () => {

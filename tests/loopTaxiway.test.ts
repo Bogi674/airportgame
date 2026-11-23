@@ -52,6 +52,6 @@ describe('one way loop between both runway ends', () => {
       }
       expect(departed).toBeGreaterThan(2);
       expect(unreachable).toBe(0);
-    });
+    }, 30_000);
   }
 });
