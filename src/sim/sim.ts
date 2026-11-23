@@ -20,6 +20,7 @@ import { Business } from './business/business';
 import { Cohorts, DAY, type CohortsSave } from './cohorts/cohorts';
 import { Staff, type StaffSave } from './staff/staff';
 import { writeCrewSample } from './staff/crewSample';
+import { Cleaning, type CleaningSave } from './staff/cleaning';
 import { Baggage, BAG_RUN_TICKS, BagStage, type BaggageSave } from './ops/baggage/baggage';
 import { ATC_MIN_CELLS, TICKS_PER_DAY, type BusinessPayload, type LedgerCategory, type TerminalGrid } from '@shared/business';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -76,6 +77,8 @@ export class Sim {
   readonly baggage: Baggage;
   /** Airport staff as individuals (T68). */
   readonly staff: Staff;
+  /** Terminal dirt per room that cleaners keep low (T81). */
+  readonly cleaning: Cleaning;
   readonly gse: Gse;
   /** Turnaround task lists of airline flights (T63). */
   readonly turns: Turnarounds;
@@ -182,6 +185,9 @@ export class Sim {
       bayConnected: (id: number): boolean => this.roads.bayConnected((this.airfield.data.bayAnchors ?? []).findIndex((a) => a.bay === id)),
     }, this.rng);
     this.staff = new Staff(this.business, this.baggage, this.airfield);
+    this.cleaning = new Cleaning(this.business, this.cohorts);
+    this.staff.cleaning = this.cleaning;
+    this.business.terminalClean = () => this.cleaning.cleanliness;
     this.baggage.machineStaffed = (id) => this.staff.machineOn(id);
     this.business.staffWages = () => this.staff.wagesPerDay();
     this.business.staffRows = () => this.staff.rows();
@@ -798,6 +804,7 @@ export class Sim {
       vehicles: this.gse.saveState(),
       turnarounds: this.turns.saveState(),
       staff: this.staff.saveState(),
+      cleaning: this.cleaning.saveState(),
     };
     return save;
   }
@@ -830,6 +837,7 @@ export class Sim {
     this.turns.loadState(save.turnarounds);
     this.cohorts.loadState((save as { cohorts?: CohortsSave }).cohorts, Math.max(0, save.tick - 1));
     this.staff.loadState(save.staff as StaffSave | undefined);
+    this.cleaning.loadState(save.cleaning as CleaningSave | undefined);
     if (save.convertProps) {
       const n = this.business.convertLegacyProps();
       if (n > 0) this.eventQueue.push(`propsConverted|n=${n}`);
@@ -838,6 +846,7 @@ export class Sim {
       const n = this.business.removeLegacyLanes(save.legacyLanes);
       if (n > 0) this.eventQueue.push(`lanesRemoved|n=${n}`);
     }
+    this.cleaning.refresh();
     // A save from before the tower that relied on a control room has no coverage now (task T40 R3).
     if (this.business.atcCells >= ATC_MIN_CELLS && (this.airfield.data.towers?.length ?? 0) === 0) this.eventQueue.push('atcLost');
     this.ownershipDirty = true;
@@ -869,6 +878,7 @@ export class Sim {
     h = this.gse.hash(h);
     h = this.turns.hash(h);
     h = this.staff.hash(h);
+    h = this.cleaning.hash(h);
     return h;
   }
 

@@ -357,6 +357,34 @@ export function washrooms(g: TerminalGrid, rooms: Int32Array, mask: Uint8Array):
   return out.sort((a, b) => a.cell - b.cell);
 }
 
+/** True when every cell a prop covers is staff zone. */
+function onStaffFloor(g: TerminalGrid, p: Prop): boolean {
+  const c = cellsOfRect(propRect(p)!);
+  for (let y = c.y0; y <= c.y1; y++) {
+    for (let x = c.x0; x <= c.x1; x++) {
+      const i = cellAt(g, x, y);
+      if (i < 0 || g.zone[i] !== ZONE.Staff) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The cleaner bases of a floor (T81): one per janitor room set on staff floor, in prop order, at the logical cell of the
+ * set's centre with its catalog cleanerBase as the cleaners it bases.
+ */
+export function janitorStations(g: TerminalGrid): { x: number; y: number; need: number }[] {
+  const spec = SPECS.get(JANITOR_SET);
+  const out: { x: number; y: number; need: number }[] = [];
+  if (!spec) return out;
+  for (const p of g.props) {
+    if (p.asset !== JANITOR_SET || !onStaffFloor(g, p)) continue;
+    const [x, y] = centerCell(p);
+    out.push({ x, y, need: num(spec, 'cleanerBase') });
+  }
+  return out;
+}
+
 /** Catalog id of the janitor room set, the prop that makes its room a janitor room (T77). */
 export const JANITOR_SET = 'boh.janitorRoom';
 
@@ -372,18 +400,7 @@ export function janitorRooms(g: TerminalGrid, rooms: Int32Array): JanitorRooms {
   const seen = new Set<number>();
   for (const p of g.props) {
     if (p.asset !== JANITOR_SET) continue;
-    const c = cellsOfRect(propRect(p)!);
-    let staff = true;
-    for (let y = c.y0; y <= c.y1 && staff; y++) {
-      for (let x = c.x0; x <= c.x1; x++) {
-        const i = cellAt(g, x, y);
-        if (i < 0 || g.zone[i] !== ZONE.Staff) {
-          staff = false;
-          break;
-        }
-      }
-    }
-    if (!staff) {
+    if (!onStaffFloor(g, p)) {
       out.misplaced++;
       continue;
     }

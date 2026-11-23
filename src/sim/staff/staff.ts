@@ -15,9 +15,11 @@ import type { Baggage, BagNodeRec } from '../ops/baggage/baggage';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
 import { breakJitterMin, staffSeed, staffSkill } from './staffTraits';
+import type { Cleaning } from './cleaning';
+import { janitorStations } from '@shared/props';
 
 /** Life cycle state of a staff slot. Saved values, append only. */
-export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation: 4, OnDuty: 5, Leaving: 6, CommuteHome: 7, ClockOut: 8, Break: 9, Standby: 10 } as const;
+export const STAFF_STATE = { Free: 0, Off: 1, ClockIn: 2, Commute: 3, ToStation: 4, OnDuty: 5, Leaving: 6, CommuteHome: 7, ClockOut: 8, Break: 9, Standby: 10, ToClean: 11, Cleaning: 12, CleanBack: 13 } as const;
 
 /** Bits of the flags array. Saved values, append only. */
 export const STAFF_FLAG = { Tired: 1, BreakDone: 2, OnBreak: 4, Relief: 8 } as const;
@@ -48,6 +50,11 @@ const RELIEF_WAIT_TICKS = Math.ceil(STAFF.breaks.reliefWaitMin * TICKS_PER_MINUT
 /** stGrid of a member placed on the apron crew pool of a depot (T81), whose stX is the depot id. */
 const POOL_GRID = -2;
 const RAMP_ROLE = STAFF_ROLE_KEYS.indexOf('ramp');
+const CLEANER_ROLE = STAFF_ROLE_KEYS.indexOf('cleaner');
+/** stKind of a cleaner base, a janitor room set (T81), which is a prop and has no fixture id. */
+const JANITOR_KIND = 255;
+/** Cells around a janitor room set searched for the cell its cleaners stand on. */
+const JANITOR_REACH = 4;
 /** walkStart value of a member sent home because its station could not be reached. */
 const WALK_UNREACHABLE = -2;
 
@@ -201,6 +208,10 @@ export class Staff {
   private sSeen = new Int32Array(0);
   private readonly route = new Float64Array(ROUTE_OUT);
   private readonly world = new Float64Array(2);
+  /** Terminal dirt per room, handed over by the sim, that cleaners keep low (T81). */
+  cleaning: Cleaning | null = null;
+  /** Rooms with a cleaner on the way or at work, per grid, rebuilt at each dispatch. Scratch. */
+  private claimed: Uint8Array[] = [];
   /** Counts hires and releases, so the payload version moves when the roster changes. Not saved. */
   private churn = 0;
   /** True when a member state, a placement or the station set changed since the last applyPresence. Not saved. */
@@ -259,12 +270,18 @@ export class Staff {
    * Runs in subsystem 3 before the business, so service factors follow the staff state of the same tick (spec decision 18).
    */
   update(tick: number): void {
+    this.cleaning?.refresh();
     const changed = this.rebuildStationsIfStale();
     if (changed || this.capsDirty || tick % (STAFF.passEveryMin * TICKS_PER_MINUTE) === 0) {
       this.capsDirty = false;
       this.staffPass(tick);
     }
-    if (tick % STEP_TICKS === 0) this.stateStep(tick);
+    if (tick % STEP_TICKS === 0) {
+      this.cleaning?.accumulate();
+      this.stateStep(tick);
+      if (this.presenceDirty) this.applyPresence();
+      this.dispatchCleaners(tick);
+    }
     if (this.presenceDirty) this.applyPresence();
     if (this.churn !== this.churnSeen || tick % HOUR_TICKS === 0) {
       this.churnSeen = this.churn;
@@ -322,6 +339,7 @@ export class Staff {
       const sn = b.serviceNodes[gi]!;
       for (let k = 0; k < sn.count; k++) if (sn.staffNeed[k]! > 0) n++;
       n += this.machinesOf(b.grids[gi]!.id).length;
+      n += janitorStations(b.grids[gi]!).length;
     }
     const rampNeed = this.rampDepot >= 0 ? Math.min(65535, STAFF.ramp.crewSize * this.rampStands) : 0;
     if (rampNeed > 0) n++;
@@ -380,6 +398,20 @@ export class Staff {
         this.stationOf.set(`${g.id}|${rec.cell[0]}|${rec.cell[1]}|${MACHINE_KIND}`, s);
         s++;
       }
+      for (const j of janitorStations(g)) {
+        const at = this.standCell(gi, j.x, j.y);
+        const key = `${g.id}|${at % 65536}|${Math.floor(at / 65536)}|${JANITOR_KIND}`;
+        if (at < 0 || this.stationOf.has(key)) continue;
+        this.sGridIdx[s] = gi;
+        this.sGridId[s] = g.id;
+        this.sX[s] = at % 65536;
+        this.sY[s] = Math.floor(at / 65536);
+        this.sKind[s] = JANITOR_KIND;
+        this.sRole[s] = CLEANER_ROLE;
+        this.sNeed[s] = j.need;
+        this.stationOf.set(key, s);
+        s++;
+      }
       const curb = b.curbNode(gi);
       this.curbNode[gi] = curb;
       if (curb >= 0) {
@@ -407,10 +439,37 @@ export class Staff {
       this.sWY[s] = this.rampY;
       this.stationOf.set(`${POOL_GRID}|${this.sX[s]}|0|0`, s);
       this.rampStation = s;
+      s++;
     }
+    this.stCount = s;
     for (let m = 0; m < this.hi; m++) {
       this.stIdx[m] = this.state[m] === STAFF_STATE.Free ? -1 : (this.stationOf.get(`${this.stGrid[m]}|${this.stX[m]}|${this.stY[m]}|${this.stKind[m]}`) ?? -1);
     }
+  }
+
+  /**
+   * Logical cell a cleaner of a janitor room set stands on (T81): the walkable cell of the set's room nearest its centre
+   * cell (x, y), within a few cells, packed as x + 65536 y, or -1 when there is none. The set itself blocks walking.
+   */
+  private standCell(gi: number, x: number, y: number): number {
+    const g = this.business.grids[gi];
+    const wg = this.business.walkGraphs[gi];
+    const room = this.cleaning ? this.cleaning.roomAt(gi, x, y) : -1;
+    if (!g || !wg || room < 0) return -1;
+    let best = -1;
+    let bestD = Infinity;
+    for (let dy = -JANITOR_REACH; dy <= JANITOR_REACH; dy++) {
+      for (let dx = -JANITOR_REACH; dx <= JANITOR_REACH; dx++) {
+        const c = cellIndex(g, x + dx, y + dy);
+        if (c < 0 || wg.cellNode[c]! < 0 || this.cleaning!.roomAt(gi, x + dx, y + dy) !== room) continue;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = x + dx + 65536 * (y + dy);
+        }
+      }
+    }
+    return best;
   }
 
   /** Sets seatStation and seatInStation for seat `q` of the stations of a role, counted in station order. */
@@ -785,6 +844,40 @@ export class Staff {
           this.plan(m, tick, unreachable);
           break;
         }
+        case STAFF_STATE.ToClean: {
+          const r = this.cleaning ? this.cleaning.roomAt(gi, this.walkToX[m]!, this.walkToY[m]!) : -1;
+          this.walkStart[m] = -1;
+          this.state[m] = STAFF_STATE.Cleaning;
+          this.wake[m] = tick + Math.ceil((r >= 0 && this.cleaning ? this.cleaning.cleanMinutes(gi, r) : 0) * TICKS_PER_MINUTE);
+          break;
+        }
+        case STAFF_STATE.Cleaning: {
+          if (this.cleaning) this.cleaning.clean(gi, this.cleaning.roomAt(gi, this.walkToX[m]!, this.walkToY[m]!));
+          const s = this.stIdx[m]!;
+          const wg = this.business.walkGraphs[gi];
+          const g = this.business.grids[gi];
+          const back = s >= 0 && wg && g ? this.walkTicks(gi, nearestNode(wg, cellIndex(g, this.walkToX[m]!, this.walkToY[m]!)), this.nodeOfStation(s)) : Infinity;
+          this.state[m] = STAFF_STATE.CleanBack;
+          this.walkFromX[m] = this.walkToX[m]!;
+          this.walkFromY[m] = this.walkToY[m]!;
+          this.walkToX[m] = s >= 0 ? this.sX[s]! : this.walkToX[m]!;
+          this.walkToY[m] = s >= 0 ? this.sY[s]! : this.walkToY[m]!;
+          this.walkStart[m] = tick;
+          this.wake[m] = tick + (back === Infinity ? 0 : back);
+          break;
+        }
+        case STAFF_STATE.CleanBack:
+          this.walkStart[m] = -1;
+          if (this.stIdx[m]! < 0) {
+            this.sendHome(m, tick);
+          } else if (tick >= this.dutyEnd(tick, sh)) {
+            this.state[m] = STAFF_STATE.OnDuty;
+            this.startLeaving(m, tick);
+          } else {
+            this.state[m] = STAFF_STATE.OnDuty;
+            this.wake[m] = tick;
+          }
+          break;
         case STAFF_STATE.Standby:
           if (tick >= this.dutyEnd(tick, sh)) {
             this.state[m] = STAFF_STATE.ClockOut;
@@ -856,7 +949,7 @@ export class Staff {
     this.sSkill.fill(0);
     for (let m = 0; m < this.hi; m++) {
       const s = this.stIdx[m]!;
-      if (this.state[m] !== STAFF_STATE.OnDuty || s < 0) continue;
+      if (s < 0 || (this.state[m] !== STAFF_STATE.OnDuty && !this.onJob(m))) continue;
       this.sPresent[s]++;
       this.sSkill[s] += staffSkill(this.seed[m]!) * ((this.flags[m]! & STAFF_FLAG.Tired) !== 0 ? STAFF.breaks.tiredSkill : 1);
     }
@@ -867,6 +960,84 @@ export class Staff {
       table.staffPresent[node] = this.sPresent[s]!;
       table.staffFactor[node] = this.sPresent[s]! > 0 ? this.sSkill[s]! / this.sNeed[s]! : this.sUnstaffed[s]!;
     }
+  }
+
+  /** True while a cleaner walks to a room, cleans it or walks back to its janitor room: still on duty at its base. */
+  private onJob(m: number): boolean {
+    const st = this.state[m];
+    return st === STAFF_STATE.ToClean || st === STAFF_STATE.Cleaning || st === STAFF_STATE.CleanBack;
+  }
+
+  /** Walk node of a station in its grid, -1 when it has none. */
+  private nodeOfStation(s: number): number {
+    const g = this.business.grids[this.sGridIdx[s]!];
+    const wg = this.business.walkGraphs[this.sGridIdx[s]!];
+    return g && wg ? nearestNode(wg, cellIndex(g, this.sX[s]!, this.sY[s]!)) : -1;
+  }
+
+  /**
+   * Once a game minute after the state step (T81): every passenger room dirty enough with no cleaner on it gets the
+   * free cleaner of the janitor room nearest by staff walking time on its floor, so a farther base answers later.
+   */
+  private dispatchCleaners(tick: number): void {
+    const cl = this.cleaning;
+    if (!cl) return;
+    const b = this.business;
+    if (this.claimed.length !== cl.rooms.length) this.claimed = cl.rooms.map((r) => new Uint8Array(r.count));
+    for (let gi = 0; gi < cl.rooms.length; gi++) {
+      if (this.claimed[gi]!.length !== cl.rooms[gi]!.count) this.claimed[gi] = new Uint8Array(cl.rooms[gi]!.count);
+      else this.claimed[gi]!.fill(0);
+    }
+    let bases = 0;
+    for (let s = 0; s < this.stCount; s++) if (this.sRole[s] === CLEANER_ROLE && this.sPresent[s]! > 0) bases++;
+    if (bases === 0) return;
+    for (let m = 0; m < this.hi; m++) {
+      if (this.state[m] !== STAFF_STATE.ToClean && this.state[m] !== STAFF_STATE.Cleaning) continue;
+      const gi = this.gridOf(m);
+      const r = cl.roomAt(gi, this.walkToX[m]!, this.walkToY[m]!);
+      if (r >= 0 && this.claimed[gi]) this.claimed[gi]![r] = 1;
+    }
+    for (let gi = 0; gi < cl.rooms.length; gi++) {
+      const rooms = cl.rooms[gi]!;
+      const g = b.grids[gi];
+      const wg = b.walkGraphs[gi];
+      if (!g || !wg) continue;
+      for (let r = 0; r < rooms.count; r++) {
+        if (this.claimed[gi]![r] === 1 || !cl.needsCleaner(gi, r)) continue;
+        const to = nearestNode(wg, rooms.target[r]!);
+        let best = -1;
+        let bestT = Infinity;
+        for (let s = 0; s < this.stCount; s++) {
+          if (this.sRole[s] !== CLEANER_ROLE || this.sGridIdx[s] !== gi) continue;
+          const t = this.walkTicks(gi, this.nodeOfStation(s), to);
+          if (t < bestT && this.freeCleaner(s) >= 0) {
+            bestT = t;
+            best = s;
+          }
+        }
+        if (best < 0) continue;
+        const m = this.freeCleaner(best);
+        const tx = g.x0 + (rooms.target[r]! % g.w);
+        const ty = g.y0 + Math.floor(rooms.target[r]! / g.w);
+        this.state[m] = STAFF_STATE.ToClean;
+        this.walkFromX[m] = this.sX[best]!;
+        this.walkFromY[m] = this.sY[best]!;
+        this.walkToX[m] = tx;
+        this.walkToY[m] = ty;
+        this.walkStart[m] = tick;
+        this.wake[m] = tick + bestT;
+        this.claimed[gi]![r] = 1;
+        this.presenceDirty = true;
+      }
+    }
+  }
+
+  /** Lowest slot cleaner standing on duty at a janitor room, not waiting for a break relief, or -1. */
+  private freeCleaner(s: number): number {
+    for (let m = 0; m < this.hi; m++) {
+      if (this.stIdx[m] === s && this.state[m] === STAFF_STATE.OnDuty && (this.flags[m]! & STAFF_FLAG.OnBreak) === 0) return m;
+    }
+    return -1;
   }
 
   /** Allocates a slot for a new member in state Off, or returns -1 at capacity. */
@@ -1022,7 +1193,23 @@ export class Staff {
         n++;
         continue;
       }
-      if ((state !== STAFF_STATE.ToStation && state !== STAFF_STATE.Leaving) || this.walkStart[m]! < 0) continue;
+      if (state === STAFF_STATE.Cleaning) {
+        // A cleaner at work stands on the target cell of its room (T81).
+        const grid = grids[this.gridOf(m)];
+        if (!grid) continue;
+        const axA = grid.headingDeg * DEG;
+        const ux = sinLut(axA);
+        const uy = -cosLut(axA);
+        const lx = this.walkToX[m]! + 0.5;
+        const ly = this.walkToY[m]! + 0.5;
+        this.world[0] = grid.ox + (ux * lx + -uy * ly) * TERMINAL_CELL_M;
+        this.world[1] = grid.oy + (uy * lx + ux * ly) * TERMINAL_CELL_M;
+        this.putSample(views, n, m, axA, 0, 1, PEOPLE_MODE.Dwelling);
+        n++;
+        continue;
+      }
+      const walking = state === STAFF_STATE.ToStation || state === STAFF_STATE.Leaving || state === STAFF_STATE.ToClean || state === STAFF_STATE.CleanBack;
+      if (!walking || this.walkStart[m]! < 0) continue;
       const gi = this.gridOf(m);
       const grid = grids[gi];
       const wg = this.business.walkGraphs[gi];

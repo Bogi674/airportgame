@@ -252,6 +252,8 @@ export class Business {
   staffWages: (() => number) | null = null;
   /** Staffing table of the payload, set by the sim (T68). */
   staffRows: (() => StaffRow[]) | null = null;
+  /** Area weighted cleanliness of the passenger rooms of the terminals, 0 to 1 (T81). */
+  terminalClean: (() => number) | null = null;
   /** Last closed day of passengers, see BusinessPayload.paxDay. Set by the sim (T67). */
   paxDay: (() => number[]) | null = null;
   /** Last closed day of the arrival journey, see BusinessPayload.arrDay. Set by the sim (T20). */
@@ -1202,7 +1204,9 @@ export class Business {
     const queues = hasTerminal ? this.satisfaction : 0;
     // Missing bags weigh missingBagWeight each against the bags checked today. With none checked the term is a full score.
     const bagScore = Math.max(0, 1 - BAGGAGE.missingBagWeight * (this.bagMissingShare ? this.bagMissingShare() : 0));
-    this.paxScore = (toilets + shops + queues + this.onTime + this.cleanScore + bagScore + amenities) / 7;
+    // Passengers judge cleanliness by the cabins and by the terminal rooms the cleaners keep (T81).
+    const clean = hasTerminal && this.terminalClean ? (this.cleanScore + this.terminalClean()) / 2 : this.cleanScore;
+    this.paxScore = (toilets + shops + queues + this.onTime + clean + bagScore + amenities) / 7;
     const infra = Math.min(1, this.airfield.data.runways.length * 0.5 + (this.airfield.data.stands.length > 3 ? 0.3 : 0.1));
     this.airlineScore = (this.handlingScore + infra + this.onTime + this.cleanScore) / 4;
     const target = 100 * (this.paxScore + this.airlineScore) / 2;
