@@ -20,11 +20,11 @@ export function hasRotation(fixtureId: number, level: number): boolean {
   return along * across > 1 || TRANSITION_KEYS.includes(key);
 }
 
-/** The level and mode a fixture edit carries. The security exit and the leveled fixtures have levels and only mode fixtures have a mode; others carry 1 and 0. */
+/** The level and mode a fixture edit carries. The security exit, the travelator (its length) and the leveled fixtures have levels and only mode fixtures have a mode; others carry 1 and 0. */
 export function fixtureOptions(fixtureId: number, level: number, mode: number): { level: number; mode: number } {
   const key = fixtureKey(fixtureId);
   return {
-    level: key === 'securityExit' || isLeveled(key) ? level : 1,
+    level: key === 'securityExit' || key === 'travelator' || isLeveled(key) ? level : 1,
     mode: MODE_FIXTURES.includes(key) ? mode : 0,
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { propSpec } from '@shared/props';
+import { FIXTURE_CATALOG } from '@data/index';
 import { ensurePacks, type KitCategory } from '../render/sprites/fixtureKit';
 import { bakeFixture } from '../render/sprites/fixtureSprite';
 
@@ -10,11 +10,11 @@ const H = 60;
 const INSET = 4;
 const BG = '#d3dadd';
 
-/** The kit sprite of a prop asset at full detail, fitted into the card thumbnail without changing its proportions. */
+/** The kit sprite of a prop or fixture asset at full detail, fitted into the card thumbnail without changing its proportions. */
 export function PropThumb({ asset }: { asset: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const spec = propSpec(asset);
+    const spec = FIXTURE_CATALOG.assets.find((a) => a.id === asset);
     const canvas = ref.current;
     if (!spec || !canvas) return;
     let live = true;

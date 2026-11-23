@@ -1,0 +1,152 @@
+{
+ "buy": [
+  [
+   3900,
+   4900,
+   4200,
+   5200
+  ]
+ ],
+ "commands": [
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 0,
+    "y0": 0,
+    "x1": 20,
+    "y1": 12,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 0,
+    "y0": 0,
+    "x1": 20,
+    "y1": 12,
+    "variant": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 1,
+    "y0": 1,
+    "x1": 2,
+    "y1": 2,
+    "variant": 23,
+    "rot": 0,
+    "level": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 1,
+    "y0": 4,
+    "x1": 2,
+    "y1": 5,
+    "variant": 23,
+    "rot": 0,
+    "level": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 1,
+    "y0": 8,
+    "x1": 2,
+    "y1": 9,
+    "variant": 23,
+    "rot": 0,
+    "level": 3
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 17,
+    "y0": 1,
+    "x1": 18,
+    "y1": 2,
+    "variant": 23,
+    "rot": 1,
+    "level": 1
+   }
+  }
+ ],
+ "viewport": {
+  "w": 1600,
+  "h": 1000
+ },
+ "camera": {
+  "x": 4020,
+  "y": 5012,
+  "zoom": 28
+ },
+ "hideUi": true,
+ "actions": [
+  {
+   "wait": 1500
+  },
+  {
+   "shot": "travelator-tier3",
+   "clip": {
+    "w": 1300,
+    "h": 800
+   }
+  },
+  {
+   "camera": {
+    "x": 4020,
+    "y": 5012,
+    "zoom": 14
+   }
+  },
+  {
+   "wait": 800
+  },
+  {
+   "shot": "travelator-tier2",
+   "clip": {
+    "w": 900,
+    "h": 600
+   }
+  }
+ ],
+ "report": [
+  "cash"
+ ]
+}

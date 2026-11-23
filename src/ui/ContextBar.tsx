@@ -7,6 +7,7 @@ import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS } from '@shared/business';
 import { isLeveled, levelCost, type LeveledKey } from '@shared/fixtureLevels';
 import { propCost, propSpec } from '@shared/props';
 import { RETIRED_KEYS } from '@shared/terminalOps';
+import { travelatorCost, travelatorLengthM } from '@shared/travelator';
 import { surfaceAllowsCode } from '@shared/surfaceRules';
 import { useGameStore } from './stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type SnapMode, type TerminalSub, type Tool } from './stores/toolStore';
@@ -253,6 +254,15 @@ export function ContextBar({ send }: Props) {
             )}
             {s.tSub === 'fixture' && FIXTURE_KEYS[s.fixtureId - 1] === 'securityExit' && (
               <Select label={t('opt.exitLevel')} value={s.fixtureLevel} testId="opt-exitLevel" options={[1, 2, 3].map((l) => ({ v: l, text: tDynamic(`opt.exitLevel.${l}`) }))} onChange={(v) => s.set({ fixtureLevel: v as 1 | 2 | 3 })} />
+            )}
+            {s.tSub === 'fixture' && FIXTURE_KEYS[s.fixtureId - 1] === 'travelator' && (
+              <Select
+                label={t('opt.travelatorLength')}
+                value={s.fixtureLevel}
+                testId="opt-travelatorLength"
+                options={[1, 2, 3].map((l) => ({ v: l, text: tFormat('opt.travelatorLengthCost', { m: travelatorLengthM(l), cost: formatMoney(travelatorCost(l)) }) }))}
+                onChange={(v) => s.set({ fixtureLevel: v as 1 | 2 | 3 })}
+              />
             )}
             {s.tSub === 'fixture' && isLeveled(FIXTURE_KEYS[s.fixtureId - 1]!) && (
               <Select

@@ -19,6 +19,7 @@ import { COHORT_DRAW, TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, traitU,
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 import { flowStep } from '@shared/terminalZones';
+import { TRAVELATOR } from '@shared/travelator';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
@@ -663,14 +664,20 @@ export class Cohorts {
     this.world[1] = grid.oy + (this.axUy * lx + this.axVy * ly) * TERMINAL_CELL_M;
   }
 
-  /** True when a walker may stand at this.world on array cell `cell`: floor, free, in its zone, in its room and clear of other groups. */
-  private clear(views: SnapshotViews, grid: TerminalGrid, wg: WalkGraph, cell: number, rule: number, room: number): boolean {
-    if (cell < 0 || wg.cellMain[cell]! < 0 || grid.fixture[cell] !== 0 || this.occupied[cell] !== 0) return false;
-    const zone = grid.zone[cell];
-    if (rule === 1 ? zone === ZONE.Public : rule === 2 && zone === ZONE.Secure) return false;
-    if (room >= 0) {
-      const node = nearestNode(wg, cell);
-      if (node < 0 || wg.nodeRoom[node] !== room) return false;
+  /**
+   * True when a walker may stand at this.world on array cell `cell`: floor, free, in its zone, in its room and clear of
+   * other groups. With ride set, a free travelator cell also counts, so riders show on the belt (T77).
+   */
+  private clear(views: SnapshotViews, grid: TerminalGrid, wg: WalkGraph, cell: number, rule: number, room: number, ride = false): boolean {
+    if (cell < 0 || this.occupied[cell] !== 0) return false;
+    if (!ride || grid.fixture[cell] !== TRAVELATOR) {
+      if (wg.cellMain[cell]! < 0 || grid.fixture[cell] !== 0) return false;
+      const zone = grid.zone[cell];
+      if (rule === 1 ? zone === ZONE.Public : rule === 2 && zone === ZONE.Secure) return false;
+      if (room >= 0) {
+        const node = nearestNode(wg, cell);
+        if (node < 0 || wg.nodeRoom[node] !== room) return false;
+      }
     }
     const cx = cell % grid.w;
     const cy = (cell - cx) / grid.w;
@@ -783,7 +790,7 @@ export class Cohorts {
           const qy = py + sx * off;
           this.toWorld(grid, qx, qy);
           const cellIdx = cellAt(wg, Math.floor(qx), Math.floor(qy));
-          if (!this.clear(views, grid, wg, cellIdx, rule, room)) continue;
+          if (!this.clear(views, grid, wg, cellIdx, rule, room, true)) continue;
           this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, cellIdx);
           n++;
           break;

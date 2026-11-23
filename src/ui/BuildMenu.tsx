@@ -1,6 +1,7 @@
 import { BAGGAGE, BUSINESS, GROUND, GSE } from '@data/index';
 import { BUILDING_KINDS } from '@shared/airfield';
 import { FIXTURE_KEYS } from '@shared/business';
+import { TRAVELATOR_ASSETS, travelatorCost } from '@shared/travelator';
 import type { BagKind } from '@shared/baggageNodes';
 import { bagCost } from './tools/baggageTool';
 import type { Command } from '@sim/commands';
@@ -252,6 +253,7 @@ export const CATEGORIES: Category[] = [
       { id: 'facilities', items: [fx('belt', 'belt')] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'shops', items: [fx('convenience', 'shop'), fx('quickFood', 'shop'), fx('cafe', 'shop'), fx('dutyFree', 'shop'), fx('booksGifts', 'shop'), fx('pharmacy', 'shop')] },
+      { id: 'circulation', items: [{ ...fx('travelator', 'belt'), price: travelatorCost(1), asset: TRAVELATOR_ASSETS[0] }] },
       {
         id: 'transitions',
         items: [

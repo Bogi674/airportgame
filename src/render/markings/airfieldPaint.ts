@@ -17,6 +17,7 @@ import { paintStands } from './standPaint';
 import { paintTowers } from './towerPaint';
 import { paintBuildings, paintDepots, paintRoadCrossings, paintRoadLines, paintRoadSurface } from './roadPaint';
 import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
+import { TRAVELATOR_ASSETS } from '@shared/travelator';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
@@ -43,18 +44,20 @@ export const FIXTURE_LEVEL_ASSET: Partial<Record<FixtureKey, readonly string[]>>
   passport: ['passport.l1', 'passport.l2', 'passport.l3'],
   gateDesk: ['gateDesk.l1', 'gateDesk.l2', 'gateDesk.l3'],
   securityExit: ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'],
+  travelator: TRAVELATOR_ASSETS,
 };
 /**
  * Extra turn in degrees of a kit sprite whose people flow along its x axis. The security lane art flows left to right
  * along its 16 m length, while a game footprint flows against its across axis, so the art turns a further 270 degrees.
+ * The travelator art runs its belts down its y axis, while its game footprint runs along, so it turns 270 degrees too.
  */
-export const KIT_FLOW_TURN: Partial<Record<FixtureKey, Rot>> = { security: 270 };
+export const KIT_FLOW_TURN: Partial<Record<FixtureKey, Rot>> = { security: 270, travelator: 270 };
 /** Cells a fixture body can reach past its anchor, the longest footprint side minus one. */
 const FOOTPRINT_REACH = Math.max(...Object.values(FIXTURE_FOOTPRINT).flatMap((levels) => levels.flatMap(([a, b]: readonly [number, number]) => [a - 1, b - 1])));
 /** Kit asset of a staff door, drawn on its wall edge. */
 export const STAFF_DOOR_ASSET = 'staffDoor';
 /** Kit packs the terminal painter needs before its chunks bake. */
-export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'baggage', 'zoning', ...PROP_CATEGORIES];
+export const TERMINAL_KIT_PACKS: readonly KitCategory[] = ['processing', 'baggage', 'zoning', 'circulation', ...PROP_CATEGORIES];
 /** Rotation in degrees of a two cell fixture by its footprint code 1 to 4, see fixtureRot in TerminalGrid. */
 const KIT_ROT: readonly Rot[] = [0, 90, 180, 270];
 /** Kit assets of the baggage nodes that do not depend on a bay width. */
