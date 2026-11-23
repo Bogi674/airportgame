@@ -453,3 +453,14 @@ Implementer choices, stated for the owner: a converted seating cell holds two be
 | Prices | Travelator pair 60 000 (8 m), 110 000 (16 m), 160 000 (24 m), with no upkeep cost |
 
 Implementer choices, stated for the owner: a travelator is one fixture key with the length as its level, picked in the context bar like the security exit type, never upgraded. Its cells are unwalkable from the side (balustrades); people step on at one end and off at the other. Its walk graph edges carry the time of the ride as meters at a reference walking speed of 1.3 m/s, so a 24 m belt counts as 24 x 1.3 / (1.3 + 0.65) = 16 m. A janitor room is valid when every cell under the janitor room set is staff zone; otherwise the terminal shows a readiness issue.
+
+## 2026-11-23 T81: staff follow up
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Scope | Core three: staffed security exits, cleaners from janitor rooms with terminal cleanliness, apron crews on turnarounds. Staff screening, morale, fatigue, sick leave, training and the wage index move to a new row T83 |
+| Cleaners | Dirt per room: each terminal room gathers dirt from the passengers in it, cleaners hired automatically per janitor room walk from the nearest one, so response grows with distance, and terminal cleanliness joins the passenger rating. No janitor room means no cleaning |
+| Security exit staff | One security officer per exit at every level, hired automatically; an unstaffed exit still serves at half its rate |
+| Apron crews | A new role based at the ground handling depot, three shifts, hired automatically within the cap. Each airline turnaround claims a crew of 2 at chocks and frees it at door close; with no free crew chocks waits and the flights board shows a ramp crew delay owned by the airport. Crew figures stand at the aircraft. GA unchanged |
+| Cabin cleaning | Stays as today, with the cleaning depot. Cleaners keep only terminal rooms clean |
+| Values | Proposed by the orchestrator in data files, listed below, save version bump with a migration |

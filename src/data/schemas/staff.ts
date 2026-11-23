@@ -29,6 +29,7 @@ const station = z.strictObject({
   role,
   need: z.number().int().min(1).max(8),
   needByLevel: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8), z.number().int().min(1).max(8)]).optional(),
+  unstaffedFactor: share.optional(),
 });
 
 /** One optional station entry per fixture key, so an unknown key fails. */

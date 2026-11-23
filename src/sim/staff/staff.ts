@@ -150,6 +150,8 @@ export class Staff {
   sRole = new Uint8Array(0);
   /** Officers each station needs. */
   sNeed = new Uint8Array(0);
+  /** Share of its rate each station serves with nobody on it (T81), 0 when it stops. */
+  sUnstaffed = new Float32Array(0);
   /** Officers on duty at each station. */
   sPresent = new Uint8Array(0);
   /** Summed skill of the officers on duty at each station. */
@@ -315,6 +317,7 @@ export class Staff {
     this.sMachine = new Int32Array(n).fill(-1);
     this.sRole = new Uint8Array(n);
     this.sNeed = new Uint8Array(n);
+    this.sUnstaffed = new Float32Array(n);
     this.sPresent = new Uint8Array(n);
     this.sSkill = new Float64Array(n);
     this.sSeen = new Int32Array(n);
@@ -340,6 +343,7 @@ export class Staff {
         this.sNode[s] = k;
         this.sRole[s] = STAFF_ROLE_KEYS.indexOf(entry.role);
         this.sNeed[s] = sn.staffNeed[k]!;
+        this.sUnstaffed[s] = entry.unstaffedFactor ?? 0;
         this.stationOf.set(`${g.id}|${sn.lx[k]}|${sn.ly[k]}|${sn.kind[k]}`, s);
         s++;
       }
@@ -790,7 +794,7 @@ export class Staff {
       if (node < 0) continue;
       const table = this.business.serviceNodes[this.sGridIdx[s]!]!;
       table.staffPresent[node] = this.sPresent[s]!;
-      table.staffFactor[node] = this.sPresent[s]! > 0 ? this.sSkill[s]! / this.sNeed[s]! : 0;
+      table.staffFactor[node] = this.sPresent[s]! > 0 ? this.sSkill[s]! / this.sNeed[s]! : this.sUnstaffed[s]!;
     }
   }
 

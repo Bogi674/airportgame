@@ -150,3 +150,22 @@ describe('security exit queue (T80)', () => {
     expect(co.arrExited + co.arrStranded).toBe(co.arrGenerated);
   }, 60000);
 });
+
+describe('staffed security exit (T81)', () => {
+  it('needs one security officer and serves at half rate with nobody on it', () => {
+    const sim = arrivalHall();
+    sim.step();
+    const nodes = sim.business.serviceNodes[0]!;
+    const n = Array.from(nodes.kind).indexOf(SEC_EXIT);
+    expect(n).toBeGreaterThanOrEqual(0);
+    expect(nodes.staffNeed[n]).toBe(1);
+    expect(nodes.staffPresent[n]).toBe(1);
+    expect(nodes.staffFactor[n]).toBeGreaterThan(0.8);
+    run(sim, { type: 'setStaffCap', role: 1, cap: 0 });
+    for (let t = 0; t < 600 * 10 && nodes.staffPresent[n]! > 0; t++) sim.step();
+    const now = sim.business.serviceNodes[0]!;
+    const k = Array.from(now.kind).indexOf(SEC_EXIT);
+    expect(now.staffPresent[k]).toBe(0);
+    expect(now.staffFactor[k]).toBeCloseTo(0.5, 5);
+  }, 60000);
+});

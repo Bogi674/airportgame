@@ -227,7 +227,8 @@ describe('automatic staffing', () => {
     const sim = terminalSim();
     const st = sim.staff;
     expect(st.hired(0)).toBe(12);
-    expect(st.hired(1)).toBe(9);
+    // Two lane officers and one security exit officer (T81) on three shifts, plus a relief per shift.
+    expect(st.hired(1)).toBe(12);
     expect(st.hired(2)).toBe(0);
     let agents = 0;
     for (let m = 0; m < st.hi; m++) if (st.role[m] === 0 && st.state[m] === STAFF_STATE.OnDuty) agents++;
@@ -247,10 +248,17 @@ describe('automatic staffing', () => {
     const sim = terminalSim();
     const st = sim.staff;
     expect(run(sim, { type: 'setStaffCap', role: 1, cap: 2 })).toEqual([]);
-    expect(st.hired(1)).toBe(2);
-    for (let m = 0; m < st.hi; m++) if (st.role[m] === 1 && st.state[m] !== STAFF_STATE.Free) expect(st.state[m]).toBe(STAFF_STATE.OnDuty);
+    // The two seats go to the lane; the exit officer already on site is unplaced and works to the end of its shift.
+    expect(st.hired(1)).toBe(3);
+    let placed = 0;
+    for (let m = 0; m < st.hi; m++) {
+      if (st.role[m] !== 1 || st.state[m] === STAFF_STATE.Free) continue;
+      expect(st.state[m]).toBe(STAFF_STATE.OnDuty);
+      if (st.stIdx[m]! >= 0) placed++;
+    }
+    expect(placed).toBe(2);
     expect(run(sim, { type: 'setStaffCap', role: 1, cap: -1 })).toEqual([]);
-    expect(st.hired(1)).toBe(9);
+    expect(st.hired(1)).toBe(12);
   });
 
   it('reports a bad cap', () => {
@@ -264,7 +272,7 @@ describe('automatic staffing', () => {
     const st = sim.staff;
     const g = sim.business.grids[0]!;
     expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'erase', x0: 42, y0: 42, x1: 43, y1: 43, variant: 0 } })).toEqual([]);
-    expect(st.stCount).toBe(3);
+    expect(st.stCount).toBe(4);
     let unplaced = 0;
     for (let m = 0; m < st.hi; m++) if (st.role[m] === 0 && st.state[m] === STAFF_STATE.OnDuty && st.stGrid[m] === -1 && (st.flags[m]! & STAFF_FLAG.Relief) === 0) unplaced++;
     expect(unplaced).toBe(1);
@@ -361,7 +369,7 @@ describe('staff wages and payload', () => {
     const sim = terminalSim();
     const st = sim.staff;
     const hired = st.hired(0) + st.hired(1) + st.hired(2);
-    expect(hired).toBe(21);
+    expect(hired).toBe(24);
     const remainder = sim.business.staffCount() - sim.business.stationPositions();
     while (sim.tick < 18 * 60 * 50 + 50) sim.step();
     const p = sim.business.payload(sim.tick);
@@ -374,11 +382,11 @@ describe('staff wages and payload', () => {
     const p = sim.business.payload(sim.tick);
     expect(p.staffing).toHaveLength(3);
     expect(p.staffing[0]!.hired).toBe(12);
-    expect(p.staffing[1]!.hired).toBe(9);
+    expect(p.staffing[1]!.hired).toBe(12);
     expect(p.staffing[0]!.onDuty).toBe(3);
     expect(p.staffing[0]!.needed).toBe(3);
     expect(p.staffing[0]!.wagePerDay).toBe(130);
-    expect(p.staff).toBe(Math.round(sim.business.staffCount() - sim.business.stationPositions()) + 21);
+    expect(p.staff).toBe(Math.round(sim.business.staffCount() - sim.business.stationPositions()) + 24);
   });
 });
 
@@ -391,7 +399,7 @@ describe('staffing coverage overlay data', () => {
   it('lists every station with its need and the present count of its service node', () => {
     const sim = terminalSim();
     const o = sim.overlayData(0, blank());
-    expect(Array.from(o.stationNeed).sort()).toEqual([1, 1, 1, 2]);
+    expect(Array.from(o.stationNeed).sort()).toEqual([1, 1, 1, 1, 2]);
     const sn = sim.business.serviceNodes[0]!;
     for (let i = 0; i < o.stationCell.length; i++) {
       const node = Array.from(sn.cell).indexOf(o.stationCell[i]!);

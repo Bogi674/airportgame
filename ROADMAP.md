@@ -129,7 +129,8 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 | T79 | International departures through passport control in departure mode: departing international passengers queue at a passport booth or eGate set to departure mode after security, and international flights need the full international flow (owner, 2026-11-22) |  | T20 | done fb7d688 |
 | T80 | Security exit throughput as a queue: security exits become service nodes with a rate, so arrivals and exiting passengers wait at a busy exit |  | T20 | done 6553d28 |
 | T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | done (4915887, caa76a0, 0e440f2, c4ff0cc, 3561b13, f07ecbe, 3da6df3, 4a5bb20, 5a93613, 02f16e1, 6c47c6b, d4cd9f4, 9a13ebf, e57015f, cd1cd44, d0d4df8, fcbef61) |
-| T81 | Staff follow up: apron crews on turnarounds, cleaners based in janitor rooms (cleaning response grows with distance to the nearest one, T77), staffed security exits, staff screening queues on staff routes, morale, fatigue beyond the break, sick leave, training and the yearly wage index (decision 21 of T68) |  | T68 | todo |
+| T81 | Staff follow up, core three (owner, 2026-11-23): apron crews on turnarounds, cleaners based in janitor rooms with dirt per room (cleaning response grows with distance to the nearest one, T77), staffed security exits |  | T68 | doing |
+| T83 | Staff follow up, the rest of T81 (owner, 2026-11-23): staff screening queues on staff routes, morale, fatigue beyond the break, sick leave, training and the yearly wage index (decision 21 of T68) |  | T81 | todo |
 
 Exit: a passenger who gets hungry leaves the group, visits a shop and rejoins at the gate, arriving passengers collect bags and leave, staff change shifts at the staff center, and the rating reacts to all of it.
 
