@@ -22,6 +22,8 @@ import { windBand, type SitePayload } from '@shared/site';
 import { TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { footprintSteps, planProp, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
+import { unitProblem } from '@shared/tenants';
+import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
 import { cellAtWorld, cellIndex, fixtureAnchor, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
@@ -2093,6 +2095,42 @@ export class ToolController {
     return fixtureEdit(x0, y0, x1, y1, st.fixtureId, st.fixtureRot, st.fixtureLevel, st.fixtureMode);
   }
 
+  /** The unit rectangle of a drag in logical cells, corners in any order. */
+  private unitRect(a: { cx: number; cy: number }, b: { cx: number; cy: number }): { x: number; y: number; w: number; h: number } {
+    const x = Math.floor(Math.min(a.cx, b.cx));
+    const y = Math.floor(Math.min(a.cy, b.cy));
+    return { x, y, w: Math.floor(Math.max(a.cx, b.cx)) + 1 - x, h: Math.floor(Math.max(a.cy, b.cy)) + 1 - y };
+  }
+
+  /** The reason a unit cannot be zoned over the rectangle, from the same check the sim runs, or null. */
+  private unitCheck(g: TerminalGrid, r: { x: number; y: number; w: number; h: number }): Problem | null {
+    const st = useToolStore.getState();
+    const units = useGameStore.getState().business?.tenants.units ?? [];
+    const code = unitProblem(g, r.x, r.y, r.w, r.h, st.unitCategory, units);
+    if (!code) return null;
+    const [c, ...args] = code.split('|');
+    return { code: c!, args: Object.fromEntries(args.map((kv) => kv.split('=') as [string, string])) };
+  }
+
+  /** Ghost of the unit tool (T32): the rectangle, its category and area, red with the reason when it cannot be zoned. */
+  private previewUnit(g: TerminalGrid, a: { cx: number; cy: number }, b: { cx: number; cy: number }, p: Pt): void {
+    const st = useToolStore.getState();
+    const r = this.unitRect(a, b);
+    const problem = this.dragging ? this.unitCheck(g, r) : null;
+    const label = tFormat('ghost.unit', { category: tDynamic(`menu.terminal.shops.${TENANT_CATEGORY_KEYS[st.unitCategory]}`), m2: r.w * r.h * TERMINAL_CELL_M * TERMINAL_CELL_M });
+    this.show({ valid: this.dragging && problem === null, shapes: [{ k: 'poly', pts: rectWorld(g, r.x, r.y, r.x + r.w, r.y + r.h) }], label: { x: p.x, y: p.y, text: label } }, problem, 'hint.terminal.unit');
+  }
+
+  private commitUnit(g: TerminalGrid, a: { cx: number; cy: number }, b: { cx: number; cy: number }): void {
+    const r = this.unitRect(a, b);
+    if (this.unitCheck(g, r)) {
+      this.frozen = true;
+      return;
+    }
+    this.deps.send({ type: 'zoneUnit', building: g.id, x: r.x, y: r.y, w: r.w, h: r.h, category: useToolStore.getState().unitCategory });
+    this.deps.setGhost(null);
+  }
+
   /** The grid edge closest to a fractional cell position. */
   private nearestEdge(c: { cx: number; cy: number }): { x0: number; y0: number; x1: number; y1: number } {
     const ry = Math.round(c.cy);
@@ -2274,6 +2312,10 @@ export class ToolController {
     const hint = `hint.terminal.${st.tSub}`;
     const g = this.dragging && this.tGrid ? this.tGrid : this.gridFor(p, mods);
     const c = worldToCell(g, p.x, p.y);
+    if (st.tSub === 'unit') {
+      this.previewUnit(g, this.dragging && this.tStart ? this.tStart : c, c, p);
+      return;
+    }
     const brush = st.tSub === 'zone' && st.zoneBrush;
     const a = this.dragging && this.tStart ? this.tStart : c;
     // A zone brush shows only the cell under the cursor, the same cell it paints.
@@ -2343,6 +2385,10 @@ export class ToolController {
       return;
     }
     const c = worldToCell(g, p.x, p.y);
+    if (st.tSub === 'unit') {
+      this.commitUnit(g, a, c);
+      return;
+    }
     const edit = this.terminalEdit(g, a, c);
     const env = this.env();
     if (!edit || !env) return;

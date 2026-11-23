@@ -16,18 +16,25 @@ export const START_MINUTE = 6 * 60;
 export const dayIndex = (tick: number): number => Math.floor((tick + START_MINUTE * TICKS_PER_MINUTE) / TICKS_PER_DAY);
 export const minuteOfDay = (tick: number): number => Math.floor(((tick + START_MINUTE * TICKS_PER_MINUTE) % TICKS_PER_DAY) / TICKS_PER_MINUTE);
 
-export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan', 'fuel'] as const;
+export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan', 'fuel', 'advertising'] as const;
 export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;
 
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
 import type { FixtureWorks } from './fixtureLevels';
 
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs', 'travelator'] as const;
+import type { TenantUnitView, TenantsPayload } from './tenants';
+
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs', 'travelator', 'bar'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
 export const isShopFixture = (id: number): boolean => id >= 6 && id <= 11;
+/**
+ * Fixture ids that are visit kinds of tenant units (T32): the shop fixtures and the bar. None of them is placed with the
+ * fixture tool any more; old shop fixtures become units on load.
+ */
+export const isTenantKind = (id: number): boolean => isShopFixture(id) || id === FIXTURE_KEYS.indexOf('bar') + 1;
 /** Cells of control room a tower needs before it counts (a 2 by 2 cab). */
 export const ATC_MIN_CELLS = 4;
 export const fixtureKey = (id: number): FixtureKey => FIXTURE_KEYS[id - 1];
@@ -66,6 +73,7 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   eGate: [3, 5, 1],
   customs: [1],
   travelator: [1, 2, 3, 4, 5],
+  bar: [2, 3, 5],
 };
 /** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
@@ -92,6 +100,7 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   eGate: 1,
   customs: 2,
   travelator: 2,
+  bar: 1,
 };
 /**
  * Footprint per level as [along, across] cells. Along follows the fixture direction, across is the
@@ -121,6 +130,7 @@ export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, n
   eGate: [[1, 1]],
   customs: [[2, 2]],
   travelator: [[4, 2], [8, 2], [12, 2]],
+  bar: [[1, 1]],
 };
 /** Fixtures that move people from one zone to another. */
 export const TRANSITION_KEYS: readonly FixtureKey[] = ['security', 'securityExit', 'passport', 'eGate'];
@@ -202,6 +212,8 @@ export interface TerminalGrid {
   props: Prop[];
   /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
   bagNodes?: BagDrawNode[];
+  /** Tenant units of this building with their furnishing, set only on the copies sent to the renderer (T32). */
+  units?: TenantUnitView[];
   /** Fixtures of this building under upgrade works, set only on the copies sent to the renderer (T74). */
   works?: FixtureWorks[];
 }
@@ -407,6 +419,8 @@ export interface BusinessPayload {
   minuteOfDay: number;
   terminals: Terminal[];
   terminalVersion: number;
+  /** Tenant units, their brands and applications (T32). */
+  tenants: TenantsPayload;
   airlines: Airline[];
   rating: number;
   satisfaction: number;

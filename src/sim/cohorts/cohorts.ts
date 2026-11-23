@@ -10,7 +10,7 @@ import type { Rng } from '../rng';
 import { FlState, type Traffic } from '../ops/traffic';
 import { BOARDING } from '../ops/turnaround';
 import type { ServiceNodes } from '../terminal/serviceNodes';
-import { SIDE, buildVisitPoints, findPoint, type VisitPoints } from '../terminal/visitPoints';
+import { SIDE, buildVisitPoints, pointAtCell, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newSampleCache, type SampleCache } from '../terminal/walkDistance';
 import type { WalkGraph } from '../terminal/walkGraph';
@@ -194,6 +194,7 @@ const NEED_SPEND_SHARE = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEE
 const fixtureId = (name: (typeof FIXTURE_KEYS)[number]): number => FIXTURE_KEYS.indexOf(name) + 1;
 const NEED_KIND_A = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[0]!)));
 const NEED_KIND_B = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[1] ?? NEEDS.needs[k].fixtures[0]!)));
+const NEED_KIND_C = Int32Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : fixtureId(NEEDS.needs[k].fixtures[2] ?? NEEDS.needs[k].fixtures[0]!)));
 /** Counters of the current day: visits per need, visitor spend, the satisfaction of passengers rated today and their number, then the penalty points taken by cause, then the arrival counters (passengers exited and stranded, claim wait seconds and claims, passengers without bags) and their penalty points. */
 export const DAY = { Visits0: 0, Spend: NEED_COUNT, SatSum: NEED_COUNT + 1, SatCount: NEED_COUNT + 2, PenQueue: NEED_COUNT + 3, PenWalk: NEED_COUNT + 4, PenUnmet: NEED_COUNT + 5, PenMissed: NEED_COUNT + 6, ArrExited: NEED_COUNT + 7, ArrStranded: NEED_COUNT + 8, ClaimWaitS: NEED_COUNT + 9, ClaimCount: NEED_COUNT + 10, NoBags: NEED_COUNT + 11, PenMissingBag: NEED_COUNT + 12, PenStranded: NEED_COUNT + 13, Count: NEED_COUNT + 14 } as const;
 const SAT = NEEDS.satisfaction;
@@ -881,7 +882,7 @@ export class Cohorts {
     this.visitTables = [];
     for (let g = 0; g < grids.length; g++) {
       const wg = this.business.walkGraphs[g];
-      if (wg) this.visitTables.push(buildVisitPoints(grids[g]!, wg));
+      if (wg) this.visitTables.push(buildVisitPoints(grids[g]!, wg, this.business.tenants.units));
     }
   }
 
@@ -982,7 +983,7 @@ export class Cohorts {
     if (st === Stage.VisitQueue) {
       // Levels are brought up to date first, so the reset starts the toilet need over from now.
       this.bringNeeds(c);
-      this.recordVisit(c);
+      this.recordVisit(g, c);
       this.resetNeed(c, NEED_TOILET);
       this.afterVisit(g, c);
       return;
@@ -1069,7 +1070,7 @@ export class Cohorts {
         break;
       case Stage.Visit:
         this.bringNeeds(c);
-        this.recordVisit(c);
+        this.recordVisit(g, c);
         this.resetNeed(c, this.visitNeed[c]!);
         this.afterVisit(g, c);
         break;
@@ -1669,6 +1670,7 @@ export class Cohorts {
     const gateLeadMin = this.traits[TRAIT.GateLeadMin]!;
     const kindA = need === NEED_SHOP ? this.traits[TRAIT.Fav1]! : NEED_KIND_A[need]!;
     const kindB = need === NEED_SHOP ? this.traits[TRAIT.Fav2]! : NEED_KIND_B[need]!;
+    const kindC = need === NEED_SHOP ? kindA : NEED_KIND_C[need]!;
     const here = this.hereNode(g, c);
     const id = this.gridId(g);
     const speed = this.speed(c);
@@ -1687,7 +1689,7 @@ export class Cohorts {
       // Ascending scan with a strict comparison, so ties go to the lowest point and an infinite walk never wins.
       for (let p = 0; p < vp.count; p++) {
         const kind = vp.kind[p]!;
-        if ((kind !== kindA && kind !== kindB) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
+        if ((kind !== kindA && kind !== kindB && kind !== kindC) || vp.side[p] !== SIDE.Air || vp.walkNode[p]! < 0) continue;
         const seconds = this.business.walkDistance(id, here, vp.walkNode[p]!) / speed;
         if (seconds < bestSeconds) {
           bestSeconds = seconds;
@@ -1776,8 +1778,8 @@ export class Cohorts {
   /** The cohort reached its visit point. It stays for the visit time, or ends the visit when an edit removed the point. */
   private arriveVisit(g: number, c: number): void {
     const vp = this.visitTable(g);
-    const kind = this.business.grids[g]?.fixture[this.target[c]!] ?? 0;
-    if (!vp || findPoint(vp, this.target[c]!, kind) < 0) {
+    // By cell alone: seat props and tenant units hold no fixture on their anchor cell.
+    if (!vp || pointAtCell(vp, this.target[c]!) < 0) {
       this.afterVisit(g, c);
       return;
     }
@@ -1786,14 +1788,18 @@ export class Cohorts {
   }
 
   /** Counts a finished visit of need k and the spend of its members, in the day counters. The single place a visit is counted. */
-  private recordVisit(c: number): void {
+  private recordVisit(g: number, c: number): void {
     const k = this.visitNeed[c]!;
     this.day[DAY.Visits0 + k]!++;
     const b = c * M;
+    let spend = 0;
     for (let i = 0; i < this.size[c]!; i++) {
       writeTraits(this.memberSeed[b + i]!, this.profile[c]!, this.traits);
-      this.day[DAY.Spend] += Math.floor(this.traits[TRAIT.Budget]! * NEED_SPEND_SHARE[k]!);
+      spend += Math.floor(this.traits[TRAIT.Budget]! * NEED_SPEND_SHARE[k]!);
     }
+    this.day[DAY.Spend] += spend;
+    // The spend is the sales of the tenant unit visited (T32).
+    if (k !== NEED_TOILET && this.target[c]! >= 0) this.business.tenantSale(g, this.target[c]!, spend);
   }
 
   /** Sets the level of need k of the live members to 0. */

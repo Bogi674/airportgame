@@ -8,6 +8,7 @@ import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
 import { Icon, type IconName } from './icons';
 import { useGameStore, type Sheet } from './stores/gameStore';
+import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
 import { useToolStore, type TerminalSub, type Tool } from './stores/toolStore';
 import { t, tDynamic, type StringKey } from './strings';
 import { Thumb } from './thumbs';
@@ -53,8 +54,7 @@ export interface Category {
 const fixture = (key: string): number => FIXTURE_KEYS.indexOf(key as (typeof FIXTURE_KEYS)[number]) + 1;
 const fixturePrice = (key: string): number => {
   const m = (BUSINESS.modules as Record<string, { cost: number }>)[key];
-  const s = (BUSINESS.shops as Record<string, { cost: number }>)[key];
-  return (m ?? s)?.cost ?? 0;
+  return m?.cost ?? 0;
 };
 
 const fx = (key: string, thumb: string, icon: IconName = 'fixture'): Item => ({
@@ -64,6 +64,15 @@ const fx = (key: string, thumb: string, icon: IconName = 'fixture'): Item => ({
   price: fixturePrice(key),
   run: (s) => s.set({ tool: 'terminal', tSub: 'fixture', fixtureId: fixture(key) }),
   active: (s) => s.tool === 'terminal' && s.tSub === 'fixture' && s.fixtureId === fixture(key),
+});
+
+/** A tenant unit card (T32): zoning is free, so it shows no price. */
+const unit = (key: string, category: number): Item => ({
+  id: key,
+  thumb: 'shop',
+  icon: 'fixture',
+  run: (s) => s.set({ tool: 'terminal', tSub: 'unit', unitCategory: category, hint: 'hint.terminal.unit', problem: null, buy: null }),
+  active: (s) => s.tool === 'terminal' && s.tSub === 'unit' && s.unitCategory === category,
 });
 
 const bag = (kind: BagKind, thumb: string): Item => ({
@@ -252,7 +261,7 @@ export const CATEGORIES: Category[] = [
       { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk')] },
       { id: 'facilities', items: [fx('belt', 'belt')] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
-      { id: 'shops', items: [fx('convenience', 'shop'), fx('quickFood', 'shop'), fx('cafe', 'shop'), fx('dutyFree', 'shop'), fx('booksGifts', 'shop'), fx('pharmacy', 'shop')] },
+      { id: 'shops', items: [...TENANT_CATEGORY_KEYS.map((k, c) => unit(k, c)), { ...sheet('tenants', 'tenants', 'finance'), thumb: 'shop' }] },
       { id: 'circulation', items: [{ ...fx('travelator', 'belt'), price: travelatorCost(1), asset: TRAVELATOR_ASSETS[0] }] },
       {
         id: 'transitions',

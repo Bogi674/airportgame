@@ -5,6 +5,7 @@ import { BAGGAGE, GROUND, STAND_SIZES } from '@data/index';
 import { sizeForCode } from '@shared/standSizes';
 import { originFor } from '@shared/terminalOps';
 import { standRoadAnchors } from '@shared/roadGraph';
+import { TENANT_CATEGORY_KEYS, type TenantCategory } from '@data/schemas/tenants';
 
 export const OPTIONS = { preset: 'flatCoastal' } as const;
 
@@ -166,7 +167,8 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
     prop('washroom.wcStall', (84 + k) * 2 + 1, 80);
   }
   row(16, o.gateDesk ?? 0, 76, 42);
-  if (o.shop) row(6, 1, 86, 46);
+  // A convenience unit of 3 cells in the secure hall, centered on cell (86, 46), with a tenant (T32).
+  if (o.shop) problems.push(...leaseUnit(sim, 85, 46, 3, 1, 'convenience', id));
   if (o.atc !== false) problems.push(...run(sim, { type: 'buildTower', x: TEST_TOWER.x, y: TEST_TOWER.y, level: 5 }));
   return problems;
 }
@@ -323,4 +325,22 @@ export function bookBagFlights(sim: Sim, typeIdx: number, bagsPerFlight: number,
     n += bagsPerFlight;
   }
   return n;
+}
+
+/**
+ * Zones a tenant unit of a category on a terminal floor and leases it the way a player does (T32): a campaign brings an
+ * application and the player accepts it. Returns problems, empty on success.
+ */
+export function leaseUnit(sim: Sim, x: number, y: number, w: number, h: number, category: TenantCategory, building = sim.business.grids[0]?.id ?? 1): string[] {
+  const c = TENANT_CATEGORY_KEYS.indexOf(category);
+  const problems = run(sim, { type: 'zoneUnit', building, x, y, w, h, category: c });
+  if (problems.length > 0) return problems;
+  // The tenant news of the two steps is not a problem.
+  const news = (e: string): boolean => e.startsWith('tenantApplied|') || e.startsWith('tenantOpened|');
+  problems.push(...run(sim, { type: 'adCampaign', category: c }).filter((e) => !news(e)));
+  const u = sim.business.tenants.units.find((q) => q.building === building && q.x === x && q.y === y);
+  const brand = u?.applications[0];
+  if (!u || brand === undefined) return [...problems, 'noApplication'];
+  problems.push(...run(sim, { type: 'acceptTenant', unit: u.id, brand }).filter((e) => !news(e)));
+  return problems;
 }

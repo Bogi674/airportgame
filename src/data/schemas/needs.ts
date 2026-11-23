@@ -14,7 +14,7 @@ const range = z
 
 const timedNeed = z.strictObject({
   thresholdH: z.number().positive(),
-  fixtures: z.array(fixtureName).min(1),
+  fixtures: z.array(fixtureName).min(1).max(3),
   visitMin: minutes,
   spendShare: share,
 });

@@ -1,5 +1,6 @@
 import { FIXTURE_KEYS, ZONE, type TerminalGrid } from '@shared/business';
 import { seatCells } from '@shared/props';
+import { categoryVisitKind, unitAnchor, type TenantUnit } from '@shared/tenants';
 import { nearestNode } from './walkDistance';
 import type { WalkGraph } from './walkGraph';
 
@@ -11,10 +12,7 @@ const TAIL_ROT = 5;
 const SEATING = FIXTURE_KEYS.indexOf('seating') + 1;
 /** Cells around a seat that may hold the walk node people sit down from, nearest first, as flat (dx, dy) pairs. */
 const SEAT_REACH = [0, 0, 0, 1, 0, -1, 1, 0, -1, 0, 1, 1, -1, 1, 1, -1, -1, -1, 0, 2, 0, -2, 2, 0, -2, 0];
-/** Fixtures people visit for a need: seating and the six shop kinds. Seat props (T76) are seating points too. */
-const VISIT_IDS: readonly number[] = ['seating', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'].map(
-  (k) => FIXTURE_KEYS.indexOf(k as (typeof FIXTURE_KEYS)[number]) + 1,
-);
+/** Seat props (T76) are seating points. Shops are the leased tenant units of the floor (T32), visited at their center cell. */
 
 /**
  * Struct of arrays of the places a passenger can visit on one terminal floor, in ascending anchor cell order.
@@ -42,13 +40,19 @@ export function sideOfZone(zone: number): number {
   return SIDE.None;
 }
 
-/** Builds the visit points of one terminal floor. Allocates only here. */
-export function buildVisitPoints(g: TerminalGrid, wg: WalkGraph): VisitPoints {
+/** Builds the visit points of one terminal floor: its seats and the center cells of its leased units. Allocates only here. */
+export function buildVisitPoints(g: TerminalGrid, wg: WalkGraph, units: readonly TenantUnit[] = []): VisitPoints {
   const n = g.w * g.h;
   const anchors: number[] = [];
   const seats = new Set(seatCells(g));
+  const shops = new Map<number, number>();
+  for (const u of units) {
+    if (u.building !== g.id || u.brand < 0) continue;
+    const a = unitAnchor(u);
+    shops.set((a.y - g.y0) * g.w + (a.x - g.x0), categoryVisitKind(u.category));
+  }
   for (let c = 0; c < n; c++) {
-    if ((VISIT_IDS.includes(g.fixture[c]!) && g.fixtureRot[c]! < TAIL_ROT) || seats.has(c)) anchors.push(c);
+    if ((g.fixture[c]! === SEATING && g.fixtureRot[c]! < TAIL_ROT) || seats.has(c) || shops.has(c)) anchors.push(c);
   }
   const count = anchors.length;
   const vp: VisitPoints = {
@@ -67,7 +71,7 @@ export function buildVisitPoints(g: TerminalGrid, wg: WalkGraph): VisitPoints {
     const seat = seats.has(c);
     // A seat prop usually blocks its own cell, so people sit down from the nearest open cell beside it.
     const open = seat ? openCellNear(g, wg, c) : c;
-    vp.kind[k] = seat ? SEATING : g.fixture[c]!;
+    vp.kind[k] = shops.get(c) ?? SEATING;
     vp.cell[k] = c;
     vp.lx[k] = g.x0 + col;
     vp.ly[k] = g.y0 + row;
@@ -94,5 +98,11 @@ function openCellNear(g: TerminalGrid, wg: WalkGraph, c: number): number {
 /** Index of the point with this anchor cell and fixture id, -1 when an edit removed it. */
 export function findPoint(vp: VisitPoints, cell: number, kind: number): number {
   for (let k = 0; k < vp.count; k++) if (vp.cell[k] === cell && vp.kind[k] === kind) return k;
+  return -1;
+}
+
+/** Index of the point anchored on this cell, whatever its kind, -1 when an edit removed it. */
+export function pointAtCell(vp: VisitPoints, cell: number): number {
+  for (let k = 0; k < vp.count; k++) if (vp.cell[k] === cell) return k;
   return -1;
 }

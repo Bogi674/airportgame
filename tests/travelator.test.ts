@@ -29,7 +29,7 @@ function hall(): TerminalGrid {
 
 describe('travelator data', () => {
   it('is appended at the end of the fixture keys', () => {
-    expect(FIXTURE_KEYS[FIXTURE_KEYS.length - 1]).toBe('travelator');
+    expect(FIXTURE_KEYS[22]).toBe('travelator');
     expect(TRAVELATOR).toBe(23);
   });
 
