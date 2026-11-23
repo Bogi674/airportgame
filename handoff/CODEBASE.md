@@ -68,6 +68,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `turnPad.ts` | turn pad polygon and curve |
 | `surfaceRules.ts` | surface costs, works days, runway works days |
 | `terminalOps.ts`, `terminalRooms.ts` | terminal grid edits and room validation |
+| `travelator.ts` | travelator pairs (T77): lengths, prices, the ride length, belts between end cells, the walk block mask |
 | `validate.ts` | land checks, grading cost estimate, parcel lookups |
 | `trig.ts` | deterministic `sinLut`, `cosLut`, `atan2Det` |
 | `roadGraph.ts` | service road graph, depot footprint and exit, stand road anchors, depot routes and lane polylines (T60) |
