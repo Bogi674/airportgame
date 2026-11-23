@@ -1,12 +1,13 @@
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, WALL, type TerminalGrid } from '@shared/business';
 import { labelRooms } from '@shared/terminalRooms';
-import { propBlockMask } from '@shared/props';
-import { effectiveZones, stepAud, zoneAccess, type ZoneAccess } from '@shared/terminalZones';
+import { effectiveZones, stepAud, walkBlockMask, zoneAccess, type ZoneAccess } from '@shared/terminalZones';
+import { travelatorLanes, type TravelatorLane } from '@shared/travelator';
 import { newWalkCache, type WalkCache } from './walkDistance';
 
 /** Kinds of walk node. A node is a cell that walking routes must know about. */
-export const WALK_NODE = { Lattice: 1, Door: 2, Fixture: 3, Gate: 4 } as const;
+/** Ride is the floor cell at either end of a travelator belt (T77). */
+export const WALK_NODE = { Lattice: 1, Door: 2, Fixture: 3, Gate: 4, Ride: 5 } as const;
 
 /** Side of a block in logical cells. */
 const L = BUSINESS.terminal.walk.latticeCells;
@@ -76,8 +77,12 @@ export interface WalkGraph {
   edgeMask: Uint8Array;
   /** Who may cross each cell edge of the grid, kept from the last rebuild. Never recomputed per tick. */
   access: ZoneAccess;
-  /** 1 on floor cells that props block (T76): no node and no walking there. From the last rebuild. */
+  /** 1 on floor cells that props block (T76) or a travelator covers (T77): no node and no walking there. From the last rebuild. */
   blocked: Uint8Array;
+  /** Travelator belts from the last rebuild (T77), each a ride edge both ways between its two end cells. */
+  lanes: TravelatorLane[];
+  /** Per array cell, 1 on the end cell of a travelator belt, which is always a node. From the last rebuild. */
+  rideEnd: Uint8Array;
   /** Effective zone per array cell from the last rebuild, 0 without floor. Read by the curb and the queue cells. */
   effective: Uint8Array;
   /** Cached walking distance rows for passengers over the edges above, see walkDistance. */
@@ -182,6 +187,7 @@ function fillBlock(g: TerminalGrid, wg: WalkGraph, bx: number, by: number): void
     const fixture = g.fixture[c]!;
     if (fixture > 0 && fixture !== SEATING && g.fixtureRot[c]! < TAIL_ROT) wg.cellKind[c] = WALK_NODE.Fixture;
     else if (wg.cellKind[c] === 0 && doorBeside(g, ax, ay)) wg.cellKind[c] = WALK_NODE.Door;
+    else if (wg.cellKind[c] === 0 && wg.rideEnd[c] === 1) wg.cellKind[c] = WALK_NODE.Ride;
     else if (wg.cellKind[c] !== WALK_NODE.Door && gateBeside(wg.access, g, ax, ay)) wg.cellKind[c] = WALK_NODE.Gate;
   }
 }
@@ -443,6 +449,12 @@ function collectEdges(g: TerminalGrid, wg: WalkGraph, r: BlockRect, out: number[
       }
     }
   }
+  // Ride edges: a travelator belt joins its two end cells both ways, with the shorter length of the faster walk (T77).
+  for (const l of wg.lanes) {
+    if (wg.cellNode[l.a]! < 0 || wg.cellNode[l.b]! < 0) continue;
+    if (!cellInRect(wg, l.a, r) && !cellInRect(wg, l.b, r)) continue;
+    out.push(l.a, l.b, l.lenM, 3, 3);
+  }
   // Restricted edges: a staff door or a transition joins its two gate cells one way or for some audiences only.
   for (let by = r.by0 - 1; by <= r.by1 + 1; by++) {
     for (let bx = r.bx0 - 1; bx <= r.bx1 + 1; bx++) {
@@ -522,6 +534,16 @@ function resetCache(c: WalkCache): void {
   c.clock = 0;
 }
 
+/** Reads the travelator belts of the grid and marks their end cells. */
+function setLanes(g: TerminalGrid, wg: WalkGraph): void {
+  wg.lanes = travelatorLanes(g, wg.effective);
+  wg.rideEnd.fill(0);
+  for (const l of wg.lanes) {
+    wg.rideEnd[l.a] = 1;
+    wg.rideEnd[l.b] = 1;
+  }
+}
+
 /** Builds the walk nodes and the edges of one grid. */
 export function buildWalkGraph(g: TerminalGrid): WalkGraph {
   const n = g.w * g.h;
@@ -545,11 +567,14 @@ export function buildWalkGraph(g: TerminalGrid): WalkGraph {
     edgeLen: new Float32Array(0),
     edgeMask: new Uint8Array(0),
     access: zoneAccess(g),
-    blocked: propBlockMask(g),
+    blocked: walkBlockMask(g),
+    lanes: [],
+    rideEnd: new Uint8Array(n),
     effective: effectiveZones(g),
     cache: newWalkCache(0),
     staffCache: newWalkCache(0),
   };
+  setLanes(g, wg);
   const rect = gridRect(g);
   fillNodes(g, wg, rect);
   compactNodes(g, wg);
@@ -601,8 +626,22 @@ export function updateWalkGraph(wg: WalkGraph, g: TerminalGrid, lx0: number, ly0
   const box = { x0: lx0, y0: ly0, x1: lx1, y1: ly1 };
   widenToChanges(g, wg.access, next, box);
   wg.access = next;
-  wg.blocked = propBlockMask(g);
+  wg.blocked = walkBlockMask(g);
   wg.effective = effectiveZones(g);
+  const oldLanes = wg.lanes;
+  setLanes(g, wg);
+  // A belt reaches far past the edit, so the rect also covers both ends of every belt that changed.
+  for (const l of [...oldLanes, ...wg.lanes]) {
+    if (oldLanes.some((o) => o.a === l.a && o.b === l.b && o.lenM === l.lenM) && wg.lanes.some((o) => o.a === l.a && o.b === l.b && o.lenM === l.lenM)) continue;
+    for (const c of [l.a, l.b]) {
+      const x = (c % g.w) + g.x0;
+      const y = Math.floor(c / g.w) + g.y0;
+      box.x0 = Math.min(box.x0, x);
+      box.y0 = Math.min(box.y0, y);
+      box.x1 = Math.max(box.x1, x);
+      box.y1 = Math.max(box.y1, y);
+    }
+  }
   const rect: BlockRect = {
     bx0: Math.max(whole.bx0, Math.floor((box.x0 - M) / L)),
     by0: Math.max(whole.by0, Math.floor((box.y0 - M) / L)),

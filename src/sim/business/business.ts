@@ -33,6 +33,7 @@ import { GA_LABEL, isShopFixture, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Pro
 import { cellsOfRect, convertLegacyFixtures, planProp, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
+import { travelatorCostOf } from '@shared/travelator';
 import { Market } from '../market/market';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
@@ -1151,7 +1152,8 @@ export class Business {
     for (const r of af.runways) upkeep += (r.cost * SURFACE_SPEC[r.surface].upkeepPct) / 100 / 365;
     for (const t of af.taxiways) upkeep += (t.cost * SURFACE_SPEC[t.surface].upkeepPct) / 100 / 365;
     for (const a of af.aprons) upkeep += (a.cost * SURFACE_SPEC[a.surface].upkeepPct) / 100 / 365;
-    for (const g of this.grids) upkeep += (g.cost * 0.5) / 100 / 365;
+    // Travelators carry no upkeep (owner, 2026-11-23).
+    for (const g of this.grids) upkeep += ((g.cost - travelatorCostOf(g)) * 0.5) / 100 / 365;
     upkeep += (this.propCost * BUSINESS.props.upkeepPctPerMonth * 12) / 100 / 365;
     for (const n of this.fleet) upkeep += n * fees.gseUpkeepPerDay;
     for (const b of af.buildings ?? []) upkeep += b.cost * GROUND.buildingUpkeepShare;

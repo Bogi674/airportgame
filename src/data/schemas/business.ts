@@ -57,7 +57,7 @@ export const businessSchema = z.object({
     loanMax: z.number().positive(),
     loanTermDays: z.number().int().positive(),
   }),
-  terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), staffDoorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive(), atcRangeM: z.number().positive(), walk: z.object({ latticeCells: z.number().int().positive(), dirtyMarginCells: z.number().int().positive(), cacheSources: z.number().int().positive() }), service: z.strictObject({ cv: z.number().positive().max(1), queueDensityPerM2: z.number().positive(), queueReachCells: z.number().int().positive(), queueSlots: z.number().int().positive() }) }),
+  terminal: z.object({ foundationPerCell: z.number().positive(), tilePerCell: z.number().nonnegative(), carpetPerCell: z.number().nonnegative(), wallPerEdge: z.number().nonnegative(), glassPerEdge: z.number().nonnegative(), doorPerEdge: z.number().nonnegative(), staffDoorPerEdge: z.number().nonnegative(), contactReachM: z.number().positive(), atcRangeM: z.number().positive(), walk: z.object({ latticeCells: z.number().int().positive(), dirtyMarginCells: z.number().int().positive(), cacheSources: z.number().int().positive(), travelatorRefWalkMps: z.number().positive() }), service: z.strictObject({ cv: z.number().positive().max(1), queueDensityPerM2: z.number().positive(), queueReachCells: z.number().int().positive(), queueSlots: z.number().int().positive() }) }),
   modules: z.object({ checkIn: module, security: module, belt: module, seating: module, toilet: module, atc: module, kiosk: module, bagDrop: module, passport: module, gateDesk: module }),
   fixtureCosts: z.strictObject({
     note: z.string(),
@@ -66,6 +66,9 @@ export const businessSchema = z.object({
     'securityExit.revolving': z.number().nonnegative(),
     eGate: z.number().nonnegative(),
     customs: z.number().nonnegative(),
+    'travelator.8': z.number().nonnegative(),
+    'travelator.16': z.number().nonnegative(),
+    'travelator.24': z.number().nonnegative(),
   }),
   fixtureLevels: z.strictObject({
     note: z.string(),
