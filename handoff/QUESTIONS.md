@@ -442,3 +442,14 @@ Implementer choice, stated for the owner: a cancelled international flight costs
 | Rating | New passenger term Amenities = (comfort + ambience) / 2. Comfort = min(1, sum of seats times (1 + 0.25 times comfort) / (30 per gate desk)). Ambience = min(1, ambience points / (1 per 50 m2 of passenger floor)). The catalog ambience values are accepted |
 
 Implementer choices, stated for the owner: a converted seating cell holds two beam seats of 3 (6 seats), a converted toilet block two stalls side by side (2 servers instead of 6), so the toilet rating term now reads washroom servers over 8 (four converted blocks give the full score, as four blocks did before). Converted props skip the wall rule. Removing a prop refunds its full price, which stands in for undo, since terminal edits have no undo stack. With no gate desk, comfort counts against 30 seats. Overhead props are baked into the floor chunk under people (logged in the backlog).
+
+## 2026-11-23 T77: circulation and back of house
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Travelator lengths | The three kit pairs, 8, 16 and 24 m long and 3.6 m wide, one belt each way. Both directions get the 0.65 m/s boost |
+| Escalators, stairs and elevators before T51 | Hidden until T51: not in the build menu and not in the fixture keys yet |
+| Janitor room | Room type now: a room holding the janitor room set is a janitor room, validated, with no gameplay effect until cleaners arrive in T81 |
+| Prices | Travelator pair 60 000 (8 m), 110 000 (16 m), 160 000 (24 m), with no upkeep cost |
+
+Implementer choices, stated for the owner: a travelator is one fixture key with the length as its level, picked in the context bar like the security exit type, never upgraded. Its cells are unwalkable from the side (balustrades); people step on at one end and off at the other. Its walk graph edges carry the time of the ride as meters at a reference walking speed of 1.3 m/s, so a 24 m belt counts as 24 x 1.3 / (1.3 + 0.65) = 16 m. A janitor room is valid when every cell under the janitor room set is staff zone; otherwise the terminal shows a readiness issue.

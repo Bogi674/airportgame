@@ -22,8 +22,10 @@ import {
 } from './business';
 import { distToSegment, type Pt } from './geom';
 import { isLeveled, levelCost } from './fixtureLevels';
-import { cellsOfRect, propRect } from './props';
+import { cellsOfRect, janitorRooms, propRect } from './props';
+import { labelRooms } from './terminalRooms';
 import { cosLut, sinLut } from './trig';
+import { travelatorCost } from './travelator';
 import { checkPoint, type BuildContext, type Problem } from './validate';
 
 const CELL = TERMINAL_CELL_M;
@@ -261,18 +263,20 @@ export function summarize(g: TerminalGrid): Terminal {
       if (g.leased[i] === 1) leased++;
     }
   }
-  return { id: g.id, cells: cellCount(g), counts, zones, leased };
+  const janitor = g.props.length > 0 ? janitorRooms(g, labelRooms(g)) : { rooms: 0, cleaners: 0, misplaced: 0 };
+  return { id: g.id, cells: cellCount(g), counts, zones, leased, janitor };
 }
 
 const EXIT_COST_KEYS = ['securityExit.staffed', 'securityExit.auto', 'securityExit.revolving'] as const;
 
-/** Build cost of one fixture. Levels change the price of a security exit and of the leveled fixtures (T74). */
+/** Build cost of one fixture. Levels change the price of a security exit, a travelator and the leveled fixtures (T74). */
 export function fixtureCost(id: number, level: number): number {
   const key = fixtureKey(id);
   const costs = BUSINESS.fixtureCosts;
   if (isLeveled(key)) return levelCost(key, level);
   if (key === 'securityExit') return costs[EXIT_COST_KEYS[Math.min(Math.max(level, 1), 3) - 1]];
   if (key === 'eGate' || key === 'customs') return costs[key];
+  if (key === 'travelator') return travelatorCost(level);
   if (isBaggageFixture(id)) return 0;
   return isShopFixture(id) ? BUSINESS.shops[key as keyof typeof BUSINESS.shops].cost : BUSINESS.modules[key as keyof typeof BUSINESS.modules].cost;
 }

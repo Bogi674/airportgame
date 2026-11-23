@@ -1,6 +1,7 @@
 import { FIXTURE_KEYS, WALL, ZONE, type TerminalGrid } from './business';
 import { seatCells } from './props';
-import { AUD, stepAud, zoneAccess, zoneIssues } from './terminalZones';
+import { AUD, effectiveZones, stepAud, zoneAccess, zoneIssues } from './terminalZones';
+import { eachLanePartner, hasTravelator, travelatorLanes } from './travelator';
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
 const KIOSK = FIXTURE_KEYS.indexOf('kiosk') + 1;
@@ -96,6 +97,8 @@ export function terminalIssues(g: TerminalGrid): string[] {
 
   const W = g.w;
   const acc = zoneAccess(g);
+  // Travelator belts (T77) join their two ends, which always share one zone.
+  const belts = hasTravelator(g) ? travelatorLanes(g, effectiveZones(g)) : [];
   const seen = new Uint8Array(g.w * g.h);
   const queue = new Int32Array(g.w * g.h);
   let head = 0;
@@ -136,6 +139,11 @@ export function terminalIssues(g: TerminalGrid): string[] {
       seen[j] = 1;
       queue[tail++] = j;
     }
+    eachLanePartner(belts, i, (j) => {
+      if (seen[j] === 1 || g.zone[j] === ZONE.Secure || g.zone[j] === ZONE.Staff) return;
+      seen[j] = 1;
+      queue[tail++] = j;
+    });
   }
   if (!touchesLane) issues.push('noSecurityLink');
   if (bypass) issues.push('securityBypass');
@@ -165,6 +173,11 @@ export function terminalIssues(g: TerminalGrid): string[] {
       if (g.fixture[j] === SEATING) seats = true;
       if (g.fixture[j] === GATE_DESK && g.fixtureRot[j] < TAIL_ROT) gateReached = true;
     }
+    eachLanePartner(belts, i, (j) => {
+      if (air[j] === 1 || g.zone[j] !== ZONE.Secure) return;
+      air[j] = 1;
+      queue[tail++] = j;
+    });
   }
   // Seat props (T76) block their cells, so a seat counts when its cell or a cell beside it is reached.
   for (const c of seatCells(g)) {

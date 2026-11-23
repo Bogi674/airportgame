@@ -1,0 +1,78 @@
+{
+ "buy": [
+  [
+   3900,
+   4900,
+   4200,
+   5200
+  ]
+ ],
+ "commands": [
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 0,
+    "y0": 0,
+    "x1": 20,
+    "y1": 12,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 0,
+    "y0": 0,
+    "x1": 20,
+    "y1": 12,
+    "variant": 2
+   }
+  }
+ ],
+ "viewport": {
+  "w": 1600,
+  "h": 1000
+ },
+ "camera": {
+  "x": 4020,
+  "y": 5012,
+  "zoom": 24
+ },
+ "hideUi": false,
+ "actions": [
+  {
+   "tool": "tool-terminal"
+  },
+  {
+   "tool": "menutab-circulation"
+  },
+  {
+   "tool": "card-travelator"
+  },
+  {
+   "move": [
+    4010,
+    5010
+   ]
+  },
+  {
+   "wait": 400
+  },
+  {
+   "shot": "menu"
+  }
+ ],
+ "report": [
+  "cash"
+ ]
+}

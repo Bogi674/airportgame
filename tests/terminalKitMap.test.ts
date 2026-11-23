@@ -24,6 +24,10 @@ const FITS_KEYS: readonly [FixtureKey, number][] = [
   ['seating', 1],
   ['toilet', 1],
   ['securityExit', 3],
+  // The 3.6 m wide travelator pairs sit in a 4 m wide footprint (T77).
+  ['travelator', 1],
+  ['travelator', 2],
+  ['travelator', 3],
 ];
 const entries: KitEntry[] = [
   ...(Object.entries(FIXTURE_ASSET) as [FixtureKey, string][]).map(([key, asset]) => ({ key, level: 1, asset })),

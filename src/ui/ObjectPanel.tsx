@@ -456,6 +456,12 @@ export function ObjectPanel({ send }: Props) {
         <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
         <div>{tFormat('terminal.arrivals', { n: biz.arrDay[0] ?? 0 })}</div>
         <div>{tFormat('terminal.leased', { n: term.leased })}</div>
+        {term.janitor.rooms > 0 && <div data-testid="terminal-janitor">{tFormat('terminal.janitor', { n: term.janitor.rooms, cleaners: term.janitor.cleaners })}</div>}
+        {term.janitor.misplaced > 0 && (
+          <div data-testid="terminal-janitor-misplaced" style="color:var(--warn, var(--bad));font-size:12px">
+            {tFormat('terminal.janitorMisplaced', { n: term.janitor.misplaced })}
+          </div>
+        )}
         {rows
           .filter((r) => term.counts[r.key] > 0)
           .map((r) => (

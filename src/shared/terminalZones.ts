@@ -1,6 +1,7 @@
 import { TERMINAL_CELL_M, TRANSITION_KEYS, WALL, fixtureKey, type FixtureKey, type TerminalGrid } from './business';
 import { ROT_STEP, cellOf, fixtureCells } from './terminalOps';
 import { propBlockMask } from './props';
+import { eachLanePartner, hasTravelator, travelatorLanes, travelatorMask } from './travelator';
 
 /** Audience bits of an edge mask: passengers and staff. */
 export const AUD = { Pax: 1, Staff: 2 } as const;
@@ -147,8 +148,8 @@ export function zoneAccess(g: TerminalGrid): ZoneAccess {
       openFlow(g, acc, eff, t, cx, cy, cx + fx, cy + fy);
     }
   }
-  if (g.props.length > 0) {
-    const blocked = propBlockMask(g);
+  if (g.props.length > 0 || hasTravelator(g)) {
+    const blocked = walkBlockMask(g);
     for (let c = 0; c < blocked.length; c++) {
       if (blocked[c] === 0) continue;
       const x = c % W;
@@ -310,6 +311,7 @@ export function zoneIssues(g: TerminalGrid, acc: ZoneAccess): string[] {
     }
   }
 
+  const lanes = hasTravelator(g) ? travelatorLanes(g, eff) : [];
   const queue = new Int32Array(n);
   const reach = new Uint8Array(n);
   let head = 0;
@@ -334,9 +336,15 @@ export function zoneIssues(g: TerminalGrid, acc: ZoneAccess): string[] {
       reach[i] = 1;
       queue[tail++] = i;
     }
+    // A travelator belt (T77) carries people both ways between its two ends.
+    eachLanePartner(lanes, j, (i) => {
+      if (reach[i] === 1) return;
+      reach[i] = 1;
+      queue[tail++] = i;
+    });
   }
-  // Nobody stands on a cell that props block (T76), so it needs no way out.
-  const blocked = g.props.length > 0 ? propBlockMask(g) : null;
+  // Nobody stands on a cell that props block (T76) or a travelator covers (T77), so it needs no way out.
+  const blocked = g.props.length > 0 || hasTravelator(g) ? walkBlockMask(g) : null;
   for (let i = 0; i < n; i++) {
     if (reach[i] === 0 && (eff[i] === SECURE || eff[i] === INTERNATIONAL) && (blocked === null || blocked[i] === 0)) {
       issues.push('paxCannotLeave');
@@ -365,6 +373,11 @@ export function zoneIssues(g: TerminalGrid, acc: ZoneAccess): string[] {
       seen[j] = 1;
       queue[tail++] = j;
     }
+    eachLanePartner(lanes, i, (j) => {
+      if (seen[j] === 1) return;
+      seen[j] = 1;
+      queue[tail++] = j;
+    });
   }
   for (let i = 0; i < n; i++) {
     if (seen[i] === 1 && (eff[i] === SECURE || eff[i] === INTERNATIONAL)) {
@@ -373,4 +386,13 @@ export function zoneIssues(g: TerminalGrid, acc: ZoneAccess): string[] {
     }
   }
   return issues;
+}
+
+/** Per array cell, 1 where nobody walks: cells props block (T76) and travelator cells (T77). Allocates. */
+export function walkBlockMask(g: TerminalGrid): Uint8Array {
+  const mask = propBlockMask(g);
+  if (!hasTravelator(g)) return mask;
+  const t = travelatorMask(g);
+  for (let c = 0; c < mask.length; c++) mask[c] = mask[c]! | t[c]!;
+  return mask;
 }

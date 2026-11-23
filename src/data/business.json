@@ -22,7 +22,7 @@
   "staffDoorPerEdge": 2500,
   "contactReachM": 90,
   "atcRangeM": 3500,
-  "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64 },
+  "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64, "travelatorRefWalkMps": 1.3 },
   "service": { "cv": 0.4, "queueDensityPerM2": 1, "queueReachCells": 4, "queueSlots": 32 }
  },
  "modules": {
@@ -92,12 +92,15 @@
   }
  },
  "fixtureCosts": {
-  "note": "Build cost per asset id, T75",
+  "note": "Build cost per asset id, T75. Travelator pairs by length (T77, owner 2026-11-23) carry no upkeep",
   "securityExit.staffed": 30000,
   "securityExit.auto": 85000,
   "securityExit.revolving": 60000,
   "eGate": 25000,
-  "customs": 40000
+  "customs": 40000,
+  "travelator.8": 60000,
+  "travelator.16": 110000,
+  "travelator.24": 160000
  },
  "fixtureLevels": {
   "note": "Fixture levels 1 to 3 (T74, owner 2026-11-22). Index 0 is level 1. cost is the build cost of a level, an upgrade pays the difference. serviceSeconds of levels 2 and 3 from src/data/fixtures/catalog.json, level 1 keeps the module and mode values. worksDays closes the fixture while it is upgraded. premiumPenalty is lost by premium passengers checked in below premiumLevel.",

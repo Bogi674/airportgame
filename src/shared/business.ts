@@ -23,7 +23,7 @@ export const LEDGER_DAYS = 30;
 /** Counted things inside terminals. Fixture ids in the grids index this list from 1. */
 import type { FixtureWorks } from './fixtureLevels';
 
-export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs'] as const;
+export const FIXTURE_KEYS = ['checkIn', 'security', 'belt', 'seating', 'toilet', 'convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy', 'atc', 'kiosk', 'bagDrop', 'passport', 'gateDesk', 'screeningMachine', 'baggageBay', 'carousel', 'securityExit', 'eGate', 'customs', 'travelator'] as const;
 export type FixtureKey = (typeof FIXTURE_KEYS)[number];
 export const FIXTURE_COUNT = FIXTURE_KEYS.length;
 export const SHOP_FIXTURE_KEYS: readonly FixtureKey[] = ['convenience', 'quickFood', 'cafe', 'dutyFree', 'booksGifts', 'pharmacy'];
@@ -65,6 +65,7 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   securityExit: [3, 1],
   eGate: [3, 5, 1],
   customs: [1],
+  travelator: [1, 2, 3, 4, 5],
 };
 /** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
@@ -90,6 +91,7 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   securityExit: 2,
   eGate: 1,
   customs: 2,
+  travelator: 2,
 };
 /**
  * Footprint per level as [along, across] cells. Along follows the fixture direction, across is the
@@ -118,6 +120,7 @@ export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, n
   securityExit: [[2, 2], [1, 3], [2, 2]],
   eGate: [[1, 1]],
   customs: [[2, 2]],
+  travelator: [[4, 2], [8, 2], [12, 2]],
 };
 /** Fixtures that move people from one zone to another. */
 export const TRANSITION_KEYS: readonly FixtureKey[] = ['security', 'securityExit', 'passport', 'eGate'];
@@ -211,6 +214,15 @@ export interface Terminal {
   /** Cells per zone, indexed by ZONE. */
   zones: number[];
   leased: number;
+  /** Janitor rooms (T77): rooms holding a janitor room set on staff floor, the cleaners they can base, and sets off staff floor. */
+  janitor: JanitorRooms;
+}
+
+/** Janitor rooms of a floor (T77). A room holding a janitor room set is a janitor room when the set stands on staff floor. */
+export interface JanitorRooms {
+  rooms: number;
+  cleaners: number;
+  misplaced: number;
 }
 
 export type AirlineScope = 'regional' | 'national' | 'international';
