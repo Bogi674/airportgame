@@ -67,7 +67,7 @@ MVP 1 ends with the acceptance task T38.
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66, T78 | done |
 | 3 | People | T54, T67, T20, T68 | done |
 | 3b | Terminal kit | T73, T74, T75, T76, T77 | done |
-| 4 | Tenants and events | T32, T82, T50 | todo |
+| 4 | Tenants and events | T32, T82, T50 | doing |
 | 5 | Shell and release | T35, T36, T45, T37, T38 | todo |
 
 Phase 3 depends only on finished work until T20, so T54 and T67 may run in a second session beside phase 1 or 2. Phase 3b depends only on finished work and may run beside phase 2 or 3. Every other phase waits for the one before it.
@@ -154,7 +154,7 @@ Goal: the commercial side and the daily surprises come from generators, not fixe
 
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
-| T32 | Tenants: zoned units, generated brands that apply, furnishing from templates, advertising, sales counted from individual visits, existing shop fixtures migrated (section 7.1, 7.2) |  | T67 | doing |
+| T32 | Tenants: zoned units, generated brands that apply, furnishing from templates, advertising, sales counted from individual visits, existing shop fixtures migrated (section 7.1, 7.2) |  | T67 | done b512a12 dfd1516 |
 | T82 | Prop effects left from T76: vending sales share and restocking, ad income from ad totems and the LED wall, wayfinding from flight boards, the charging want, office workplaces and pantry effects on staff |  | T76, T32, T81 | todo |
 | T50 | Seeded event director with the first deck of eight events, two choices each and a fallback (section 7.3) |  | T65, T68, T61 | todo |
 
