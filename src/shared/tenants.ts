@@ -167,8 +167,11 @@ export function furnishUnit(u: TenantUnit, front: Side, template: number): Furni
   const m = P.marginM;
   const aisle = P.aisleM;
   const local: FurnishItem[] = [];
+  // An item that is too thin, leaves the unit or meets an item laid before it is left out, so a small unit holds fewer.
   const add = (kind: FurnishKind | 'sign', a0: number, b0: number, a1: number, b1: number): void => {
-    if (a1 - a0 > 0.05 && b1 - b0 > 0.05) local.push({ kind, x0: a0, y0: b0, x1: a1, y1: b1 });
+    if (a1 - a0 <= 0.05 || b1 - b0 <= 0.05 || a0 < 0 || b0 < 0 || a1 > L || b1 > D) return;
+    for (const o of local) if (a0 < o.x1 && o.x0 < a1 && b0 < o.y1 && o.y0 < b1) return;
+    local.push({ kind, x0: a0, y0: b0, x1: a1, y1: b1 });
   };
   let back = 0;
   let side = 0;
@@ -176,17 +179,20 @@ export function furnishUnit(u: TenantUnit, front: Side, template: number): Furni
     if (r.at === 'back') back = Math.max(back, r.depthM);
     if (r.at === 'sides') side = Math.max(side, r.depthM);
   }
+  // The sign fills the storefront band; everything else stands behind it.
+  const sign = P.signDepthM;
   const innerA0 = (side > 0 ? side + m : 0) + m;
   const innerA1 = L - innerA0;
   const innerB0 = (back > 0 ? back + aisle : m) + m;
-  const innerB1 = D - aisle;
+  const innerB1 = D - sign - aisle;
+  add('sign', 0, D - sign, L, D);
   for (const r of rules) {
     if (r.at === 'back') add(r.kind, m, m, L - m, m + r.depthM);
     else if (r.at === 'sides') {
       const b0 = back > 0 ? m + back + m : m;
-      add(r.kind, m, b0, m + r.depthM, D - aisle);
-      add(r.kind, L - m - r.depthM, b0, L - m, D - aisle);
-    } else if (r.at === 'front') add(r.kind, innerA0, D - m - r.depthM, innerA0 + Math.min(P.frontCounterMaxM, (L - 2 * innerA0) / 2), D - m);
+      add(r.kind, m, b0, m + r.depthM, D - sign - aisle);
+      add(r.kind, L - m - r.depthM, b0, L - m, D - sign - aisle);
+    } else if (r.at === 'front') add(r.kind, innerA0, D - sign - m - r.depthM, innerA0 + Math.min(P.frontCounterMaxM, (L - 2 * innerA0) / 2), D - sign - m);
     else if (r.at === 'rows') {
       for (let b = innerB0; b + r.depthM <= innerB1; b += r.depthM + r.gapM) add(r.kind, innerA0 + aisle / 2, b, innerA1 - aisle / 2, b + r.depthM);
     } else if (r.at === 'grid') {
@@ -197,7 +203,6 @@ export function furnishUnit(u: TenantUnit, front: Side, template: number): Furni
       for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) add(r.kind, a0 + i * pitch, innerB0 + j * pitch, a0 + i * pitch + r.sizeM, innerB0 + j * pitch + r.sizeM);
     }
   }
-  add('sign', 0, D - P.signDepthM, L, D);
   // Local (a, b) to logical meters: the front is the side `front`, the back the opposite one.
   const X0 = u.x * TERMINAL_CELL_M;
   const Y0 = u.y * TERMINAL_CELL_M;

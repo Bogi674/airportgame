@@ -1,9 +1,10 @@
-import { BAGGAGE, BUSINESS, STAND_SIZES, SURFACE_SPEC } from '@data/index';
+import { BAGGAGE, BUSINESS, STAND_SIZES, SURFACE_SPEC, TENANTS } from '@data/index';
+import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
 import { APPROACHES, CODES, STAND_SIZES_ORDER, STAND_TYPES, SURFACES, type AirfieldPayload, type CodeLetter, type StandSize, type Surface } from '@shared/airfield';
 import { gridsFor, gridLabel, type ConstructionGrid } from '@shared/constructionGrid';
 import type { Command } from '@sim/commands';
 import { formatMoney } from './format';
-import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS } from '@shared/business';
+import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, isTenantKind } from '@shared/business';
 import { isLeveled, levelCost, type LeveledKey } from '@shared/fixtureLevels';
 import { propCost, propSpec } from '@shared/props';
 import { RETIRED_KEYS } from '@shared/terminalOps';
@@ -212,7 +213,7 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'terminal' && (
           <>
-            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'propRemove'>[]).map((sub) => (
+            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'propRemove' | 'unit'>[]).map((sub) => (
               <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
                 <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
@@ -226,6 +227,20 @@ export function ContextBar({ send }: Props) {
                 <button data-testid="prop-rotate" title={t('opt.propRotate')} onClick={() => s.set({ propRot: ((s.propRot + 1) % 4) as 0 | 1 | 2 | 3 })}>
                   {t('opt.propRotate')} {s.propRot * 90}°
                 </button>
+              </>
+            )}
+            {s.tSub === 'unit' && (
+              <>
+                <Select
+                  label={t('opt.unitCategory')}
+                  value={s.unitCategory}
+                  testId="opt-unitCategory"
+                  options={TENANT_CATEGORY_KEYS.map((k, c) => ({ v: c, text: tDynamic(`menu.terminal.shops.${k}`) }))}
+                  onChange={(v) => s.set({ unitCategory: v })}
+                />
+                <span data-testid="unit-size" style="align-self:center;font-size:12px">
+                  {tFormat('opt.unitSize', { min: TENANTS.categories[TENANT_CATEGORY_KEYS[s.unitCategory]!].minM2, max: TENANTS.categories[TENANT_CATEGORY_KEYS[s.unitCategory]!].maxM2 })}
+                </span>
               </>
             )}
             {s.tSub === 'floor' && (
@@ -248,7 +263,7 @@ export function ContextBar({ send }: Props) {
                 label={t('opt.fixture')}
                 value={s.fixtureId}
                 testId="opt-fixture"
-                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k) && !RETIRED_KEYS.includes(f.k)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
+                options={FIXTURE_KEYS.map((k, i) => ({ k, v: i + 1 })).filter((f) => f.k !== 'atc' && !BAGGAGE_FIXTURE_KEYS.includes(f.k) && !RETIRED_KEYS.includes(f.k) && !isTenantKind(f.v)).map((f) => ({ v: f.v, text: tDynamic(`fixture.${f.v}`) }))}
                 onChange={(v) => s.set({ fixtureId: v })}
               />
             )}

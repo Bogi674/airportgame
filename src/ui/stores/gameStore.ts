@@ -7,7 +7,7 @@ import type { PerfReport } from '@shared/protocol';
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
 
-export type Sheet = 'airlines' | 'finance' | 'flights' | 'slots' | 'stands' | 'site' | 'staff' | null;
+export type Sheet = 'airlines' | 'finance' | 'flights' | 'slots' | 'stands' | 'site' | 'staff' | 'tenants' | null;
 export interface Alert {
   id: number;
   text: string;

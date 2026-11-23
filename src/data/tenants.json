@@ -60,5 +60,5 @@
    ]
   }
  },
- "paint": { "note": "Unit look: outline width, wall margin and aisle widths of the furnishing layout, sign depth along the front, furnishing colors.", "outlineM": 0.15, "marginM": 0.2, "aisleM": 1.2, "frontCounterMaxM": 2.4, "signDepthM": 0.5, "floor": "#efe6d6", "counter": "#6b4f3a", "shelf": "#8a8f98", "table": "#a8794f", "display": "#9aa5b1" }
+ "paint": { "note": "Unit look: outline width, wall margin and aisle widths of the furnishing layout, sign depth along the front, furnishing colors.", "outlineM": 0.15, "marginM": 0.2, "aisleM": 1.2, "frontCounterMaxM": 2.4, "signDepthM": 0.9, "floor": "#efe6d6", "counter": "#6b4f3a", "shelf": "#8a8f98", "table": "#a8794f", "display": "#9aa5b1" }
 }

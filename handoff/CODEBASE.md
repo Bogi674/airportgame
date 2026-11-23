@@ -68,6 +68,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `turnPad.ts` | turn pad polygon and curve |
 | `surfaceRules.ts` | surface costs, works days, runway works days |
 | `terminalOps.ts`, `terminalRooms.ts` | terminal grid edits and room validation |
+| `tenants.ts` | tenant unit types, the unit check the tool and the sim share, the storefront side and the furnishing layout (T32) |
 | `travelator.ts` | travelator pairs (T77): lengths, prices, the ride length, belts between end cells, the walk block mask |
 | `validate.ts` | land checks, grading cost estimate, parcel lookups |
 | `trig.ts` | deterministic `sinLut`, `cosLut`, `atan2Det` |
@@ -89,6 +90,7 @@ Problems and events travel as strings `code|key=value|...`. Build problems show 
 | `ops/traffic.ts` | `Traffic`: flights and aircraft as typed arrays, runway reservations, states (`AcState`), push back, backtrack |
 | `ops/performance.ts` | takeoff and landing distance, payload and range checks |
 | `business/business.ts` | `Business`: terminals, airlines, contracts, ledger, rating, weather |
+| `market/tenants.ts` | `Tenants`: tenant units, generated brands, applications, campaigns, sales and rent (T32) |
 | `vehicles/gse.ts` | ground vehicles: depot to stand along the road net, stand paths to docks, cart trains, baggage trains between bay slots and stands (T78) |
 | `vehicles/roads.ts` | `RoadNet`: per stand lane routes from the depot, the catering unit and the stand's baggage bay, depot routes to every bay, junction and crossing holds, derived and never saved |
 | `world/*` | site generation: terrain, corridor, parcels, wind, climate |

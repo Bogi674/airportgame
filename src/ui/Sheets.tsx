@@ -1,5 +1,7 @@
 import { AIRCRAFT } from '@data/aircraft';
-import { BUSINESS, GSE } from '@data/index';
+import { BUSINESS, GSE, TENANTS } from '@data/index';
+import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
+import { unitArea } from '@shared/tenants';
 import { causeOwner, isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
 import { LEDGER_CATEGORIES } from '@shared/business';
 import { STAFF_ROLE_KEYS } from '@data/schemas/staff';
@@ -194,6 +196,86 @@ function StaffSheet({ send }: Props) {
       <div data-testid="staff-total" style="margin-top:8px;font-weight:600">
         {tFormat('staff.total', { n: hired, w: formatMoney(wages) })}
       </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Tenants (T32): every unit with its category, size, tenant and yesterday's sales, the pending applications with accept
+ * and decline, and one campaign button per category that buys an application for a vacant unit.
+ */
+function TenantsSheet({ send }: Props) {
+  const b = useGameStore((s) => s.business);
+  if (!b) return null;
+  const { units, pool } = b.tenants;
+  const cat = (c: number): string => tDynamic(`menu.terminal.shops.${TENANT_CATEGORY_KEYS[c]}`);
+  return (
+    <Sheet title={t('tenants.title')} testId="sheet-tenants">
+      {units.length === 0 && <div data-testid="tenants-empty">{t('tenants.empty')}</div>}
+      {units.length > 0 && (
+        <table data-testid="tenants-table" style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr>
+              <th style="text-align:left">{t('tenants.unit')}</th>
+              <th style="text-align:right">{t('tenants.area')}</th>
+              <th style="text-align:left">{t('tenants.tenant')}</th>
+              <th style="text-align:right">{t('tenants.sales')}</th>
+              <th style="text-align:left">{t('tenants.applications')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {units.map((u) => (
+              <tr key={u.id} data-testid={`tenant-unit-${u.id}`} style="vertical-align:top">
+                <td>{cat(u.category)}</td>
+                <td style="text-align:right">{formatInt(unitArea(u))} m²</td>
+                <td>
+                  {u.tenant ? (
+                    <span style="display:inline-flex;align-items:center;gap:6px">
+                      <span style={`display:inline-block;width:10px;height:10px;border-radius:2px;background:${u.tenant.color}`} />
+                      {u.tenant.name}
+                    </span>
+                  ) : (
+                    t('tenants.vacant')
+                  )}
+                </td>
+                <td style="text-align:right">{u.tenant ? formatMoney(u.salesYesterday) : ''}</td>
+                <td>
+                  {u.applicants.map((a) => (
+                    <div key={a.id} style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+                      <span>{a.name}</span>
+                      <button data-testid={`tenant-accept-${u.id}-${a.id}`} onClick={() => send({ type: 'acceptTenant', unit: u.id, brand: a.id })}>
+                        {t('tenants.accept')}
+                      </button>
+                      <button data-testid={`tenant-decline-${u.id}-${a.id}`} onClick={() => send({ type: 'declineTenant', unit: u.id, brand: a.id })}>
+                        {t('tenants.decline')}
+                      </button>
+                    </div>
+                  ))}
+                  {!u.tenant && u.applicants.length === 0 && <span style="opacity:0.7">{t('tenants.waiting')}</span>}
+                </td>
+                <td style="text-align:right">
+                  <button data-testid={`tenant-remove-${u.id}`} onClick={() => send({ type: 'removeUnit', id: u.id })}>
+                    {t('tenants.remove')}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div style="margin-top:10px;font-weight:600">{tFormat('tenants.campaigns', { cost: formatMoney(TENANTS.campaignCost) })}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+        {TENANT_CATEGORY_KEYS.map((_, c) => {
+          const vacant = units.some((u) => u.category === c && !u.tenant);
+          return (
+            <button key={c} data-testid={`tenant-campaign-${c}`} disabled={!vacant} title={vacant ? '' : t('notice.noVacantUnit')} onClick={() => send({ type: 'adCampaign', category: c })}>
+              {cat(c)}
+            </button>
+          );
+        })}
+      </div>
+      <div style="margin-top:8px;opacity:0.8">{tFormat('tenants.pool', { n: pool[0] ?? 0, days: TENANTS.applicationDays })}</div>
     </Sheet>
   );
 }
@@ -672,6 +754,7 @@ export function Sheets({ send }: Props) {
   if (sheet === 'stands') return <StandsSheet send={send} />;
   if (sheet === 'finance') return <FinanceSheet send={send} />;
   if (sheet === 'staff') return <StaffSheet send={send} />;
+  if (sheet === 'tenants') return <TenantsSheet send={send} />;
   if (sheet === 'flights') return <FlightsSheet />;
   if (sheet === 'site') return <SiteSheet />;
   return null;

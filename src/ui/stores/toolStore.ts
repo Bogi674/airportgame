@@ -9,7 +9,7 @@ import type { FixtureRot } from '../tools/fixtureRot';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish';
 
-export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode' | 'prop' | 'propRemove';
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode' | 'prop' | 'propRemove' | 'unit';
 
 /** Snap mode of a placement tool: the construction grid, or free placement. */
 export type SnapMode = 'grid' | 'free';
@@ -75,6 +75,8 @@ interface ToolState {
   /** Rotation of the two cell fixture about to be placed. R cycles it. */
   fixtureRot: FixtureRot;
   zoneType: 1 | 2 | 3 | 4 | 5;
+  /** Tenant category of the unit tool (T32), an index into TENANT_CATEGORY_KEYS. */
+  unitCategory: number;
   /** Zone tool: paint a rectangle by drag (false) or a brush over every cell the pointer enters (true). */
   zoneBrush: boolean;
   /** Door tool: a plain door (3) or a staff door (4), see WALL in business.ts. */
@@ -140,6 +142,7 @@ export const useToolStore = create<ToolState>((set) => ({
   fixtureId: 1,
   fixtureRot: 0,
   zoneType: 1,
+  unitCategory: 0,
   zoneBrush: false,
   doorType: 3,
   fixtureLevel: 1,

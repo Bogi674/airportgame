@@ -18,6 +18,8 @@ import { paintTowers } from './towerPaint';
 import { paintBuildings, paintDepots, paintRoadCrossings, paintRoadLines, paintRoadSurface } from './roadPaint';
 import { pavementColor, planFor, type Area, type HoldMark, type Line, type Plan } from './taxiPlan';
 import { TRAVELATOR_ASSETS } from '@shared/travelator';
+import { TENANTS } from '@data/index';
+import type { TenantUnitView } from '@shared/tenants';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
@@ -770,6 +772,73 @@ function paintProps(ctx: Ctx, g: TerminalGrid, pass: 'under' | 'body' | 'over', 
   }
 }
 
+/**
+ * Paints tenant units in a cell range (T32): a leased unit gets its floor, its furnishing from the brand template, the
+ * storefront sign in the brand color and the brand name when it fits; a vacant unit a dashed outline over light hatching.
+ */
+function paintUnits(ctx: Ctx, units: readonly TenantUnitView[], x0: number, y0: number, x1: number, y1: number, win: Window): void {
+  const C = TERMINAL_CELL_M;
+  const P = TENANTS.paint;
+  for (const u of units) {
+    if (u.x > x1 || u.y > y1 || u.x + u.w <= x0 || u.y + u.h <= y0) continue;
+    const X = u.x * C;
+    const Y = u.y * C;
+    const W = u.w * C;
+    const H = u.h * C;
+    if (!u.tenant) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(X, Y, W, H);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(60,70,80,0.18)';
+      ctx.lineWidth = lineM(win, 0.08);
+      ctx.beginPath();
+      for (let d = -H; d < W; d += 1.2) {
+        ctx.moveTo(X + d, Y + H);
+        ctx.lineTo(X + d + H, Y);
+      }
+      ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(60,70,80,0.7)';
+      ctx.lineWidth = lineM(win, P.outlineM);
+      ctx.setLineDash([0.8, 0.5]);
+      ctx.strokeRect(X + P.outlineM / 2, Y + P.outlineM / 2, W - P.outlineM, H - P.outlineM);
+      ctx.setLineDash([]);
+      continue;
+    }
+    ctx.fillStyle = P.floor;
+    ctx.fillRect(X, Y, W, H);
+    for (const it of u.furnish ?? []) {
+      ctx.fillStyle = it.kind === 'sign' ? u.tenant.color : P[it.kind];
+      ctx.fillRect(it.x0, it.y0, it.x1 - it.x0, it.y1 - it.y0);
+    }
+    ctx.strokeStyle = u.tenant.color;
+    ctx.lineWidth = lineM(win, P.outlineM);
+    ctx.strokeRect(X + P.outlineM / 2, Y + P.outlineM / 2, W - P.outlineM, H - P.outlineM);
+    // The brand name in white on the sign band, turned along a side band, only when it fits the band with a margin.
+    const band = (u.furnish ?? []).find((it) => it.kind === 'sign');
+    if (band && win.scale >= 2) {
+      const bw = band.x1 - band.x0;
+      const bh = band.y1 - band.y0;
+      const upright = bh > bw;
+      const length = upright ? bh : bw;
+      const depth = upright ? bw : bh;
+      const size = depth * 0.7;
+      ctx.font = `bold ${size}px sans-serif`;
+      if (ctx.measureText(u.tenant.name).width <= length - 2 * P.marginM) {
+        ctx.save();
+        ctx.translate((band.x0 + band.x1) / 2, (band.y0 + band.y1) / 2);
+        if (upright) ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(u.tenant.name, 0, size * 0.05);
+        ctx.restore();
+      }
+    }
+  }
+}
+
 /** Draws the kit staff door centered on each staff door edge in a cell range, 0.45 m into the cell below or right. */
 function paintStaffDoors(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1: number, y1: number, tier: 0 | Tier, scale: number): void {
   if (tier === 0) return;
@@ -946,6 +1015,7 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
       ctx.fillRect(body.x + 0.45, body.y + 0.45, body.w - 0.4, body.h - 0.4);
     }
   }
+  if (g.units) paintUnits(ctx, g.units, x0, y0, x1, y1, win);
   const propMin = { x: x0 * C, y: y0 * C };
   const propMax = { x: (x1 + 1) * C, y: (y1 + 1) * C };
   paintProps(ctx, g, 'under', propMin, propMax, tier, win.scale);
