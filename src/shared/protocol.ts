@@ -5,9 +5,25 @@ import type { OverlayData } from './overlay';
 import type { Preset, SitePayload } from './site';
 import type { Speed } from './time';
 
-/** Options chosen in the new game wizard. Grows with later milestones. */
+/** The airport's identity from the new game wizard (T35). */
+export interface AirportIdentity {
+  name: string;
+  /** Three letter code, IATA style. */
+  iata: string;
+  /** Four letter code, ICAO style. */
+  icao: string;
+  /** Brand color as #rrggbb. */
+  color: string;
+}
+
+/** Game mode (T35): a sandbox has unlimited cash, owns the whole site and ignores the airline rating gates. */
+export type GameMode = 'career' | 'sandbox';
+
+/** Options chosen in the new game wizard. Grows with later milestones. Saves from before T35 have neither mode nor airport: a career with a name from the seed. */
 export interface GameOptions {
   preset: Preset;
+  mode?: GameMode;
+  airport?: AirportIdentity;
 }
 
 /** The built airfield plus the undo state. */
@@ -45,6 +61,8 @@ export const PROTOCOL_VERSION = 1;
 export type ToSimMessage =
   | { type: 'init'; seed: string; options: GameOptions; saveData?: unknown }
   | { type: 'save'; id: number }
+  /** Generates the site of a seed and preset for the new game panel, without starting a game (T35). */
+  | { type: 'preview'; seed: string; preset: Preset }
   | { type: 'commands'; list: Command[] }
   | { type: 'setSpeed'; multiplier: Speed }
   | { type: 'query'; id: number; kind: string; args: unknown }
@@ -66,6 +84,7 @@ export type FromSimMessage =
   | { type: 'snapshot'; tick: number; buffer: ArrayBuffer }
   | { type: 'staticDirty'; chunks: number[]; kinds: number[] }
   | { type: 'staticData'; kind: 'site'; payload: SitePayload }
+  | { type: 'staticData'; kind: 'preview'; payload: SitePayload }
   | { type: 'staticData'; kind: 'ownership'; payload: OwnershipPayload }
   | { type: 'staticData'; kind: 'airfield'; payload: AirfieldMessage }
   | { type: 'staticData'; kind: 'business'; payload: BusinessPayload }

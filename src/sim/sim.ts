@@ -1,5 +1,5 @@
 import { AIRCRAFT } from '@data/aircraft';
-import { GROUND, GSE, STAND_ACCESS } from '@data/index';
+import { BUSINESS, GROUND, GSE, STAND_ACCESS } from '@data/index';
 import { STAFF_ROLE_COUNT } from '@data/schemas/staff';
 import { ACCEPT_COMMERCIAL, STAND_UPGRADE, type AirfieldPayload, type Stand } from '@shared/airfield';
 import { isVehicleCause, VEHICLE_CAUSE } from '@shared/turnaround';
@@ -83,6 +83,8 @@ export class Sim {
   readonly cleaning: Cleaning;
   /** The seeded event director and its deck (T50). */
   readonly director: Director;
+  /** Sandbox mode (T35): cash is topped up so it never limits a build, the site is owned and airlines ignore rating gates. */
+  readonly sandbox: boolean;
   /** True while a save is restored, so derived event effects do not schedule work the uninterrupted run did not have. */
   private restoring = false;
   private readonly divertTypes: number[] = [];
@@ -132,7 +134,10 @@ export class Sim {
     this.site = generateSite(seed, options.preset);
     this.parcelOwner = new Uint8Array(this.site.parcelCount);
     for (let i = 0; i < this.site.startParcels.length; i++) this.parcelOwner[this.site.startParcels[i]] = 1;
-    this.cash = START_CASH;
+    this.sandbox = options.mode === 'sandbox';
+    this.cash = this.sandbox ? BUSINESS.sandboxCash : START_CASH;
+    // A sandbox owns the whole site from the start (T35).
+    if (this.sandbox) this.parcelOwner.fill(1);
     // The business keeps the ledger, so every cash change goes through `book`.
     this.traffic = new Traffic({ windFreq: this.site.wind.freq, windMeanKt: this.site.wind.meanKt, climate: this.site.climate, idealHeadingDeg: this.site.idealHeadingDeg }, this.rng, (code) => this.eventQueue.push(code));
     const host = {
@@ -143,6 +148,7 @@ export class Sim {
       },
     };
     this.business = new Business(this.site, this.rng, host, this.traffic, this.airfield);
+    this.business.sandbox = this.sandbox;
     this.gse = new Gse(this.traffic, {
       roads: this.roads,
       standIndexOf: (a) => this.airfield.data.stands.findIndex((s) => s.id === this.traffic.standId[a]),
@@ -350,6 +356,7 @@ export class Sim {
         this.staff.update(this.tick);
         this.business.update(this.tick);
         this.director.update(this.tick);
+        if (this.sandbox && this.cash < BUSINESS.sandboxCash / 2) this.cash = BUSINESS.sandboxCash;
         break;
       case 4:
         this.cohorts.update(this.tick);

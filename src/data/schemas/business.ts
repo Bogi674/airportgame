@@ -45,6 +45,7 @@ const fixtureLevel = z
 export const businessSchema = z.object({
   version: z.literal(1),
   note: z.string(),
+  sandboxCash: z.number().positive(),
   gse: z.record(z.string(), z.object({ price: z.number().nonnegative(), start: z.number().int().nonnegative() })),
   fees: z.object({
     landingPerTonne: z.number().positive(),

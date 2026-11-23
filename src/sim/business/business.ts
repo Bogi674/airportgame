@@ -321,8 +321,11 @@ export class Business {
 
   // Airlines -----------------------------------------------------------------
 
+  /** Sandbox mode (T35): airlines sign whatever their rating gate. Set by the sim. */
+  sandbox = false;
+
   signAirline(id: number, on: boolean): string | null {
-    const r = this.market.sign(id, on, this.rating, this.traffic.nowTick);
+    const r = this.market.sign(id, on, this.sandbox ? Infinity : this.rating, this.traffic.nowTick);
     this.version++;
     return r;
   }

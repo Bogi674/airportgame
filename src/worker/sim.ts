@@ -9,7 +9,7 @@ import {
   type Speed,
 } from '@shared/time';
 import { Sim } from '@sim/sim';
-import { toPayload } from '@sim/world/site';
+import { generateSite, toPayload } from '@sim/world/site';
 import type { WorkerScope } from './scope';
 import { OverlayPublisher } from './overlayPublisher';
 
@@ -224,6 +224,11 @@ scope.onmessage = (event) => {
         scope.postMessage({ type: 'ready' });
         if (loopHandle === null) loopHandle = setTimeout(loop, 0);
         break;
+      case 'preview': {
+        const payload = toPayload(generateSite(msg.seed, msg.preset));
+        scope.postMessage({ type: 'staticData', kind: 'preview', payload }, transferList(payload));
+        break;
+      }
       case 'commands':
         if (sim) for (let i = 0; i < msg.list.length; i++) sim.enqueue(msg.list[i]);
         break;

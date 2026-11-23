@@ -67,9 +67,9 @@ export class Market {
 
   /** The seven opening airlines: three regional, three national and one long haul, with their rating gates (user, 2026-11-17). */
   generateAirlines(): void {
-    this.airlines.push(this.makeAirline('regional', 0), this.makeAirline('regional', 0), this.makeAirline('regional', 10));
-    this.airlines.push(this.makeAirline('national', 25), this.makeAirline('national', 35), this.makeAirline('national', 45));
-    this.airlines.push(this.makeAirline('international', 70));
+    // One at a time, so each airline's id is its index and the name check sees the airlines made before it.
+    const gates: [AirlineScope, number][] = [['regional', 0], ['regional', 0], ['regional', 10], ['national', 25], ['national', 35], ['national', 45], ['international', 70]];
+    for (const [scope, min] of gates) this.airlines.push(this.makeAirline(scope, min));
   }
 
   private makeAirline(scope: AirlineScope, minRating: number): Airline {

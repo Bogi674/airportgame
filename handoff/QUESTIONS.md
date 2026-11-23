@@ -521,3 +521,14 @@ Implementer choices, stated for the owner: a weather event weighs its climate sh
 | Sharpness fix | Keep max zoom 40. Add a 64 px/m chunk band and bake aircraft and vehicles at the zoom bucket in use, up to 64 px/m, with a cache cap |
 | Stress baseline | Stale for this hardware (untouched code also fails); rewrite it from a clean run |
 | T83 | Moved to MVP 2, matching section 5 which already parks morale, fatigue and training |
+
+## 2026-11-23 T35: menus
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Wizard | Site and Airport steps only; difficulty and optional rules wait for MVP 2 |
+| Menu extras | Dimmed demo airport, sandbox mode, credits and version, and multiple distinctly named saves |
+| Load cards | Thumbnail cards |
+| Sandbox | Unlimited cash, the whole site owned, airlines ignore rating gates, events stay |
+| Named saves | Save overwrites the current slot, Save as makes a new named slot; cards rename, duplicate and delete |
+

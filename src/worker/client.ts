@@ -3,7 +3,7 @@ import type { Command } from '@sim/commands';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
 import type { AirfieldMessage, FromSimMessage, GameOptions, OwnershipPayload, PerfReport, ToSimMessage } from '@shared/protocol';
 import type { OverlayData } from '@shared/overlay';
-import type { SitePayload } from '@shared/site';
+import type { Preset, SitePayload } from '@shared/site';
 import { createSnapshotViews, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SNAPSHOT_INTERVAL_MS, type Speed } from '@shared/time';
 
@@ -26,6 +26,8 @@ export interface ClientEvents {
   /** The sim stopped: the tick, seed, error and the last commands, for the crash panel and the copied report. */
   onCrash?(report: CrashReport): void;
   onSite?(site: SitePayload): void;
+  /** The site of a preview request (T35). */
+  onPreview?(site: SitePayload): void;
   onOwnership?(ownership: OwnershipPayload): void;
   onEvents?(list: string[]): void;
   onAirfield?(msg: AirfieldMessage): void;
@@ -61,6 +63,11 @@ export class SimClient {
 
   init(seed: string, options: GameOptions, saveData?: unknown): void {
     this.post({ type: 'init', seed, options, saveData });
+  }
+
+  /** Asks the worker for the site of a seed and preset. The answer arrives through `onPreview`. */
+  preview(seed: string, preset: Preset): void {
+    this.post({ type: 'preview', seed, preset });
   }
 
   /** Asks the worker for the full state. The answer arrives through `onSaved`. */
@@ -108,6 +115,7 @@ export class SimClient {
       }
       case 'staticData':
         if (msg.kind === 'site') this.events.onSite?.(msg.payload);
+        else if (msg.kind === 'preview') this.events.onPreview?.(msg.payload);
         else if (msg.kind === 'ownership') this.events.onOwnership?.(msg.payload);
         else if (msg.kind === 'airfield') this.events.onAirfield?.(msg.payload);
         else if (msg.kind === 'business') this.events.onBusiness?.(msg.payload);

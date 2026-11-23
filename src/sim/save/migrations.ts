@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 41;
+export const SAVE_VERSION = 42;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -418,6 +418,15 @@ export function migrate(raw: unknown): SaveData {
   // the first event, and the ledger gains the incidents row after the T82 rows. A weather event planned for later
   // today in the old business fields is dropped; one already under way keeps its end tick.
   if (save.version < 41) save.version = 41;
+  // Version 41 to 42: game options gain the mode and the airport identity (T35). Older saves have neither and load as
+  // a career; the UI names their airport from the seed. The opening airlines of older saves were all made before the
+  // first was added, so their ids repeated (0, 0, 0, 3, 3, 3, 6); every airline takes its index as id, which is how the
+  // commands and the flights already address them.
+  if (save.version < 42) {
+    const airlines = (save as { business?: { airlines?: { id: number }[] } }).business?.airlines;
+    if (airlines) airlines.forEach((a, i) => (a.id = i));
+    save.version = 42;
+  }
   return save as SaveData;
 }
 
