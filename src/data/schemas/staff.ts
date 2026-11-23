@@ -77,6 +77,7 @@ const ramp = z.strictObject({
 const cleaning = z.strictObject({
   note: z.string(),
   dirtPerPersonMin: z.number().int().positive(),
+  everyMin: z.number().int().positive(),
   dirtyPerM2: z.number().int().positive(),
   callShare: share,
   cleanBaseMin: nonnegative,

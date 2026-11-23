@@ -277,7 +277,7 @@ export class Staff {
       this.staffPass(tick);
     }
     if (tick % STEP_TICKS === 0) {
-      this.cleaning?.accumulate();
+      if (tick % (STEP_TICKS * STAFF.cleaning.everyMin) === 0) this.cleaning?.accumulate();
       this.stateStep(tick);
       if (this.presenceDirty) this.applyPresence();
       this.dispatchCleaners(tick);

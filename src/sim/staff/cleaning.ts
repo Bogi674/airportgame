@@ -81,7 +81,7 @@ function roomsOf(g: TerminalGrid, cellNode: Int32Array | undefined): GridRooms {
 export class Cleaning {
   /** Rooms per grid index. */
   rooms: GridRooms[] = [];
-  /** Area weighted share of clean floor over the passenger rooms, 1 with none. Updated once a game minute. */
+  /** Area weighted share of clean floor over the passenger rooms, 1 with none. Updated with the dirt. */
   cleanliness = 1;
   /** Dirt from a save, applied by grid id at the next rebuild. */
   private pending = new Map<number, Int32Array>();
@@ -116,8 +116,9 @@ export class Cleaning {
     return true;
   }
 
-  /** Once a game minute: every passenger inside a room adds dirt to it, then the cleanliness is measured. */
+  /** Every CLEAN.everyMin game minutes: every passenger inside a room adds that many minutes of dirt, then the cleanliness is measured. */
   accumulate(): void {
+    const add = CLEAN.dirtPerPersonMin * CLEAN.everyMin;
     const p = this.people;
     const b = this.business;
     for (let c = 0; c < p.hi; c++) {
@@ -134,7 +135,7 @@ export class Cleaning {
       else if (p.walkStart[c]! >= 0) cell = cellIndex(g, p.walkToX[c]!, p.walkToY[c]!);
       const r = cell >= 0 ? rooms.label[cell]! : -1;
       if (r < 0) continue;
-      rooms.dirt[r] = Math.min(rooms.full[r]!, rooms.dirt[r]! + p.size[c]! * CLEAN.dirtPerPersonMin);
+      rooms.dirt[r] = Math.min(rooms.full[r]!, rooms.dirt[r]! + p.size[c]! * add);
     }
     let clean = 0;
     let area = 0;

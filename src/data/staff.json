@@ -24,5 +24,5 @@
  "reliefShare": 0.2,
  "operator": { "note": "Where on duty staff stand: metres behind the fixture anchor centre, away from the queue, and side spacing.", "backM": 0.7, "spacingM": 0.8 },
  "ramp": { "note": "Apron crews (T81): a pool at the lowest id ground handling depot needing crewSize per commercial stand with a road; each airline turnaround holds one crew from chocks to door close.", "crewSize": 2 },
- "cleaning": { "note": "Terminal rooms (T81): each passenger in a room adds dirtPerPersonMin units a game minute, a room is fully dirty at dirtyPerM2 units per m2, a cleaner of the nearest janitor room is called at callShare and cleans for cleanBaseMin plus cleanMinPer100M2 per 100 m2.", "dirtPerPersonMin": 1, "dirtyPerM2": 20, "callShare": 0.3, "cleanBaseMin": 5, "cleanMinPer100M2": 1 }
+ "cleaning": { "note": "Terminal rooms (T81): each passenger in a room adds dirtPerPersonMin units a game minute, counted every everyMin minutes, a room is fully dirty at dirtyPerM2 units per m2, a cleaner of the nearest janitor room is called at callShare and cleans for cleanBaseMin plus cleanMinPer100M2 per 100 m2.", "dirtPerPersonMin": 1, "everyMin": 10, "dirtyPerM2": 20, "callShare": 0.3, "cleanBaseMin": 5, "cleanMinPer100M2": 1 }
 }
