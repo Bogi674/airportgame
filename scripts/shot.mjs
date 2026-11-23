@@ -10,6 +10,7 @@
 //   "buy": [[x0, y0, x1, y1]],               buy every parcel touching these world rectangles (meters)
 //   "commands": [{ "type": "buildRunway", ... }],   sim commands, sent in order (see src/sim/commands.ts)
 //   "camera": { "x": 4000, "y": 5000, "zoom": 1.5, "rotation": 0 },   zoom is pixels per meter
+//   "dpr": 2,                                 device pixel ratio of the page, 1 by default
 //   "hideUi": false,                          hide every panel so only the map shows
 //   "viewport": { "w": 1600, "h": 1000 },
 //   "actions": [                             pointer and keyboard input, world coordinates in meters
@@ -40,7 +41,7 @@ const url = process.env.SHOT_URL ?? 'http://localhost:5173/';
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM_PATH });
 const vw = sc.viewport?.w ?? 1600;
 const vh = sc.viewport?.h ?? 1000;
-const page = await browser.newPage({ viewport: { width: vw, height: vh } });
+const page = await browser.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: sc.dpr ?? 1 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => {

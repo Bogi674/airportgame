@@ -20,6 +20,20 @@ export function tierForZoom(zoom: number): number {
   return zoom >= min[3] ? 3 : zoom >= min[2] ? 2 : zoom >= min[1] ? 1 : 0;
 }
 
+/** Largest on screen magnification of a baked bitmap before a finer bake takes over, as for map chunks. */
+const MAX_MAGNIFY = 1.25;
+
+/**
+ * The close up bake for a device zoom (camera zoom times device pixel ratio) in px per m: -1 while the tier 3 bake
+ * is magnified at most 1.25 times, else the index of the coarsest sharp resolution that is, or the finest (T45).
+ */
+export function sharpLevel(deviceZoom: number): number {
+  if (deviceZoom <= SPRITES.tiers.bakePpm[3] * MAX_MAGNIFY) return -1;
+  const s = SPRITES.tiers.sharpPpm;
+  for (let i = 0; i < s.length; i++) if (deviceZoom <= s[i]! * MAX_MAGNIFY) return i;
+  return s.length - 1;
+}
+
 /**
  * Tier drawn at a zoom under the quality governor. From level 2 the governor lowers detail one tier, but
  * never turns a silhouette into the arrow: the arrow follows zoom alone, so slow frames while zooming
@@ -75,14 +89,14 @@ const COL = {
  * close up with slats, spoilers, lights and nacelle seams. Prototype tiers: 2 for sprite tiers 1
  * and 2, 3 for sprite tier 3.
  */
-export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: number): Sprite {
+export function bakeAircraftSprite(typeIdx: number, liveryIdx: number, tier: number, sharp = -1): Sprite {
   const g = geometryFor(typeIdx);
   const s = g.base;
   const livery = liveryFor(liveryIdx);
-  const ppm = SPRITES.tiers.bakePpm[tier];
   const L = s.L;
-  if (tier === 0) return bakeArrow(L, livery.fin, ppm);
+  if (tier === 0) return bakeArrow(L, livery.fin, SPRITES.tiers.bakePpm[0]);
   const bnd = bounds(s);
+  const ppm = sharp < 0 ? SPRITES.tiers.bakePpm[tier] : Math.min(SPRITES.tiers.sharpPpm[sharp]!, SPRITES.tiers.sharpMaxPx / (Math.max(L, 2 * bnd.xMax) + 2 * PAD_M));
   const width = Math.ceil((L + 2 * PAD_M) * ppm);
   const height = Math.ceil((2 * bnd.xMax + 2 * PAD_M) * ppm);
   const canvas = document.createElement('canvas');
@@ -695,19 +709,20 @@ export class SpriteCache {
   private readonly sprites = new Map<number, Sprite>();
 
   constructor(
-    private readonly bake: (typeIdx: number, liveryIdx: number, tier: number) => Sprite = bakeAircraftSprite,
+    private readonly bake: (typeIdx: number, liveryIdx: number, tier: number, sharp: number) => Sprite = bakeAircraftSprite,
     private readonly maxEntries: number = SPRITES.cache.maxEntries,
   ) {}
 
-  get(typeIdx: number, liveryIdx: number, tier: number): Sprite {
+  /** The sprite of a type, livery and tier; sharp is an index into `SPRITES.tiers.sharpPpm` for a close up bake, -1 for none. */
+  get(typeIdx: number, liveryIdx: number, tier: number, sharp = -1): Sprite {
     const slot = liveryIdx >= 0 && liveryIdx < SPRITES.liveries.length ? liveryIdx : SPRITES.liveries.length;
-    const key = (typeIdx * LIVERY_SLOTS + slot) * 4 + tier;
+    const key = ((typeIdx * LIVERY_SLOTS + slot) * 4 + tier) * (SPRITES.tiers.sharpPpm.length + 1) + sharp + 1;
     let s = this.sprites.get(key);
     if (s) {
       // Touch: move to the most recent end.
       this.sprites.delete(key);
     } else {
-      s = this.bake(typeIdx, slot, tier);
+      s = this.bake(typeIdx, slot, tier, sharp);
       if (this.sprites.size >= this.maxEntries) {
         const oldest = this.sprites.keys().next();
         if (!oldest.done) this.sprites.delete(oldest.value);

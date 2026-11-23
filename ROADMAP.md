@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. Phases 1, 2 and 3b are done, T81 and T32 (tenants) closed on 2026-11-23. Phase 3 keeps **T83** (the rest of the staff follow up). T50 (events) closed on 2026-11-23. T82 (prop effects) runs in another session. Next here is **T45** (asset sharpness), then phase 5 once phase 4 closes. Run the `grill-me` skill and write the spec first.
+2. Phases 1, 2 and 3b are done, T81 and T32 (tenants) closed on 2026-11-23. T83 moved to MVP 2 (owner, 2026-11-23). T50 (events) closed on 2026-11-23. T82 (prop effects) runs in another session. T45 (asset sharpness) closed on 2026-11-23. Next here is phase 5 once phase 4 closes. Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
@@ -64,7 +64,7 @@ MVP 1 ends with the acceptance task T38.
 | 0 | Repair | T57, T58, T69 | done |
 | 1 | Stands and flight planning | T59, T47, T61, T62, T72, T70, T71 | done |
 | 2 | Ground handling | T60, T64, T65, T63, T43, T66, T78 | done |
-| 3 | People | T54, T67, T20, T68 | done |
+| 3 | People | T54, T67, T20, T68, T79, T80, T81 | done |
 | 3b | Terminal kit | T73, T74, T75, T76, T77 | done |
 | 4 | Tenants and events | T32, T82, T50 | doing |
 | 5 | Shell and release | T35, T36, T45, T37, T38 | todo |
@@ -129,7 +129,6 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 | T80 | Security exit throughput as a queue: security exits become service nodes with a rate, so arrivals and exiting passengers wait at a busy exit |  | T20 | done 6553d28 |
 | T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | done (4915887, caa76a0, 0e440f2, c4ff0cc, 3561b13, f07ecbe, 3da6df3, 4a5bb20, 5a93613, 02f16e1, 6c47c6b, d4cd9f4, 9a13ebf, e57015f, cd1cd44, d0d4df8, fcbef61) |
 | T81 | Staff follow up, core three (owner, 2026-11-23): apron crews on turnarounds, cleaners based in janitor rooms with dirt per room (cleaning response grows with distance to the nearest one, T77), staffed security exits |  | T68 | done 79ea178 59f82b6 b960142 25e1037 0b0b37b. The rest moved to T83 |
-| T83 | Staff follow up, the rest of T81 (owner, 2026-11-23): staff screening queues on staff routes, morale, fatigue beyond the break, sick leave, training and the yearly wage index (decision 21 of T68) |  | T81 | todo |
 
 Exit: a passenger who gets hungry leaves the group, visits a shop and rejoins at the gate, arriving passengers collect bags and leave, staff change shifts at the staff center, and the rating reacts to all of it.
 
@@ -183,6 +182,7 @@ Moved to MVP 2:
 * The remaining 32 Phase 1 aircraft, MARS and cargo stands, international scope airlines.
 * Loans beyond one term loan, credit rating, fuel forward contracts, full reports.
 * Staff morale, fatigue, training and strikes, ATC options, the full event deck.
+* T83, the rest of the staff follow up: staff screening queues on staff routes, morale, fatigue beyond the break, sick leave, training and the yearly wage index (owner, 2026-11-23).
 * Full landside: road tools, curbside, parking, rail and bus stations, multiple terminals, progression stages.
 
 Dropped until asked for again:

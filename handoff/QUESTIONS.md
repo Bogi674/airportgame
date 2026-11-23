@@ -502,3 +502,11 @@ Values D32 and D33 of the 2026-11-12 batch stand: eight events, one draw per day
 | Frequency | Fixed for MVP 1: one draw per game day, weights and the fallback time in data so a preset can scale them later |
 
 Implementer choices, stated for the owner: a weather event weighs its climate share of days times 5 and an operational event 1; a drawn event the airport cannot have (no fuel farm, vehicle, signed airline, diversion type or staff) is a quiet day. Fuel delay holds every tanker delivery for 90 minutes. A breakdown takes one vehicle of a drawn kind out for 2 days. The VIP adds 3 satisfaction to a drawn signed airline; no stand is reserved. A diversion lands 30 minutes after it is accepted, carries no passengers, holds its stand for 3 hours and pays 5 000 in place of landing and parking. Staff shortage hires 25 percent fewer of every role for 24 hours; overtime pays half a day of wages at once.
+
+## 2026-11-23 T45: asset sharpness, and MVP 1 scope
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Sharpness fix | Keep max zoom 40. Add a 64 px/m chunk band and bake aircraft and vehicles at the zoom bucket in use, up to 64 px/m, with a cache cap |
+| Stress baseline | Stale for this hardware (untouched code also fails); rewrite it from a clean run |
+| T83 | Moved to MVP 2, matching section 5 which already parks morale, fatigue and training |
