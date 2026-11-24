@@ -9,7 +9,15 @@ import type { FixtureRot } from '../tools/fixtureRot';
 
 export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish';
 
-export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode' | 'prop' | 'propRemove' | 'unit';
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode' | 'prop' | 'propRemove' | 'unit' | 'move';
+
+/**
+ * A placed item being moved (T85): its building, the logical cell (fixture) or a point in grid meters (prop) that
+ * names it, what it is and the facing it will be dropped with.
+ */
+export type MovingItem =
+  | { kind: 'fixture'; building: number; x: number; y: number; f: number; level: number; mode: number; rot: 0 | 1 | 2 | 3 }
+  | { kind: 'prop'; building: number; x: number; y: number; asset: string; rot: 0 | 1 | 2 | 3 };
 
 /** Snap mode of a placement tool: the construction grid, or free placement. */
 export type SnapMode = 'grid' | 'free';
@@ -103,6 +111,10 @@ interface ToolState {
   altHeld: boolean;
   /** Fixture picked by the select tool inside a terminal: the anchor cell in logical cells, or null. */
   fixturePick: { building: number; x: number; y: number } | null;
+  /** Prop picked by the select tool inside a terminal: a point on it in grid meters, or null (T85). */
+  propPick: { building: number; x: number; y: number } | null;
+  /** A placed fixture or prop picked up by Move, following the cursor as a ghost until it is dropped (T85). */
+  moving: MovingItem | null;
   /** What the active tool wants the player to do next. */
   hint: string | null;
   /** Why the preview is invalid, with the parcels to buy when land is the problem. */
@@ -159,6 +171,8 @@ export const useToolStore = create<ToolState>((set) => ({
   snapMode: {},
   altHeld: false,
   fixturePick: null,
+  propPick: null,
+  moving: null,
   hint: null,
   problem: null,
   buy: null,

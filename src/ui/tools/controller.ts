@@ -20,12 +20,12 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import { fixtureKey, TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
+import { fixtureKey, isBaggageFixture, TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { footprintSteps, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { unitProblem } from '@shared/tenants';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
-import { cellAtWorld, cellIndex, fixtureAnchor, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
+import { cellAtWorld, cellIndex, fixtureAnchor, fixtureCells, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
@@ -45,7 +45,7 @@ import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { formatMoney, formatNumber } from '../format';
 import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
-import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
+import { GRID_TOOLS, snapModeOf, useToolStore, type MovingItem, type Tool } from '../stores/toolStore';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
 import { markShape, markTip, type SnapMark } from './snapMark';
@@ -91,6 +91,8 @@ export class ToolController {
   private dragging = false;
   /** The polygon being laid out cuts instead of building (Ctrl held on a click). */
   private cutting = false;
+  /** The grid copy the moved item was lifted from, kept while the same item moves over the same grid (T85). */
+  private lifted: { src: TerminalGrid; item: MovingItem; grid: TerminalGrid } | null = null;
   /** After a refused drag the preview and its buy offer stay up until the next press. */
   private frozen = false;
   /** Alignment frame of the apron rectangle in progress, captured at the press. */
@@ -126,7 +128,7 @@ export class ToolController {
   /** True for the tools where a plain click only sets the start point. */
   get twoClick(): boolean {
     const st = useToolStore.getState();
-    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode' && st.tSub !== 'prop' && st.tSub !== 'propRemove');
+    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode' && st.tSub !== 'prop' && st.tSub !== 'propRemove' && st.tSub !== 'move');
   }
 
   /** True while any gesture is in progress, so the map should scroll when the pointer reaches an edge. */
@@ -747,8 +749,12 @@ export class ToolController {
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
         const term = hit ? null : this.terminalAt(p);
         const bag = hit ? null : this.bagNodeAt(p);
-        const fixturePick = term !== null && bag === null ? this.fixtureAt(p, term) : null;
-        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null, fixturePick });
+        // A prop under the cursor wins over the fixture, since the two never share a cell (T85).
+        const propHit = term !== null && bag === null ? this.propUnder(p) : null;
+        const pc = propHit ? worldToCell(propHit.g, p.x, p.y) : null;
+        const propPick = propHit && pc ? { building: propHit.g.id, x: pc.cx * TERMINAL_CELL_M, y: pc.cy * TERMINAL_CELL_M } : null;
+        const fixturePick = term !== null && bag === null && !propPick ? this.fixtureAt(p, term) : null;
+        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null, fixturePick, propPick });
         break;
       }
     }
@@ -785,6 +791,19 @@ export class ToolController {
     if (e.key === 'Escape' && st.tool === 'stands' && st.standHeading !== null) {
       // The first Escape gives a turned stand back to auto facing, the next one leaves the tool.
       st.set({ standHeading: null });
+      this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
+    const moving = st.tool === 'terminal' && st.tSub === 'move' ? st.moving : null;
+    if (e.key === 'Escape' && moving) {
+      // Escape puts a moved item down where it was and goes back to selecting it (T85).
+      st.set({ moving: null, tool: 'select' });
+      this.lifted = null;
+      this.deps.setGhost(null);
+      return true;
+    }
+    if ((e.key === 'r' || e.key === 'R') && moving && !e.ctrlKey && !e.metaKey) {
+      st.set({ moving: { ...moving, rot: ((moving.rot + 1) % 4) as 0 | 1 | 2 | 3 } });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
@@ -2143,7 +2162,7 @@ export class ToolController {
   private terminalDown(p: Pt, mods: Mods): void {
     this.frozen = false;
     const click = useToolStore.getState().tSub;
-    if (click === 'bagNode' || click === 'prop' || click === 'propRemove') return;
+    if (click === 'bagNode' || click === 'prop' || click === 'propRemove' || click === 'move') return;
     const g = this.gridFor(p, mods);
     this.tGrid = g;
     const c = worldToCell(g, p.x, p.y);
@@ -2263,23 +2282,134 @@ export class ToolController {
     return i < 0 ? null : { g, i };
   }
 
+  /** The fixture under the cursor that the remove card or Move can take: its grid, anchor cell and footprint. */
+  private fixtureUnder(p: Pt): { g: TerminalGrid; x: number; y: number; cells: number[] } | null {
+    const term = this.terminalAt(p);
+    if (term === null) return null;
+    const at = this.fixtureAt(p, term);
+    const g = useGameStore.getState().terminalGrids.find((x) => x.id === term);
+    if (!at || !g) return null;
+    const anchor = cellIndex(g, at.x, at.y);
+    if (isBaggageFixture(g.fixture[anchor]!)) return null;
+    return { g, x: at.x, y: at.y, cells: fixtureCells(g, anchor) };
+  }
+
+  /** Outline of the footprint cells of a placed fixture, one square per cell. */
+  private cellShapes(g: TerminalGrid, cells: readonly number[]): GhostShape[] {
+    return cells.map((c) => {
+      const x = g.x0 + (c % g.w);
+      const y = g.y0 + Math.floor(c / g.w);
+      return { k: 'poly' as const, pts: rectWorld(g, x, y, x + 1, y + 1) };
+    });
+  }
+
+  /** The remove card (T85): the prop under the cursor, or else the fixture, with what removing it pays back. */
   private previewPropRemove(p: Pt): void {
     const hit = this.propUnder(p);
-    if (!hit) {
+    if (hit) {
+      const prop = hit.g.props[hit.i]!;
+      const name = propSpec(prop.asset)?.name ?? prop.asset;
+      this.show({ valid: true, tone: 'remove', shapes: this.propShapes(hit.g, prop), label: { x: p.x, y: p.y, text: tFormat('ghost.propRemove', { name, cost: formatMoney(propCost(prop.asset)) }) } }, null, 'hint.terminal.propRemove');
+      return;
+    }
+    const fx = this.fixtureUnder(p);
+    if (!fx) {
       this.deps.setGhost(null);
       useToolStore.getState().set({ hint: 'hint.terminal.propRemove', problem: null, buy: null });
       return;
     }
-    const prop = hit.g.props[hit.i]!;
-    const name = propSpec(prop.asset)?.name ?? prop.asset;
-    this.show({ valid: true, tone: 'remove', shapes: this.propShapes(hit.g, prop), label: { x: p.x, y: p.y, text: tFormat('ghost.propRemove', { name, cost: formatMoney(propCost(prop.asset)) }) } }, null, 'hint.terminal.propRemove');
+    const f = fx.g.fixture[cellIndex(fx.g, fx.x, fx.y)]!;
+    this.show({ valid: true, tone: 'remove', shapes: this.cellShapes(fx.g, fx.cells), label: { x: p.x, y: p.y, text: tFormat('ghost.fixtureRemove', { name: tDynamic(`fixture.${f}`) }) } }, null, 'hint.terminal.propRemove');
   }
 
   private removePropAt(p: Pt): void {
     const hit = this.propUnder(p);
-    if (!hit) return;
-    const c = worldToCell(hit.g, p.x, p.y);
-    this.deps.send({ type: 'removeProp', building: hit.g.id, x: c.cx * TERMINAL_CELL_M, y: c.cy * TERMINAL_CELL_M });
+    if (hit) {
+      const c = worldToCell(hit.g, p.x, p.y);
+      this.deps.send({ type: 'removeProp', building: hit.g.id, x: c.cx * TERMINAL_CELL_M, y: c.cy * TERMINAL_CELL_M });
+      return;
+    }
+    const fx = this.fixtureUnder(p);
+    if (fx) this.deps.send({ type: 'removeFixture', building: fx.g.id, x: fx.x, y: fx.y });
+  }
+
+  // Move (T85) ---------------------------------------------------------------
+
+  /** Copy of a grid without the item being moved, so the ghost checks the new spot as if the item had left. */
+  private liftedGrid(m: MovingItem): TerminalGrid | null {
+    const g = useGameStore.getState().terminalGrids.find((x) => x.id === m.building);
+    if (!g) return null;
+    if (this.lifted && this.lifted.src === g && this.lifted.item === m) return this.lifted.grid;
+    let out: TerminalGrid;
+    if (m.kind === 'prop') {
+      const i = propAt(g.props, m.x, m.y);
+      out = { ...g, props: g.props.filter((_, k) => k !== i) };
+    } else {
+      out = { ...g, fixture: g.fixture.slice(), fixtureRot: g.fixtureRot.slice(), fixtureOff: g.fixtureOff.slice(), fixtureLevel: g.fixtureLevel.slice(), fixtureMode: g.fixtureMode.slice() };
+      for (const c of fixtureCells(g, cellIndex(g, m.x, m.y))) {
+        out.fixture[c] = 0;
+        out.fixtureRot[c] = 0;
+        out.fixtureOff[c] = 0;
+        out.fixtureLevel[c] = 0;
+        out.fixtureMode[c] = 0;
+      }
+    }
+    this.lifted = { src: g, item: m, grid: out };
+    return out;
+  }
+
+  /** Where the moved item would land under the cursor, and whether it fits there. */
+  private moveTarget(p: Pt): { m: MovingItem; g: TerminalGrid; shapes: GhostShape[]; problem: Problem | null; toX: number; toY: number } | null {
+    const m = useToolStore.getState().moving;
+    if (!m) return null;
+    const g = this.liftedGrid(m);
+    const env = this.env();
+    if (!g || !env) return null;
+    const c = worldToCell(g, p.x, p.y);
+    if (m.kind === 'fixture') {
+      const cx = Math.floor(c.cx);
+      const cy = Math.floor(c.cy);
+      const edit: TerminalEdit = { op: 'fixture', x0: cx, y0: cy, x1: cx + 1, y1: cy + 1, variant: m.f, rot: m.rot, level: m.level, mode: m.mode };
+      const plan = planEdit(g, edit, { ...env, others: env.others.filter((o) => o.id !== g.id) });
+      const problem = plan.problem ?? (plan.changes === 0 ? { code: 'nothingThere' } : null);
+      const fp = footprintRect(edit);
+      return { m, g, shapes: [...this.fixtureGhost(g, edit, plan.anchors ?? []), { k: 'poly', pts: rectWorld(g, fp.x0, fp.y0, fp.x1, fp.y1) }], problem, toX: cx, toY: cy };
+    }
+    const spec = propSpec(m.asset);
+    if (!spec) return null;
+    const [w, d] = footprintSteps(spec, m.rot);
+    const toX = Math.round((c.cx * TERMINAL_CELL_M) / PROP_STEP_M - w / 2) * PROP_STEP_M;
+    const toY = Math.round((c.cy * TERMINAL_CELL_M) / PROP_STEP_M - d / 2) * PROP_STEP_M;
+    const prop: Prop = { asset: m.asset, x: toX, y: toY, rot: m.rot };
+    return { m, g, shapes: this.propShapes(g, prop), problem: planPropWithUse(g, prop).problem, toX, toY };
+  }
+
+  private previewMove(p: Pt): void {
+    const t = this.moveTarget(p);
+    if (!t) {
+      this.deps.setGhost(null);
+      return;
+    }
+    const name = t.m.kind === 'prop' ? (propSpec(t.m.asset)?.name ?? t.m.asset) : tDynamic(`fixture.${t.m.f}`);
+    this.show({ valid: t.problem === null, shapes: t.shapes, label: { x: p.x, y: p.y, text: tFormat('ghost.move', { name }) } }, t.problem, 'hint.terminal.move');
+    useToolStore.getState().set({ buy: null });
+  }
+
+  /** Drops the moved item where it fits, then goes back to selecting it at its new spot. */
+  private dropMove(p: Pt): void {
+    const t = this.moveTarget(p);
+    if (!t || t.problem) return;
+    const { m } = t;
+    const st = useToolStore.getState();
+    if (m.kind === 'fixture') {
+      this.deps.send({ type: 'moveFixture', building: m.building, x: m.x, y: m.y, toX: t.toX, toY: t.toY, rot: m.rot });
+      st.set({ moving: null, tool: 'select', selection: { kind: 'terminal', id: m.building }, fixturePick: { building: m.building, x: t.toX, y: t.toY }, propPick: null });
+    } else {
+      this.deps.send({ type: 'moveProp', building: m.building, x: m.x, y: m.y, toX: t.toX, toY: t.toY, rot: m.rot });
+      st.set({ moving: null, tool: 'select', selection: { kind: 'terminal', id: m.building }, fixturePick: null, propPick: { building: m.building, x: t.toX + PROP_STEP_M / 2, y: t.toY + PROP_STEP_M / 2 } });
+    }
+    this.lifted = null;
+    this.deps.setGhost(null);
   }
 
   /**
@@ -2312,6 +2442,10 @@ export class ToolController {
     }
     if (useToolStore.getState().tSub === 'propRemove') {
       this.previewPropRemove(p);
+      return;
+    }
+    if (useToolStore.getState().tSub === 'move') {
+      this.previewMove(p);
       return;
     }
     if (this.frozen && !this.dragging) return;
@@ -2407,6 +2541,10 @@ export class ToolController {
     }
     if (useToolStore.getState().tSub === 'propRemove') {
       this.removePropAt(p);
+      return;
+    }
+    if (useToolStore.getState().tSub === 'move') {
+      this.dropMove(p);
       return;
     }
     const g = this.tGrid;

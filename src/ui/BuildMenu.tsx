@@ -103,7 +103,7 @@ const prop = (id: string, name: string): Item => ({
   active: (s) => s.tool === 'terminal' && s.tSub === 'prop' && s.propAsset === id,
 });
 
-/** The card that removes props, on every furnishing tab. */
+/** The card that removes a placed prop or fixture (T85), on every furnishing tab and the terminal structure and processing tabs. */
 const removeProp: Item = {
   id: 'remove',
   thumb: 'erase',
@@ -257,8 +257,8 @@ export const CATEGORIES: Category[] = [
     testId: 'tool-terminal',
     tool: 'terminal',
     tabs: [
-      { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase')] },
-      { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk')] },
+      { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase'), removeProp] },
+      { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk'), removeProp] },
       { id: 'facilities', items: [fx('belt', 'belt')] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'shops', items: [...TENANT_CATEGORY_KEYS.map((k, c) => unit(k, c)), { ...sheet('tenants', 'tenants', 'finance'), thumb: 'shop' }] },
@@ -390,7 +390,7 @@ export function BuildMenu({ send }: { send(cmd: Command): void }) {
                     </span>
                   )}
                 </div>
-                <div class="card-name">{spec ? spec.name : it.name ?? (it.id === 'remove' && cat.id === 'furnish' ? t('menu.furnish.remove') : tDynamic(`menu.${cat.id}.${tab.id}.${it.id}` as StringKey))}</div>
+                <div class="card-name">{spec ? spec.name : it.name ?? (it.id === 'remove' && (cat.id === 'furnish' || cat.id === 'terminal') ? t('menu.furnish.remove') : tDynamic(`menu.${cat.id}.${tab.id}.${it.id}` as StringKey))}</div>
                 <div class="card-sub">{it.locked ? t('menu.soon') : it.gse ? `${t('menu.owned')} ${owned}` : price > 0 ? formatMoney(price) : ''}</div>
               </button>
               {it.gse && (

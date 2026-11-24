@@ -1,0 +1,265 @@
+{
+  "buy": [
+    [
+      3900,
+      4900,
+      4200,
+      5200
+    ]
+  ],
+  "commands": [
+    {
+      "type": "terminalBuild",
+      "building": -1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "foundation",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 0
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "floor",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "zone",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 0,
+        "variant": 1
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 0,
+        "y0": 0,
+        "x1": 0,
+        "y1": 8,
+        "variant": 1
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 13,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 2
+      }
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.b2b6",
+      "x": 6,
+      "y": 6,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.b2b6",
+      "x": 12,
+      "y": 6,
+      "rot": 1
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "fixture",
+        "x0": 9,
+        "y0": 3,
+        "x1": 10,
+        "y1": 4,
+        "variant": 16,
+        "rot": 0
+      }
+    }
+  ],
+  "camera": {
+    "x": 4012,
+    "y": 5008,
+    "zoom": 30
+  },
+  "hideUi": false,
+  "actions": [
+    {
+      "tool": "tool-select"
+    },
+    {
+      "click": [
+        4019,
+        5007
+      ]
+    },
+    {
+      "wait": 600
+    },
+    {
+      "shot": "select",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "tool": "item-move"
+    },
+    {
+      "move": [
+        4013,
+        5011
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "shot": "moving",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "click": [
+        4013,
+        5011
+      ]
+    },
+    {
+      "wait": 800
+    },
+    {
+      "expect": {
+        "path": "terminalGrids.0.props.length",
+        "equals": 2
+      }
+    },
+    {
+      "shot": "moved",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "tool": "item-rotate"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "shot": "rotated",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "tool": "undo"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "tool": "undo"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "shot": "undone",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "click": [
+        4007,
+        5006.6
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "tool": "item-remove"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "shot": "removedprop",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "expect": {
+        "path": "terminalGrids.0.props.length",
+        "equals": 1
+      }
+    }
+  ],
+  "report": [
+    "cash"
+  ]
+}
