@@ -46,7 +46,7 @@ import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { formatMoney, formatNumber } from '../format';
 import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
-import { GRID_TOOLS, snapModeOf, useToolStore, type MovingItem, type Tool } from '../stores/toolStore';
+import { GRID_TOOLS, snapModeOf, useToolStore, type MovingItem, type Selection, type Tool } from '../stores/toolStore';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
 import { guideTip, markShape, markTip, type SnapMark } from './snapMark';
@@ -89,6 +89,9 @@ const JOINED_M = 0.5;
  * Turns pointer input into previews and build commands for the active tool. It holds
  * only the in progress gesture, everything else lives in the tool and game stores.
  */
+/** A fixture anchor or prop cell picked in a terminal, in logical cells for a fixture and meters for a prop. */
+type CellPick = { building: number; x: number; y: number };
+
 export class ToolController {
   private start: Pt | null = null;
   private pts: Pt[] = [];
@@ -307,16 +310,11 @@ export class ToolController {
       this.deps.setCursor('grab');
       return;
     }
-    const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
-    const term = hit ? null : this.terminalAt(p);
-    const kind = hit ? hit.kind : term !== null ? 'terminal' : '';
-    const id = hit ? hit.id : term ?? 0;
-    // Over a fixture or prop the hover outlines that item, as a click selects only it (T88).
-    const propHit = term !== null ? this.propUnder(p) : null;
-    const pc = propHit ? worldToCell(propHit.g, p.x, p.y) : null;
-    const propPick = propHit && pc ? { building: propHit.g.id, x: pc.cx * TERMINAL_CELL_M, y: pc.cy * TERMINAL_CELL_M } : null;
-    const fixturePick = term !== null && !propPick ? this.fixtureAt(p, term) : null;
-    const item = term !== null && (propPick || fixturePick) ? this.pickedItemShape(term, fixturePick, propPick) : null;
+    // Over a fixture or prop the hover outlines that item, as a click selects only it (T88, T90).
+    const { selection, fixturePick, propPick } = this.pickUnder(p);
+    const kind = selection?.kind ?? '';
+    const id = selection?.id ?? 0;
+    const item = selection?.kind === 'terminal' && (propPick || fixturePick) ? this.pickedItemShape(selection.id, fixturePick, propPick) : null;
     const key = item ? `item:${propPick ? `p${propPick.x}:${propPick.y}` : `f${fixturePick?.x}:${fixturePick?.y}`}` : kind ? `${kind}:${id}` : '';
     if (key === this.hovered) return;
     this.hovered = key;
@@ -829,18 +827,9 @@ export class ToolController {
         else if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
         break;
       }
-      case 'select': {
-        const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
-        const term = hit ? null : this.terminalAt(p);
-        const bag = hit ? null : this.bagNodeAt(p);
-        // A prop under the cursor wins over the fixture, since the two never share a cell (T85).
-        const propHit = term !== null && bag === null ? this.propUnder(p) : null;
-        const pc = propHit ? worldToCell(propHit.g, p.x, p.y) : null;
-        const propPick = propHit && pc ? { building: propHit.g.id, x: pc.cx * TERMINAL_CELL_M, y: pc.cy * TERMINAL_CELL_M } : null;
-        const fixturePick = term !== null && bag === null && !propPick ? this.fixtureAt(p, term) : null;
-        useToolStore.getState().set({ selection: hit ? { kind: hit.kind, id: hit.id } : bag !== null ? { kind: 'bagNode', id: bag } : term ? { kind: 'terminal', id: term } : null, fixturePick, propPick });
+      case 'select':
+        useToolStore.getState().set(this.pickUnder(p));
         break;
-      }
     }
     this.dragging = false;
   }
@@ -2189,6 +2178,28 @@ export class ToolController {
       if (node && node.kind !== 'drop') return node.id;
     }
     return null;
+  }
+
+  /**
+   * What a click at p selects (T90): the topmost item, never the area under it. On a floored terminal cell that is a
+   * baggage node, a prop, a fixture or else the terminal, and an airfield object merely within the pick tolerance
+   * (a curb road, a stand stop point at the facade) never wins over it. Elsewhere the nearest airfield object, where a
+   * stand box already wins over its apron.
+   */
+  private pickUnder(p: Pt): { selection: Selection | null; fixturePick: CellPick | null; propPick: CellPick | null } {
+    const term = this.terminalAt(p);
+    if (term === null) {
+      const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
+      return { selection: hit ? { kind: hit.kind, id: hit.id } : null, fixturePick: null, propPick: null };
+    }
+    const bag = this.bagNodeAt(p);
+    if (bag !== null) return { selection: { kind: 'bagNode', id: bag }, fixturePick: null, propPick: null };
+    // A prop under the cursor wins over the fixture, since the two never share a cell (T85).
+    const propHit = this.propUnder(p);
+    const pc = propHit ? worldToCell(propHit.g, p.x, p.y) : null;
+    const propPick = propHit && pc ? { building: propHit.g.id, x: pc.cx * TERMINAL_CELL_M, y: pc.cy * TERMINAL_CELL_M } : null;
+    const fixturePick = propPick ? null : this.fixtureAt(p, term);
+    return { selection: { kind: 'terminal', id: term }, fixturePick, propPick };
   }
 
   /** The anchor cell of the fixture under the pointer in one terminal, or null when that cell holds no fixture. */
