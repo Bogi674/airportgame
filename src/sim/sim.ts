@@ -312,7 +312,7 @@ export class Sim {
         this.traffic.fuelOwed[i] -= this.business.drawFuel(this.traffic.fuelOwed[i]);
         return this.traffic.fuelOwed[i] <= 0;
       },
-      contactOk: (x, y) => this.business.hasTerminalNear(x, y),
+      contactOk: (st) => this.business.gateFor(st) !== null,
       scheduled: (f) => this.cohorts.onScheduled(f, this.tick),
       boardingReady: (f) => this.cohorts.boardingReady(f),
       turnDone: (i) => this.turns.done[i] === 1 && this.turns.flightOf[i] === this.traffic.flight[i],

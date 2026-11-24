@@ -802,7 +802,7 @@ export function ObjectPanel({ send }: Props) {
           </label>
         )}
         <StandAccess stand={x} index={af.stands.indexOf(x)} send={send} />
-        {x.type === 'contact' && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
+        {x.type === 'contact' && biz?.standContact[af.stands.indexOf(x)] !== 1 && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
       </>
     );
   }

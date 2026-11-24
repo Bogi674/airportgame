@@ -240,8 +240,6 @@ export class Business {
   private anyGateDesk = false;
   private gatelessHall = false;
   private totals: Record<FixtureKey, number> = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
-  /** Sample of foundation cell centres, for the contact stand reach test. */
-  private reach: number[] = [];
   readonly airlines: Airline[] = [];
   rating = 25;
   satisfaction = 0.8;
@@ -374,17 +372,6 @@ export class Business {
     for (const t of this.terminals) t.leased = this.tenants.leasedIn(t.id);
     this.totals = Object.fromEntries(FIXTURE_KEYS.map((k) => [k, 0])) as Record<FixtureKey, number>;
     for (const t of this.terminals) for (const k of FIXTURE_KEYS) this.totals[k] += t.counts[k];
-    this.reach = [];
-    for (const g of this.grids) {
-      // Every third cell on the logical grid, so the sample does not shift as a building grows.
-      for (let cy = Math.ceil(g.y0 / 3) * 3; cy < g.y0 + g.h; cy += 3) {
-        for (let cx = Math.ceil(g.x0 / 3) * 3; cx < g.x0 + g.w; cx += 3) {
-          if (g.floor[cellIndex(g, cx, cy)] === 0) continue;
-          const w = cornerWorld(g, cx + 0.5, cy + 0.5);
-          this.reach.push(w.x, w.y);
-        }
-      }
-    }
     this.computeFacilities();
     this.terminalVersion++;
     this.version++;
@@ -1205,7 +1192,6 @@ export class Business {
     return this.totals.passport * BUSINESS.modules.passport.capacityPerHour;
   }
 
-  /** Contact stands need a terminal building close by. */
   /** The floor bounds of every terminal as world polygons, for the obstacle surfaces. */
   footprints(): Pt[][] {
     const out: Pt[][] = [];
@@ -1214,12 +1200,6 @@ export class Business {
       if (b) out.push(rectWorld(g, b.x0, b.y0, b.x1 + 1, b.y1 + 1));
     }
     return out;
-  }
-
-  hasTerminalNear(x: number, y: number): boolean {
-    const reach = BUSINESS.terminal.contactReachM;
-    for (let i = 0; i < this.reach.length; i += 2) if (Math.hypot(this.reach[i] - x, this.reach[i + 1] - y) < reach) return true;
-    return false;
   }
 
   staffCount(): number {
@@ -1608,7 +1588,7 @@ export class Business {
       paxDay: this.paxDay?.() ?? [],
       arrDay: this.arrDay?.() ?? [],
       standLinked: stands.map((_, i) => (this.traffic.standLinkedPublic(i) ? 1 : 0)),
-      standContact: stands.map((st) => (st.type !== 'contact' || this.hasTerminalNear(st.x, st.y) ? 1 : 0)),
+      standContact: stands.map((st) => (st.type !== 'contact' || this.gateFor(st) !== null ? 1 : 0)),
       gateDesks: this.deskList().map((d) => ({ building: d.building, x: d.x, y: d.y })),
       standGate: stands.map((st) => {
         const d = this.gateFor(st);

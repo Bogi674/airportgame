@@ -147,11 +147,6 @@ describe('terminal built from foundations, flooring, walls and fixtures', () => 
     expect(run(sim, { type: 'terminalBuild', building: id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: { op: 'wall', x0: 60, y0: 40, x1: 62, y1: 42, variant: 1 } })[0]).toBe('wallStraight');
   });
 
-  it('contact stands need a terminal building nearby', () => {
-    const { sim } = airportWithTerminal();
-    expect(sim.business.hasTerminalNear(4000, 5420)).toBe(true);
-    expect(sim.business.hasTerminalNear(9000, 1000)).toBe(false);
-  });
 });
 
 describe('airlines and money', () => {
@@ -742,6 +737,16 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     expect(fixtureAt(sim, KEY('passport'), 92, 48)).toEqual([]);
     expect(sim.business.intlCapacity()).toBe(160);
     expect(sim.business.payload(sim.traffic.nowTick).intlCapacity).toBe(160);
+  });
+
+  it('contact stands need only a gate desk (T89)', () => {
+    const bare = ownedSim();
+    buildTestAirport(bare, { standsPerRow: 2, standType: 'contact' });
+    expect(bare.business.payload(bare.tick).standContact[0]).toBe(0);
+    const sim = airportWith();
+    expect(sim.business.gateFor({ x: 9000, y: 1000 })).toBeNull();
+    expect(fixtureAt(sim, KEY('gateDesk'), 88, 42)).toEqual([]);
+    expect(sim.business.gateFor({ x: 9000, y: 1000 })).not.toBeNull();
   });
 
   it('noGateDeskLink when a gate desk is walled off from security, cleared by a door', () => {

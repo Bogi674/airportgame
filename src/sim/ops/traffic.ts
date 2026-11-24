@@ -1,5 +1,5 @@
 import { AIRCRAFT, RUNWAY_OCCUPANCY, wakeSeparationSec, WAKE_ORDER, type AircraftSpec } from '@data/aircraft';
-import { ACCEPT_GA, CODES, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type FlightCategory, type Runway } from '@shared/airfield';
+import { ACCEPT_GA, CODES, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type FlightCategory, type Runway, type Stand } from '@shared/airfield';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
@@ -285,20 +285,20 @@ export class Traffic {
   private readonly cornerN: Scratch = { x: 0, y: 0, h: 0 };
   private readonly bits = [new Uint32Array(0)];
 
-  /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
+  /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a gate desk. */
   /** Usable approach type per runway direction, set by the sim from the obstacle surfaces. */
   obstacles: RunwayObstacles[] = [];
-  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(x: number, y: number): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean; fuelReady?(i: number): boolean; turnDone?(i: number): boolean; crewGone?(i: number): boolean; blocker?(i: number): number; delayCause?(f: number, cause: number): void } | null = null;
+  hooks: { docked(f: number): void; pushback(f: number): void; departed(f: number): void; contactOk?(stand: Stand): boolean; scheduled?(f: number): void; boardingReady?(f: number): boolean; fuelReady?(i: number): boolean; turnDone?(i: number): boolean; crewGone?(i: number): boolean; blocker?(i: number): number; delayCause?(f: number, cause: number): void } | null = null;
   private reachStand = 0;
   /** Stand blocks gathered by one autoAssign pass: stand index and start and end tick. Reused, never reallocated. */
   private readonly occStand = new Int32Array(MAX_FLIGHTS);
   private readonly occStart = new Float64Array(MAX_FLIGHTS);
   private readonly occEnd = new Float64Array(MAX_FLIGHTS);
   private occCount = 0;
-  /** Terminal reach of the stand in reachStand. Bound once, so the reused scratch facts allocate nothing per check. */
+  /** Gate desk of the contact stand in reachStand (T89). Bound once, so the reused scratch facts allocate nothing per check. */
   private readonly reachOf = (): boolean => {
     const st = this.af.stands[this.reachStand];
-    return !this.hooks?.contactOk || this.hooks.contactOk(st.x, st.y);
+    return !this.hooks?.contactOk || this.hooks.contactOk(st);
   };
   private readonly standScratch: StandFacts = { closed: false, accepts: 0, size: 'small', surface: 'asphalt', type: 'remote', code: 'A', linked: false, contactOk: this.reachOf };
   weather: 'clear' | 'rain' | 'fog' | 'wind' = 'clear';
