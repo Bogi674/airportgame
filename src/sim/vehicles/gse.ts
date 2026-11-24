@@ -254,7 +254,7 @@ export class Gse {
   /** Serial whose arriving bags wait for the aircraft's crew train to dock, 0 for none. */
   private readonly arrPending = new Int32Array(MAX_AIRCRAFT);
   /** Turnaround task state: an airline flight's crew leaves once its vehicle tasks are done. Set by the sim. */
-  turns: { readonly vehDone: Uint8Array } | null = null;
+  turns: { readonly vehDone: Uint8Array; readonly flightOf: Int32Array } | null = null;
   private readonly pose: TowPose = { x: 0, y: 0, heading: 0 };
   private roadVersion = -1;
   private phase = 0;
@@ -482,7 +482,9 @@ export class Gse {
    */
   private crewDone(a: number): boolean {
     const t = this.traffic;
-    if (t.tasked[a] === 1) return this.turns !== null && this.turns.vehDone[a] === 1;
+    // The task list must be the current flight's: until the turnaround starts it, vehDone still holds the last flight's
+    // value, and reading that would send the new crew home before it arrives, so the turnaround waited forever.
+    if (t.tasked[a] === 1) return this.turns !== null && this.turns.flightOf[a] === t.flight[a] && this.turns.vehDone[a] === 1;
     return t.timer[a] <= Math.min(CLEAR_LEAD_TICKS, this.turnAt[a] / 3);
   }
 
