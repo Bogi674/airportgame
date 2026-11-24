@@ -169,6 +169,7 @@ Goal: MVP 1 is complete and proven in a long session.
 | T45 | Asset sharpness at maximum zoom: diagnose, then fix |  |  | done caa064b |
 | T37 | Playwright smoke and visual tests in three engines |  | T35, T36 | done 729bd39 |
 | T38 | MVP 1 acceptance: every exit criterion above holds, a 3 hour session at 4x runs without errors or budget breaches |  | all | doing (automated part done: verify, soak 765bbd5, three engines; waits for the owner's 3 hour session, `handoff/work/T38.md`) |
+| T85 | Terminal editing: shared undo across airfield and terminal, select, move, rotate and demolish placed fixtures and props, sprite ghosts with use areas, rotation for every fixture, readable walls, back to back bench facing |  |  | doing |
 
 Exit: T38 passes.
 

@@ -180,6 +180,11 @@ export class Airfield {
     return this.redoStack.length > 0;
   }
 
+  /** Steps on the undo stack, so the shared history (T85) sees when an airfield command recorded one. */
+  get undoDepth(): number {
+    return this.undoStack.length;
+  }
+
   private list(type: ObjType): { id: number }[] {
     switch (type) {
       case 'runway':

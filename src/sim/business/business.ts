@@ -39,6 +39,7 @@ import { Market } from '../market/market';
 import type { BuildContext } from '@shared/validate';
 import { foldU32 } from '../hash';
 import { packTyped, unpackInto } from '../save/pack';
+import { applyPatch, copyGrid, type GridCopy, type GridPatch } from '../terminal/gridPatch';
 import { buildWalkGraph, updateWalkGraph, WALK_NODE, type WalkGraph } from '../terminal/walkGraph';
 import { nearestNode, walkDistance } from '../terminal/walkDistance';
 import { buildOverlayData, emptyOverlay, type OverlayData, type OverlayPeople } from '../terminal/overlays';
@@ -733,6 +734,73 @@ export class Business {
     this.walkVersion++;
     this.serviceVersion++;
     this.refreshTerminals();
+  }
+
+  // Undo history (T85) ---------------------------------------------------------
+
+  /** Id the next new building takes. */
+  get nextBuildingId(): number {
+    return this.nextTerminalId;
+  }
+
+  /** A deep copy of a building's grid for the undo history, null when no grid has that id. */
+  captureGrid(id: number): GridCopy | null {
+    const g = this.grids.find((q) => q.id === id);
+    return g ? copyGrid(g) : null;
+  }
+
+  /** Writes one side of an undo patch onto its grid and rebuilds everything derived from it. False when the grid is gone. */
+  patchGrid(p: GridPatch, side: 'before' | 'after'): boolean {
+    const i = this.gridIndex(p.id);
+    if (i < 0) return false;
+    const g = this.grids[i]!;
+    applyPatch(g, p, side);
+    if (cellCount(g) === 0) {
+      this.dropGrid(i);
+      return true;
+    }
+    this.walkGraphs[i] = buildWalkGraph(g);
+    this.dropStaleWorks(g);
+    this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, g, this.walkGraphs[i]!, this.closedCells(g));
+    this.tenants.prune(this.grids);
+    this.bumpTerminals();
+    this.onGridEdited?.(g.id);
+    return true;
+  }
+
+  /** Removes a whole building for an undo or redo step, with no refund: the history books the money. */
+  removeGridForHistory(id: number): boolean {
+    const i = this.gridIndex(id);
+    if (i < 0) return false;
+    this.dropGrid(i);
+    return true;
+  }
+
+  /** Puts a whole building back from a copy for an undo or redo step, appended so other grid indices stay. */
+  restoreGridForHistory(copy: GridCopy): boolean {
+    if (this.gridIndex(copy.id) >= 0) return false;
+    const g = copyGrid(copy);
+    this.grids.push(g);
+    const wg = buildWalkGraph(g);
+    this.walkGraphs.push(wg);
+    this.serviceNodes.push(buildServiceNodes(g, wg));
+    this.nextTerminalId = Math.max(this.nextTerminalId, g.id + 1);
+    this.tenants.prune(this.grids);
+    this.bumpTerminals();
+    this.onGridEdited?.(g.id);
+    return true;
+  }
+
+  private dropGrid(i: number): void {
+    const id = this.grids[i]!.id;
+    this.grids.splice(i, 1);
+    this.gridRemoved?.(i);
+    this.walkGraphs.splice(i, 1);
+    this.serviceNodes.splice(i, 1);
+    this.fixtureWorks = this.fixtureWorks.filter((w) => w.building !== id);
+    this.tenants.prune(this.grids);
+    this.bumpTerminals();
+    this.onGridEdited?.(id);
   }
 
   demolishTerminal(id: number): string | null {

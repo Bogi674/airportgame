@@ -539,3 +539,14 @@ Implementer choices, stated for the owner: a weather event weighs its climate sh
 | --- | --- |
 | Build menu | A flyout beside the left rail replaces the bottom panel |
 | Alert center | Grouped list (critical, warning, info) with merged repeats and counts, an unread badge on the bell, the time of each alert, and a jump to the location; no mute rules and no critical banner in MVP 1 |
+
+## 2026-11-24 T85: terminal editing, ghosts, walls, seating and undo
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| Editing placed items | Click to select a fixture or prop; a panel offers Move (picks it up as a ghost), Rotate and Demolish. A Demolish tool in the terminal menu removes whatever is under the cursor. Refunds follow today's rules |
+| Clearance | The ghost shows the real sprite, its footprint and a hatched use area (1 cell where passengers stand or queue at processing fixtures, the staff side behind desks, 0.5 m in front of seats and props). A wall or another item on the use area refuses placement. Sizes live in data |
+| Rotation | Every fixture and prop rotates in quarter turns; the sprite, the use area and the served cell turn together. Existing saves keep their facing |
+| Undo | One shared history: Ctrl+Z undoes the last action of any kind (airfield, terminal structure, zone, fixture, prop, baggage node), with today's money rules |
+
+Implementer choices, stated for the owner: walls keep their true 0.35 m width but are drawn at least 3 px wide with a light casing, as other markings already have a pixel floor. The back to back bench sprite had both rows facing inward; the rows are swapped so the backs meet on the shared beam.

@@ -1,3 +1,5 @@
+import { History, type HistoryHost } from './history';
+import { diffGrid } from './terminal/gridPatch';
 import { AIRCRAFT } from '@data/aircraft';
 import { BUSINESS, GROUND, GSE, STAND_ACCESS } from '@data/index';
 import { STAFF_ROLE_COUNT } from '@data/schemas/staff';
@@ -106,6 +108,7 @@ export class Sim {
   private obstaclesSent = -1;
   private towersSent = -1;
   private groundSent = -1;
+  private historySent = -1;
   private networkVersion = -1;
   /** Set by a stand command. The automatic assigner runs once in the next airfield sync. It is clear at every save point. */
   private standsDirty = false;
@@ -126,6 +129,27 @@ export class Sim {
   gameSeconds = 0;
 
   private readonly pending: Command[] = [];
+  /** The shared undo history of airfield and terminal edits (T85). */
+  private readonly history = new History();
+  private readonly historyHost: HistoryHost = {
+    cash: () => this.cash,
+    book: (amount) => this.book('construction', amount),
+    airfieldUndo: () => this.airfieldCommand({ type: 'undo' }),
+    airfieldRedo: () => this.airfieldCommand({ type: 'redo' }),
+    patchGrid: (p, side) => this.business.patchGrid(p, side),
+    removeGrid: (id) => this.business.removeGridForHistory(id),
+    restoreGrid: (copy) => this.business.restoreGridForHistory(copy),
+    removeBag: (id) => this.baggage.remove(id) === null,
+    placeBag: (p) => (this.baggage.place(p, true) === null ? this.baggage.lastId : -1),
+  };
+
+  get canUndo(): boolean {
+    return this.history.canUndo;
+  }
+
+  get canRedo(): boolean {
+    return this.history.canRedo;
+  }
 
   constructor(seed: string, options: GameOptions) {
     this.seed = seed;
@@ -581,11 +605,13 @@ export class Sim {
       case 'buyParcels':
         this.buyParcels(cmd.ids);
         break;
-      case 'terminalBuild':
-        this.report(this.business.terminalBuild(cmd.building, cmd.ox, cmd.oy, cmd.headingDeg, cmd.edit, this.buildContext(), cmd.level ?? 0));
+      case 'terminalBuild': {
+        const id = cmd.building >= 0 ? cmd.building : this.business.nextBuildingId;
+        this.recordGrid(id, () => this.business.terminalBuild(cmd.building, cmd.ox, cmd.oy, cmd.headingDeg, cmd.edit, this.buildContext(), cmd.level ?? 0));
         break;
+      }
       case 'demolishTerminal':
-        this.report(this.business.demolishTerminal(cmd.id));
+        this.recordGrid(cmd.id, () => this.business.demolishTerminal(cmd.id));
         break;
       case 'upgradeFixture':
         this.report(this.business.startFixtureUpgrade(cmd.building, cmd.x, cmd.y, this.tick));
@@ -611,17 +637,25 @@ export class Sim {
         this.report(this.business.tenants.campaign(cmd.category));
         break;
       case 'placeProp':
-        this.report(this.business.placeProp(cmd.building, { asset: cmd.asset, x: cmd.x, y: cmd.y, rot: cmd.rot }));
+        this.recordGrid(cmd.building, () => this.business.placeProp(cmd.building, { asset: cmd.asset, x: cmd.x, y: cmd.y, rot: cmd.rot }));
         break;
       case 'removeProp':
-        this.report(this.business.removeProp(cmd.building, cmd.x, cmd.y));
+        this.recordGrid(cmd.building, () => this.business.removeProp(cmd.building, cmd.x, cmd.y));
         break;
-      case 'placeBaggageNode':
-        this.report(this.baggage.place(cmd));
+      case 'placeBaggageNode': {
+        const cash = this.cash;
+        const r = this.baggage.place(cmd);
+        this.report(r);
+        if (r === null) this.history.push({ k: 'bag', place: { building: cmd.building, kind: cmd.kind, cx: cmd.cx, cy: cmd.cy, rot: cmd.rot, widthCells: cmd.widthCells }, id: this.baggage.lastId, removed: false, cash: this.cash - cash });
         break;
-      case 'removeBaggageNode':
-        this.report(this.baggage.remove(cmd.id));
+      }
+      case 'removeBaggageNode': {
+        const place = this.baggage.placementOf(cmd.id);
+        const r = this.baggage.remove(cmd.id);
+        this.report(r);
+        if (r === null && place) this.history.push({ k: 'bag', place, id: cmd.id, removed: true, cash: 0 });
         break;
+      }
       case 'setStandBay':
         this.report(this.baggage.setStandBay(cmd.standId, cmd.bayId));
         break;
@@ -692,26 +726,42 @@ export class Sim {
       case 'eventChoice':
         this.report(this.director.choose(cmd.seq, cmd.choice, this.tick));
         break;
+      case 'undo':
+        this.report(this.history.undo(this.historyHost));
+        break;
+      case 'redo':
+        this.report(this.history.redo(this.historyHost));
+        break;
       default: {
-        const towersBefore = this.airfield.towersVersion;
-        const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids });
-        if (r === null) break;
-        if (isProblem(r)) {
-          let e = r.code;
-          if (r.args) for (const k of Object.keys(r.args).sort()) e += `|${k}=${r.args[k]}`;
-          this.eventQueue.push(e);
-        } else {
-          if (r.cashDelta !== 0) this.book('construction', r.cashDelta);
-          // Stands moved or removed: the automatic assigner runs in the airfield sync, once the copy is current.
-          if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || cmd.type === 'setStandGate' || cmd.type === 'startStandUpgrade' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
-        }
-        // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
-        if (this.airfield.towersVersion !== towersBefore) {
-          this.business.version++;
-          this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
-        }
+        const depth = this.airfield.undoDepth;
+        const r = this.airfieldCommand(cmd);
+        if (r === null && this.airfield.undoDepth > depth) this.history.push({ k: 'airfield' });
+        else if (r !== null) this.report(r);
       }
     }
+  }
+
+  /** Runs a command on the airfield and books its money. Returns a problem code, or null when it ran or was not an airfield command. */
+  private airfieldCommand(cmd: Command): string | null {
+    const towersBefore = this.airfield.towersVersion;
+    const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids });
+    let problem: string | null = null;
+    if (r !== null) {
+      if (isProblem(r)) {
+        problem = r.code;
+        if (r.args) for (const k of Object.keys(r.args).sort()) problem += `|${k}=${r.args[k]}`;
+      } else {
+        if (r.cashDelta !== 0) this.book('construction', r.cashDelta);
+        // Stands moved or removed: the automatic assigner runs in the airfield sync, once the copy is current.
+        if (cmd.type === 'buildStands' || cmd.type === 'setStandProps' || cmd.type === 'setStandGate' || cmd.type === 'startStandUpgrade' || (cmd.type === 'demolish' && cmd.kind === 'stand')) this.standsDirty = true;
+      }
+    }
+    // A tower change, including an undo, refreshes ATC coverage and the movement budget at once.
+    if (this.airfield.towersVersion !== towersBefore) {
+      this.business.version++;
+      this.traffic.setTowerLevel(towerLevelOf(this.airfield.data));
+    }
+    return problem;
   }
 
   /**
@@ -730,6 +780,26 @@ export class Sim {
     }
     this.traffic.fStand[f] = standId;
     this.business.version++;
+  }
+
+  /**
+   * Runs a terminal command on one building and records it in the undo history when it succeeded: a patch of the
+   * cells it changed, or the whole building when the command made or removed it, with the money it booked (T85).
+   */
+  private recordGrid(id: number, run: () => string | null): void {
+    const before = this.business.captureGrid(id);
+    const cash = this.cash;
+    const r = run();
+    this.report(r);
+    if (r !== null) return;
+    const after = this.business.captureGrid(id);
+    const spent = this.cash - cash;
+    if (before && after) {
+      const patch = diffGrid(before, after);
+      if (patch) this.history.push({ k: 'patch', patch, cash: spent });
+    } else if (before || after) {
+      this.history.push({ k: 'whole', before, after, cash: spent });
+    }
   }
 
   private report(problem: string | null): void {
@@ -814,7 +884,9 @@ export class Sim {
 
   /** True once per airfield change. */
   takeAirfieldDirty(): boolean {
-    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent && this.airfield.towersVersion === this.towersSent && this.airfield.groundVersion === this.groundSent) return false;
+    if (this.airfield.version === this.airfieldSent && this.airfield.obstaclesVersion === this.obstaclesSent && this.airfield.towersVersion === this.towersSent && this.airfield.groundVersion === this.groundSent && this.history.version === this.historySent) return false;
+    // The undo state travels with the airfield payload, so a terminal edit sends it too (T85).
+    this.historySent = this.history.version;
     this.groundSent = this.airfield.groundVersion;
     this.airfieldSent = this.airfield.version;
     this.obstaclesSent = this.airfield.obstaclesVersion;
@@ -914,6 +986,7 @@ export class Sim {
     this.rng.setState(save.rng);
     unpackInto(save.parcelOwner, this.parcelOwner, Uint8Array);
     this.airfield.loadState(save.airfield);
+    this.history.clear();
     // Build the network for the loaded airfield, then put the traffic state on top of it.
     this.networkVersion = this.airfield.version;
     this.traffic.setAirfield(this.airfield.data);
