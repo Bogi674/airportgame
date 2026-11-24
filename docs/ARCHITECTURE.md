@@ -579,6 +579,10 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-24 T84: an apron within the shoulder plus `apronTouchM` (3 m) of a taxiway's pavement edge joins it: the shoulder between is paved in the apron's surface and the edge lines along it are dashed (4.5 m dash, 7.5 m gap, the FAA taxiway and apron boundary pattern), because grid built aprons stop at the shoulder and left a band that did not read as one surface.
 * 2026-11-24 T84: the road stub ghost is 12 m long and road snap points show within 300 m of the cursor (ground.json `stubM`, `nearbyM`), implementer choices for a preview the owner asked for without numbers.
 
+* 2026-11-24 T85: one shared undo history in the sim orders every build step. Airfield steps keep their content on the airfield stack and the history only marks their place; terminal edits, props, fixture moves and baggage nodes record a patch of the cells, wall edges, cost and props they changed (by logical coordinates, so it survives growth), or a whole copy when they made or removed a building. Undo books the opposite of the step's money and redo books it again, as airfield undo did. The history is not saved, like the airfield's before it, and holds at most 200 steps.
+* 2026-11-24 T85: use areas live in `business.json` `useAreas` (owner choice: they refuse placement). A fixture's front is one quarter turn after its direction, which is the bottom edge of its sprite, so the use area, the sprite and the side its queue starts on turn together; a transition fixture's entry is its front. Every fixture now stores its direction, one cell ones included; old code 0 reads as direction 0, the facing they were always drawn with, so saves need no migration.
+* 2026-11-24 T85: removing a fixture refunds nothing, as erasing it did, and lowers the building's spent total so a later demolition does not refund it either; moving or turning a placed fixture or prop is free. Walls keep their 0.35 m width but draw at least 3 px wide with a light casing, the pixel floor other markings already had.
+
 ## 13. Known limits
 
 Limits and open observations carried from finished tasks. Remove a line when its cause is fixed.

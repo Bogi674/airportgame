@@ -61,7 +61,7 @@ const SCENARIOS: Scenario[] = [
 /** Two beam seats of 3 in each cell of a row of logical cells [x0, x1) at row y, as a seating fixture row was before T76. */
 function seatRow(sim: Sim, building: number, x0: number, x1: number, y: number): void {
   for (let x = x0; x < x1; x++) {
-    // The two rows sit back to back, the first facing north, so each keeps its use area in front clear (T85).
+    // The two rows sit back to back, the first facing north, so each keeps its use area clear (T85).
     for (const dy of [0, 1]) sim.enqueue({ type: 'placeProp', building, asset: 'bench.beam3', x: x * 2, y: y * 2 + dy, rot: dy === 0 ? 2 : 0 });
   }
 }
@@ -155,7 +155,7 @@ function buildPeopleTerminal(sim: Sim): void {
   edit(id, { op: 'wall', x0: 72, y0: 40, x1: 72, y1: 42, variant: 1 });
   edit(id, { op: 'wall', x0: 72, y0: 54, x1: 72, y1: 56, variant: 1 });
   edit(id, { op: 'wall', x0: 72, y0: 58, x1: 72, y1: 70, variant: 1 });
-  // The desks end at column 64, so the use area in front of the security lanes stays clear (T85).
+  // 24 desks from column 40, clear of the lanes' entry column 64 so the lanes stay off their use areas (T85).
   edit(id, { op: 'fixture', x0: 40, y0: 42, x1: 64, y1: 43, variant: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 54, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 57, x1: 73, y1: 58, variant: 20, rot: 3, level: 1 });
