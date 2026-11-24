@@ -113,6 +113,21 @@ export const businessSchema = z.object({
   }),
   tower,
   shops: z.object({ convenience: shop, quickFood: shop, cafe: shop, dutyFree: shop, booksGifts: shop, pharmacy: shop }),
+  useAreas: z.strictObject({
+    note: z.string(),
+    fixtures: z.record(z.string(), z.strictObject({ front: z.number().int().min(0).max(3), back: z.number().int().min(0).max(3) })),
+    propFrontM: z.strictObject({
+      seating: z.number().nonnegative(),
+      lounge: z.number().nonnegative(),
+      washroom: z.number().nonnegative(),
+      decoration: z.number().nonnegative(),
+      vending: z.number().nonnegative(),
+      screens: z.number().nonnegative(),
+      service: z.number().nonnegative(),
+      office: z.number().nonnegative(),
+      backOfHouse: z.number().nonnegative(),
+    }),
+  }),
   airlines: z.object({ regionalNames: z.array(z.string()).min(4), nationalNames: z.array(z.string()).min(4), suffixes: z.array(z.string()).min(2) }),
 });
 

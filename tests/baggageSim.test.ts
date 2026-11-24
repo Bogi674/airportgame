@@ -112,13 +112,15 @@ describe('baggage subsystem', () => {
   it('gives a drop whose out cell has no floor a null port and no link', () => {
     const l = layout();
     expect(l.sim.baggage.nodesOf(l.building).filter((r) => r.kind === 'drop')).toHaveLength(1);
-    const problems = run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit: { op: 'fixture', x0: 50, y0: 40, x1: 51, y1: 41, variant: 1 } });
+    // A desk needs floor behind it when placed (T85), so the floor behind it is erased afterwards.
+    const problems = run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit: { op: 'fixture', x0: 50, y0: 41, x1: 51, y1: 42, variant: 1 } });
     expect(problems).toEqual([]);
+    expect(run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit: { op: 'erase', x0: 50, y0: 40, x1: 51, y1: 41, variant: 0 } })).toEqual([]);
     expect(place(l, 'machine', 42, 48)).toEqual([]);
     const drops = l.sim.baggage.nodesOf(l.building).filter((r) => r.kind === 'drop');
     expect(drops).toHaveLength(2);
     const machine = idOf(l, 'machine');
-    const offFloor = drops.find((r) => r.cell[0] === 50 && r.cell[1] === 40);
+    const offFloor = drops.find((r) => r.cell[0] === 50 && r.cell[1] === 41);
     if (!offFloor) throw new Error('no off floor drop');
     expect(links(l).some(([s, d]) => (s === offFloor.id || d === offFloor.id) && (s === machine || d === machine))).toBe(false);
     expect(links(l).some(([s, d]) => s === offFloor.id || d === offFloor.id)).toBe(false);

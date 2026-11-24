@@ -13,11 +13,9 @@ export function nextFixtureRot(r: FixtureRot): FixtureRot {
   return ((r + 1) % 4) as FixtureRot;
 }
 
-/** True when the fixture at this level takes a rotation: a footprint larger than one cell, or a transition fixture with a flow. */
-export function hasRotation(fixtureId: number, level: number): boolean {
-  const key = fixtureKey(fixtureId);
-  const [along, across] = footprintOf(key, level);
-  return along * across > 1 || TRANSITION_KEYS.includes(key);
+/** Every fixture takes a rotation since T85: its sprite, use area and the side it serves turn together. */
+export function hasRotation(fixtureId: number): boolean {
+  return fixtureId >= 1;
 }
 
 /** The level and mode a fixture edit carries. The security exit, the travelator (its length) and the leveled fixtures have levels and only mode fixtures have a mode; others carry 1 and 0. */

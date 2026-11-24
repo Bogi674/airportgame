@@ -1,3 +1,4 @@
+import { footprintCells, fixtureUseCells, planPropWithUse, propUseRect, useCellBlocked } from '@shared/useArea';
 import { apronContains, touches } from '@shared/apronGeom';
 import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standHeading, standRowPricing, type RemovePlan } from '@shared/apronPricing';
 import { AIRFIELD, BUSINESS, GROUND, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
@@ -19,9 +20,9 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import { TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
+import { fixtureKey, TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
-import { footprintSteps, planProp, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
+import { footprintSteps, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { unitProblem } from '@shared/tenants';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
 import { cellAtWorld, cellIndex, fixtureAnchor, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
@@ -865,7 +866,7 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
-    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && hasRotation(st.fixtureId, st.fixtureLevel)) {
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && hasRotation(st.fixtureId)) {
       st.set({ fixtureRot: nextFixtureRot(st.fixtureRot) });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
@@ -2306,7 +2307,13 @@ export class ToolController {
     const r = propRect(prop);
     if (!r) return [];
     const k = PROP_STEP_M / TERMINAL_CELL_M;
-    const shapes: GhostShape[] = [{ k: 'poly', pts: rectWorld(g, r.sx0 * k, r.sy0 * k, r.sx1 * k, r.sy1 * k) }];
+    const shapes: GhostShape[] = [];
+    // The strip in front that must stay clear, hatched, and the prop's kit sprite at true size (T85).
+    const strip = propUseRect(prop);
+    if (strip) shapes.push({ k: 'hatch', pts: rectWorld(g, strip.sx0 * k, strip.sy0 * k, strip.sx1 * k, strip.sy1 * k), blocked: false });
+    const mid = cornerWorld(g, ((r.sx0 + r.sx1) / 2) * k, ((r.sy0 + r.sy1) / 2) * k);
+    shapes.push({ k: 'prop', asset: prop.asset, rot: prop.rot, x: mid.x, y: mid.y, headingDeg: g.headingDeg });
+    shapes.push({ k: 'poly', pts: rectWorld(g, r.sx0 * k, r.sy0 * k, r.sx1 * k, r.sy1 * k) });
     const mx = ((r.sx0 + r.sx1) / 2) * k;
     const my = ((r.sy0 + r.sy1) / 2) * k;
     const front = prop.rot === 0 ? [mx, r.sy1 * k] : prop.rot === 1 ? [r.sx0 * k, my] : prop.rot === 2 ? [mx, r.sy0 * k] : [r.sx1 * k, my];
@@ -2323,7 +2330,7 @@ export class ToolController {
       st.set({ hint: 'hint.terminal.prop', problem: null, buy: null });
       return;
     }
-    const plan = planProp(at.g, at.prop);
+    const plan = planPropWithUse(at.g, at.prop);
     const name = propSpec(at.prop.asset)?.name ?? at.prop.asset;
     this.show({ valid: plan.problem === null, shapes: this.propShapes(at.g, at.prop), label: { x: p.x, y: p.y, text: tFormat('ghost.prop', { name, cost: formatMoney(propCost(at.prop.asset)) }) } }, plan.problem, 'hint.terminal.prop');
     st.set({ buy: null });
@@ -2331,7 +2338,7 @@ export class ToolController {
 
   private placeProp(p: Pt): void {
     const at = this.propAtCursor(p);
-    if (!at || planProp(at.g, at.prop).problem !== null) return;
+    if (!at || planPropWithUse(at.g, at.prop).problem !== null) return;
     const { g, prop } = at;
     this.deps.send({ type: 'placeProp', building: g.id, asset: prop.asset, x: prop.x, y: prop.y, rot: prop.rot });
   }
@@ -2426,6 +2433,7 @@ export class ToolController {
       label = tFormat('ghost.terminalWall', { n: plan.changes, cost: formatMoney(plan.cost) });
     } else {
       const fp = footprintRect(edit);
+      if (edit.op === 'fixture') shapes.push(...this.fixtureGhost(g, edit, plan.anchors ?? []));
       shapes.push({ k: 'poly', pts: rectWorld(g, fp.x0, fp.y0, fp.x1, fp.y1) });
       label = tFormat('ghost.terminal', { n: plan.changes, cost: formatMoney(plan.cost) });
     }
@@ -2445,6 +2453,36 @@ export class ToolController {
       useToolStore.getState().set({ buy: null });
     }
     this.show({ valid: problem === null && !idle, shapes, label: { x: p.x, y: p.y, text: label } }, problem ?? warning, hint);
+  }
+
+  /**
+   * Sprites and hatched use areas of the fixtures an edit places, at true size (T85). With no anchor to place, the
+   * hovered cell shows the fixture anyway, so a refused spot still shows what blocks it.
+   */
+  private fixtureGhost(g: TerminalGrid, edit: TerminalEdit, anchors: readonly { x: number; y: number }[]): GhostShape[] {
+    const key = fixtureKey(edit.variant);
+    if (key === undefined) return [];
+    const level = edit.level ?? 1;
+    const rot = edit.rot ?? 0;
+    const list = anchors.length > 0 ? anchors : [{ x: edit.x0, y: edit.y0 }];
+    const shapes: GhostShape[] = [];
+    for (const a of list) {
+      for (const u of fixtureUseCells(key, level, a.x, a.y, rot)) shapes.push({ k: 'hatch', pts: rectWorld(g, u.x, u.y, u.x + 1, u.y + 1), blocked: useCellBlocked(g, u) });
+      const cells = footprintCells(key, level, a.x, a.y, rot);
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (const [cx, cy] of cells) {
+        x0 = Math.min(x0, cx);
+        y0 = Math.min(y0, cy);
+        x1 = Math.max(x1, cx + 1);
+        y1 = Math.max(y1, cy + 1);
+      }
+      const c = cornerWorld(g, (x0 + x1) / 2, (y0 + y1) / 2);
+      shapes.push({ k: 'fixture', f: edit.variant, level, code: 1 + rot, x: c.x, y: c.y, headingDeg: g.headingDeg });
+    }
+    return shapes;
   }
 
   private finishTerminal(p: Pt): void {

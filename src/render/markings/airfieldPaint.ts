@@ -690,6 +690,20 @@ function fixtureBody(f: number, code: number, level: number, cx: number, cy: num
   };
 }
 
+/** Kit sprite and its rotation for a fixture ghost (T85), or null when the fixture has no kit sprite. */
+export function ghostFixtureSprite(f: number, level: number, code: number, tier: Tier, ppm: number): { sprite: FixtureSprite; rot: Rot } | null {
+  const sprite = kitSpriteAt(f, level, code, tier, ppm);
+  if (sprite === null) return null;
+  return { sprite, rot: (((code === 0 ? 0 : KIT_ROT[code - 1]) + (KIT_FLOW_TURN[fixtureKey(f)] ?? 0)) % 360) as Rot };
+}
+
+/** Kit sprite of a prop ghost by quarter turns (T85), or null for an unknown asset. */
+export function ghostPropSprite(asset: string, rot: number, tier: Tier, ppm: number): { sprite: FixtureSprite; rot: Rot } | null {
+  const r = KIT_ROT[rot] ?? 0;
+  const sprite = bakeFixture(asset, tier, r, ppm, null);
+  return sprite === null ? null : { sprite, rot: r };
+}
+
 /** Kit asset of a fixture at a level, or undefined when it has no kit sprite. */
 function kitAssetOf(key: FixtureKey, level: number): string | undefined {
   const levels = FIXTURE_LEVEL_ASSET[key];

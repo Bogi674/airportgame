@@ -155,11 +155,12 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   row(3, o.belt ?? 2, 62, 42);
   // Seating and toilets are props (T76): two beam seats of 3 per former seating cell, two stalls per former toilet cell
   // against the north wall.
-  const prop = (asset: string, x: number, y: number): void => {
-    problems.push(...run(sim, { type: 'placeProp', building: id, asset, x, y, rot: 0 }));
+  const prop = (asset: string, x: number, y: number, rot: 0 | 2 = 0): void => {
+    problems.push(...run(sim, { type: 'placeProp', building: id, asset, x, y, rot }));
   };
+  // The two rows sit back to back, the first facing north, so each keeps its use area in front clear (T85).
   for (let k = 0; k < (o.seating ?? 6); k++) {
-    prop('bench.beam3', (76 + k) * 2, 92);
+    prop('bench.beam3', (76 + k) * 2, 92, 2);
     prop('bench.beam3', (76 + k) * 2, 93);
   }
   for (let k = 0; k < (o.toilet ?? 2); k++) {
@@ -204,8 +205,9 @@ export function buildArrivalTerminal(sim: Sim, o: { eGate?: boolean; passport?: 
   edit(id, { op: 'floor', x0: 48, y0: 60, x1: 54, y1: 61, variant: 2 });
   edit(id, { op: 'zone', x0: 72, y0: 40, x1: 100, y1: 50, variant: 3 });
   edit(id, { op: 'zone', x0: 72, y0: 50, x1: 100, y1: 60, variant: 5 });
-  // The dividing wall leaves one edge open at each fixture row.
-  for (const [y0, y1] of [[40, 42], [44, 47], [48, 52], [53, 55], [56, 60]] as const) edit(id, { op: 'wall', x0: 72, y0, x1: 72, y1, variant: 1 });
+  // The dividing wall leaves one edge open at each fixture row, and both rows of the two cell security exit so its
+  // exit side is clear (T85).
+  for (const [y0, y1] of [[40, 42], [44, 46], [48, 52], [53, 55], [56, 60]] as const) edit(id, { op: 'wall', x0: 72, y0, x1: 72, y1, variant: 1 });
   edit(id, { op: 'wall', x0: 72, y0: 50, x1: 100, y1: 50, variant: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 42, x1: 73, y1: 43, variant: 2, rot: 1 });
   edit(id, { op: 'fixture', x0: 72, y0: 47, x1: 73, y1: 48, variant: 20, rot: 3, level: 1 });

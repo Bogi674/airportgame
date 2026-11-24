@@ -243,6 +243,9 @@ describe('zone breaches and issues', () => {
   it('has one badge per transition fixture at the front edge', () => {
     const g = wide();
     put(g, 'security', 9, 2, 1);
+    // The exit's west side is its use area, so the split wall opens there (T85).
+    wall(g, false, 9, 4, 0);
+    wall(g, false, 9, 5, 0);
     put(g, 'securityExit', 9, 5, 3);
     const badges = transitionBadges(g);
     expect(badges.length).toBe(2);

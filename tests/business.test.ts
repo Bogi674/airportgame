@@ -519,12 +519,12 @@ describe('two cell fixture footprints', () => {
     expect(place(zoned, 10, 10, 0).problem?.code).toBe('wrongZone');
   });
 
-  it('keeps one cell fixtures on one cell and ignores the rotation', () => {
+  it('keeps one cell fixtures on one cell and stores their rotation (T85)', () => {
     const g = floorGrid();
     planEdit(g, { op: 'fixture', x0: 10, y0: 10, x1: 11, y1: 11, variant: CHECK_IN, rot: 2 }, env).apply();
     expect(g.fixture[cellIndex(g, 10, 10)]).toBe(CHECK_IN);
     expect(g.fixture[cellIndex(g, 9, 10)]).toBe(0);
-    expect(g.fixtureRot[cellIndex(g, 10, 10)]).toBe(0);
+    expect(g.fixtureRot[cellIndex(g, 10, 10)]).toBe(3);
   });
 
   it('erasing either half clears both cells and the lease', () => {
@@ -695,7 +695,8 @@ describe('capacity, readiness and room rules for kiosk, bag drop, passport and g
     const id = sim.business.grids[sim.business.grids.length - 1].id;
     expect(edit(id, { op: 'floor', x0: 150, y0: 40, x1: 170, y1: 50, variant: 2 })).toEqual([]);
     expect(edit(id, { op: 'zone', x0: 150, y0: 40, x1: 170, y1: 50, variant: 3 })).toEqual([]);
-    expect(edit(id, { op: 'fixture', x0: 150, y0: 42, x1: 151, y1: 43, variant: KEY('security'), rot: 0 })).toEqual([]);
+    // The lane spans rows 41 to 48, so its entry row 49 and exit row 40 lie on the floor (T85).
+    expect(edit(id, { op: 'fixture', x0: 150, y0: 41, x1: 151, y1: 42, variant: KEY('security'), rot: 0 })).toEqual([]);
     expect(run(sim, { type: 'placeProp', building: id, asset: 'bench.beam3', x: 320, y: 92, rot: 0 })).toEqual([]);
   }
 

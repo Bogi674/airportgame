@@ -5,7 +5,6 @@ import {
   FIXTURE_COUNT,
   FIXTURE_KEYS,
   footprintOf,
-  TRANSITION_KEYS,
   FLOOR,
   TERMINAL_CELL_M,
   TERMINAL_CHUNK,
@@ -24,6 +23,7 @@ import {
 import { distToSegment, type Pt } from './geom';
 import { isLeveled, levelCost } from './fixtureLevels';
 import { cellsOfRect, janitorRooms, propRect } from './props';
+import { fixtureUseCells, fixtureUseProblem, useMask } from './useArea';
 import { labelRooms } from './terminalRooms';
 import { cosLut, sinLut } from './trig';
 import { travelatorCost } from './travelator';
@@ -283,10 +283,7 @@ export function fixtureCost(id: number, level: number): number {
 }
 
 /** Fixtures whose anchor code carries a direction: footprints over one cell and every transition. */
-function hasDirection(key: FixtureKey, level: number): boolean {
-  const [along, across] = footprintOf(key, level);
-  return along * across > 1 || TRANSITION_KEYS.includes(key);
-}
+
 
 const MODE_KEYS: readonly FixtureKey[] = ['passport', 'eGate', 'security'];
 /** Fixtures that became props in T76. Their ids stay in FIXTURE_KEYS, since ids are saved, but they are never built. */
@@ -306,6 +303,8 @@ export interface Plan {
   changes: number;
   /** Writes the edit into the grid. Only call it on a plan without a problem. */
   apply(): void;
+  /** Logical anchor cells a fixture edit places, in placement order, for the ghost (T85). */
+  anchors?: { x: number; y: number }[];
 }
 
 /** True when a world point is clear of runways, taxiways and aprons, so a foundation may sit there. */
@@ -374,6 +373,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
   const none = (problem: Problem): Plan => ({ problem, cost: 0, changes: 0, apply: () => undefined });
   const T = BUSINESS.terminal;
   const writes: (() => void)[] = [];
+  const anchors: { x: number; y: number }[] = [];
   let cost = 0;
   const x0 = Math.min(e.x0, e.x1);
   const x1 = Math.max(e.x0, e.x1);
@@ -420,7 +420,11 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       if (!Number.isInteger(rot) || rot < 0 || rot > 3) return none({ code: 'nothingThere' });
     }
     const [along, across] = key ? footprintOf(key, level) : [1, 1];
-    const directed = key !== null && hasDirection(key, level);
+    // Every fixture keeps its direction since T85, so a one cell fixture turns with its sprite and use area too.
+    const directed = key !== null;
+    // Use areas of the fixtures already placed, and of the ones this edit places, so no footprint lands on one (T85).
+    const placedUse = e.op === 'fixture' ? useMask(g) : null;
+    const pendingUse = new Set<string>();
     const [ax, ay] = ROT_STEP[rot];
     const [bx, by] = ACROSS(rot);
     // Cells a fixture of this edit already takes, so two anchors never claim one tail.
@@ -490,6 +494,24 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
             }
           }
           if (skip) continue;
+          // The use area must be clear, and the footprint must stay off every use area (T85). A clash with another
+          // fixture of this same edit only skips the cell, so a drag still places the ones that fit.
+          const fk = fixtureKey(e.variant);
+          const foot = [{ x: cx, y: cy }, ...parts];
+          if (foot.some((p) => pendingUse.has(cellKey(p.x, p.y)))) continue;
+          const use = fixtureUseCells(fk, level, cx, cy, rot);
+          if (use.some((u) => claimed.has(cellKey(u.x, u.y)))) continue;
+          const onUse = foot.some((p) => {
+            const i = cellIndex(g, p.x, p.y);
+            return i >= 0 && placedUse !== null && placedUse[i] === 1;
+          });
+          const useProblem = onUse ? { code: 'useAreaBlocked' } : fixtureUseProblem(g, fk, level, cx, cy, rot);
+          if (useProblem) {
+            blocked = blocked ?? useProblem;
+            continue;
+          }
+          for (const u of use) pendingUse.add(cellKey(u.x, u.y));
+          anchors.push({ x: cx, y: cy });
           for (const part of parts) claimed.add(cellKey(part.x, part.y));
           claimed.add(cellKey(cx, cy));
           cost += fixtureCost(e.variant, level);
@@ -546,6 +568,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       problem: blocked,
       cost,
       changes: writes.length,
+      anchors,
       apply: () => {
         if (e.op === 'foundation') ensureCells(g, x0, y0, x1, y1);
         for (const w of writes) w();

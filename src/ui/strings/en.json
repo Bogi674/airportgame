@@ -934,6 +934,7 @@
   "notice.propCrossesWall": "An item cannot stand across a wall or door.",
   "notice.propNeedsWall": "Needs a wall: put the back of this item against a wall.",
   "notice.propOverlap": "Another item already stands there.",
+  "notice.useAreaBlocked": "It needs clear floor on the side people use and on the staff side: move it so nothing stands in its use area.",
   "notice.propNeedsDesk": "Needs a desk: put this item on a desk.",
   "notice.propBlocksDoor": "Keep the cells beside doors and transitions clear, so people can pass.",
   "notice.fixtureIsProp": "Seating and toilets are furnishing items now. Find them in the Furnishing menu.",
