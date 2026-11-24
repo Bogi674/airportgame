@@ -164,6 +164,9 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     }
   }
 
+  // Where an apron lies beside a taxiway, the shoulder between them is paved like the apron (T84).
+  paintAreas(ctx, plan.apronJoins, win);
+
   // Service roads go under the taxiway pavement they cross, so the taxiway stays continuous (T60). They are
   // clipped off the shoulders too; paintRoadCrossings carries them on faintly over both.
   ctx.save();
@@ -405,6 +408,10 @@ function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): 
   strokeLines(ctx, plan.redCenterlines, win, RED, TW.centerlineWidthM, TW.centerlineMinPx);
   if (win.scale >= 1) {
     strokeLines(ctx, plan.edges, win, YELLOW, TW.edgeLineWidthM, TW.edgeLineMinPx);
+    // Beside an apron the edge lines are dashed (T84).
+    ctx.setLineDash([TW.apronEdgeDashM, TW.apronEdgeGapM]);
+    strokeLines(ctx, plan.apronEdges, win, YELLOW, TW.edgeLineWidthM, TW.edgeLineMinPx);
+    ctx.setLineDash([]);
     for (const sg of plan.signs) paintSign(ctx, sg, win);
     ctx.strokeStyle = YELLOW;
     ctx.lineWidth = lineM(win, 0.18);

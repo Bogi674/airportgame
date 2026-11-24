@@ -1,6 +1,6 @@
 import { apronContains } from '@shared/apronGeom';
-import { AIRFIELD, SURFACE_SPEC } from '@data/index';
-import { compassVector, type AirfieldPayload, type Runway, type Surface, type Taxiway } from '@shared/airfield';
+import { AIRFIELD, PAINT, SURFACE_SPEC } from '@data/index';
+import { compassVector, type AirfieldPayload, type Apron, type Runway, type Surface, type Taxiway } from '@shared/airfield';
 import type { Pt } from '@shared/geom';
 import { taxiGraph } from '@shared/pavement/fromAirfield';
 import { padCurve } from '@shared/turnPad';
@@ -58,6 +58,10 @@ export interface Plan {
   centerlines: Line[];
   redCenterlines: Line[];
   edges: Line[];
+  /** Dashed edge lines where a taxiway borders an apron (T84). */
+  apronEdges: Line[];
+  /** Pavement in the apron's surface between a taxiway's edge and an apron beside it, over the shoulder (T84). */
+  apronJoins: Area[];
   enhanced: Line[];
   /** Shoulder stripes on junction fillets. */
   stripes: Line[];
@@ -74,6 +78,11 @@ export interface Plan {
 
 const EDGE_INSETS = [0.45, 0.8];
 const STEP = 1.2;
+const TW = PAINT.taxiway;
+/** Bisection steps that place the end of an apron join along an edge line: 1.2 m over 2 to the 10th, about a millimeter. */
+const BOUNDARY_STEPS = 10;
+/** The farthest an apron probe reaches past a taxiway edge line: the widest shoulder plus the touch distance. */
+const APRON_PROBE_MAX_M = Math.max(...Object.values(AIRFIELD.codes).map((c) => c.taxiwayShoulderM)) + TW.apronTouchM;
 
 const mkLine = (pts: Pt[], outlined = false): Line => {
   let minX = Infinity;
@@ -244,7 +253,7 @@ function runsOutside(pts: readonly Pt[], excluded: (x: number, y: number) => boo
   return runs;
 }
 
-const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], padCurves: [] });
+const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], apronEdges: [], apronJoins: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], padCurves: [] });
 
 const cache = new WeakMap<AirfieldPayload, Plan>();
 
@@ -273,6 +282,129 @@ interface Junction {
   hT: number;
   hS: number;
   throughRunway: Runway;
+}
+
+type EdgeKind = 'solid' | 'dashed' | 'none';
+
+/** The nearest point on any taxiway centerline within `reach`, with its taxiway, or null. */
+function nearestCenter(af: AirfieldPayload, plan: Plan, p: Pt, reach: number): { q: Pt; t: Taxiway } | null {
+  let best: { q: Pt; t: Taxiway } | null = null;
+  let bestD = reach;
+  for (const t of af.taxiways) {
+    const pts = plan.smooth.get(t.id) ?? t.points;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const l2 = dx * dx + dy * dy;
+      if (l2 === 0) continue;
+      const k = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+      const q = { x: a.x + dx * k, y: a.y + dy * k };
+      const d = len(p.x - q.x, p.y - q.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { q, t };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Splits one edge line run by what lies beside it (T84): solid where nothing does, dashed with the
+ * shoulder paved in the apron's surface where an apron lies within the shoulder plus `apronTouchM` of
+ * the pavement edge, and no line where the apron also covers the centerline, as on a taxilane that
+ * crosses an apron.
+ */
+function apronEdgeRuns(af: AirfieldPayload, plan: Plan, run: readonly Pt[], outlined: boolean): void {
+  const reach = Math.max(...Object.values(AIRFIELD.codes).map((c) => c.taxiwayWidthM)) / 2 + 2;
+  const beside = run.map((p) => besideEdge(af, plan, p, reach));
+  // Runs of one kind; a run shares its first point with the one before, so the line has no gap.
+  let start = 0;
+  for (let i = 1; i <= run.length; i++) {
+    if (i < run.length && beside[i].kind === beside[start].kind && beside[i].surface === beside[start].surface) continue;
+    const pts = run.slice(start > 0 ? start - 1 : start, i);
+    const kind = beside[start].kind;
+    if (pts.length >= 2 && kind === 'solid') plan.edges.push(mkLine(pts, outlined));
+    if (pts.length >= 2 && kind === 'dashed') {
+      plan.apronEdges.push(mkLine(pts, outlined));
+      const inner: Pt[] = [];
+      const outer: Pt[] = [];
+      // The paved join reaches exactly to where the apron starts and ends beside the taxiway.
+      const ends = [start > 0 ? apronBoundary(af, plan, run[start - 1], run[start], reach) : null, i < run.length ? apronBoundary(af, plan, run[i - 1], run[i], reach) : null];
+      const pieces = [ends[0], ...beside.slice(start, i), ends[1]];
+      for (const b of pieces) {
+        if (b && b.edge && b.probe) {
+          inner.push(b.edge);
+          outer.push(b.probe);
+        }
+      }
+      const surface = beside[start].surface;
+      if (inner.length >= 2 && surface) plan.apronJoins.push(mkArea(pavementColor(surface), [[...inner, ...outer.reverse()]]));
+    }
+    start = i;
+  }
+}
+
+interface Beside {
+  kind: EdgeKind;
+  /** The pavement edge and the point the apron is probed at, for a dashed point. */
+  edge: Pt | null;
+  probe: Pt | null;
+  surface: Surface | null;
+}
+
+/** What lies beside an edge line point: nothing, an apron that joins the taxiway, or an apron that holds it. */
+function besideEdge(af: AirfieldPayload, plan: Plan, p: Pt, reach: number): Beside {
+  const none: Beside = { kind: 'solid', edge: null, probe: null, surface: null };
+  // Most edge points are nowhere near an apron: a box test skips the centerline search for them.
+  if (!af.aprons.some((a) => nearApron(a, p, reach + APRON_PROBE_MAX_M))) return none;
+  const c = nearestCenter(af, plan, p, reach);
+  if (!c) return none;
+  const d = len(p.x - c.q.x, p.y - c.q.y) || 1;
+  const nx = (p.x - c.q.x) / d;
+  const ny = (p.y - c.q.y) / d;
+  const hw = c.t.widthM / 2;
+  const out = hw + AIRFIELD.codes[c.t.code].taxiwayShoulderM + TW.apronTouchM;
+  const probe = { x: c.q.x + nx * out, y: c.q.y + ny * out };
+  const ap = af.aprons.find((a) => apronContains(a, probe.x, probe.y));
+  if (!ap) return af.aprons.some((a) => apronContains(a, p.x, p.y)) ? { ...none, kind: 'none' } : none;
+  if (af.aprons.some((a) => apronContains(a, c.q.x, c.q.y))) return { ...none, kind: 'none' };
+  return { kind: 'dashed', edge: { x: c.q.x + nx * hw, y: c.q.y + ny * hw }, probe, surface: ap.surface };
+}
+
+const apronBoxes = new WeakMap<Apron, { minX: number; minY: number; maxX: number; maxY: number }>();
+
+/** True when p is within `margin` of the apron's bounding box. */
+function nearApron(a: Apron, p: Pt, margin: number): boolean {
+  let b = apronBoxes.get(a);
+  if (!b) {
+    b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    for (const q of a.polygon) {
+      b.minX = Math.min(b.minX, q.x);
+      b.minY = Math.min(b.minY, q.y);
+      b.maxX = Math.max(b.maxX, q.x);
+      b.maxY = Math.max(b.maxY, q.y);
+    }
+    apronBoxes.set(a, b);
+  }
+  return p.x >= b.minX - margin && p.x <= b.maxX + margin && p.y >= b.minY - margin && p.y <= b.maxY + margin;
+}
+
+/** Where between two edge line points the apron beside starts or stops, found by bisection, as a dashed point. */
+function apronBoundary(af: AirfieldPayload, plan: Plan, a: Pt, b: Pt, reach: number): Beside | null {
+  const at = (t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const aIn = besideEdge(af, plan, a, reach).kind === 'dashed';
+  let lo = 0;
+  let hi = 1;
+  for (let k = 0; k < BOUNDARY_STEPS; k++) {
+    const mid = (lo + hi) / 2;
+    if ((besideEdge(af, plan, at(mid), reach).kind === 'dashed') === aIn) lo = mid;
+    else hi = mid;
+  }
+  const r = besideEdge(af, plan, at(aIn ? lo : hi), reach);
+  return r.kind === 'dashed' ? r : null;
 }
 
 export function buildPlan(af: AirfieldPayload): Plan {
@@ -485,8 +617,10 @@ export function buildPlan(af: AirfieldPayload): Plan {
   for (const c of pave.centerlines) {
     for (const run of runsOutside(c.pts, onRunway)) if (run.length >= 2) (c.closed ? plan.redCenterlines : plan.centerlines).push(mkLine(run, c.outlined));
   }
+  // Edge lines stop on runways. Beside an apron they turn dashed and the shoulder between is paved; on an
+  // apron that holds the whole taxiway they stop (T84).
   for (const e of pave.edgeLines) {
-    for (const run of runsOutside(e.pts, onRunwayOrApron)) if (run.length >= 2) plan.edges.push(mkLine(run, e.outlined));
+    for (const run of runsOutside(e.pts, onRunway)) if (run.length >= 2) apronEdgeRuns(af, plan, run, e.outlined);
   }
   for (const x of extraCenter) plan.centerlines.push(mkLine(x.pts, x.outlined));
   for (const st of pave.stripes) plan.stripes.push(mkLine(st.pts, st.outlined));

@@ -282,6 +282,11 @@ export const paintSchema = z.strictObject({
     signBeforeJunctionM: positive,
     signHeightM: positive,
     signCharWidthM: positive,
+    /** Dash and gap of the dashed edge lines where a taxiway borders an apron (T84). */
+    apronEdgeDashM: positive,
+    apronEdgeGapM: positive,
+    /** An apron within the shoulder plus this distance of a taxiway's pavement edge joins it (T84). */
+    apronTouchM: positive,
   }),
   tower: z.strictObject({
     shadowPerM: positive,
