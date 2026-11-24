@@ -607,3 +607,10 @@ Limits and open observations carried from finished tasks. Remove a line when its
 * The strings module has no plural support, so a one day closure reads "for 1 days".
 * Sprite tiers follow `docs/ART_AND_ASSETS.md` section 2 (0 arrow, 1 silhouette, 2 reference, 3 close up). Sprite baking needs a canvas and is checked in Chromium only. The pop in check on a busy apron at 1 px/m was never run.
 * The aircraft sprite sheet still awaits the user's review.
+* 2026-11-24 T89: a contact stand operates with a gate desk (assigned or nearest), no facade reach and no jet bridge in MVP 1. Reason: the owner wanted contact stands usable before bridges exist.
+* 2026-11-24 T90: a click on floored terminal cells picks its baggage node, prop, fixture or the terminal before any airfield object within the pick tolerance. Reason: curb roads and stand stop points beside the facade stole fixture clicks.
+* 2026-11-24 T91: the calendar stays 12x motion and the pace comes from 30 ticks per real second at 1x (speeds 1x 2x 4x 8x: 40, 20, 10, 5 real minutes per day). Reason: a 20x or 24x calendar made physical driving and walking overrun turnaround and claim windows; the owner chose to keep the clock.
+* 2026-11-24 T92: the skip to 06:00 is a worker mode, not a command, running every tick in 30 ms slices at a 30 s day rate. Reason: only time passes, so the command log and replays stay exact.
+* 2026-11-24 T93: sandbox works get a done tick equal to the order tick and runway edits close nothing. Reason: the owner asked that sandbox builds never wait.
+* 2026-11-24 T94: fixture numbers live in a per cell `fixtureNo` layer like `fixtureLevel`, with one never reused counter per kind and custom names keyed by kind and number (save version 44). Reason: a move, rotate or undo must keep a fixture's name, and stand assignments must never shift.
+* 2026-11-24 T95: unzoned floor takes a derived, unsaved default side from its nearest seeding outer wall, Secure facing an apron or stand within 40 m, Public facing away; walls square to the apron seed nothing. Reason: the owner wanted airside secure by default, and the straight split avoids a staircase boundary.
