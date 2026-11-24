@@ -101,6 +101,10 @@ const overlaps = (w: Window, minX: number, minY: number, maxX: number, maxY: num
   maxX >= w.minX && minX <= w.maxX && maxY >= w.minY && minY <= w.maxY;
 
 /** A line width in meters that never falls below `minPx` device pixels at the bake scale. */
+/** Least on screen width of a wall line in pixels, and the light casing drawn on each side of it (T85). */
+const WALL_MIN_PX = 3;
+const WALL_CASING_PX = 1;
+const WALL_CASING = 'rgba(244, 247, 250, 0.85)';
 const lineM = (w: Window, meters: number, minPx = 0.9): number => Math.max(meters, minPx / w.scale);
 
 /** Paints the airfield pavement and markings of one chunk into its canvas context. */
@@ -1045,12 +1049,12 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
     }
   }
   // Walls, glass, doors and staff doors on grid lines, merged into runs per type.
+  // Walls keep their true width but never draw thinner than WALL_MIN_PX, and a light casing lifts them off the floor (T85).
   const wallStyle = (t: number): void => {
     ctx.strokeStyle = t === WALL.Wall ? '#37424c' : t === WALL.Glass ? '#79bde8' : t === WALL.StaffDoor ? STAFF_DOOR_COLOR : '#c58f3a';
-    ctx.lineWidth = lineM(win, t === WALL.Wall ? 0.35 : t === WALL.Glass ? 0.22 : 0.3);
+    ctx.lineWidth = lineM(win, t === WALL.Wall ? 0.35 : t === WALL.Glass ? 0.22 : 0.3, t === WALL.Wall ? WALL_MIN_PX : WALL_MIN_PX - 0.5);
   };
   for (const t of [WALL.Wall, WALL.Glass, WALL.Door, WALL.StaffDoor]) {
-    wallStyle(t);
     ctx.beginPath();
     for (let y = y0; y <= y1 + 1; y++) {
       let start = -1;
@@ -1076,6 +1080,14 @@ function paintTerminal(ctx: Ctx, g: TerminalGrid, win: Window): void {
         }
       }
     }
+    wallStyle(t);
+    const width = ctx.lineWidth;
+    const color = ctx.strokeStyle;
+    ctx.strokeStyle = WALL_CASING;
+    ctx.lineWidth = width + 2 * lineM(win, 0, WALL_CASING_PX);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
     ctx.stroke();
   }
   ctx.restore();

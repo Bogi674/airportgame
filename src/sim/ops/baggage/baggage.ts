@@ -692,6 +692,19 @@ export class Baggage {
     g.fixtureMode[i] = 0;
   }
 
+  /** Id the node placed last took, for the undo history (T85). */
+  get lastId(): number {
+    return this.nextId - 1;
+  }
+
+  /** The placement that would put a placed node back, null for a drop point or an unknown id (T85). */
+  placementOf(id: number): PlaceBagNode | null {
+    const rec = this.recs.find((r) => r.id === id);
+    if (!rec || rec.spec === null) return null;
+    const s = rec.spec;
+    return { building: rec.building, kind: s.kind as PlaceBagNode['kind'], cx: s.cx, cy: s.cy, rot: s.rot, widthCells: s.widthCells };
+  }
+
   /** Removes a placed node and clears its cells. Drop points cannot be removed, they follow the grid. */
   remove(id: number): string | null {
     const rec = this.recs.find((r) => r.id === id);

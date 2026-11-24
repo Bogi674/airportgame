@@ -170,6 +170,7 @@ Goal: MVP 1 is complete and proven in a long session.
 | T37 | Playwright smoke and visual tests in three engines |  | T35, T36 | done 729bd39 |
 | T84 | Build tool feedback (owner, 2026-11-24): taxilane snapping, alignment guides from real edges with crossing guides, apron and taxiway pavement merge with a dashed edge, runway junction lead ins and fillets for drawn taxiways, one Apron menu, click move click rectangles, a road stub ghost at the cursor, aircraft taxiing along the painted turn curves |  | T36 | done e00dfd2 45a3b14 d226ff9 b50b0c4 e35e5a1 |
 | T38 | MVP 1 acceptance: every exit criterion above holds, a 3 hour session at 4x runs without errors or budget breaches |  | all | doing (automated part done: verify, soak 765bbd5, three engines; waits for the owner's 3 hour session, `handoff/work/T38.md`) |
+| T85 | Terminal editing: shared undo across airfield and terminal, select, move, rotate and demolish placed fixtures and props, sprite ghosts with use areas, rotation for every fixture, readable walls, back to back bench facing |  |  | doing |
 
 Exit: T38 passes.
 

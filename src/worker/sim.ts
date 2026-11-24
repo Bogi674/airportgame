@@ -62,7 +62,7 @@ function postAirfieldIfDirty(): void {
   scope.postMessage({
     type: 'staticData',
     kind: 'airfield',
-    payload: { airfield: sim.airfield.data, canUndo: sim.airfield.canUndo, canRedo: sim.airfield.canRedo },
+    payload: { airfield: sim.airfield.data, canUndo: sim.canUndo, canRedo: sim.canRedo },
   });
 }
 

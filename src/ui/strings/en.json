@@ -263,6 +263,7 @@
   "notice.nothingThere": "There is nothing there.",
   "notice.nothingToUndo": "Nothing to undo.",
   "notice.nothingToRedo": "Nothing to redo.",
+  "notice.historyBlocked": "That step can no longer be undone or redone here: something else now stands in its place.",
   "notice.towerLevel": "A tower has between 1 and {max} levels.",
   "notice.towerMaxLevel": "This tower is already at its highest level.",
   "notice.towerOnPavement": "A tower cannot stand on a runway, taxiway, apron or stand.",
