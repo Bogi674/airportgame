@@ -25,6 +25,7 @@ import { isLeveled, levelCost } from './fixtureLevels';
 import { cellsOfRect, janitorRooms, propRect } from './props';
 import { fixtureUseCells, fixtureUseProblem, useMask } from './useArea';
 import { labelRooms } from './terminalRooms';
+import { paintTransitionPads, transitionPads } from './transitionPads';
 import { cosLut, sinLut } from './trig';
 import { travelatorCost } from './travelator';
 import { checkPoint, type BuildContext, type Problem } from './validate';
@@ -572,6 +573,14 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       apply: () => {
         if (e.op === 'foundation') ensureCells(g, x0, y0, x1, y1);
         for (const w of writes) w();
+        // Transition fixtures carry their zone blocks (T87), painted once every fixture of the edit stands.
+        if (e.op === 'fixture') {
+          const fk = fixtureKey(e.variant);
+          for (const a of anchors) {
+            const pads = transitionPads(fk, level, mode, a.x, a.y, rot);
+            if (pads) paintTransitionPads(g, pads);
+          }
+        }
         if (e.op === 'erase') {
           pruneWalls(g);
           // Props lose their floor with the cells under them, with no refund, as fixtures do (T76).

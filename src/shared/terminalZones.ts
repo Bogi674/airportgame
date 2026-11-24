@@ -1,10 +1,10 @@
-import { TERMINAL_CELL_M, TRANSITION_KEYS, WALL, fixtureKey, type FixtureKey, type TerminalGrid } from './business';
+import { TERMINAL_CELL_M, WALL, fixtureKey, type TerminalGrid } from './business';
+import { AUD, transitionOf, transitionPads, type Transition } from './transitionPads';
 import { ROT_STEP, cellOf, fixtureCells } from './terminalOps';
 import { propBlockMask } from './props';
 import { eachLanePartner, hasTravelator, travelatorLanes, travelatorMask } from './travelator';
 
-/** Audience bits of an edge mask: passengers and staff. */
-export const AUD = { Pax: 1, Staff: 2 } as const;
+export { AUD, transitionOf, type Transition };
 
 /**
  * Who may cross each cell edge, indexed like hWall and vWall. Four bits per edge: the low two are the audiences
@@ -15,28 +15,12 @@ export interface ZoneAccess {
   v: Uint8Array;
 }
 
-/** Zone a transition fixture leads from and to, and who may use it. */
-export interface Transition {
-  from: number;
-  to: number;
-  aud: number;
-}
-
 const PUBLIC = 1;
 const COMMERCIAL = 2;
 const SECURE = 3;
 const INTERNATIONAL = 5;
-const BOTH = AUD.Pax | AUD.Staff;
 /** Staff may cross a staff door both ways: the staff bit in each direction. */
 const STAFF_BOTH = AUD.Staff | (AUD.Staff << 2);
-
-/** The zone change a fixture makes in its flow direction, or null for a fixture that is no transition. */
-export function transitionOf(key: FixtureKey, mode: number): Transition | null {
-  if (!TRANSITION_KEYS.includes(key)) return null;
-  if (key === 'security') return { from: PUBLIC, to: SECURE, aud: mode === 1 ? AUD.Staff : BOTH };
-  if (key === 'securityExit') return { from: SECURE, to: PUBLIC, aud: BOTH };
-  return mode === 1 ? { from: INTERNATIONAL, to: PUBLIC, aud: BOTH } : { from: SECURE, to: INTERNATIONAL, aud: BOTH };
-}
 
 /** Column and row step of the flow of a fixture, from its anchor code. Rotation 0 flows toward the lower row index. */
 export function flowStep(code: number): readonly [number, number] {
@@ -237,35 +221,91 @@ export interface TransitionBadge {
   dy: number;
 }
 
+/** The badge of the transition fixture anchored at array cell i, or null when it is no transition anchor. */
+function badgeOf(g: TerminalGrid, i: number): TransitionBadge | null {
+  if (g.fixture[i] === 0 || g.fixtureRot[i] >= 5) return null;
+  const t = transitionOf(fixtureKey(g.fixture[i]), g.fixtureMode[i]);
+  if (!t) return null;
+  const [fx, fy] = flowStep(g.fixtureRot[i]);
+  let best = -Infinity;
+  let sumX = 0;
+  let sumY = 0;
+  let count = 0;
+  for (const c of fixtureCells(g, i)) {
+    const p = cellOf(g, c);
+    const proj = p.x * fx + p.y * fy;
+    if (proj > best) {
+      best = proj;
+      sumX = 0;
+      sumY = 0;
+      count = 0;
+    }
+    if (proj === best) {
+      sumX += p.x + 0.5;
+      sumY += p.y + 0.5;
+      count++;
+    }
+  }
+  if (count === 0) return null;
+  return { x: (sumX / count + fx * 0.5) * TERMINAL_CELL_M, y: (sumY / count + fy * 0.5) * TERMINAL_CELL_M, to: t.to, dx: fx, dy: fy };
+}
+
 /** One badge per transition fixture, in cell index order of the anchors. */
 export function transitionBadges(g: TerminalGrid): TransitionBadge[] {
   const out: TransitionBadge[] = [];
   for (let i = 0; i < g.fixture.length; i++) {
-    if (g.fixture[i] === 0 || g.fixtureRot[i] >= 5) continue;
-    const t = transitionOf(fixtureKey(g.fixture[i]), g.fixtureMode[i]);
-    if (!t) continue;
-    const [fx, fy] = flowStep(g.fixtureRot[i]);
-    let best = -Infinity;
-    let sumX = 0;
-    let sumY = 0;
-    let count = 0;
-    for (const c of fixtureCells(g, i)) {
-      const p = cellOf(g, c);
-      const proj = p.x * fx + p.y * fy;
-      if (proj > best) {
-        best = proj;
-        sumX = 0;
-        sumY = 0;
-        count = 0;
-      }
-      if (proj === best) {
-        sumX += p.x + 0.5;
-        sumY += p.y + 0.5;
-        count++;
-      }
+    const b = badgeOf(g, i);
+    if (b) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * True when the zone past a transition fixture's exit reaches beyond the block the fixture carries (T87): the region
+ * of its to zone joined to the exit block, through open floor, holds more cells than the block. The flood stops as
+ * soon as it passes that size.
+ */
+export function exitExtended(g: TerminalGrid, eff: Uint8Array, anchor: number): boolean {
+  const t = transitionOf(fixtureKey(g.fixture[anchor]), g.fixtureMode[anchor]);
+  if (!t) return true;
+  const a = cellOf(g, anchor);
+  const pads = transitionPads(fixtureKey(g.fixture[anchor]), g.fixtureLevel[anchor], g.fixtureMode[anchor], a.x, a.y, g.fixtureRot[anchor] ? g.fixtureRot[anchor] - 1 : 0);
+  if (!pads) return true;
+  const W = g.w;
+  const limit = pads.exit.length;
+  const seen = new Set<number>();
+  const stack: number[] = [];
+  for (const [x, y] of pads.exit) {
+    const ax = x - g.x0;
+    const ay = y - g.y0;
+    if (ax < 0 || ay < 0 || ax >= W || ay >= g.h) continue;
+    const i = ay * W + ax;
+    if (eff[i] === t.to && !seen.has(i)) {
+      seen.add(i);
+      stack.push(i);
     }
-    if (count === 0) continue;
-    out.push({ x: (sumX / count + fx * 0.5) * TERMINAL_CELL_M, y: (sumY / count + fy * 0.5) * TERMINAL_CELL_M, to: t.to, dx: fx, dy: fy });
+  }
+  while (stack.length > 0) {
+    if (seen.size > limit) return true;
+    const i = stack.pop() as number;
+    const x = i % W;
+    const y = (i - x) / W;
+    for (let d = 0; d < 4; d++) {
+      const j = neighbourOf(g, x, y, d);
+      if (j < 0 || seen.has(j) || eff[j] !== t.to || !isPlain(edgeWall(g, x, y, d))) continue;
+      seen.add(j);
+      stack.push(j);
+    }
+  }
+  return seen.size > limit;
+}
+
+/** Badges of the transition fixtures whose exit zone is not extended yet, for the pulsing reminder (T87). */
+export function pendingExitBadges(g: TerminalGrid, eff: Uint8Array): TransitionBadge[] {
+  const out: TransitionBadge[] = [];
+  for (let i = 0; i < g.fixture.length; i++) {
+    const b = badgeOf(g, i);
+    if (b && !exitExtended(g, eff, i)) out.push(b);
   }
   return out;
 }

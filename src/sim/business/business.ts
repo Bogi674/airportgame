@@ -26,11 +26,12 @@ import {
 } from '@shared/business';
 import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
+import { transitionPads } from '@shared/transitionPads';
 import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, fixtureCost, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { DIVERT_LABEL, GA_LABEL, fixtureKey, isBaggageFixture, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
+import { DIVERT_LABEL, FIXTURE_COUNT, GA_LABEL, fixtureKey, isBaggageFixture, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
 import { cellsOfRect, convertLegacyFixtures, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -75,6 +76,12 @@ export interface GateDesk {
 }
 
 /** Terminals, airlines, flights revenue, daily close, rating, loan and weather. Everything is aggregated. */
+
+/** Logical cells of the zone blocks a fixture edit paints at one anchor (T87), empty for other fixtures. */
+function padCellsOf(edit: TerminalEdit, x: number, y: number): [number, number][] {
+  const pads = edit.variant >= 1 && edit.variant <= FIXTURE_COUNT ? transitionPads(fixtureKey(edit.variant), edit.level ?? 1, edit.mode ?? 0, x, y, edit.rot ?? 0) : null;
+  return pads ? [...pads.intake, ...pads.exit] : [];
+}
 export class Business {
   version = 0;
   /** Full grids of every terminal building. */
@@ -501,7 +508,22 @@ export class Business {
     } else if (fresh) {
       this.bumpTerminals();
     } else {
-      this.refreshGrid(id, edit.x0, edit.y0, edit.x1, edit.y1);
+      // Transition fixtures paint zone blocks past their footprint (T87), so the refresh reaches over them too.
+      let x0 = Math.min(edit.x0, edit.x1);
+      let y0 = Math.min(edit.y0, edit.y1);
+      let x1 = Math.max(edit.x0, edit.x1);
+      let y1 = Math.max(edit.y0, edit.y1);
+      if (edit.op === 'fixture') {
+        for (const a of plan.anchors ?? []) {
+          for (const [px, py] of padCellsOf(edit, a.x, a.y)) {
+            x0 = Math.min(x0, px);
+            y0 = Math.min(y0, py);
+            x1 = Math.max(x1, px + 1);
+            y1 = Math.max(y1, py + 1);
+          }
+        }
+      }
+      this.refreshGrid(id, x0, y0, x1, y1);
     }
     this.tenants.prune(this.grids);
     this.onGridEdited?.(id);
@@ -788,7 +810,8 @@ export class Business {
     }
     plan.apply();
     const now = fixtureCells(g, cellIndex(g, toX, toY));
-    this.refreshCells(g, [...lifted.cells, ...now]);
+    const pads = padCellsOf({ op: 'fixture', x0: toX, y0: toY, x1: toX + 1, y1: toY + 1, variant, rot, level, mode }, toX, toY).map(([px, py]) => ({ x: px, y: py }));
+    this.refreshCells(g, [...lifted.cells, ...now], pads);
     return null;
   }
 
