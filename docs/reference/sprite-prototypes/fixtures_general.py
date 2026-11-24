@@ -81,8 +81,9 @@ def bench_beam(d, seats=3, col="#9aa6b4", y0=0.0, flip=False):
 
 
 def bench_b2b(d, seats=3, col="#9aa6b4"):
-    bench_beam(d, seats, col, 0.0, False)
-    bench_beam(d, seats, col, 0.68, True)
+    """Two beam rows sharing one spine: the top row faces up, the bottom row faces down, backs in the middle."""
+    bench_beam(d, seats, col, 0.0, True)
+    bench_beam(d, seats, col, 0.68, False)
 
 
 def bench_charge(d, col="#9aa6b4"):
