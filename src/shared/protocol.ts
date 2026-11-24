@@ -79,6 +79,8 @@ export interface PerfReport {
 
 /** Sim worker to main thread. */
 export type FromSimMessage =
+  /** The worker starts a new sim for an init; every message before it belongs to an older sim (T38). */
+  | { type: 'reset' }
   | { type: 'ready' }
   | { type: 'saved'; id: number; data: string; tick: number }
   | { type: 'snapshot'; tick: number; buffer: ArrayBuffer }

@@ -46,6 +46,11 @@ export class SimClient {
   private prev: Held | null = null;
   private readonly outbox: Command[] = [];
   private flushScheduled = false;
+  /**
+   * Inits sent whose reset has not come back yet. While one is pending, messages still come from an older sim (the demo
+   * airport behind the menu, or the game before a load) and are dropped, so they cannot overwrite the new game (T38).
+   */
+  private resetsPending = 0;
 
   constructor(private readonly events: ClientEvents = {}) {
     // Inline workers run from a blob URL, so the built game also runs from a single file on disk.
@@ -62,6 +67,9 @@ export class SimClient {
   }
 
   init(seed: string, options: GameOptions, saveData?: unknown): void {
+    // Commands not yet sent were meant for the sim this init replaces.
+    this.outbox.length = 0;
+    this.resetsPending++;
     this.post({ type: 'init', seed, options, saveData });
   }
 
@@ -105,6 +113,16 @@ export class SimClient {
   }
 
   private handle(msg: FromSimMessage): void {
+    if (msg.type === 'reset') {
+      this.resetsPending = Math.max(0, this.resetsPending - 1);
+      return;
+    }
+    // A save asked of the old sim still arrives, and a site preview belongs to no sim.
+    const keep = msg.type === 'saved' || msg.type === 'error' || (msg.type === 'staticData' && msg.kind === 'preview');
+    if (this.resetsPending > 0 && !keep) {
+      if (msg.type === 'snapshot') this.post({ type: 'returnBuffer', buffer: msg.buffer }, [msg.buffer]);
+      return;
+    }
     switch (msg.type) {
       case 'snapshot': {
         // Return the buffer from two snapshots ago, keep the last two for interpolation.

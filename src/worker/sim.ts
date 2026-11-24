@@ -211,6 +211,7 @@ scope.onmessage = (event) => {
   try {
     switch (msg.type) {
       case 'init':
+        scope.postMessage({ type: 'reset' });
         sim = new Sim(msg.seed, msg.options);
         if (msg.saveData !== undefined) sim.restore(msg.saveData);
         lastLoop = performance.now();
