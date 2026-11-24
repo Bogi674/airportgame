@@ -44,7 +44,7 @@ Staff screening: a staff route from Public into Secure through a Staff room must
 
 * The zone tool paints cells like the floor tool, with a brush and a rectangle mode. Fixtures with a zone list in the catalog (`src/data/fixtures/catalog.json`, field `zones`) may only stand on those zones. Placing a fixture on an unzoned cell paints that cell with the first allowed zone, as today.
 * A transition fixture straddles the edge: its entry cells belong to the from zone and its exit cells to the to zone. The ghost shows both zone colors.
-* A transition fixture carries its zone blocks (T87): placing or moving one paints the cells before its intake with its from zone and the cells past its exit with its to zone, as wide as the fixture and `terminal.transitionPadCells` deep (`src/data/business.json`, 2). The exit block paints over unzoned cells and the from zone, the intake block over unzoned cells only, and neither paints a cell whose fixture refuses the zone. A fixture whose intake already lies in its to zone counts as backwards and its exit block paints unzoned cells only. The ghost tints both blocks and labels the intake and the exit. Each placement shows a reminder, and the exit badge pulses until the region of the to zone joined to the exit block is larger than the block.
+* A transition fixture carries its zone blocks (T88): placing or moving one paints the cells before its intake with its from zone and the cells past its exit with its to zone, as wide as the fixture and `terminal.transitionPadCells` deep (`src/data/business.json`, 2). The exit block paints over unzoned cells and the from zone, the intake block over unzoned cells only, and neither paints a cell whose fixture refuses the zone. A fixture whose intake already lies in its to zone counts as backwards and its exit block paints unzoned cells only. The ghost tints both blocks and labels the intake and the exit. Each placement shows a reminder, and the exit badge pulses until the region of the to zone joined to the exit block is larger than the block.
 * A breach is any walkable edge between two cells of different zones that is not inside a transition fixture and not a staff door. The room tool lists every breach with a red badge, and the walking graph removes the edge so no one walks through.
 * Walls and glass never breach. A plain door or a gap between two zones always does.
 * The walking graph keeps one layer per audience: passengers walk only through transition edges in their allowed direction, staff also through staff doors.
@@ -54,7 +54,7 @@ Staff screening: a staff route from Public into Secure through a Staff room must
 
 The zones overlay tints each zone and outlines its edge, so a glance shows the security sides.
 
-It also shows by itself while the terminal tool is open (T87). A breach badge that would touch a transition badge, a pending exit ring or another breach badge is left out, so badges never overlap.
+It also shows by itself while the terminal tool is open (T88). A breach badge that would touch a transition badge, a pending exit ring or another breach badge is left out, so badges never overlap.
 
 | Zone | Color | Fill |
 | --- | --- | --- |

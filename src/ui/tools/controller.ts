@@ -311,7 +311,7 @@ export class ToolController {
     const term = hit ? null : this.terminalAt(p);
     const kind = hit ? hit.kind : term !== null ? 'terminal' : '';
     const id = hit ? hit.id : term ?? 0;
-    // Over a fixture or prop the hover outlines that item, as a click selects only it (T87).
+    // Over a fixture or prop the hover outlines that item, as a click selects only it (T88).
     const propHit = term !== null ? this.propUnder(p) : null;
     const pc = propHit ? worldToCell(propHit.g, p.x, p.y) : null;
     const propPick = propHit && pc ? { building: propHit.g.id, x: pc.cx * TERMINAL_CELL_M, y: pc.cy * TERMINAL_CELL_M } : null;
@@ -328,7 +328,7 @@ export class ToolController {
     const st = useToolStore.getState();
     const sel = st.selection;
     if (!sel) return null;
-    // A picked fixture or prop is the selection itself (T87): only its footprint is outlined, not the whole terminal.
+    // A picked fixture or prop is the selection itself (T88): only its footprint is outlined, not the whole terminal.
     if (sel.kind === 'terminal') {
       const item = this.pickedItemShape(sel.id, st.fixturePick, st.propPick);
       if (item) return [item];
@@ -2676,7 +2676,7 @@ export class ToolController {
   }
 
   /**
-   * The zone blocks a transition fixture will paint (T87), tinted in their zone, with an Intake label before the
+   * The zone blocks a transition fixture will paint (T88), tinted in their zone, with an Intake label before the
    * fixture and an Exit label past it. Cells that will not take the zone (no floor, another zone, a fixture that
    * refuses it) are left out unless they already hold it.
    */
@@ -2751,7 +2751,7 @@ export class ToolController {
     }
     this.deps.send({ type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit });
     this.deps.setGhost(null);
-    // Every transition fixture placed reminds the player to carry its exit zone on (T87).
+    // Every transition fixture placed reminds the player to carry its exit zone on (T88).
     const t = edit.op === 'fixture' ? transitionOf(fixtureKey(edit.variant), edit.mode ?? 0) : null;
     if (t) {
       const gs = useGameStore.getState();

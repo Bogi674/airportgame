@@ -77,7 +77,7 @@ export interface GateDesk {
 
 /** Terminals, airlines, flights revenue, daily close, rating, loan and weather. Everything is aggregated. */
 
-/** Logical cells of the zone blocks a fixture edit paints at one anchor (T87), empty for other fixtures. */
+/** Logical cells of the zone blocks a fixture edit paints at one anchor (T88), empty for other fixtures. */
 function padCellsOf(edit: TerminalEdit, x: number, y: number): [number, number][] {
   const pads = edit.variant >= 1 && edit.variant <= FIXTURE_COUNT ? transitionPads(fixtureKey(edit.variant), edit.level ?? 1, edit.mode ?? 0, x, y, edit.rot ?? 0) : null;
   return pads ? [...pads.intake, ...pads.exit] : [];
@@ -508,7 +508,7 @@ export class Business {
     } else if (fresh) {
       this.bumpTerminals();
     } else {
-      // Transition fixtures paint zone blocks past their footprint (T87), so the refresh reaches over them too.
+      // Transition fixtures paint zone blocks past their footprint (T88), so the refresh reaches over them too.
       let x0 = Math.min(edit.x0, edit.x1);
       let y0 = Math.min(edit.y0, edit.y1);
       let x1 = Math.max(edit.x0, edit.x1);

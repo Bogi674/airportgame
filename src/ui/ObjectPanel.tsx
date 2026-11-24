@@ -462,7 +462,7 @@ export function ObjectPanel({ send }: Props) {
     const picked = pGrid && pIndex >= 0 ? pGrid.props[pIndex]! : null;
     const target = itemTarget(grids, pick, pp, send);
     const itemBlock = target && <ItemButtons key={target.key} target={target} prefix="item" />;
-    // A picked fixture or prop is the selection on its own (T87): the panel is titled with the item and names the
+    // A picked fixture or prop is the selection on its own (T88): the panel is titled with the item and names the
     // terminal under it, and Show terminal returns to the building.
     const showTerminal = (): void => useToolStore.getState().set({ fixturePick: null, propPick: null, pickAt: null });
     const transition = pick && grid && cell >= 0 && fixtureName !== null ? transitionOf(fixtureName, grid.fixtureMode[cell] ?? 0) : null;

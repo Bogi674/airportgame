@@ -585,7 +585,7 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-24 T86: a check in drop takes its desk's rotation (code 0 reads as 0), because the chute must leave from the back cell the use area keeps clear; no save shape changes.
 * 2026-11-24 T86: agent posts per fixture live in `staff.json` `operator.posts`, because the desk art puts the chair off the anchor centre.
 * 2026-11-24 T86: a drop node is never picked by a click, since it shares its desk's anchor cell and the desk carries the edit actions.
-* 2026-11-24 T87: transition fixtures paint their zone blocks inside the same terminal edit (`src/shared/transitionPads.ts`), so the blocks replay with the command, undo with the fixture and need no saved state; the pending exit check runs only when the overlay rebuilds a grid, never per tick.
+* 2026-11-24 T88: transition fixtures paint their zone blocks inside the same terminal edit (`src/shared/transitionPads.ts`), so the blocks replay with the command, undo with the fixture and need no saved state; the pending exit check runs only when the overlay rebuilds a grid, never per tick.
 
 ## 13. Known limits
 

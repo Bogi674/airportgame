@@ -261,7 +261,7 @@ export function transitionBadges(g: TerminalGrid): TransitionBadge[] {
 }
 
 /**
- * True when the zone past a transition fixture's exit reaches beyond the block the fixture carries (T87): the region
+ * True when the zone past a transition fixture's exit reaches beyond the block the fixture carries (T88): the region
  * of its to zone joined to the exit block, through open floor, holds more cells than the block. The flood stops as
  * soon as it passes that size.
  */
@@ -300,7 +300,7 @@ export function exitExtended(g: TerminalGrid, eff: Uint8Array, anchor: number): 
   return seen.size > limit;
 }
 
-/** Badges of the transition fixtures whose exit zone is not extended yet, for the pulsing reminder (T87). */
+/** Badges of the transition fixtures whose exit zone is not extended yet, for the pulsing reminder (T88). */
 export function pendingExitBadges(g: TerminalGrid, eff: Uint8Array): TransitionBadge[] {
   const out: TransitionBadge[] = [];
   for (let i = 0; i < g.fixture.length; i++) {

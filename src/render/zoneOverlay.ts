@@ -54,7 +54,7 @@ const paintCache = new WeakMap<ZoneColors, ZonePaint>();
 interface ZoneView {
   eff: Uint8Array;
   badges: TransitionBadge[];
-  /** Badges whose exit zone is not carried on yet (T87), drawn with a pulsing ring. */
+  /** Badges whose exit zone is not carried on yet (T88), drawn with a pulsing ring. */
   pending: TransitionBadge[];
   breaches: ZoneEdge[];
 }
@@ -165,7 +165,7 @@ function drawTransitionBadge(ctx: Ctx, b: TransitionBadge, paint: ZonePaint): vo
   ctx.restore();
 }
 
-/** Pulsing ring around the badge of an exit whose zone is not carried on yet (T87). pulse runs from 0 to 1. */
+/** Pulsing ring around the badge of an exit whose zone is not carried on yet (T88). pulse runs from 0 to 1. */
 function drawPendingRing(ctx: Ctx, b: TransitionBadge, paint: ZonePaint, pulse: number): void {
   ctx.beginPath();
   ctx.arc(b.x, b.y, BADGE_R_M * (1.25 + PENDING_GROW * pulse), 0, 2 * Math.PI);

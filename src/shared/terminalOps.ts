@@ -573,7 +573,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       apply: () => {
         if (e.op === 'foundation') ensureCells(g, x0, y0, x1, y1);
         for (const w of writes) w();
-        // Transition fixtures carry their zone blocks (T87), painted once every fixture of the edit stands.
+        // Transition fixtures carry their zone blocks (T88), painted once every fixture of the edit stands.
         if (e.op === 'fixture') {
           const fk = fixtureKey(e.variant);
           for (const a of anchors) {

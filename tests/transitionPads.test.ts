@@ -23,7 +23,7 @@ const place = (g: TerminalGrid, e: Partial<TerminalEdit> & Pick<TerminalEdit, 'o
 const zoneOf = (g: TerminalGrid, x: number, y: number): number => g.zone[cellIndex(g, x, y)];
 const D = BUSINESS.terminal.transitionPadCells;
 
-describe('transition pads (T87)', () => {
+describe('transition pads (T88)', () => {
   it('lists a block as wide as the fixture and pad cells deep on each side', () => {
     const [along] = footprintOf('security', 1);
     const pads = transitionPads('security', 1, 0, 10, 10, 0);

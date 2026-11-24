@@ -24,10 +24,10 @@ export type GhostShape =
   | { k: 'prop'; asset: string; rot: number; x: number; y: number; headingDeg: number }
   /** A hatched area an item needs clear, its use area (T85). blocked draws it red. */
   | { k: 'hatch'; pts: Pt[]; blocked: boolean }
-  /** A cell a transition fixture paints with a zone when placed (T87), tinted in that zone's overlay color. */
+  /** A cell a transition fixture paints with a zone when placed (T88), tinted in that zone's overlay color. */
   | { k: 'zoneCell'; pts: Pt[]; zone: number }
   /**
-   * A label pinned at a fixed size on screen, outlined in a zone's color (T87): the intake or exit side of a transition
+   * A label pinned at a fixed size on screen, outlined in a zone's color (T88): the intake or exit side of a transition
    * fixture. The arrow points along the flow, given as a world direction. A label that would overlap one drawn earlier
    * is left out.
    */

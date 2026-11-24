@@ -26,7 +26,7 @@ export function transitionOf(key: FixtureKey, mode: number): Transition | null {
 }
 
 /**
- * The zone blocks a transition fixture carries (T87, owner 2026-11-24): the cells right before its intake, painted
+ * The zone blocks a transition fixture carries (T88, owner 2026-11-24): the cells right before its intake, painted
  * with its from zone, and right past its exit, painted with its to zone, as wide as the fixture and
  * `transitionPadCells` deep. The intake is the front of the fixture (the side people use) and the exit its back.
  */

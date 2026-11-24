@@ -109,7 +109,7 @@ const OVERLAY_LABEL_PX = 11;
 const OVERLAY_LABEL_COLOR = '#10161c';
 
 /** Canvas 2D renderer. Static layer from baked chunks, dynamic layer from interpolated snapshots. */
-/** Period of the pulsing ring on an exit whose zone is not carried on yet (T87). */
+/** Period of the pulsing ring on an exit whose zone is not carried on yet (T88). */
 const PENDING_PULSE_MS = 1400;
 
 export class Renderer {
@@ -621,7 +621,7 @@ export class Renderer {
     const colors = this.zoneColors;
     if (!colors) return;
     const ctx = this.ctx;
-    // Exits whose zone is not carried on yet pulse once every PENDING_PULSE_MS (T87).
+    // Exits whose zone is not carried on yet pulse once every PENDING_PULSE_MS (T88).
     const pulse = (performance.now() % PENDING_PULSE_MS) / PENDING_PULSE_MS;
     for (let i = 0; i < this.overlayGrids.length; i++) {
       const g = this.overlayGrids[i]!;
@@ -1154,7 +1154,7 @@ export class Renderer {
     return [null, c.public, c.commercial, c.secure, c.staff, c.international][zone] ?? null;
   }
 
-  /** A cell a transition fixture paints with a zone (T87): the zone tint with a dashed edge in its color. */
+  /** A cell a transition fixture paints with a zone (T88): the zone tint with a dashed edge in its color. */
   private drawZoneCell(pts: Pt[], zone: number, zoom: number): void {
     const hex = this.zoneSolid(zone);
     if (!hex || pts.length < 3) return;
@@ -1173,7 +1173,7 @@ export class Renderer {
   }
 
   /**
-   * Intake and exit labels of a transition fixture ghost (T87), in screen pixels: a dark pill with a border and an
+   * Intake and exit labels of a transition fixture ghost (T88), in screen pixels: a dark pill with a border and an
    * arrow in the zone's color. A label whose box would touch one already drawn is left out, so labels never overlap.
    */
   private drawZoneTags(tags: readonly Extract<GhostShape, { k: 'zoneTag' }>[], a: number, b: number, cc: number, d: number, e: number, f: number): void {

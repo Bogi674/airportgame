@@ -576,7 +576,7 @@ Context: the check in ghost and the placed desk disagreed (the bag chute ignored
 
 Implementer choices, stated for the owner: an audit of every kit sprite found each one inside its declared size and every kit fixture footprint equal to its art, so no footprint changes. The legacy reclaim belt, a 1 cell block with no art that loads as a carousel (docs/BAGGAGE.md), leaves the build menu; the sized carousel in the Baggage menu replaces it.
 
-## 2026-11-24 T87: transition fixtures and fixture selection
+## 2026-11-24 T88: transition fixtures and fixture selection
 
 Context: clicking a placed fixture selected the whole terminal (the floor highlight) and the inspector carried the terminal title over the fixture block, so it was unclear what was selected. The secure side of a security lane was easy to miss. Benchmark notes: `handoff/reference/benchmark-zoning.md`.
 
