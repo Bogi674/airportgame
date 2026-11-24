@@ -753,7 +753,7 @@ export class Sim {
   /** Runs a command on the airfield and books its money. Returns a problem code, or null when it ran or was not an airfield command. */
   private airfieldCommand(cmd: Command): string | null {
     const towersBefore = this.airfield.towersVersion;
-    const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids });
+    const r = this.airfield.execute(cmd, this.buildContext(), this.cash, { tick: this.tick, assignedTypes: this.business.assignedTypes(), terminals: this.business.grids, instant: this.sandbox });
     let problem: string | null = null;
     if (r !== null) {
       if (isProblem(r)) {

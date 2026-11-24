@@ -105,6 +105,8 @@ export interface BuildEnv {
   assignedTypes: readonly number[];
   /** Terminal buildings, whose floored cells stand and aprons may not cover. Absent means none. */
   terminals?: readonly TerminalGrid[];
+  /** Sandbox (T93): every work finishes the instant it is ordered, and runway edits close nothing. */
+  instant?: boolean;
 }
 
 const NO_ENV: BuildEnv = { tick: 0, assignedTypes: [] };
@@ -360,7 +362,7 @@ export class Airfield {
         if (s.upgradeWorks) return { code: 'worksRunning' };
         const spec = STAND_ACCESS.upgrades[cmd.upgrade];
         if (spec.cost > cash) return { code: 'insufficientFunds', args: { cost: spec.cost } };
-        s.upgradeWorks = { upgrade: cmd.upgrade, doneTick: env.tick + worksTicks(spec.days) };
+        s.upgradeWorks = { upgrade: cmd.upgrade, doneTick: env.tick + (env.instant ? 0 : worksTicks(spec.days)) };
         this.refresh();
         return { cashDelta: -spec.cost };
       }
@@ -1078,7 +1080,7 @@ export class Airfield {
     const net = change.cashDelta - extraCost;
     if (-net > cash) return { code: 'insufficientFunds', args: { cost: -net } };
     const area = polylineLength(t.points) * t.widthM;
-    t.works = { surface, pcr, cost: Math.round(area * SURFACE_SPEC[surface].costPerM2 * factor), doneTick: env.tick + worksTicks(change.days) };
+    t.works = { surface, pcr, cost: Math.round(area * SURFACE_SPEC[surface].costPerM2 * factor), doneTick: env.tick + (env.instant ? 0 : worksTicks(change.days)) };
     this.refresh();
     return { cashDelta: net };
   }
@@ -1121,7 +1123,7 @@ export class Airfield {
    */
   private closeForWorks(r: Runway, before: Runway, edit: RunwayEdit, env: BuildEnv): void {
     const days = runwayWorksDays(before, edit);
-    if (days <= 0) return;
+    if (days <= 0 || env.instant) return;
     const done = env.tick + worksTicks(days);
     r.works = { doneTick: Math.max(r.works?.doneTick ?? 0, done) };
   }

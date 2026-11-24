@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BUSINESS } from '@data/index';
 import { Sim } from '@sim/sim';
-import { run } from './helpers';
+import { STAND_UPGRADE } from '@shared/airfield';
+import { buildTestAirport, ownedSim, run } from './helpers';
 
 const SANDBOX = { preset: 'flatCoastal', mode: 'sandbox' } as const;
 
@@ -57,5 +58,32 @@ describe('opening airlines (T35 fix)', () => {
     const copy = new Sim('GOLDEN-0001', { preset: 'flatCoastal' });
     copy.restore(data);
     expect(copy.business.airlines.map((a) => a.id)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+});
+
+describe('sandbox works (T93)', () => {
+  it('finish a stand upgrade on the tick after it is ordered, where a career waits its days', () => {
+    const sandbox = new Sim('GOLDEN-0001', SANDBOX);
+    buildTestAirport(sandbox, { standsPerRow: 2 });
+    const stand = sandbox.airfield.data.stands[0]!;
+    run(sandbox, { type: 'startStandUpgrade', id: stand.id, upgrade: 'busBay' });
+    sandbox.step();
+    expect(stand.upgradeWorks).toBeUndefined();
+    expect(stand.upgrades).toBe(STAND_UPGRADE.busBay);
+    const career = ownedSim();
+    career.cash = 80_000_000;
+    buildTestAirport(career, { standsPerRow: 2 });
+    const other = career.airfield.data.stands[0]!;
+    run(career, { type: 'startStandUpgrade', id: other.id, upgrade: 'busBay' });
+    career.step();
+    expect(other.upgradeWorks).toBeDefined();
+  });
+
+  it('never close a runway for an edit', () => {
+    const sandbox = new Sim('GOLDEN-0001', SANDBOX);
+    buildTestAirport(sandbox, { standsPerRow: 2 });
+    const r = sandbox.airfield.data.runways[0]!;
+    expect(run(sandbox, { type: 'resizeRunway', id: r.id, end: 'a', deltaM: 200 })).toEqual([]);
+    expect(sandbox.airfield.data.runways[0]!.works).toBeUndefined();
   });
 });

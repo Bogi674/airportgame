@@ -596,7 +596,7 @@ export class Business {
     if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
     this.host.book('construction', -cost);
     g.cost += cost;
-    this.fixtureWorks.push({ building, floor: g.level, x: at.x, y: at.y, from, to: from + 1, cost, doneTick: tick + upgradeDays(key) * TICKS_PER_DAY });
+    this.fixtureWorks.push({ building, floor: g.level, x: at.x, y: at.y, from, to: from + 1, cost, doneTick: tick + (this.sandbox ? 0 : upgradeDays(key) * TICKS_PER_DAY) });
     this.refreshGrid(building, at.x, at.y, at.x, at.y);
     return null;
   }

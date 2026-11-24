@@ -174,6 +174,13 @@ Goal: MVP 1 is complete and proven in a long session.
 | T86 | Fixture placement fixes (owner, 2026-11-24): the check in bag chute follows the desk rotation and sits behind it, the ghost shows the chute, the desk agent stands at the chair, clicking a desk selects it, a popup at a picked fixture or prop with Relocate, Rotate and Demolish (with a confirm), the legacy 1 cell reclaim belt leaves the build menu |  | T85 | done 136d946 f7ef682 |
 | T87 | Taxi deadlock and edit snap fixes (owner, 2026-11-24): an aircraft claims every two way stretch on its route up to where it leaves two way pavement (its stand, a one way edge or its holding point), stand joins split blocks like junctions, opposing traffic holds short at the junction clear of the claimer and queues, an airfield edit keeps taxiing aircraft where they are and their claims, and a pair already nose to nose is resolved by towing one back |  | T84 | done deb3de5 |
 | T88 | Transition fixtures and fixture selection (owner, 2026-11-24): clicking a fixture or prop selects only it (outline and inspector titled with its name), every transition fixture places 2 cells of its exit zone past its exit and 2 cells of its entry zone before its intake, the ghost shows the intake, the exit and those zone blocks, a reminder after placing, the zones overlay while the terminal tool is open and a pulsing exit badge until the zone past it is extended |  | T86 | done 6de43b3 dcf0be9 |
+| T89 | Contact stands operate with an assigned, reachable gate desk; no facade reach and no jet bridge in MVP 1 (owner, 2026-11-24) |  | T66 | todo |
+| T90 | Fixture and prop selection on top of floors and stands on top of aprons: a click picks the topmost item, never the area under it (owner, 2026-11-24) |  | T88 | todo |
+| T91 | Game pace: CLOCK_SCALE 24, 40 ticks per real second at 1x, speeds 1x 2x 4x (15, 7.5, 3.75 min per day), save migration (owner, 2026-11-24) |  |  | todo |
+| T92 | Skip to next day: a HUD button runs the sim at a 30 s day rate until 06:00, with progress and cancel (owner, 2026-11-24) |  | T91 | todo |
+| T93 | Sandbox works finish instantly (owner, 2026-11-24) |  |  | doing |
+| T94 | Fixture names per kind, never reused, renamable; hover tag and connection lines for gate desks, stands, check in desks (owner, 2026-11-24) |  | T88 | todo |
+| T95 | Default secure airside: unzoned cells take the zone of their nearest outer wall (Secure facing an apron, Public otherwise) (owner, 2026-11-24) |  | T88 | todo |
 
 Exit: T38 passes.
 
