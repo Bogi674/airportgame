@@ -50,6 +50,8 @@ async function frameAt(page: Page, zoom: number): Promise<void> {
         const r = window.__renderer as unknown as { camera: { zoom: number }; chunksReady: boolean } | null;
         return r !== null && r !== undefined && r.chunksReady && r.camera.zoom === z;
       }, zoom),
+      // Fine bands bake slowly in software rendered engines (WebKit in the cloud runner), as `npm run shot` allows.
+      { timeout: 20_000 },
     )
     .toBe(true);
   // A few frames after the chunks are ready, so the canvas shows the baked kit.
