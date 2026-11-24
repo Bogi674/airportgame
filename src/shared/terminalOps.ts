@@ -5,7 +5,6 @@ import {
   FIXTURE_COUNT,
   FIXTURE_KEYS,
   footprintOf,
-  TRANSITION_KEYS,
   FLOOR,
   TERMINAL_CELL_M,
   TERMINAL_CHUNK,
@@ -24,6 +23,7 @@ import {
 import { distToSegment, type Pt } from './geom';
 import { isLeveled, levelCost } from './fixtureLevels';
 import { cellsOfRect, janitorRooms, propRect } from './props';
+import { fixtureUseCells, fixtureUseProblem, useMask } from './useArea';
 import { labelRooms } from './terminalRooms';
 import { cosLut, sinLut } from './trig';
 import { travelatorCost } from './travelator';
@@ -283,10 +283,7 @@ export function fixtureCost(id: number, level: number): number {
 }
 
 /** Fixtures whose anchor code carries a direction: footprints over one cell and every transition. */
-function hasDirection(key: FixtureKey, level: number): boolean {
-  const [along, across] = footprintOf(key, level);
-  return along * across > 1 || TRANSITION_KEYS.includes(key);
-}
+
 
 const MODE_KEYS: readonly FixtureKey[] = ['passport', 'eGate', 'security'];
 /** Fixtures that became props in T76. Their ids stay in FIXTURE_KEYS, since ids are saved, but they are never built. */
@@ -420,7 +417,11 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       if (!Number.isInteger(rot) || rot < 0 || rot > 3) return none({ code: 'nothingThere' });
     }
     const [along, across] = key ? footprintOf(key, level) : [1, 1];
-    const directed = key !== null && hasDirection(key, level);
+    // Every fixture keeps its direction since T85, so a one cell fixture turns with its sprite and use area too.
+    const directed = key !== null;
+    // Use areas of the fixtures already placed, and of the ones this edit places, so no footprint lands on one (T85).
+    const placedUse = e.op === 'fixture' ? useMask(g) : null;
+    const pendingUse = new Set<string>();
     const [ax, ay] = ROT_STEP[rot];
     const [bx, by] = ACROSS(rot);
     // Cells a fixture of this edit already takes, so two anchors never claim one tail.
@@ -490,6 +491,23 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
             }
           }
           if (skip) continue;
+          // The use area must be clear, and the footprint must stay off every use area (T85). A clash with another
+          // fixture of this same edit only skips the cell, so a drag still places the ones that fit.
+          const fk = fixtureKey(e.variant);
+          const foot = [{ x: cx, y: cy }, ...parts];
+          if (foot.some((p) => pendingUse.has(cellKey(p.x, p.y)))) continue;
+          const use = fixtureUseCells(fk, level, cx, cy, rot);
+          if (use.some((u) => claimed.has(cellKey(u.x, u.y)))) continue;
+          const onUse = foot.some((p) => {
+            const i = cellIndex(g, p.x, p.y);
+            return i >= 0 && placedUse !== null && placedUse[i] === 1;
+          });
+          const useProblem = onUse ? { code: 'useAreaBlocked' } : fixtureUseProblem(g, fk, level, cx, cy, rot);
+          if (useProblem) {
+            blocked = blocked ?? useProblem;
+            continue;
+          }
+          for (const u of use) pendingUse.add(cellKey(u.x, u.y));
           for (const part of parts) claimed.add(cellKey(part.x, part.y));
           claimed.add(cellKey(cx, cy));
           cost += fixtureCost(e.variant, level);

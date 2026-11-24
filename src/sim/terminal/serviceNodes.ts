@@ -1,3 +1,4 @@
+import { frontStep, useDepth } from '@shared/useArea';
 import { ARRIVALS, BUSINESS, DEPARTURES, STAFF } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { isLeveled, levelServiceSeconds } from '@shared/fixtureLevels';
@@ -136,6 +137,11 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
   const transition = g.fixture[start] === 0 ? null : transitionOf(fixtureKey(g.fixture[start]!), g.fixtureMode[start]!);
   // The audience whose walk toward the anchor must be possible: passengers unless the fixture is staff only.
   const need = transition && (transition.aud & AUD.Pax) !== 0 ? AUD.Pax : AUD.Staff;
+  // A fixture with a use area queues only on its front side, which turns with it (T85): every footprint cell seeds, and
+  // the first step goes toward the front.
+  const key = !transition && g.fixture[start]! > 0 ? fixtureKey(g.fixture[start]!) : null;
+  const code = g.fixtureRot[start]!;
+  const front = key !== null && useDepth(key).front > 0 ? frontStep(code === 0 ? 0 : code - 1) : null;
   let tail = 0;
   if (transition) {
     const [fx, fy] = flowStep(g.fixtureRot[start]!);
@@ -144,6 +150,12 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
       const x = c % W;
       const up = cellIndexArray(g, x - fx, (c - x) / W - fy);
       if (up >= 0 && cells.includes(up)) continue;
+      seen[c] = 1;
+      dist[c] = 0;
+      queue[tail++] = c;
+    }
+  } else if (front) {
+    for (const c of fixtureCells(g, start)) {
       seen[c] = 1;
       dist[c] = 0;
       queue[tail++] = c;
@@ -171,6 +183,7 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
         if (effective[j] !== transition.from) continue;
         if (pos < seeds ? ((out | back) & transition.aud) === 0 : (back & need) === 0) continue;
       } else if (out !== 3) continue;
+      else if (front && pos < seeds && (DX[d] !== front[0] || DY[d] !== front[1])) continue;
       if (seen[j] === 1 || g.fixture[j] !== 0) continue;
       seen[j] = 1;
       dist[j] = dist[i] + 1;

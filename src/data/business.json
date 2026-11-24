@@ -269,5 +269,20 @@
    "price": 55000,
    "start": 1
   }
+ },
+ "useAreas": {
+  "note": "Use areas (T85, owner 2026-11-24): the floor a fixture or prop needs clear around it, shown on its ghost and checked at placement. For a fixture, front cells lie on the side people use (the bottom edge of its sprite) and back cells on the staff side (the top edge), in 2 m cells; a transition fixture has front on its entry side and back on its exit side. Fixtures not listed need none. A prop needs propFrontM in front of the side people use, by catalog category; 0 means none. Queues of a listed fixture start on its front side.",
+  "fixtures": {
+   "checkIn": { "front": 1, "back": 1 },
+   "kiosk": { "front": 1, "back": 0 },
+   "bagDrop": { "front": 1, "back": 1 },
+   "gateDesk": { "front": 1, "back": 1 },
+   "customs": { "front": 1, "back": 1 },
+   "passport": { "front": 1, "back": 1 },
+   "eGate": { "front": 1, "back": 1 },
+   "security": { "front": 1, "back": 1 },
+   "securityExit": { "front": 1, "back": 1 }
+  },
+  "propFrontM": { "seating": 0.5, "lounge": 0.5, "washroom": 0.5, "decoration": 0, "vending": 0.5, "screens": 0, "service": 0.5, "office": 0, "backOfHouse": 0.5 }
  }
 }

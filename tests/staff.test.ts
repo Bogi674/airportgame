@@ -315,8 +315,9 @@ describe('screening machine staffing', () => {
       g.vWall[vEdgeIndex(g, 46, y)] = WALL.Wall;
     }
     for (let x = 50; x <= 57; x++) g.hWall[hEdgeIndex(g, x, 53)] = WALL.Wall;
-    expect(edit(building, { op: 'fixture', x0: 60, y0: 41, x1: 61, y1: 42, variant: 1 })).toEqual([]);
-    // The 2 by 8 cell lane (T74) covers columns 61 to 68 on rows 41 and 42, east of the check in desk.
+    expect(edit(building, { op: 'fixture', x0: 59, y0: 41, x1: 60, y1: 42, variant: 1 })).toEqual([]);
+    // The 2 by 8 cell lane (T74) covers columns 61 to 68 on rows 41 and 42, east of the check in desk, with its entry
+    // column 60 left clear (T85).
     expect(edit(building, { op: 'fixture', x0: 68, y0: 41, x1: 69, y1: 42, variant: 2, rot: 1 })).toEqual([]);
     const place = (kind: 'machine' | 'bay' | 'carousel', cx: number, cy: number): void => {
       expect(run(sim, { type: 'placeBaggageNode', building, kind, cx, cy, rot: 0, widthCells: 4 })).toEqual([]);
@@ -328,7 +329,7 @@ describe('screening machine staffing', () => {
     const bay = recs.find((r) => r.kind === 'bay')!.id;
     expect(run(sim, { type: 'setStandBay', standId: sim.airfield.data.stands[0]!.id, bayId: bay })).toEqual([]);
     const machine = recs.find((r) => r.kind === 'machine')!.id;
-    const anchor = cellIndex(g, 60, 41);
+    const anchor = cellIndex(g, 59, 41);
     const a320 = AIRCRAFT.findIndex((a) => a.id === 'a320neo');
     const checkIn = (bags: number): number => {
       const t = sim.traffic;

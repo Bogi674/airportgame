@@ -1,3 +1,4 @@
+import { planPropWithUse } from '@shared/useArea';
 import { apronContains, touches } from '@shared/apronGeom';
 import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standHeading, standRowPricing, type RemovePlan } from '@shared/apronPricing';
 import { AIRFIELD, BUSINESS, GROUND, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
@@ -21,7 +22,7 @@ import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@share
 import { windBand, type SitePayload } from '@shared/site';
 import { TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
 import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
-import { footprintSteps, planProp, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
+import { footprintSteps, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { unitProblem } from '@shared/tenants';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
 import { cellAtWorld, cellIndex, fixtureAnchor, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
@@ -823,7 +824,7 @@ export class ToolController {
       this.move(this.cursor, { shift: false, alt: false });
       return true;
     }
-    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && hasRotation(st.fixtureId, st.fixtureLevel)) {
+    if ((e.key === 'r' || e.key === 'R') && st.tool === 'terminal' && st.tSub === 'fixture' && hasRotation(st.fixtureId)) {
       st.set({ fixtureRot: nextFixtureRot(st.fixtureRot) });
       this.move(this.cursor, { shift: false, alt: false });
       return true;
@@ -2234,7 +2235,7 @@ export class ToolController {
       st.set({ hint: 'hint.terminal.prop', problem: null, buy: null });
       return;
     }
-    const plan = planProp(at.g, at.prop);
+    const plan = planPropWithUse(at.g, at.prop);
     const name = propSpec(at.prop.asset)?.name ?? at.prop.asset;
     this.show({ valid: plan.problem === null, shapes: this.propShapes(at.g, at.prop), label: { x: p.x, y: p.y, text: tFormat('ghost.prop', { name, cost: formatMoney(propCost(at.prop.asset)) }) } }, plan.problem, 'hint.terminal.prop');
     st.set({ buy: null });
@@ -2242,7 +2243,7 @@ export class ToolController {
 
   private placeProp(p: Pt): void {
     const at = this.propAtCursor(p);
-    if (!at || planProp(at.g, at.prop).problem !== null) return;
+    if (!at || planPropWithUse(at.g, at.prop).problem !== null) return;
     const { g, prop } = at;
     this.deps.send({ type: 'placeProp', building: g.id, asset: prop.asset, x: prop.x, y: prop.y, rot: prop.rot });
   }

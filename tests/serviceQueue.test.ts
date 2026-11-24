@@ -92,8 +92,9 @@ describe('service queue join', () => {
     const sn = singleNodes('checkIn');
     let accepted = 0;
     for (let i = 0; i < 40; i++) if (serviceJoin(sn, 0, i, 10)) accepted++;
-    expect(accepted).toBe(16);
-    expect(sn.queueLen[0]).toBe(160);
+    // The desk queues on its front side only (T85), 22 cells of 4 people: 8 cohorts of 10 fit.
+    expect(accepted).toBe(8);
+    expect(sn.queueLen[0]).toBe(80);
   });
 
   it('only the first cohort may exceed the queue cap', () => {

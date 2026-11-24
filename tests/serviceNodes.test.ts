@@ -126,8 +126,10 @@ describe('service nodes', () => {
     setFloor(g, 0, 0, 20, 20);
     place(g, 10, 10, 'checkIn');
     const { nodes } = nodesOf(g);
-    // Cells within 4 steps of (10, 10) in a 20 by 20 open room: 4 + 8 + 12 + 16 = 40.
-    expect(nodes.queueCap[0]).toBe(40 * 4);
+    // The desk queues on its front side only (T85): cells within 3 steps of the front cell (10, 11), which is step 1,
+    // are 1 + 4 + 8 + 12 = 25, less the desk itself and (10, 9) and (10, 8) straight behind it, which only a path
+    // through the desk would reach in time: 22.
+    expect(nodes.queueCap[0]).toBe(22 * 4);
   });
 
   it('a wall cuts the queue count', () => {
@@ -136,9 +138,9 @@ describe('service nodes', () => {
     place(g, 10, 10, 'checkIn');
     for (let y = 0; y < 20; y++) wallLeftOf(g, 12, y);
     const { nodes } = nodesOf(g);
-    // Cells with x 6 to 11 within 4 steps of (10, 10), excluding the desk: 31.
-    expect(nodes.queueCap[0]).toBe(31 * 4);
-    expect(nodes.queueCap[0]).toBeLessThan(40 * 4);
+    // The 22 front side cells less the 4 with x 12 or more beyond the wall: 18.
+    expect(nodes.queueCap[0]).toBe(18 * 4);
+    expect(nodes.queueCap[0]).toBeLessThan(22 * 4);
   });
 
   it('security queues at the lane entrance and skips secure cells', () => {
@@ -226,18 +228,23 @@ describe('service nodes on a grid with a negative origin', () => {
     expect(nodes.count).toBe(1);
     expect(nodes.lx[0]).toBe(-3);
     expect(nodes.ly[0]).toBe(5);
-    expect(nodes.queueCap[0]).toBe(40 * 4);
+    expect(nodes.queueCap[0]).toBe(22 * 4);
   });
 });
 
 describe('service queue expansion stops at fixtures', () => {
   it('a fixture next to the anchor is neither counted nor passed through', () => {
-    const g = handGrid(0, 0, 20, 1);
-    setFloor(g, 0, 0, 20, 1);
-    place(g, 10, 0, 'checkIn');
-    place(g, 11, 0, 'seating');
-    const { nodes } = nodesOf(g);
-    // Only the cells 6 to 9 on the left are reachable in this one row corridor: 4 cells.
+    const g = handGrid(0, 0, 1, 20);
+    setFloor(g, 0, 0, 1, 20);
+    place(g, 0, 10, 'checkIn');
+    place(g, 0, 11, 'seating');
+    let { nodes } = nodesOf(g);
+    // The desk faces the seat, which stops its front side queue at once in this one column corridor (T85).
+    expect(nodes.queueCap[0]).toBe(0);
+    place(g, 0, 11, 'checkIn');
+    place(g, 0, 10, 'seating');
+    ({ nodes } = nodesOf(g));
+    // A desk at (0, 11) with the seat behind it queues on rows 12 to 15, its four steps of reach: 4 cells.
     expect(nodes.queueCap[0]).toBe(4 * 4);
   });
 });

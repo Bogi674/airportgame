@@ -38,13 +38,12 @@ describe('fixture rotation', () => {
     expect(footprintRect(fixtureEdit(80, 46, 81, 47, SECURITY_EXIT, 0, 1, 0))).toEqual({ x0: 80, y0: 46, x1: 82, y1: 48 });
   });
 
-  it('gives rotation to every footprint larger than one cell and to transition fixtures', () => {
-    expect(hasRotation(SECURITY_EXIT, 1)).toBe(true);
-    expect(hasRotation(SECURITY_EXIT, 2)).toBe(true);
-    expect(hasRotation(E_GATE, 1)).toBe(true);
-    expect(hasRotation(SECURITY, 1)).toBe(true);
-    expect(hasRotation(GATE_DESK, 1)).toBe(true);
-    expect(hasRotation(CHECK_IN, 1)).toBe(false);
+  it('gives rotation to every fixture, one cell ones included (T85)', () => {
+    expect(hasRotation(SECURITY_EXIT)).toBe(true);
+    expect(hasRotation(E_GATE)).toBe(true);
+    expect(hasRotation(SECURITY)).toBe(true);
+    expect(hasRotation(GATE_DESK)).toBe(true);
+    expect(hasRotation(CHECK_IN)).toBe(true);
   });
 });
 

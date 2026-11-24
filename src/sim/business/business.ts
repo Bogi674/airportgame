@@ -1,3 +1,4 @@
+import { planPropWithUse } from '@shared/useArea';
 import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, DIVERT_AIRLINE, FlState, GA_AIRLINE } from '../ops/traffic';
@@ -30,7 +31,7 @@ import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
 import { DIVERT_LABEL, GA_LABEL, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
-import { cellsOfRect, convertLegacyFixtures, planProp, propAt, propCost, propRect, propTotals } from '@shared/props';
+import { cellsOfRect, convertLegacyFixtures, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
 import { travelatorCostOf } from '@shared/travelator';
@@ -649,7 +650,7 @@ export class Business {
     const g = this.grids.find((q) => q.id === building);
     if (!g) return 'nothingThere';
     const prop: Prop = { asset: p.asset, x: p.x, y: p.y, rot: p.rot };
-    const plan = planProp(g, prop);
+    const plan = planPropWithUse(g, prop);
     if (plan.problem) return plan.problem.code + argsOf(plan.problem.args);
     if (plan.cost > this.host.getCash()) return `insufficientFunds|cost=${plan.cost}`;
     if (plan.cost > 0) this.host.book('construction', -plan.cost);
