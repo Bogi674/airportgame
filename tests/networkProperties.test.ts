@@ -160,25 +160,35 @@ describe('TaxiNetwork properties on random layouts', () => {
     }
   });
 
-  it('partitions the two way edges into blocks, one block per taxiway', () => {
+  it('partitions the two way taxi edges into runs between junctions, each edge facing the run (T87)', () => {
     for (const { net } of nets) {
-      const sourceOfBlock = new Map<number, number>();
+      const taxi = (e: number): boolean => net.edgeKind[e] === EdgeKind.Taxiway || net.edgeKind[e] === EdgeKind.Taxilane || net.edgeKind[e] === EdgeKind.RapidExit;
       for (let e = 0; e < net.edgeCount; e++) {
-        const kind = net.edgeKind[e];
         const b = net.edgeBlock[e];
-        if (kind === EdgeKind.Runway || net.edgeOneWay[e] === 1) {
+        if (!taxi(e) || net.edgeOneWay[e] === 1) {
           expect(b).toBe(-1);
           continue;
         }
         expect(b).toBeGreaterThanOrEqual(0);
         expect(b).toBeLessThan(net.blockTotal);
-        if (kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork) continue;
-        const prev = sourceOfBlock.get(b);
-        if (prev === undefined) sourceOfBlock.set(b, net.edgeSource[e]);
-        else expect(prev).toBe(net.edgeSource[e]);
+        expect(Math.abs(net.edgeBlockSign[e])).toBe(1);
       }
-      const sources = new Set(Array.from(sourceOfBlock.values()));
-      expect(sources.size).toBe(sourceOfBlock.size);
+      // Two edges of one block meet only at a node where nothing else meets, and the run goes on through it.
+      for (let n = 0; n < net.nodeCount; n++) {
+        const at: number[] = [];
+        for (let p = net.adjStart[n]; p < net.adjStart[n + 1]; p++) at.push(p);
+        for (let a = 0; a < at.length; a++) {
+          for (let c = a + 1; c < at.length; c++) {
+            const e = net.adjEdge[at[a]];
+            const f = net.adjEdge[at[c]];
+            if (net.edgeBlock[e] < 0 || net.edgeBlock[e] !== net.edgeBlock[f]) continue;
+            expect(at.length).toBe(2);
+            // One edge arrives at n and the other leaves it, in block direction.
+            const arrives = (g: number, p: number): boolean => (net.adjDir[p] === -1) === (net.edgeBlockSign[g] === 1);
+            expect(arrives(e, at[a])).not.toBe(arrives(f, at[c]));
+          }
+        }
+      }
     }
   });
 
