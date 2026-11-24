@@ -68,9 +68,6 @@ export interface Plan {
   /** Taxiway location and direction signs before junctions. */
   signs: Sign[];
   holds: HoldMark[];
-  /** Cuts in the white runway edge stripes at taxiway openings, per runway id: [s0, s1] along the runway. */
-  /** Openings in the runway edge stripes: start, end and the side (+1 right of travel, -1 left) they are on. */
-  runwayBreaks: Map<number, [number, number, number][]>;
   /** Yellow turn curves of the runway end turn pads (docs/ART_AND_ASSETS.md section 8). */
   padCurves: Line[];
 }
@@ -247,7 +244,7 @@ function runsOutside(pts: readonly Pt[], excluded: (x: number, y: number) => boo
   return runs;
 }
 
-const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], runwayBreaks: new Map(), padCurves: [] });
+const emptyPlan = (): Plan => ({ smooth: new Map(), shoulders: [], areas: [], patches: [], centerlines: [], redCenterlines: [], edges: [], enhanced: [], stripes: [], markers: [], joints: [], signs: [], holds: [], padCurves: [] });
 
 const cache = new WeakMap<AirfieldPayload, Plan>();
 
@@ -270,13 +267,12 @@ interface Junction {
   /** Unit direction of the arriving taxiway toward the junction. */
   cx: number;
   cy: number;
-  /** Runway direction (unit), its half width with shoulders, and the runway. */
+  /** Runway direction (unit), the half width of its full strength pavement, where the white edge stripe runs, and its half width with shoulders. */
   tx: number;
   ty: number;
   hT: number;
+  hS: number;
   throughRunway: Runway;
-  /** Arc length position of the junction along the runway. */
-  along: number;
 }
 
 export function buildPlan(af: AirfieldPayload): Plan {
@@ -320,14 +316,16 @@ export function buildPlan(af: AirfieldPayload): Plan {
           const along = rel.x * rd.x + rel.y * rd.y;
           const lat = Math.abs(-rel.x * rd.y + rel.y * rd.x);
           const edge = r.widthM / 2 + r.shoulderM;
-          if (lat > edge + 3 || lat < edge - 4 || along < 0 || along > r.lengthM) continue;
+          // An end anywhere from the centerline out to just past the shoulder meets the runway (T84): a taxiway
+          // drawn onto the centerline gets the same junction as one that stops at the edge.
+          if (lat > edge + 3 || along < 0 || along > r.lengthM) continue;
           const cross = Math.abs(cx * rd.y - cy * rd.x);
           if (cross < 0.4) continue;
           // Where the arriving line crosses the runway centerline.
           const k = (rd.y * (E.x - r.x1) - rd.x * (E.y - r.y1)) / (cy * rd.x - cx * rd.y || 1);
           const px = E.x + cx * k;
           const py = E.y + cy * k;
-          found = { c, end, px, py, cx, cy, tx: rd.x, ty: rd.y, hT: edge, throughRunway: r, along: (px - r.x1) * rd.x + (py - r.y1) * rd.y };
+          found = { c, end, px, py, cx, cy, tx: rd.x, ty: rd.y, hT: r.widthM / 2, hS: edge, throughRunway: r };
           break;
         }
       }
@@ -356,7 +354,6 @@ export function buildPlan(af: AirfieldPayload): Plan {
     let tfMax = 0;
     let tcMax = 0;
     const perSide = new Map<number, number>();
-    const cutIntervals: number[] = [];
     for (const sigma of [1, -1] as const) {
       const r1x = sigma * j.tx;
       const r1y = sigma * j.ty;
@@ -400,7 +397,6 @@ export function buildPlan(af: AirfieldPayload): Plan {
       const sideSign = ex * tn.x + ey * tn.y >= 0 ? 1 : -1;
       perSide.set(sideSign, Math.max(perSide.get(sideSign) ?? 0, (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy));
       tfMax = Math.max(tfMax, len(Cpt.x - j.px, Cpt.y - j.py) * 0 + (Cpt.x - j.px) * -j.cx + (Cpt.y - j.py) * -j.cy);
-      cutIntervals.push((Tpt.x - j.px) * j.tx + (Tpt.y - j.py) * j.ty);
       // Lead-on centerline arc onto the runway centerline, with a wide sweep.
       const Rc = Math.min(codeR * 2.2, 3.4 * hC + R, 0.45 * (lenC + eDist) * tanH);
       const tc = Rc / tanH;
@@ -413,16 +409,25 @@ export function buildPlan(af: AirfieldPayload): Plan {
       extraCenter.push({ pts: arcPts, outlined: c.surface === 'concrete' });
       tcMax = Math.max(tcMax, tc);
     }
-    // Opening in the through feature's edge: from the first to the last fillet tangent point.
-    if (cutIntervals.length > 0) {
-      // The opening runs exactly between the fillet tangent points, so the straight edge meets the arc without a gap,
-      // and it is only on the side the arriving taxiway comes from.
-      const lo = Math.min(...cutIntervals) + j.along;
-      const hi = Math.max(...cutIntervals) + j.along;
-      const l = plan.runwayBreaks.get(j.throughRunway.id) ?? [];
-      l.push([lo, hi, -(nx * j.ty - ny * j.tx > 0 ? 1 : -1)]);
-      plan.runwayBreaks.set(j.throughRunway.id, l);
+    // The taxiway pavement runs on across the runway shoulder to the full strength edge, between the two
+    // points where its edges meet that edge, so the fillets join the runway pavement with no shoulder band (T84).
+    const throat: Pt[] = [];
+    const away = -(j.cx * nx + j.cy * ny);
+    if (away > 1e-6) {
+      for (const side of [1, -1]) {
+        const ex = -j.cy * side;
+        const ey = j.cx * side;
+        const det = j.tx * -j.cy - j.ty * -j.cx;
+        if (Math.abs(det) < 1e-6) continue;
+        const s0 = ((ex * hC - nx * j.hT) * -j.cy - (ey * hC - ny * j.hT) * -j.cx) / det;
+        const q = { x: j.px + nx * j.hT + j.tx * s0, y: j.py + ny * j.hT + j.ty * s0 };
+        const out = (j.hS - j.hT + 1) / away;
+        const o = { x: q.x - j.cx * out, y: q.y - j.cy * out };
+        if (side === 1) throat.push(q, o);
+        else throat.push(o, q);
+      }
     }
+    if (throat.length === 4) plan.patches.push(throat);
     // The arriving taxiway's own edge lines start at the fillets, its centerline at the lead-on arcs.
     const edgeFromEnd = Math.max(0, tfMax - eDist);
     bump(endCuts, c.id, j.end, edgeFromEnd + eDist * 0);

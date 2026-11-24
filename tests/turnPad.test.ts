@@ -116,18 +116,16 @@ describe('turn pads', () => {
     expect(sim.cash).toBe(built + refund);
   });
 
-  it('the plan carries the turn curve and no pad edge line gap', () => {
+  it('the plan carries the turn curve', () => {
     const sim = ownedSim();
     run(sim, { type: 'buildRunway', x: 3000, y: 5000, headingDeg: 90, lengthM: 2000, code: 'C', approach: 'visual', surface: 'asphalt', tier: 2 });
     const r = sim.airfield.data.runways[0];
     r.pads = { a: 'left' };
     const planA = buildPlan(sim.airfield.data);
-    expect((planA.runwayBreaks.get(r.id) ?? []).length).toBe(0);
     expect(planA.padCurves).toHaveLength(1);
     expect(planA.padCurves[0].pts).toEqual(padCurve(r, 'a', 'left'));
     r.pads = { b: 'right' };
     const planB = buildPlan(sim.airfield.data);
-    expect((planB.runwayBreaks.get(r.id) ?? []).length).toBe(0);
     expect(planB.padCurves).toHaveLength(1);
   });
 
