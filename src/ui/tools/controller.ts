@@ -778,6 +778,11 @@ export class ToolController {
         this.finishTerminal(p);
         break;
       case 'demolish': {
+        // A terminal prop or fixture right under the cursor wins over an airfield object within the pick radius.
+        if (this.propUnder(p) || this.fixtureUnder(p)) {
+          this.removePropAt(p);
+          break;
+        }
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
         if (hit?.kind === 'tower') this.deps.send({ type: 'demolishTower', id: hit.id });
         else if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
@@ -2679,6 +2684,10 @@ export class ToolController {
   // Demolish -------------------------------------------------------------
 
   private previewDemolish(p: Pt): void {
+    if (this.propUnder(p) || this.fixtureUnder(p)) {
+      this.previewPropRemove(p);
+      return;
+    }
     const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
     if (!hit) {
       this.deps.setGhost(null);
