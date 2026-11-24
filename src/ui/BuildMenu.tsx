@@ -248,7 +248,6 @@ export const CATEGORIES: Category[] = [
     tabs: [
       { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase'), removeProp] },
       { id: 'processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk'), removeProp] },
-      { id: 'facilities', items: [fx('belt', 'belt')] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'shops', items: [...TENANT_CATEGORY_KEYS.map((k, c) => unit(k, c)), { ...sheet('tenants', 'tenants', 'finance'), thumb: 'shop' }] },
       { id: 'circulation', items: [{ ...fx('travelator', 'belt'), price: travelatorCost(1), asset: TRAVELATOR_ASSETS[0] }] },

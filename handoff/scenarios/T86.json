@@ -1,0 +1,184 @@
+{
+  "buy": [
+    [
+      3900,
+      4900,
+      4200,
+      5200
+    ]
+  ],
+  "commands": [
+    {
+      "type": "terminalBuild",
+      "building": -1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "foundation",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 0
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "floor",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "fixture",
+        "x0": 1,
+        "y0": 4,
+        "x1": 5,
+        "y1": 5,
+        "variant": 1,
+        "rot": 0
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "fixture",
+        "x0": 9,
+        "y0": 1,
+        "x1": 10,
+        "y1": 5,
+        "variant": 1,
+        "rot": 1
+      }
+    }
+  ],
+  "camera": {
+    "x": 4013,
+    "y": 5008,
+    "zoom": 30
+  },
+  "hideUi": false,
+  "actions": [
+    {
+      "tool": "tool-terminal"
+    },
+    {
+      "tool": "menutab-processing"
+    },
+    {
+      "tool": "card-checkIn"
+    },
+    {
+      "move": [
+        4009.0,
+        5003.0
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "shot": "ghost",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "key": "r"
+    },
+    {
+      "move": [
+        4011.0,
+        5003.0
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "shot": "ghost-turned",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "key": "Escape"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": "after-esc",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "tool": "tool-select"
+    },
+    {
+      "click": [
+        4005.0,
+        5009.0
+      ]
+    },
+    {
+      "wait": 600
+    },
+    {
+      "shot": "menu",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "tool": "menu-item-remove"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": "confirm",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    },
+    {
+      "tool": "menu-item-demolish-yes"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "shot": "demolished",
+      "clip": {
+        "w": 1600,
+        "h": 1000
+      }
+    }
+  ]
+}

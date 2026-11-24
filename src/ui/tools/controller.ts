@@ -21,7 +21,7 @@ import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
 import { fixtureKey, isBaggageFixture, TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
-import { screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { dropOutCell, screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
 import { footprintSteps, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { unitProblem } from '@shared/tenants';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
@@ -79,6 +79,8 @@ const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(d
 
 /** How close the cursor must come to a runway threshold before a turn pad previews (task T01 spec). */
 const TURN_PAD_REACH_M = 150;
+/** Kit asset of the bag chute a desk or bag drop ghost shows behind it: the unconnected ramp, as a new desk has no link. */
+const DROP_GHOST_ASSET = 'ramp.unconnected';
 /** A laid taxiway point within this distance of a node, end or centerline counts as joined to it. */
 const JOINED_M = 0.5;
 
@@ -2130,14 +2132,15 @@ export class ToolController {
     return this.tTemp;
   }
 
-  /** Id of the baggage node under the point, from the derived node cells of the business payload. */
+  /** Id of the baggage node under the point, a drop excepted, from the derived node cells of the business payload. */
   private bagNodeAt(p: Pt): number | null {
     const st = useGameStore.getState();
     const nodes = st.business?.baggage.nodes ?? [];
     for (const g of st.terminalGrids) {
       const c = cellAtWorld(g, p.x, p.y);
       const node = bagNodeAt(nodes, g.id, c.cx, c.cy);
-      if (node) return node.id;
+      // A drop sits on its desk's anchor cell, so a click there picks the desk and its edit actions (T86).
+      if (node && node.kind !== 'drop') return node.id;
     }
     return null;
   }
@@ -2615,6 +2618,12 @@ export class ToolController {
       }
       const c = cornerWorld(g, (x0 + x1) / 2, (y0 + y1) / 2);
       shapes.push({ k: 'fixture', f: edit.variant, level, code: 1 + rot, x: c.x, y: c.y, headingDeg: g.headingDeg });
+      // A desk or bag drop places its bag chute on the cell behind it, so the ghost shows that chute too (T86).
+      if (key === 'checkIn' || key === 'bagDrop') {
+        const [ox, oy] = dropOutCell(a.x, a.y, rot as 0 | 1 | 2 | 3);
+        const m = cornerWorld(g, ox + 0.5, oy + 0.5);
+        shapes.push({ k: 'prop', asset: DROP_GHOST_ASSET, rot, x: m.x, y: m.y, headingDeg: g.headingDeg });
+      }
     }
     return shapes;
   }

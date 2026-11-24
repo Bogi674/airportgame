@@ -111,6 +111,8 @@ interface ToolState {
   altHeld: boolean;
   /** Fixture picked by the select tool inside a terminal: the anchor cell in logical cells, or null. */
   fixturePick: { building: number; x: number; y: number } | null;
+  /** Screen point of the click that picked a fixture or prop, with the map size, where the item popup opens (T86). */
+  pickAt: { x: number; y: number; maxX: number; maxY: number } | null;
   /** Prop picked by the select tool inside a terminal: a point on it in grid meters, or null (T85). */
   propPick: { building: number; x: number; y: number } | null;
   /** A placed fixture or prop picked up by Move, following the cursor as a ghost until it is dropped (T85). */
@@ -171,6 +173,7 @@ export const useToolStore = create<ToolState>((set) => ({
   snapMode: {},
   altHeld: false,
   fixturePick: null,
+  pickAt: null,
   propPick: null,
   moving: null,
   hint: null,

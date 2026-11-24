@@ -83,7 +83,11 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       pointerY = e.offsetY;
       renderer.setPointer(e.offsetX, e.offsetY);
       lastMods = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey };
-      if (panning) cam.panByScreen(e.offsetX - lastX, e.offsetY - lastY);
+      if (panning) {
+        cam.panByScreen(e.offsetX - lastX, e.offsetY - lastY);
+        // The item popup sits at a screen point, so it closes once the map moves under it.
+        if (useToolStore.getState().pickAt && Math.hypot(e.offsetX - downX, e.offsetY - downY) >= CLICK_SLOP_PX) useToolStore.getState().set({ pickAt: null });
+      }
       else if (rotating) cam.rotateAt(canvas.clientWidth / 2, canvas.clientHeight / 2, (e.offsetX - lastX) * ROTATE_RATE);
       else controller.move(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });
       lastX = e.offsetX;
@@ -107,6 +111,9 @@ export function MapView({ client, onRenderer, onPick }: Props) {
         } else controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });
       } else if (panning && e.button === 0 && click && useToolStore.getState().tool === 'select') {
         controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });
+        // A picked fixture or prop opens its edit popup at the click (T86).
+        const picked = useToolStore.getState();
+        picked.set({ pickAt: picked.fixturePick || picked.propPick ? { x: e.offsetX, y: e.offsetY, maxX: canvas.clientWidth, maxY: canvas.clientHeight } : null });
         // Parcels are only picked in land mode, so building never selects land by accident.
         if (useGameStore.getState().parcelOverlay && useToolStore.getState().selection === null) onPick(renderer.parcelAt(e.offsetX, e.offsetY));
         else onPick(-1);
@@ -119,6 +126,7 @@ export function MapView({ client, onRenderer, onPick }: Props) {
     };
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
+      if (useToolStore.getState().pickAt) useToolStore.getState().set({ pickAt: null });
       cam.zoomAt(e.offsetX, e.offsetY, Math.pow(ZOOM_STEP, -e.deltaY));
     };
     const onDouble = (): void => controller.finish();
