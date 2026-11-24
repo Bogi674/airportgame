@@ -303,6 +303,8 @@ export interface Plan {
   changes: number;
   /** Writes the edit into the grid. Only call it on a plan without a problem. */
   apply(): void;
+  /** Logical anchor cells a fixture edit places, in placement order, for the ghost (T85). */
+  anchors?: { x: number; y: number }[];
 }
 
 /** True when a world point is clear of runways, taxiways and aprons, so a foundation may sit there. */
@@ -371,6 +373,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
   const none = (problem: Problem): Plan => ({ problem, cost: 0, changes: 0, apply: () => undefined });
   const T = BUSINESS.terminal;
   const writes: (() => void)[] = [];
+  const anchors: { x: number; y: number }[] = [];
   let cost = 0;
   const x0 = Math.min(e.x0, e.x1);
   const x1 = Math.max(e.x0, e.x1);
@@ -508,6 +511,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
             continue;
           }
           for (const u of use) pendingUse.add(cellKey(u.x, u.y));
+          anchors.push({ x: cx, y: cy });
           for (const part of parts) claimed.add(cellKey(part.x, part.y));
           claimed.add(cellKey(cx, cy));
           cost += fixtureCost(e.variant, level);
@@ -564,6 +568,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
       problem: blocked,
       cost,
       changes: writes.length,
+      anchors,
       apply: () => {
         if (e.op === 'foundation') ensureCells(g, x0, y0, x1, y1);
         for (const w of writes) w();

@@ -116,14 +116,92 @@
     }
   ],
   "camera": {
-    "x": 4013,
+    "x": 4012,
     "y": 5008,
     "zoom": 30
   },
   "hideUi": true,
   "actions": [
     {
-      "shot": "near",
+      "tool": "tool-terminal"
+    },
+    {
+      "tool": "menutab-processing"
+    },
+    {
+      "tool": "card-checkIn"
+    },
+    {
+      "move": [
+        4007,
+        5007
+      ]
+    },
+    {
+      "wait": 400
+    },
+    {
+      "shot": "ghost-desk",
+      "clip": {
+        "w": 900,
+        "h": 600
+      }
+    },
+    {
+      "key": "r"
+    },
+    {
+      "move": [
+        4007.2,
+        5007.2
+      ]
+    },
+    {
+      "wait": 400
+    },
+    {
+      "shot": "ghost-desk-rot",
+      "clip": {
+        "w": 900,
+        "h": 600
+      }
+    },
+    {
+      "move": [
+        4013,
+        5001
+      ]
+    },
+    {
+      "wait": 400
+    },
+    {
+      "shot": "ghost-desk-wall",
+      "clip": {
+        "w": 900,
+        "h": 600
+      }
+    },
+    {
+      "tool": "tool-furnish"
+    },
+    {
+      "tool": "menutab-seating"
+    },
+    {
+      "tool": "card-bench.beam3"
+    },
+    {
+      "move": [
+        4017,
+        5009
+      ]
+    },
+    {
+      "wait": 400
+    },
+    {
+      "shot": "ghost-bench",
       "clip": {
         "w": 900,
         "h": 600
@@ -138,20 +216,6 @@
     },
     {
       "shot": "far",
-      "clip": {
-        "w": 900,
-        "h": 600
-      }
-    },
-    {
-      "camera": {
-        "x": 4013,
-        "y": 5008,
-        "zoom": 1
-      }
-    },
-    {
-      "shot": "farther",
       "clip": {
         "w": 900,
         "h": 600

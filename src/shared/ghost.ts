@@ -14,7 +14,16 @@ export type GhostShape =
   /** A red band over a stretch that breaks a clearance. */
   | { k: 'clash'; pts: Pt[]; w: number }
   /** A snap marker drawn at a fixed size on screen: a node dot, the active target, or a grid node (docs/DESIGN_REVISION_2.md 2.2, T70). */
-  | { k: 'marker'; x: number; y: number; shape: MarkerShape; label?: string };
+  | { k: 'marker'; x: number; y: number; shape: MarkerShape; label?: string }
+  /**
+   * A terminal fixture drawn with its kit sprite (T85): fixture id, level and footprint code as on the grid, the world
+   * center of its footprint and the heading of the building's x axis.
+   */
+  | { k: 'fixture'; f: number; level: number; code: number; x: number; y: number; headingDeg: number }
+  /** A prop drawn with its kit sprite (T85): asset, quarter turns, world center and the building heading. */
+  | { k: 'prop'; asset: string; rot: number; x: number; y: number; headingDeg: number }
+  /** A hatched area an item needs clear, its use area (T85). blocked draws it red. */
+  | { k: 'hatch'; pts: Pt[]; blocked: boolean };
 
 /** Screen shapes of snap markers: node dots, and the ring, square, diamond or plus of the active target. */
 export type MarkerShape = 'dot' | 'ring' | 'square' | 'diamond' | 'plus';

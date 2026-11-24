@@ -162,14 +162,17 @@ export function useMask(g: TerminalGrid, skipAnchor = -1, skipProp = -1, withPro
  * array cells of the fixture's footprint (and, for a move, the cells it leaves), which never block.
  */
 export function fixtureUseProblem(g: TerminalGrid, key: FixtureKey, level: number, x: number, y: number, rot: number, own: ReadonlySet<number> = new Set()): Problem | null {
-  for (const u of fixtureUseCells(key, level, x, y, rot)) {
-    const j = cellAt(g, u.x, u.y);
-    if (j < 0 || g.floor[j] === 0) return { code: 'useAreaBlocked' };
-    if (solid(edgeWall(g, u.fromX, u.fromY, u.x, u.y))) return { code: 'useAreaBlocked' };
-    if (g.fixture[j] !== 0 && !own.has(j)) return { code: 'useAreaBlocked' };
-    if (propOnCell(g, u.x, u.y, -1)) return { code: 'useAreaBlocked' };
-  }
+  for (const u of fixtureUseCells(key, level, x, y, rot)) if (useCellBlocked(g, u, own)) return { code: 'useAreaBlocked' };
   return null;
+}
+
+/** True when one use cell holds no floor, a solid wall on its edge, a fixture outside `own`, or a floor prop. */
+export function useCellBlocked(g: TerminalGrid, u: UseCell, own: ReadonlySet<number> = new Set()): boolean {
+  const j = cellAt(g, u.x, u.y);
+  if (j < 0 || g.floor[j] === 0) return true;
+  if (solid(edgeWall(g, u.fromX, u.fromY, u.x, u.y))) return true;
+  if (g.fixture[j] !== 0 && !own.has(j)) return true;
+  return propOnCell(g, u.x, u.y, -1);
 }
 
 /** True when a prop footprint or strip runs over a solid wall edge inside it. */

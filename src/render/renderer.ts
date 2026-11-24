@@ -28,6 +28,11 @@ import { vehicleBakePpm, vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, chunkSizeM, chunksPerSide, BAND_RASTER_SCALE, CHUNKS_PER_SIDE, type ChunkEntry } from './chunks';
 import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
 import { drawZoneOverlay, type ZoneColors } from './zoneOverlay';
+import { ghostFixtureSprite, ghostPropSprite, TERMINAL_KIT_PACKS } from './markings/airfieldPaint';
+import { ensurePacks } from './sprites/fixtureKit';
+import { drawFixture } from './sprites/fixtureSprite';
+import { tierForZoom } from './sprites/fixturePlan';
+import type { Pt } from '@shared/geom';
 
 const MAX_BACKING = 4096;
 
@@ -115,6 +120,8 @@ export class Renderer {
   private pendingSelected = -1;
   private showParcels = false;
   private ghost: Ghost | null = null;
+  /** True once the terminal kit packs were requested for fixture ghosts (T85). */
+  private ghostKitRequested = false;
   /** Last pointer position over the canvas in CSS pixels. `known` is false until the first move. */
   private readonly pointer = { x: 0, y: 0, known: false };
   private readonly readoutAt = { x: 0, y: 0 };
@@ -831,6 +838,76 @@ export class Renderer {
   }
 
   /** Build tool preview. A handful of shapes per frame, so plain path drawing is fine here. */
+  /**
+   * A fixture or prop ghost with its kit sprite at true size, turned with the building (T85). The context already holds
+   * the world transform. Below the smallest sprite tier the footprint shape alone shows it.
+   */
+  private drawGhostSprite(sh: Extract<GhostShape, { k: 'fixture' } | { k: 'prop' }>, valid: boolean): void {
+    const px = this.camera.zoom * this.dpr;
+    const tier = tierForZoom(px);
+    if (tier === 0) return;
+    // Sprites bake at a power of two scale so moving the ghost reuses the cache.
+    const ppm = Math.min(64, 2 ** Math.round(Math.log2(px)));
+    const s = sh.k === 'fixture' ? ghostFixtureSprite(sh.f, sh.level, sh.code, tier, ppm) : ghostPropSprite(sh.asset, sh.rot, tier, ppm);
+    if (s === null) {
+      // Chunks bake the kit in the bake worker, so this thread loads the packs the first time a ghost needs them.
+      if (!this.ghostKitRequested) {
+        this.ghostKitRequested = true;
+        void ensurePacks(TERMINAL_KIT_PACKS).catch(() => undefined);
+      }
+      return;
+    }
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(sh.x, sh.y);
+    ctx.rotate(((sh.headingDeg - 90) * Math.PI) / 180);
+    ctx.globalAlpha = valid ? 0.8 : 0.55;
+    drawFixture(ctx, s.sprite, 0, 0, s.rot);
+    ctx.restore();
+  }
+
+  /** Diagonal hatching over a polygon: white for a clear use area, red for a blocked one (T85). */
+  private drawHatch(pts: readonly Pt[], blocked: boolean, zoom: number): void {
+    if (pts.length < 3) return;
+    const ctx = this.ctx;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    ctx.beginPath();
+    ctx.moveTo(pts[0]!.x, pts[0]!.y);
+    for (const p of pts) {
+      ctx.lineTo(p.x, p.y);
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    ctx.closePath();
+    ctx.save();
+    ctx.fillStyle = blocked ? 'rgba(255,80,70,0.18)' : 'rgba(255,255,255,0.10)';
+    ctx.fill();
+    ctx.clip();
+    ctx.strokeStyle = blocked ? 'rgba(255,90,80,0.85)' : 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = Math.max(1.2 / zoom, 0.06);
+    const step = Math.max(6 / zoom, 0.35);
+    ctx.beginPath();
+    for (let k = minX - (maxY - minY); k < maxX; k += step) {
+      ctx.moveTo(k, maxY);
+      ctx.lineTo(k + (maxY - minY), minY);
+    }
+    ctx.stroke();
+    ctx.restore();
+    ctx.setLineDash([4 / zoom, 3 / zoom]);
+    ctx.strokeStyle = blocked ? 'rgba(255,110,100,0.95)' : 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(pts[0]!.x, pts[0]!.y);
+    for (const p of pts) ctx.lineTo(p.x, p.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   private drawGhost(g: Ghost, a: number, b: number, cc: number, d: number, e: number, f: number): void {
     const ctx = this.ctx;
     if (g.preview) {
@@ -919,6 +996,12 @@ export class Renderer {
         ctx.lineCap = 'round';
         ctx.stroke();
         ctx.lineCap = 'butt';
+        ctx.strokeStyle = stroke;
+      } else if (sh.k === 'fixture' || sh.k === 'prop') {
+        this.drawGhostSprite(sh, g.valid);
+      } else if (sh.k === 'hatch') {
+        this.drawHatch(sh.pts, sh.blocked || !g.valid, zoom);
+        ctx.fillStyle = fill;
         ctx.strokeStyle = stroke;
       } else {
         this.drawMarker(sh.shape, a * sh.x + cc * sh.y + e, b * sh.x + d * sh.y + f, sh.label);
