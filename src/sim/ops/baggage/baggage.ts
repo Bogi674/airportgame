@@ -1360,7 +1360,9 @@ export class Baggage {
     for (let i = 0; i < g.fixture.length; i++) {
       const x = g.x0 + (i % g.w);
       const y = g.y0 + Math.floor(i / g.w);
-      if (g.fixture[i] === CHECK_IN_ID) out.push({ x, y, rot: 0 });
+      // A check in desk sends bags out of its back cell, so its drop turns with the desk (T86). Code 0 is a desk from a
+      // save before T85, which faces rotation 0.
+      if (g.fixture[i] === CHECK_IN_ID) out.push({ x, y, rot: g.fixtureRot[i] >= 1 && g.fixtureRot[i] <= 4 ? ((g.fixtureRot[i] - 1) as 0 | 1 | 2 | 3) : 0 });
       else if (g.fixture[i] === BAG_DROP_ID && g.fixtureRot[i] >= 1 && g.fixtureRot[i] <= 4) out.push({ x, y, rot: (g.fixtureRot[i] - 1) as 0 | 1 | 2 | 3 });
     }
     return out;

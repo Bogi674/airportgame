@@ -30,6 +30,14 @@ type SlotCtor = { new (buffer: ArrayBuffer): SavedArray; BYTES_PER_ELEMENT: numb
 const SHIFTS = STAFF.shifts.startsH.length;
 const MACHINE_KIND = FIXTURE_KEYS.indexOf('screeningMachine') + 1;
 const SECURITY_ID = FIXTURE_KEYS.indexOf('security') + 1;
+/** Agent post per fixture id in cells (T86): behind the anchor centre and to the counter side, from the staff data. */
+const POST_BACK = new Float64Array(FIXTURE_KEYS.length + 1).fill(STAFF.operator.backM / TERMINAL_CELL_M);
+const POST_SIDE = new Float64Array(FIXTURE_KEYS.length + 1);
+for (const [key, post] of Object.entries(STAFF.operator.posts)) {
+  const id = FIXTURE_KEYS.indexOf(key as (typeof FIXTURE_KEYS)[number]) + 1;
+  POST_BACK[id] = post.backM / TERMINAL_CELL_M;
+  POST_SIDE[id] = post.sideM / TERMINAL_CELL_M;
+}
 /** Cells a security lane runs along its flow, the across side of its footprint (T74). */
 const LANE_ACROSS = footprintOf('security', 1)[1];
 /** Cells from a lane anchor's centre to its walking strip across the lane: 2.6 m from its belt edge in the kit art. */
@@ -1180,9 +1188,11 @@ export class Staff {
           sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
           sy = sx === 0 ? Math.sign(dy) : 0;
         }
-        const back = STAFF.operator.backM / TERMINAL_CELL_M;
+        const kind = this.sKind[s]!;
+        const posted = kind < POST_BACK.length;
+        const back = posted ? POST_BACK[kind]! : STAFF.operator.backM / TERMINAL_CELL_M;
         const k = this.sSeen[s]!++;
-        const side = ((k - (this.sNeed[s]! - 1) / 2) * STAFF.operator.spacingM) / TERMINAL_CELL_M;
+        const side = ((k - (this.sNeed[s]! - 1) / 2) * STAFF.operator.spacingM) / TERMINAL_CELL_M + (posted ? POST_SIDE[kind]! : 0);
         // Sideways is the step turned a quarter, (1, 0) for a station with no queue cell.
         const px = sx === 0 && sy === 0 ? 1 : -sy;
         const py = sx === 0 && sy === 0 ? 0 : sx;

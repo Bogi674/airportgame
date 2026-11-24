@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { TICKS_PER_MINUTE } from '@shared/business';
 import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
-import { cornerWorld } from '@shared/terminalOps';
+import { cornerWorld, cellIndex } from '@shared/terminalOps';
+import { FIXTURE_KEYS } from '@shared/business';
+import { frontStep } from '@shared/useArea';
 import type { Sim } from '@sim/sim';
 import { STAFF_STATE } from '@sim/staff/staff';
 import { buildTestAirport, buildTestStaffCenter, buildTestTerminal, ownedSim } from './helpers';
@@ -53,6 +55,27 @@ describe('staff in the people sample', () => {
       const queue = cornerWorld(g, table.qCellX[first]! + 0.5, table.qCellY[first]! + 0.5);
       expect(Math.hypot(views.peopleX[i]! - queue.x, views.peopleY[i]! - queue.y)).toBeGreaterThan(Math.hypot(anchor.x - queue.x, anchor.y - queue.y));
     }
+  });
+
+  it('seats a check in agent on the chair of the desk art, beside the belt (T86)', () => {
+    const sim = staffSim();
+    const views = snapshot(sim);
+    const st = sim.staff;
+    const g = sim.business.grids[0]!;
+    const checkIn = FIXTURE_KEYS.indexOf('checkIn') + 1;
+    let seen = 0;
+    for (const i of staffEntries(views)) {
+      const m = views.peopleId[i]! - STAFF_ID_BASE;
+      const s = st.stIdx[m]!;
+      if (st.state[m] !== STAFF_STATE.OnDuty || s < 0 || st.sKind[s] !== checkIn) continue;
+      const code = g.fixtureRot[cellIndex(g, st.sX[s]!, st.sY[s]!)]!;
+      const [fx, fy] = frontStep(code >= 1 && code <= 4 ? code - 1 : 0);
+      // The chair is 0.56 m behind the desk centre and 0.7 m toward the agent counter, a quarter turn from the queue.
+      const chair = cornerWorld(g, st.sX[s]! + 0.5 - fx * 0.28 - fy * 0.35, st.sY[s]! + 0.5 - fy * 0.28 + fx * 0.35);
+      expect(Math.hypot(views.peopleX[i]! - chair.x, views.peopleY[i]! - chair.y)).toBeLessThan(0.05);
+      seen++;
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 
   it('walks members to their station during the shift change, moving toward it', () => {

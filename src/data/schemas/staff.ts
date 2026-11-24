@@ -67,6 +67,8 @@ const operator = z.strictObject({
   note: z.string(),
   backM: nonnegative,
   spacingM: nonnegative,
+  /** Where the agent sits at a fixture whose art puts the chair off centre (T86): metres behind the centre and to the side. */
+  posts: z.partialRecord(z.enum(FIXTURE_KEYS), z.strictObject({ backM: z.number(), sideM: z.number() })),
 });
 
 const ramp = z.strictObject({

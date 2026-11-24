@@ -3,6 +3,7 @@ import { BAGGAGE } from '@data/index';
 import { Sim } from '@sim/sim';
 import { FIXTURE_KEYS, WALL } from '../src/shared/business';
 import { dropOutCell, nodeCells } from '../src/shared/baggageNodes';
+import { fixtureUseCells } from '../src/shared/useArea';
 import { cellIndex, hEdgeIndex, originFor, vEdgeIndex } from '../src/shared/terminalOps';
 import { roadSnapPoints, standRoadAnchors } from '../src/shared/roadGraph';
 import { buildTestAirport, ownedSim, OPTIONS, run } from './helpers';
@@ -270,6 +271,34 @@ describe('baggage subsystem', () => {
     expect(rec?.spec?.widthCells).toBe(large);
     expect(nodeCells(rec!.spec!).some(([x, y]) => x === 64 && y === 42)).toBe(true);
     expect(copy.cash).toBe(l.sim.cash);
+  });
+
+  it('turns the check in drop with the desk so a row of desks never sends bags onto a neighbour (T86)', () => {
+    const l = layout();
+    // A row of four desks facing rotation 1, so their backs point toward smaller columns, away from the row.
+    const problems = run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit: { op: 'fixture', x0: 55, y0: 42, x1: 56, y1: 46, variant: 1, rot: 1 } });
+    expect(problems).toEqual([]);
+    const g = l.sim.business.grids[0];
+    const drops = l.sim.baggage.drawList(l.building).filter((n) => n.kind === 'drop' && n.cx === 55);
+    expect(drops).toHaveLength(4);
+    for (const d of drops) {
+      expect(d.rot).toBe(1);
+      const out = dropOutCell(d.cx, d.cy, d.rot);
+      const back = fixtureUseCells('checkIn', 1, d.cx, d.cy, 1).filter((u) => u.back);
+      expect(back.map((u) => [u.x, u.y])).toEqual([out]);
+      expect(g.fixture[cellIndex(g, out[0], out[1])]).toBe(0);
+    }
+  });
+
+  it('stays deterministic over 2 000 ticks with turned check in desks (T86)', () => {
+    const hash = (): number => {
+      const l = layout();
+      expect(run(l.sim, { type: 'terminalBuild', building: l.building, ox, oy, headingDeg: 90, edit: { op: 'fixture', x0: 55, y0: 42, x1: 56, y1: 46, variant: 1, rot: 1 } })).toEqual([]);
+      expect(place(l, 'machine', 42, 48)).toEqual([]);
+      for (let t = 0; t < 2000; t++) l.sim.step();
+      return l.sim.stateHash();
+    };
+    expect(hash()).toBe(hash());
   });
 });
 
