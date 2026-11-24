@@ -1,0 +1,164 @@
+{
+  "buy": [
+    [
+      3900,
+      4900,
+      4200,
+      5200
+    ]
+  ],
+  "commands": [
+    {
+      "type": "terminalBuild",
+      "building": -1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "foundation",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 0
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "floor",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "zone",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 3
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 0,
+        "y0": 0,
+        "x1": 13,
+        "y1": 0,
+        "variant": 1
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 0,
+        "y0": 0,
+        "x1": 0,
+        "y1": 8,
+        "variant": 1
+      }
+    },
+    {
+      "type": "terminalBuild",
+      "building": 1,
+      "ox": 4000,
+      "oy": 5000,
+      "headingDeg": 90,
+      "edit": {
+        "op": "wall",
+        "x0": 13,
+        "y0": 0,
+        "x1": 13,
+        "y1": 8,
+        "variant": 2
+      }
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.b2b6",
+      "x": 6,
+      "y": 6,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.b2b6",
+      "x": 12,
+      "y": 6,
+      "rot": 1
+    }
+  ],
+  "camera": {
+    "x": 4013,
+    "y": 5008,
+    "zoom": 30
+  },
+  "hideUi": true,
+  "actions": [
+    {
+      "shot": "near",
+      "clip": {
+        "w": 900,
+        "h": 600
+      }
+    },
+    {
+      "camera": {
+        "x": 4013,
+        "y": 5008,
+        "zoom": 3
+      }
+    },
+    {
+      "shot": "far",
+      "clip": {
+        "w": 900,
+        "h": 600
+      }
+    },
+    {
+      "camera": {
+        "x": 4013,
+        "y": 5008,
+        "zoom": 1
+      }
+    },
+    {
+      "shot": "farther",
+      "clip": {
+        "w": 900,
+        "h": 600
+      }
+    }
+  ],
+  "report": [
+    "cash"
+  ]
+}
