@@ -61,6 +61,8 @@ export function ItemMenu({ send }: { send: (c: Command) => void }) {
   const propPick = useToolStore((s) => s.propPick);
   const tool = useToolStore((s) => s.tool);
   const grids = useGameStore((s) => s.terminalGrids);
+  // Read so a rename shows at once (T94); itemTarget looks the name up itself.
+  useGameStore((s) => s.business?.fixtureNames);
   if (!at || tool !== 'select') return null;
   const target = itemTarget(grids, fixturePick, propPick, send);
   if (!target) return null;

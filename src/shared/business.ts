@@ -206,6 +206,8 @@ export interface TerminalGrid {
   fixtureOff: Uint8Array;
   /** Level of the fixture on every cell of its footprint, 1 to 3. 0 where there is no fixture. */
   fixtureLevel: Uint8Array;
+  /** Number of the fixture among fixtures of its kind in the whole airport (T94) on every cell of its footprint. 0 where there is no fixture. */
+  fixtureNo: Uint16Array;
   /** Mode of the fixture on every cell of its footprint: 0 departure or passenger use, 1 arrival or staff use. */
   fixtureMode: Uint8Array;
   /** Horizontal wall edges, (h + 1) rows of w columns. Index row * w + column, the edge above that cell. */
@@ -442,6 +444,8 @@ export interface BusinessPayload {
   movementBudget: number;
   /** Four numbers per flight that holds a stand (Scheduled, Inbound or OnGround): stand id, flight, start and end in absolute game minutes. Uncapped, the numbers the stand rule compares. */
   standBlocks: number[];
+  /** Custom fixture names keyed `${fixtureId}:${number}`, see fixtureNameKey (T94). */
+  fixtureNames: Record<string, string>;
   version: number;
   day: number;
   minuteOfDay: number;

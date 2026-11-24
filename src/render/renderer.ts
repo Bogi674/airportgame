@@ -838,11 +838,66 @@ export class Renderer {
           this.drawSurfaces(sh, a, b, cc, d, e, f);
           ctx.fillStyle = fill;
           ctx.strokeStyle = stroke;
+        } else if (sh.k === 'link') {
+          // Dashed in screen pixels, so the line reads the same at every zoom.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          const k = this.dpr;
+          ctx.lineWidth = 2 * k;
+          ctx.setLineDash([6 * k, 5 * k]);
+          ctx.beginPath();
+          ctx.moveTo(a * sh.ax + cc * sh.ay + e, b * sh.ax + d * sh.ay + f);
+          ctx.lineTo(a * sh.bx + cc * sh.by + e, b * sh.bx + d * sh.by + f);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          for (const [x, y] of [[sh.ax, sh.ay], [sh.bx, sh.by]] as const) {
+            ctx.beginPath();
+            ctx.arc(a * x + cc * y + e, b * x + d * y + f, 3.5 * k, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
         }
       }
     };
+    const tags: Extract<GhostShape, { k: 'nameTag' }>[] = [];
+    for (const list of [this.selected, this.hover]) if (list) for (const sh of list) if (sh.k === 'nameTag') tags.push(sh);
     if (this.hover) paint(this.hover, 'rgba(110,190,255,0.16)', 'rgba(150,215,255,0.85)', 1.5);
     if (this.selected) paint(this.selected, `rgba(90,170,255,${0.14 + 0.1 * pulse})`, `rgba(130,205,255,${0.6 + 0.4 * pulse})`, 2.5);
+    if (tags.length > 0) this.drawNameTags(tags, a, b, cc, d, e, f);
+  }
+
+  /**
+   * Fixture names (T94): the text inside a rounded label a fixed size on screen, just above its point. A tag that
+   * would touch one placed before it is left out, so labels never overlap.
+   */
+  private drawNameTags(tags: readonly Extract<GhostShape, { k: 'nameTag' }>[], a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const k = this.dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = `600 ${12 * k}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    const h = 22 * k;
+    const pad = 8 * k;
+    const lift = 18 * k;
+    const gap = 4 * k;
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    for (const tg of tags) {
+      const sx = a * tg.x + cc * tg.y + e;
+      const sy = b * tg.x + d * tg.y + f - lift;
+      const w = ctx.measureText(tg.text).width + 2 * pad;
+      const box = { x0: sx - w / 2, y0: sy - h / 2, x1: sx + w / 2, y1: sy + h / 2 };
+      if (placed.some((p) => box.x0 < p.x1 + gap && p.x0 < box.x1 + gap && box.y0 < p.y1 + gap && p.y0 < box.y1 + gap)) continue;
+      placed.push(box);
+      ctx.fillStyle = 'rgba(16,22,28,0.92)';
+      ctx.strokeStyle = 'rgba(150,215,255,0.9)';
+      ctx.lineWidth = 1.5 * k;
+      ctx.beginPath();
+      ctx.roundRect(box.x0, box.y0, w, h, h / 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(tg.text, sx, sy);
+    }
   }
 
   /** Build tool preview. A handful of shapes per frame, so plain path drawing is fine here. */
@@ -1019,7 +1074,7 @@ export class Renderer {
         ctx.strokeStyle = stroke;
       } else if (sh.k === 'zoneTag') {
         tags.push(sh);
-      } else {
+      } else if (sh.k === 'marker') {
         this.drawMarker(sh.shape, a * sh.x + cc * sh.y + e, b * sh.x + d * sh.y + f, sh.label);
       }
     }

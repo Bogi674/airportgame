@@ -531,6 +531,7 @@ export function convertLegacyFixtures(g: TerminalGrid): number {
     g.fixtureRot[i] = 0;
     g.fixtureOff[i] = 0;
     g.fixtureLevel[i] = 0;
+    g.fixtureNo[i] = 0;
     g.fixtureMode[i] = 0;
     g.leased[i] = 0;
     n++;

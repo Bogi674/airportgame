@@ -17,6 +17,7 @@ import { standRefusal } from '@shared/standSizes';
 import { standFork, standLeadOut } from '@shared/standFork';
 import { ClassHelp } from './ClassHelp';
 import { AcceptToggles } from './AcceptToggles';
+import { fixtureLabelAt } from './fixtureLabel';
 import { FixtureLevel } from './FixtureLevel';
 import { ItemButtons } from './ItemMenu';
 import { itemTarget } from './itemActions';
@@ -257,8 +258,14 @@ function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
 function StandAccess({ stand, index, send }: { stand: Stand; index: number; send(cmd: Command): void }) {
   const biz = useGameStore((s) => s.business);
   const cash = useGameStore((s) => s.cash);
+  const grids = useGameStore((s) => s.terminalGrids);
   const desks = deskOptions(biz?.gateDesks ?? []);
   const nowIndex = biz?.standGate[index] ?? -1;
+  // Gate desks go by their fixture names (T94), the same names their hover tags show.
+  const deskName = (d: { building: number; x: number; y: number; number: number }): string => {
+    const g = grids.find((q) => q.id === d.building);
+    return (g && fixtureLabelAt(g, cellIndex(g, d.x, d.y), biz?.fixtureNames)) || tFormat('inspector.stand.deskNumber', { n: d.number });
+  };
   const now = desks.find((d) => d.index === nowIndex);
   const built = stand.upgrades ?? 0;
   const warnings = standWarnings({
@@ -306,14 +313,14 @@ function StandAccess({ stand, index, send }: { stand: Stand; index: number; send
           <option value="">{t('inspector.stand.gateAuto')}</option>
           {desks.map((d) => (
             <option key={`${d.building}:${d.x}:${d.y}`} value={`${d.building}:${d.x}:${d.y}`}>
-              {tFormat('inspector.stand.gateDesk', { building: d.building, n: d.number })}
+              {tFormat('inspector.stand.gateDesk', { building: d.building, name: deskName(d) })}
             </option>
           ))}
         </select>
       </label>
       {now && (
         <div style="color:var(--muted);font-size:11px" data-testid="stand-gate-now">
-          {tFormat('inspector.stand.gateNow', { building: now.building, n: now.number })}
+          {tFormat('inspector.stand.gateNow', { building: now.building, name: deskName(now) })}
         </div>
       )}
       {warnings.map((w) => (
@@ -434,6 +441,28 @@ function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
 }
 
 /** Inspector for the selected airfield object, with segment properties, resurfacing and demolition. */
+/** Renames a picked fixture (T94): Enter or leaving the field sends the name, an empty field restores the default. */
+function FixtureRename({ building, x, y, name, send }: { building: number; x: number; y: number; name: string; send: (c: Command) => void }) {
+  const [value, setValue] = useState(name);
+  const commit = (): void => {
+    if (value.trim() !== name) send({ type: 'renameFixture', building, x, y, name: value });
+  };
+  return (
+    <label style="display:flex;flex-direction:column;gap:2px;font-size:12px;margin:2px 0 6px">
+      {t('inspector.fixtureName')}
+      <input
+        data-testid="fixture-rename"
+        type="text"
+        maxLength={BUSINESS.terminal.fixtureNameMax}
+        value={value}
+        onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+        onBlur={commit}
+      />
+    </label>
+  );
+}
+
 export function ObjectPanel({ send }: Props) {
   const selection = useToolStore((s) => s.selection);
   const af = useGameStore((s) => s.airfield);
@@ -467,7 +496,7 @@ export function ObjectPanel({ send }: Props) {
     const showTerminal = (): void => useToolStore.getState().set({ fixturePick: null, propPick: null, pickAt: null });
     const transition = pick && grid && cell >= 0 && fixtureName !== null ? transitionOf(fixtureName, grid.fixtureMode[cell] ?? 0) : null;
     if ((pick && grid && cell >= 0 && fixtureName !== null) || (pp && pGrid && picked)) {
-      const title = picked ? (propSpec(picked.asset)?.name ?? picked.asset) : tDynamic(`fixture.${fixtureId}`);
+      const title = picked ? (propSpec(picked.asset)?.name ?? picked.asset) : (fixtureLabelAt(grid!, cell, biz.fixtureNames) ?? tDynamic(`fixture.${fixtureId}`));
       return (
         <div data-testid="item-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
           <div data-testid="item-title" style="font-weight:600">{title}</div>
@@ -479,6 +508,7 @@ export function ObjectPanel({ send }: Props) {
             grid &&
             fixtureName !== null && (
               <div data-testid="fixture-block">
+                <FixtureRename key={`${grid.id}:${pick.x}:${pick.y}:${title}`} building={grid.id} x={pick.x} y={pick.y} name={title} send={send} />
                 {transition && <div data-testid="fixture-transition">{tFormat('inspector.transition', { from: tDynamic(`zone.${transition.from}`), to: tDynamic(`zone.${transition.to}`) })}</div>}
                 {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
                 <FixtureLevel grid={grid} cell={cell} name={fixtureName} send={send} />

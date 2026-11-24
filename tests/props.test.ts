@@ -251,7 +251,7 @@ describe('props in the sim', () => {
     const b = new Sim('GOLDEN-0001', OPTIONS);
     b.restore(data);
     const h = b.business.grids[0]!;
-    expect(SAVE_VERSION).toBe(43);
+    expect(SAVE_VERSION).toBe(44);
     expect(h.fixture.includes(KEY('seating'))).toBe(false);
     expect(h.fixture.includes(KEY('toilet'))).toBe(false);
     expect(h.props.filter((p) => p.asset === 'bench.beam3')).toHaveLength(4);

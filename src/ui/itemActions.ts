@@ -2,7 +2,9 @@ import { BAGGAGE_FIXTURE_KEYS, fixtureKey, type TerminalGrid } from '@shared/bus
 import { propAt, propCost, propSpec } from '@shared/props';
 import { cellIndex, fixtureAnchor } from '@shared/terminalOps';
 import type { Command } from '@sim/commands';
+import { fixtureLabelAt } from './fixtureLabel';
 import { formatMoney } from './format';
+import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { tDynamic, tFormat } from './strings';
 
@@ -57,7 +59,7 @@ export function itemTarget(
   if (!g || f === 0 || BAGGAGE_FIXTURE_KEYS.includes(fixtureKey(f))) return null;
   const anchor = fixtureAnchor(g, cell);
   const code = g.fixtureRot[anchor] ?? 0;
-  const name = tDynamic(`fixture.${f}`);
+  const name = fixtureLabelAt(g, cell, useGameStore.getState().business?.fixtureNames) ?? tDynamic(`fixture.${f}`);
   const { x, y } = fixturePick;
   return {
     key: `f${g.id}:${x}:${y}`,

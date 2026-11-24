@@ -627,10 +627,13 @@ export class Baggage {
     const key = bagKey(spec.kind);
     const id = keyId(key);
     const cells = nodeCells(spec);
+    // One node is one fixture: every cell of it carries the same number.
+    const no = this.business.nextFixtureNo(id);
     for (const [x, y] of cells) {
       const i = cellIndex(g, x, y);
       g.fixture[i] = id;
       g.fixtureRot[i] = 0;
+      g.fixtureNo[i] = no;
       if (g.zone[i] === 0) g.zone[i] = FIXTURE_ZONES[key][0];
     }
     this.refreshCells(g.id, cells);
@@ -664,6 +667,7 @@ export class Baggage {
       }
       for (const [x, y] of back) this.setCell(g, x, y, BELT_ID);
       if (back.length > 0) this.refreshCells(g.id, back);
+      this.business.numberNewFixtures(g);
       kept += back.length;
     }
     return kept;
@@ -689,6 +693,7 @@ export class Baggage {
     g.fixtureRot[i] = 0;
     g.fixtureOff[i] = 0;
     g.fixtureLevel[i] = id === 0 ? 0 : 1;
+    g.fixtureNo[i] = 0;
     g.fixtureMode[i] = 0;
   }
 
@@ -1330,6 +1335,7 @@ export class Baggage {
       if (i < 0 || g.fixture[i] !== id) continue;
       g.fixture[i] = 0;
       g.fixtureRot[i] = 0;
+      g.fixtureNo[i] = 0;
       g.leased[i] = 0;
     }
     this.refreshCells(g.id, cells);

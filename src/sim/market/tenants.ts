@@ -244,6 +244,7 @@ export class Tenants {
         g.fixtureRot[i] = 0;
         g.fixtureOff[i] = 0;
         g.fixtureLevel[i] = 0;
+        g.fixtureNo[i] = 0;
         g.fixtureMode[i] = 0;
         g.leased[i] = 0;
         const x = g.x0 + (i % g.w);

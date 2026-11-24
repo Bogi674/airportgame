@@ -33,7 +33,8 @@ import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
 import { transitionPads } from '@shared/transitionPads';
 import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, fixtureCost, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
-import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
+import { fixtureNameKey } from '@shared/fixtureNames';
+import { isLeveled, levelCost,MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
 import { DIVERT_LABEL, FIXTURE_COUNT, GA_LABEL, fixtureKey, isBaggageFixture, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
@@ -482,6 +483,7 @@ export class Business {
     if (plan.cost > this.host.getCash()) return `insufficientFunds|cost=${plan.cost}`;
     if (plan.cost > 0) this.host.book('construction', -plan.cost);
     plan.apply();
+    this.numberNewFixtures(grid);
     const sidesMoved = this.updateSides(grid);
     if (fresh) {
       this.nextTerminalId++;
@@ -587,6 +589,46 @@ export class Business {
   /** Fixtures under upgrade works, in the order they started. Saved. */
   fixtureWorks: FixtureWorks[] = [];
 
+  // Fixture numbers and names (T94) ------------------------------------------
+
+  /** Last number taken per fixture id, index 0 unused. Counters only grow, so a demolished number is never reused. */
+  private fixtureCounters: number[] = new Array<number>(FIXTURE_COUNT + 1).fill(0);
+  /** Custom fixture names keyed by fixtureNameKey. */
+  private fixtureNames: Record<string, string> = {};
+
+  /** Takes the next number of a fixture kind. */
+  nextFixtureNo(fixtureId: number): number {
+    this.fixtureCounters[fixtureId] = (this.fixtureCounters[fixtureId] ?? 0) + 1;
+    return this.fixtureCounters[fixtureId]!;
+  }
+
+  /**
+   * Numbers every fixture of a grid that has none: anchors in cell index order take the next number of their kind and
+   * write it on their whole footprint. Runs after every edit that can add fixtures, so numbering follows command order.
+   */
+  numberNewFixtures(g: TerminalGrid): void {
+    for (let i = 0; i < g.fixture.length; i++) {
+      const f = g.fixture[i]!;
+      if (f === 0 || f > FIXTURE_COUNT || g.fixtureRot[i]! >= 5 || g.fixtureNo[i] !== 0) continue;
+      const no = this.nextFixtureNo(f);
+      for (const c of fixtureCells(g, i)) g.fixtureNo[c] = no;
+    }
+  }
+
+  /** Names the fixture covering logical cell (x, y). An empty name after trimming restores the default. */
+  renameFixture(building: number, x: number, y: number, name: string): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const a = fixtureAnchor(g, cellIndex(g, x, y));
+    if (a < 0) return 'nothingThere';
+    const key = fixtureNameKey(g.fixture[a]!, g.fixtureNo[a]!);
+    const clean = name.trim().slice(0, BUSINESS.terminal.fixtureNameMax).trim();
+    if (clean === '') delete this.fixtureNames[key];
+    else this.fixtureNames[key] = clean;
+    this.version++;
+    return null;
+  }
+
   /** The works on the fixture anchored at logical cell (x, y) of a building, undefined when there are none. */
   worksAt(building: number, x: number, y: number): FixtureWorks | undefined {
     return this.fixtureWorks.find((w) => w.building === building && w.x === x && w.y === y);
@@ -688,6 +730,7 @@ export class Business {
         g.fixtureRot[c] = 0;
         g.fixtureOff[c] = 0;
         g.fixtureLevel[c] = 0;
+        g.fixtureNo[c] = 0;
         g.fixtureMode[c] = 0;
       }
       const refund = cells.length * levelCost('security', 1);
@@ -765,11 +808,12 @@ export class Business {
     const cells = fixtureCells(g, a);
     const values: number[] = [];
     for (const c of cells) {
-      values.push(g.fixture[c]!, g.fixtureRot[c]!, g.fixtureOff[c]!, g.fixtureLevel[c]!, g.fixtureMode[c]!, g.leased[c]!);
+      values.push(g.fixture[c]!, g.fixtureRot[c]!, g.fixtureOff[c]!, g.fixtureLevel[c]!, g.fixtureMode[c]!, g.leased[c]!, g.fixtureNo[c]!);
       g.fixture[c] = 0;
       g.fixtureRot[c] = 0;
       g.fixtureOff[c] = 0;
       g.fixtureLevel[c] = 0;
+      g.fixtureNo[c] = 0;
       g.fixtureMode[c] = 0;
       g.leased[c] = 0;
     }
@@ -778,13 +822,14 @@ export class Business {
 
   private dropFixture(g: TerminalGrid, lifted: { cells: number[]; values: number[] }): void {
     lifted.cells.forEach((c, k) => {
-      const v = lifted.values.slice(k * 6, k * 6 + 6);
+      const v = lifted.values.slice(k * 7, k * 7 + 7);
       g.fixture[c] = v[0]!;
       g.fixtureRot[c] = v[1]!;
       g.fixtureOff[c] = v[2]!;
       g.fixtureLevel[c] = v[3]!;
       g.fixtureMode[c] = v[4]!;
       g.leased[c] = v[5]!;
+      g.fixtureNo[c] = v[6]!;
     });
   }
 
@@ -838,6 +883,7 @@ export class Business {
     const variant = g.fixture[a]!;
     const level = g.fixtureLevel[a]!;
     const mode = g.fixtureMode[a]!;
+    const no = g.fixtureNo[a]!;
     const lifted = this.liftFixture(g, a);
     const plan = planEdit(g, { op: 'fixture', x0: toX, y0: toY, x1: toX + 1, y1: toY + 1, variant, rot, level, mode }, { ctx, af: this.airfield.data, others: this.grids });
     if (plan.problem || plan.changes === 0) {
@@ -846,6 +892,7 @@ export class Business {
     }
     plan.apply();
     const now = fixtureCells(g, cellIndex(g, toX, toY));
+    for (const c of now) g.fixtureNo[c] = no;
     const pads = padCellsOf({ op: 'fixture', x0: toX, y0: toY, x1: toX + 1, y1: toY + 1, variant, rot, level, mode }, toX, toY).map(([px, py]) => ({ x: px, y: py }));
     this.refreshCells(g, [...lifted.cells, ...now], pads);
     return null;
@@ -936,6 +983,7 @@ export class Business {
     if (i < 0) return false;
     const g = this.grids[i]!;
     applyPatch(g, p, side);
+    this.numberNewFixtures(g);
     if (cellCount(g) === 0) {
       this.dropGrid(i);
       return true;
@@ -962,6 +1010,7 @@ export class Business {
   restoreGridForHistory(copy: GridCopy): boolean {
     if (this.gridIndex(copy.id) >= 0) return false;
     const g = copyGrid(copy);
+    this.numberNewFixtures(g);
     this.updateSides(g);
     this.grids.push(g);
     const wg = buildWalkGraph(g);
@@ -1658,6 +1707,7 @@ export class Business {
       terminals: this.terminals,
       terminalVersion: this.terminalVersion,
       tenants: this.tenants.payload(),
+      fixtureNames: { ...this.fixtureNames },
       airlines: this.airlines,
       rating: Math.round(this.rating * 10) / 10,
       satisfaction: Math.round(this.satisfaction * 100) / 100,
@@ -1696,6 +1746,7 @@ export class Business {
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
       rng: this.rng.getState(), marketRng: this.marketRng.getState(), market: this.market.saveState(),
       service: this.serviceNodes.map(serviceSave), serviceRng: this.serviceRng.getState(), fixtureWorks: this.fixtureWorks.map((w) => ({ ...w })),
+      fixtureCounters: this.fixtureCounters.slice(), fixtureNames: { ...this.fixtureNames },
       tenants: this.tenants.saveState(),
       vendingToday: this.vendingToday,
     };
@@ -1722,8 +1773,11 @@ export class Business {
     this.walkGraphs.length = 0;
     for (const g of this.grids) this.walkGraphs.push(buildWalkGraph(g));
     this.walkVersion++;
+    const savedCounters = (raw as { fixtureCounters?: number[] }).fixtureCounters ?? [];
+    this.fixtureCounters = Array.from({ length: FIXTURE_COUNT + 1 }, (_, i) => savedCounters[i] ?? 0);
+    this.fixtureNames = { ...((raw as { fixtureNames?: Record<string, string> }).fixtureNames ?? {}) };
     this.serviceNodes.length = 0;
-    this.fixtureWorks = ((raw as { fixtureWorks?: FixtureWorks[] }).fixtureWorks ?? []).map((w) => ({ ...w }));
+    this.fixtureWorks =((raw as { fixtureWorks?: FixtureWorks[] }).fixtureWorks ?? []).map((w) => ({ ...w }));
     for (let i = 0; i < this.grids.length; i++) this.serviceNodes.push(buildServiceNodes(this.grids[i]!, this.walkGraphs[i]!, this.closedCells(this.grids[i]!)));
     const savedService = o.service ?? [];
     for (let i = 0; i < this.serviceNodes.length; i++) if (savedService[i]) serviceLoad(this.serviceNodes[i]!, savedService[i]!);
@@ -1787,8 +1841,11 @@ export class Business {
         if (g.fixtureRot[i] !== 0) acc = foldU32(foldU32(acc, i), g.fixtureRot[i]);
         // Level and mode only hash when they differ from the defaults, so older layouts keep their hash.
         if (g.fixtureLevel[i] > 1 || g.fixtureMode[i] > 0) acc = foldU32(foldU32(acc, g.fixtureLevel[i]), g.fixtureMode[i]);
+        if (g.fixtureRot[i]! < 5) acc = foldU32(acc, g.fixtureNo[i]!);
       }
     }
+    for (const n of this.fixtureCounters) acc = foldU32(acc, n);
+    for (const k of Object.keys(this.fixtureNames).sort()) acc = foldU32(acc, propHashId(`${k}=${this.fixtureNames[k]}`));
     // Props hash in placement order (T76). Grids without props keep their hash.
     for (const g of this.grids) {
       for (const p of g.props) acc = foldU32(foldU32(foldU32(foldU32(acc, propHashId(p.asset)), Math.round(p.x * 2) + 65536), Math.round(p.y * 2) + 65536), p.rot);
@@ -1840,6 +1897,8 @@ interface SavedGrid {
   fixtureRot: string;
   fixtureOff?: string;
   fixtureLevel?: string;
+  /** Fixture numbers, since version 44 (T94). */
+  fixtureNo?: string;
   fixtureMode?: string;
   hWall: string;
   vWall: string;
@@ -1867,7 +1926,7 @@ function propHashId(asset: string): number {
 const LEGACY_GRID = 160;
 
 function saveGrid(g: TerminalGrid): SavedGrid {
-  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost, props: g.props.map((p) => ({ ...p })) };
+  return { id: g.id, building: g.building, level: g.level, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, x0: g.x0, y0: g.y0, w: g.w, h: g.h, floor: packTyped(g.floor), zone: packTyped(g.zone), fixture: packTyped(g.fixture), fixtureRot: packTyped(g.fixtureRot), fixtureOff: packTyped(g.fixtureOff), fixtureLevel: packTyped(g.fixtureLevel), fixtureNo: packTyped(g.fixtureNo), fixtureMode: packTyped(g.fixtureMode), hWall: packTyped(g.hWall), vWall: packTyped(g.vWall), leased: packTyped(g.leased), cost: g.cost, props: g.props.map((p) => ({ ...p })) };
 }
 
 function loadGrid(sg: SavedGrid): TerminalGrid {
@@ -1878,13 +1937,14 @@ function loadGrid(sg: SavedGrid): TerminalGrid {
   const y0 = sg.y0 ?? 0;
   const w = sg.w ?? LEGACY_GRID;
   const h = sg.h ?? LEGACY_GRID;
-  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), fixtureOff: new Uint8Array(w * h), fixtureLevel: new Uint8Array(w * h), fixtureMode: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
+  Object.assign(g, { x0, y0, w, h, floor: new Uint8Array(w * h), zone: new Uint8Array(w * h), fixture: new Uint8Array(w * h), fixtureRot: new Uint8Array(w * h), fixtureOff: new Uint8Array(w * h), fixtureLevel: new Uint8Array(w * h), fixtureNo: new Uint16Array(w * h), fixtureMode: new Uint8Array(w * h), leased: new Uint8Array(w * h), hWall: new Uint8Array((h + 1) * w), vWall: new Uint8Array(h * (w + 1)) });
   unpackInto(sg.floor, g.floor, Uint8Array);
   if (sg.zone) unpackInto(sg.zone, g.zone, Uint8Array);
   unpackInto(sg.fixture, g.fixture, Uint8Array);
   unpackInto(sg.fixtureRot, g.fixtureRot, Uint8Array);
   if (sg.fixtureOff) unpackInto(sg.fixtureOff, g.fixtureOff, Uint8Array);
   if (sg.fixtureLevel) unpackInto(sg.fixtureLevel, g.fixtureLevel, Uint8Array);
+  if (sg.fixtureNo) unpackInto(sg.fixtureNo, g.fixtureNo, Uint16Array);
   if (sg.fixtureMode) unpackInto(sg.fixtureMode, g.fixtureMode, Uint8Array);
   unpackInto(sg.hWall, g.hWall, Uint8Array);
   unpackInto(sg.vWall, g.vWall, Uint8Array);

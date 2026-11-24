@@ -26,6 +26,7 @@
   "transitionPadCells": 2,
   "airsideProbeM": 40,
   "airsideProbeStepM": 4,
+  "fixtureNameMax": 24,
   "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64, "travelatorRefWalkMps": 1.3 },
   "service": { "cv": 0.4, "queueDensityPerM2": 1, "queueReachCells": 4, "queueSlots": 32 }
  },

@@ -2,7 +2,7 @@ import type { Prop, TerminalGrid } from '@shared/business';
 import { cellIndex, ensureCells, hEdgeIndex, vEdgeIndex } from '@shared/terminalOps';
 
 /** Cell arrays an undo step restores. leased follows the tenant units, which keep their own state, so it is left out. */
-const CELL_ARRAYS = ['floor', 'zone', 'fixture', 'fixtureRot', 'fixtureOff', 'fixtureLevel', 'fixtureMode'] as const;
+const CELL_ARRAYS = ['floor', 'zone', 'fixture', 'fixtureRot', 'fixtureOff', 'fixtureLevel', 'fixtureMode', 'fixtureNo'] as const;
 type CellArray = (typeof CELL_ARRAYS)[number];
 
 /** A full copy of one terminal grid, the before or after state of an edit that made or removed the whole building. */
@@ -48,6 +48,7 @@ export function copyGrid(g: TerminalGrid): GridCopy {
     fixtureRot: g.fixtureRot.slice(),
     fixtureOff: g.fixtureOff.slice(),
     fixtureLevel: g.fixtureLevel.slice(),
+    fixtureNo: g.fixtureNo.slice(),
     fixtureMode: g.fixtureMode.slice(),
     hWall: g.hWall.slice(),
     vWall: g.vWall.slice(),

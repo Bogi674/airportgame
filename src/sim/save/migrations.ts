@@ -7,11 +7,13 @@ import { BAGGAGE, GROUND, NEEDS, PROFILES } from '@data/index';
 import { NEED_COUNT } from '@data/schemas/needs';
 import { FLAG_SLOW } from '../cohorts/cohorts';
 import { FIXTURE_KEYS } from '@shared/business';
+import { nodeCells } from '@shared/baggageNodes';
+import type { BagNodeSpec } from '@shared/baggageNodes';
 import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave } from '../terminal/serviceNodes';
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 43;
+export const SAVE_VERSION = 44;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -433,6 +435,63 @@ export function migrate(raw: unknown): SaveData {
     const arrays = (save as { traffic?: { arrays?: Record<string, unknown> } }).traffic?.arrays;
     if (arrays) for (const k of ['curBlock', 'prevBlock', 'nextBlock', 'blockCount', 'blockDir', 'blockLast']) delete arrays[k];
     save.version = 43;
+  }
+  // Version 43 to 44: fixtures are numbered per kind (T94, owner 2026-11-24). Existing fixtures take numbers in grid
+  // order, then cell index order, and the counters continue after the highest number. Names start empty.
+  if (save.version < 44) {
+    type NumberedGrid = { id: number; x0?: number; y0?: number; w?: number; fixture: string; fixtureRot?: string; fixtureOff?: string; fixtureNo?: string };
+    const business = (save as { business?: { grids?: NumberedGrid[]; fixtureCounters?: number[]; fixtureNames?: Record<string, string> } }).business;
+    if (business) {
+      const counters = new Array<number>(FIXTURE_KEYS.length + 1).fill(0);
+      const bagNodes = (save as { baggage?: { nodes?: { building: number; spec: BagNodeSpec | null }[] } }).baggage?.nodes ?? [];
+      for (const g of business.grids ?? []) {
+        const fixture = unpackTyped(g.fixture, Uint8Array);
+        const n = fixture.length;
+        const rot = g.fixtureRot ? unpackTyped(g.fixtureRot, Uint8Array) : new Uint8Array(n);
+        const off = g.fixtureOff ? unpackTyped(g.fixtureOff, Uint8Array) : new Uint8Array(n);
+        const w = g.w ?? 160;
+        const no = new Uint16Array(n);
+        // A baggage node is one fixture over all its cells: it takes one number, at its first cell.
+        const nodeOf = new Int32Array(n);
+        bagNodes.filter((b) => b.building === g.id && b.spec !== null).forEach((b, k) => {
+          for (const [cx, cy] of nodeCells(b.spec!)) {
+            const x = cx - (g.x0 ?? 0);
+            const y = cy - (g.y0 ?? 0);
+            if (x >= 0 && x < w && y >= 0 && y * w + x < n) nodeOf[y * w + x] = k + 1;
+          }
+        });
+        const nodeNo = new Map<number, number>();
+        for (let i = 0; i < n; i++) {
+          if (fixture[i] === 0 || rot[i]! >= 5 || fixture[i]! > FIXTURE_KEYS.length) continue;
+          const node = nodeOf[i]!;
+          const shared = node > 0 ? nodeNo.get(node) : undefined;
+          if (shared !== undefined) {
+            no[i] = shared;
+            continue;
+          }
+          counters[fixture[i]!]!++;
+          no[i] = counters[fixture[i]!]!;
+          if (node > 0) nodeNo.set(node, no[i]!);
+        }
+        // A tail cell shares the number of its anchor, found the way fixtureAnchor finds it.
+        for (let i = 0; i < n; i++) {
+          if (fixture[i] === 0 || rot[i]! < 5) continue;
+          const r = rot[i]! - 5;
+          const [ax, ay] = ROT_STEP[r]!;
+          const [bx, by] = ROT_STEP[(r + 1) % 4]!;
+          const along = off[i]! & 15;
+          const across = off[i]! >> 4;
+          const x = (i % w) - along * ax - across * bx;
+          const y = Math.floor(i / w) - along * ay - across * by;
+          const anchor = y * w + x;
+          if (x >= 0 && x < w && y >= 0 && anchor < n) no[i] = no[anchor]!;
+        }
+        g.fixtureNo = packTyped(no);
+      }
+      business.fixtureCounters = counters;
+      business.fixtureNames = {};
+    }
+    save.version = 44;
   }
   return save as SaveData;
 }

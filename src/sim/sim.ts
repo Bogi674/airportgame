@@ -651,6 +651,9 @@ export class Sim {
       case 'moveFixture':
         this.recordGrid(cmd.building, () => this.business.moveFixture(cmd.building, cmd.x, cmd.y, cmd.toX, cmd.toY, cmd.rot, this.buildContext()));
         break;
+      case 'renameFixture':
+        this.report(this.business.renameFixture(cmd.building, cmd.x, cmd.y, cmd.name));
+        break;
       case 'placeBaggageNode': {
         const cash = this.cash;
         const r = this.baggage.place(cmd);
@@ -867,6 +870,7 @@ export class Sim {
       fixtureRot: g.fixtureRot.slice(),
       fixtureOff: g.fixtureOff.slice(),
       fixtureLevel: g.fixtureLevel.slice(),
+      fixtureNo: g.fixtureNo.slice(),
       fixtureMode: g.fixtureMode.slice(),
       works: this.business.fixtureWorks.filter((w) => w.building === g.id).map((w) => ({ ...w })),
       hWall: g.hWall.slice(),

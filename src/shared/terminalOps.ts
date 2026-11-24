@@ -113,6 +113,7 @@ function clearFixtureCell(g: TerminalGrid, i: number): void {
   g.fixtureRot[i] = 0;
   g.fixtureOff[i] = 0;
   g.fixtureLevel[i] = 0;
+  g.fixtureNo[i] = 0;
   g.fixtureMode[i] = 0;
   g.leased[i] = 0;
 }
@@ -129,7 +130,7 @@ export function gridAxes(headingDeg: number): { ux: number; uy: number; vx: numb
 
 /** An empty building. Its grid is allocated as edits reach into it. */
 export function newGrid(id: number, ox: number, oy: number, headingDeg: number): TerminalGrid {
-  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), fixtureOff: new Uint8Array(0), fixtureLevel: new Uint8Array(0), fixtureMode: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0, props: [] };
+  return { id, building: id, level: 0, ox, oy, headingDeg, x0: 0, y0: 0, w: 0, h: 0, floor: new Uint8Array(0), zone: new Uint8Array(0), fixture: new Uint8Array(0), fixtureRot: new Uint8Array(0), fixtureOff: new Uint8Array(0), fixtureLevel: new Uint8Array(0), fixtureNo: new Uint16Array(0), fixtureMode: new Uint8Array(0), hWall: new Uint8Array(0), vWall: new Uint8Array(0), leased: new Uint8Array(0), cost: 0, props: [] };
 }
 
 /** The grid of one floor of one building, or undefined. */
@@ -179,8 +180,8 @@ export function ensureCells(g: TerminalGrid, x0: number, y0: number, x1: number,
   const h = ny1 - ny0;
   const dx = g.x0 - nx0;
   const dy = g.y0 - ny0;
-  const cells = (src: Uint8Array): Uint8Array => {
-    const out = new Uint8Array(w * h);
+  const cells = <T extends Uint8Array | Uint16Array>(src: T): T => {
+    const out = new (src.constructor as new (n: number) => T)(w * h);
     for (let y = 0; y < g.h; y++) out.set(src.subarray(y * g.w, (y + 1) * g.w), (y + dy) * w + dx);
     return out;
   };
@@ -194,6 +195,7 @@ export function ensureCells(g: TerminalGrid, x0: number, y0: number, x1: number,
   g.fixtureRot = cells(g.fixtureRot);
   g.fixtureOff = cells(g.fixtureOff);
   g.fixtureLevel = cells(g.fixtureLevel);
+  g.fixtureNo = cells(g.fixtureNo);
   g.fixtureMode = cells(g.fixtureMode);
   g.leased = cells(g.leased);
   g.hWall = hEdges;
@@ -522,6 +524,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
             g.fixtureRot[i] = directed ? 1 + rot : 0;
             g.fixtureOff[i] = 0;
             g.fixtureLevel[i] = level;
+            g.fixtureNo[i] = 0;
             g.fixtureMode[i] = mode;
             g.leased[i] = 0;
             if (g.zone[i] === 0) g.zone[i] = allowed[0] ?? 0;
@@ -531,6 +534,7 @@ export function planEdit(g: TerminalGrid, e: TerminalEdit, env: Env): Plan {
               g.fixtureRot[j] = 5 + rot;
               g.fixtureOff[j] = part.off;
               g.fixtureLevel[j] = level;
+              g.fixtureNo[j] = 0;
               g.fixtureMode[j] = mode;
               g.leased[j] = 0;
               if (g.zone[j] === 0) g.zone[j] = allowed[0] ?? 0;

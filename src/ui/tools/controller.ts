@@ -46,6 +46,7 @@ import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { formatMoney, formatNumber } from '../format';
 import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
+import { fixtureLabelAt } from '../fixtureLabel';
 import { GRID_TOOLS, snapModeOf, useToolStore, type MovingItem, type Selection, type Tool } from '../stores/toolStore';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
@@ -315,10 +316,12 @@ export class ToolController {
     const kind = selection?.kind ?? '';
     const id = selection?.id ?? 0;
     const item = selection?.kind === 'terminal' && (propPick || fixturePick) ? this.pickedItemShape(selection.id, fixturePick, propPick) : null;
+    // A hovered fixture shows its name (T94), so assigning stands never needs a click per desk.
+    const tag = item && fixturePick && !propPick ? this.fixtureTag(fixturePick) : null;
     const key = item ? `item:${propPick ? `p${propPick.x}:${propPick.y}` : `f${fixturePick?.x}:${fixturePick?.y}`}` : kind ? `${kind}:${id}` : '';
     if (key === this.hovered) return;
     this.hovered = key;
-    this.deps.setHighlight(item ? [item] : kind ? this.shapesFor(kind, id) : null, this.selectedShapes());
+    this.deps.setHighlight(item ? (tag ? [item, tag] : [item]) : kind ? this.shapesFor(kind, id) : null, this.selectedShapes());
     this.deps.setCursor(kind ? 'pointer' : 'default');
   }
 
@@ -329,9 +332,14 @@ export class ToolController {
     // A picked fixture or prop is the selection itself (T88): only its footprint is outlined, not the whole terminal.
     if (sel.kind === 'terminal') {
       const item = this.pickedItemShape(sel.id, st.fixturePick, st.propPick);
+      if (item && st.fixturePick && !st.propPick) {
+        const tag = this.fixtureTag(st.fixturePick);
+        return tag ? [item, tag, ...this.fixtureLinks(st.fixturePick)] : [item, ...this.fixtureLinks(st.fixturePick)];
+      }
       if (item) return [item];
     }
     const shapes = this.shapesFor(sel.kind, sel.id);
+    if (sel.kind === 'stand') shapes.push(...this.standLinks(sel.id));
     // A selected runway shows its obstacle surfaces and where they are penetrated.
     const r = sel.kind === 'runway' ? this.af.runways.find((x) => x.id === sel.id) : undefined;
     if (r) shapes.push(this.surfacesShape(r, this.af.obstacles?.find((o) => o.runwayId === r.id)?.penetrations ?? []));
@@ -348,6 +356,108 @@ export class ToolController {
     const { site, owner, terminalGrids } = useGameStore.getState();
     if (!site || !owner) return [];
     return previewPenetrations(r, { heights: site.heights, landClass: site.landClass, parcelId: site.parcelId, parcelOwner: owner, buildings: this.buildingBoxes(terminalGrids) });
+  }
+
+  /** World center of the fixture footprint whose anchor or any cell is at logical (x, y), or null without a fixture. */
+  private fixtureCenter(g: TerminalGrid, x: number, y: number): Pt | null {
+    const cells = fixtureCells(g, fixtureAnchor(g, cellIndex(g, x, y)));
+    if (cells.length === 0) return null;
+    let sx = 0;
+    let sy = 0;
+    for (const c of cells) {
+      sx += (c % g.w) + g.x0 + 0.5;
+      sy += Math.floor(c / g.w) + g.y0 + 0.5;
+    }
+    return cornerWorld(g, sx / cells.length, sy / cells.length);
+  }
+
+  /** World center of a baggage node from its cells. */
+  private bagNodeCenter(nodeId: number): Pt | null {
+    const st = useGameStore.getState();
+    const node = st.business?.baggage.nodes.find((n) => n.id === nodeId);
+    const g = node ? st.terminalGrids.find((q) => q.id === node.building) : undefined;
+    if (!node || !g || node.cells.length === 0) return null;
+    let sx = 0;
+    let sy = 0;
+    for (const [x, y] of node.cells) {
+      sx += x + 0.5;
+      sy += y + 0.5;
+    }
+    return cornerWorld(g, sx / node.cells.length, sy / node.cells.length);
+  }
+
+  /** The name tag of a picked fixture (T94): its custom name, else its kind and number. */
+  private fixtureTag(pick: CellPick): GhostShape | null {
+    const st = useGameStore.getState();
+    const g = st.terminalGrids.find((q) => q.id === pick.building);
+    if (!g) return null;
+    const label = fixtureLabelAt(g, cellIndex(g, pick.x, pick.y), st.business?.fixtureNames);
+    const at = this.fixtureCenter(g, pick.x, pick.y);
+    return label && at ? { k: 'nameTag', x: at.x, y: at.y, text: label } : null;
+  }
+
+  /** A dashed link between two world points. */
+  private link(a: Pt, b: Pt): GhostShape {
+    return { k: 'link', ax: a.x, ay: a.y, bx: b.x, by: b.y };
+  }
+
+  /**
+   * Links of a picked fixture (T94): a gate desk to every stand it boards, a check in desk to the baggage nodes its
+   * chute feeds.
+   */
+  private fixtureLinks(pick: CellPick): GhostShape[] {
+    const st = useGameStore.getState();
+    const biz = st.business;
+    const g = st.terminalGrids.find((q) => q.id === pick.building);
+    if (!biz || !g) return [];
+    const anchor = fixtureAnchor(g, cellIndex(g, pick.x, pick.y));
+    if (anchor < 0) return [];
+    const ax = g.x0 + (anchor % g.w);
+    const ay = g.y0 + Math.floor(anchor / g.w);
+    const from = this.fixtureCenter(g, ax, ay);
+    if (!from) return [];
+    const key = fixtureKey(g.fixture[anchor]!);
+    const out: GhostShape[] = [];
+    if (key === 'gateDesk') {
+      const desk = biz.gateDesks.findIndex((d) => d.building === g.id && d.x === ax && d.y === ay);
+      if (desk >= 0) this.af.stands.forEach((s, i) => biz.standGate[i] === desk && out.push(this.link(from, { x: s.x, y: s.y })));
+    } else if (key === 'checkIn' || key === 'bagDrop') {
+      for (const n of biz.baggage.nodes) {
+        if (n.kind !== 'drop' || n.building !== g.id || !n.cells.some(([x, y]) => fixtureAnchor(g, cellIndex(g, x, y)) === anchor)) continue;
+        for (const l of n.links) {
+          if (l.from !== n.id) continue;
+          const to = this.bagNodeCenter(l.to);
+          if (to) out.push(this.link(from, to));
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Links of a selected stand (T94): its gate desk, its baggage bay and the carousels that bay feeds. */
+  private standLinks(standId: number): GhostShape[] {
+    const st = useGameStore.getState();
+    const biz = st.business;
+    const i = this.af.stands.findIndex((s) => s.id === standId);
+    if (!biz || i < 0) return [];
+    const at = { x: this.af.stands[i]!.x, y: this.af.stands[i]!.y };
+    const out: GhostShape[] = [];
+    const desk = biz.gateDesks[biz.standGate[i] ?? -1];
+    const dg = desk ? st.terminalGrids.find((q) => q.id === desk.building) : undefined;
+    const dc = desk && dg ? this.fixtureCenter(dg, desk.x, desk.y) : null;
+    if (dc) out.push(this.link(at, dc));
+    const bay = biz.baggage.standBay[i] ?? -1;
+    const bc = bay >= 0 ? this.bagNodeCenter(bay) : null;
+    if (bc) {
+      out.push(this.link(at, bc));
+      const node = biz.baggage.nodes.find((n) => n.id === bay);
+      for (const l of node?.links ?? []) {
+        if (l.from !== bay) continue;
+        const cc = this.bagNodeCenter(l.to);
+        if (cc) out.push(this.link(bc, cc));
+      }
+    }
+    return out;
   }
 
   /** Footprint outline of the fixture or prop picked in a terminal, or null when none is picked there. */

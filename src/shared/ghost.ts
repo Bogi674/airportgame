@@ -31,7 +31,11 @@ export type GhostShape =
    * fixture. The arrow points along the flow, given as a world direction. A label that would overlap one drawn earlier
    * is left out.
    */
-  | { k: 'zoneTag'; x: number; y: number; text: string; zone: number; dx: number; dy: number };
+  | { k: 'zoneTag'; x: number; y: number; text: string; zone: number; dx: number; dy: number }
+  /** A dashed connection between two linked items (T94): a gate desk and its stands, a check in desk and its chute. */
+  | { k: 'link'; ax: number; ay: number; bx: number; by: number }
+  /** A fixture's name in a label pinned at a fixed size on screen above the point (T94). */
+  | { k: 'nameTag'; x: number; y: number; text: string };
 
 /** Screen shapes of snap markers: node dots, and the ring, square, diamond or plus of the active target. */
 export type MarkerShape = 'dot' | 'ring' | 'square' | 'diamond' | 'plus';
