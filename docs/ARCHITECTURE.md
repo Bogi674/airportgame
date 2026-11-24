@@ -85,7 +85,7 @@ Built from player polylines when they change, never during ticks.
 
 * **Nodes**: junctions, holding points, runway entries and exits, stand entries, push back points, de-icing pads.
 * **Segments**: centerline curve (lines and arcs with fillets from the code turn radius), length, max code, direction (`both`, `forward`, `reverse`), `closed` flag, speed limit, kind (`taxiway`, `taxilane`, `rapidExit`, `apron`, `runway`).
-* **Blocks**: maximal runs of two way segments between junctions. A two way block is reserved as a whole so aircraft never meet head on.
+* **Blocks**: maximal runs of two way taxi segments between junctions; a stand join, a one way or runway segment, or any node where other than two such segments meet ends a run. Each segment records its direction inside its block.
 * **Precomputed per segment**: polyline samples every 2 m (position and heading) for movement and rendering, and conflict sets (segments whose wingtip envelopes overlap at junctions).
 * **Validation** on every edit: stand to runway connectivity, code clearances (section 6 of `GAME_DESIGN.md`), slope.
 
@@ -106,7 +106,9 @@ Built from player polylines when they change, never during ticks.
 ### 5.4 Reservations and conflicts (signal style)
 
 * Before entering a segment an aircraft reserves it and a lookahead distance of `max(60 m, speed * 8 s)` ahead, including conflict sets at junctions.
-* Two way blocks are reserved whole.
+* An aircraft claims every two way block on its route at once, from the next junction up to where the route leaves two way pavement (its stand, a one way segment or its holding point). Aircraft going the same way share a claim and queue; one going the other way holds short (T87).
+* Holding short: refused at a junction, an aircraft stops with its nose the taxiway object distance of the largest code there clear of the node (the ICAO intermediate holding position). An aircraft holding short is clear of whoever passes that junction or one nearby.
+* Nobody drives into an aircraft coming the other way on its segment or the next one.
 * Following: speed is capped so the gap to the aircraft ahead stays above `20 m + 0.5 * wingspan` and grows with speed.
 * Junction priority: aircraft vacating a runway first, then arrivals, then departures, then by request time.
 * Holding points: an aircraft stops and requests a runway clearance from ATC.
@@ -116,6 +118,7 @@ Built from player polylines when they change, never during ticks.
 
 * Maintain a wait graph (who waits for whom) updated on block events.
 * On a cycle, the lowest priority aircraft releases its lookahead and either holds or re-plans. Count deadlocks and show them in the debug overlay with the cycle drawn.
+* When the victim stands on pavement another aircraft in the cycle must drive the other way, it is towed back at push back speed, with the aircraft behind it, until it holds short of the junction it came through (T87).
 
 ### 5.6 Runway operations
 
@@ -585,6 +588,12 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-24 T86: a check in drop takes its desk's rotation (code 0 reads as 0), because the chute must leave from the back cell the use area keeps clear; no save shape changes.
 * 2026-11-24 T86: agent posts per fixture live in `staff.json` `operator.posts`, because the desk art puts the chair off the anchor centre.
 * 2026-11-24 T86: a drop node is never picked by a click, since it shares its desk's anchor cell and the desk carries the edit actions.
+* 2026-11-24 T87: two way pavement is claimed as a whole run up to where the route leaves it, not one taxiway at a time, because two sections joined end to end could be entered from both ends and the pair never recovered. Blocks are runs between junctions with stand joins counting as junctions, so an arrival claims only up to its own stand (owner).
+* 2026-11-24 T87: aircraft refused at a junction hold short at the taxiway object distance of the code plus half their length, taken from `airfield_codes.json`, so the claim holder can pass them; a stand join is never a waiting place, since an aircraft there still blocks the lane.
+* 2026-11-24 T87: an arrival whose stretch past the exit is claimed the other way vacates onto the exit and holds short at its first junction; it waits on the runway only when the exit itself is claimed, because a long wait on the runway overlapped later runway slots.
+* 2026-11-24 T87: a network rebuild keeps each ground aircraft on the nearest edge it may use (40 m), facing the way it points, routes on from there and claims again in aircraft order, because replanning from the nearest node moved aircraft up to 35 m, sometimes onto a stand fork arc, and wiped every reservation. A departure finds its runway entry among the entries, whose node lies on the runway, instead of being deleted as lost.
+* 2026-11-24 T87: a nose to nose pair is resolved by a tow back (`AcState.TowBack`) of the lower priority aircraft and those behind it, as the owner chose; two push backs toward one taxilane node that have not started go lowest index first.
+* 2026-11-24 T87: save format 43 stores claims (`claimFrom`, `claimTo`) and tow state instead of the per block counters, which are now derived; older saves claim again on load.
 * 2026-11-24 T88: transition fixtures paint their zone blocks inside the same terminal edit (`src/shared/transitionPads.ts`), so the blocks replay with the command, undo with the fixture and need no saved state; the pending exit check runs only when the overlay rebuilds a grid, never per tick.
 
 ## 13. Known limits

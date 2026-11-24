@@ -17,8 +17,9 @@ import { AIRFIELD, BUSINESS, GROUND, PROFILES } from '@data/index';
 import { neededCategory } from '@shared/fireCover';
 import { movementsPerHour } from '@shared/towerBudget';
 import { padSize } from '@shared/turnPad';
+import { closestOnSegment } from '@shared/geom';
 import { CAUSE_ATC, CAUSE_BOARDING, CAUSE_CREW_LEAVING, CAUSE_FUEL } from '@shared/turnaround';
-import { EdgeKind, TaxiNetwork } from '../airfield/network';
+import { EdgeKind, TaxiNetwork, isTaxiEdge } from '../airfield/network';
 import { checkLanding, checkTakeoff, requiredTakeoffM, takeoffWeight } from './performance';
 
 export const MAX_AIRCRAFT = 256;
@@ -50,6 +51,8 @@ const TOUCHDOWN_M = 300;
 const TAXI_DECEL = 1.5;
 const TAXI_ACCEL = 1.0;
 const PUSHBACK_SPEED = 1.5;
+/** How far from its position a rebuild looks for an edge to keep a ground aircraft on, before it falls back to the nearest node. */
+const PLACE_RADIUS_M = 40;
 /** Longest an arrival waits for a stand or runway before it diverts: 60 game minutes. */
 const MAX_DELAY_TICKS = 60 * TICKS_PER_MINUTE;
 const RETRY_TICKS = 300;
@@ -66,7 +69,7 @@ const TURN_RATE = 0.35;
 /** The gap autoAssign keeps between two flights on one stand, in ticks. */
 const STAND_BLOCK_BUFFER_TICKS = STAND_BLOCK_BUFFER_MIN * TICKS_PER_MINUTE;
 
-export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround: 4, Pushback: 5, TaxiOut: 6, Holding: 7, LineUp: 8, Takeoff: 9, Backtrack: 10 } as const;
+export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround: 4, Pushback: 5, TaxiOut: 6, Holding: 7, LineUp: 8, Takeoff: 9, Backtrack: 10, TowBack: 11 } as const;
 export const FlState = { Free: 0, Scheduled: 1, Inbound: 2, OnGround: 3, Departing: 4, Done: 5 } as const;
 /** Airline id of a general aviation flight. It has no airline, so every `>= 0` airline check skips it. */
 export const GA_AIRLINE = -2;
@@ -101,7 +104,6 @@ const STRAIGHT_COS = cosLut((1 * PI) / 180);
 const TURN_BACK_COS = cosLut((170 * PI) / 180);
 /** The tangent distance of the sharpest curved turn, 170 degrees, in turn radii: a quick bound before the curve is built. */
 const MAX_TAN_HALF = sinLut((85 * PI) / 180) / cosLut((85 * PI) / 180);
-const isTaxiEdge = (k: number): boolean => k === EdgeKind.Taxiway || k === EdgeKind.Taxilane || k === EdgeKind.RapidExit;
 /** Flight category of traffic without a flight record, such as test traffic: GA types count as GA. */
 const CAT_OF: FlightCategory[] = AIRCRAFT.map((a) => (a.role === 'ga' ? 'ga' : 'commercial'));
 const WAKE_OF = AIRCRAFT.map((a) => WAKE_ORDER.indexOf(a.derivedForReading.wake));
@@ -150,9 +152,18 @@ export class Traffic {
   readonly routeEdge = new Int32Array(MAX_AIRCRAFT * MAX_ROUTE);
   readonly routeDir = new Int8Array(MAX_AIRCRAFT * MAX_ROUTE);
   readonly heldNode = new Int32Array(MAX_AIRCRAFT).fill(-1);
-  readonly curBlock = new Int32Array(MAX_AIRCRAFT).fill(-1);
-  readonly prevBlock = new Int32Array(MAX_AIRCRAFT).fill(-1);
-  readonly nextBlock = new Int32Array(MAX_AIRCRAFT).fill(-1);
+  /**
+   * Route positions from claimFrom to claimTo whose two way blocks the aircraft holds, both -1 for none (T87).
+   * A claim covers the whole run of two way pavement up to where the route leaves it, taken at once.
+   */
+  readonly claimFrom = new Int16Array(MAX_AIRCRAFT).fill(-1);
+  readonly claimTo = new Int16Array(MAX_AIRCRAFT).fill(-1);
+  /** 1 while waitingFor names an aircraft coming the other way on the same pavement rather than a reservation. */
+  readonly oppWait = new Uint8Array(MAX_AIRCRAFT);
+  /** Tow back (T87): the route position whose start node the tow clears, the center distance to clear it by and the state to return to. */
+  readonly towIdx = new Int16Array(MAX_AIRCRAFT).fill(-1);
+  readonly towClearM = new Float64Array(MAX_AIRCRAFT);
+  readonly towState = new Uint8Array(MAX_AIRCRAFT);
   /** Edge the junction and block were reserved for, or -1. */
   readonly nextAcq = new Int32Array(MAX_AIRCRAFT).fill(-1);
   readonly waitingFor = new Int32Array(MAX_AIRCRAFT).fill(-1);
@@ -232,9 +243,15 @@ export class Traffic {
   net: TaxiNetwork = TaxiNetwork.build({ version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [] }, 0);
   private af: AirfieldPayload = { version: 0, runways: [], taxiways: [], aprons: [], stands: [], holding: [], entries: [] };
   private nodeOwner = new Int32Array(0);
+  /** Derived from the claims by ensureCounts, never saved: holders per block, their direction, and whether both directions hold it. */
   private blockCount = new Int32Array(0);
   private blockDir = new Int8Array(0);
-  private blockLast = new Int32Array(0);
+  private blockMixed = new Uint8Array(0);
+  private blockMark = new Int32Array(0);
+  private markStamp = 0;
+  private countsDirty = true;
+  /** The aircraft coming the other way that leaderLimit stopped for in its last call, or -1. */
+  private oppBlocker = -1;
   private standOwner = new Int32Array(0);
 
   /** Stands with no aircraft assigned. */
@@ -393,6 +410,7 @@ export class Traffic {
     this.resetOwnership();
     for (let k = 0; k < this.count; k++) this.replan(this.activeList[k]);
     this.rebuildActive();
+    this.reclaimAll();
   }
 
   private resetOwnership(): void {
@@ -400,13 +418,16 @@ export class Traffic {
     const B = this.net.blockTotal;
     this.blockCount = new Int32Array(B);
     this.blockDir = new Int8Array(B);
-    this.blockLast = new Int32Array(B).fill(-1);
+    this.blockMixed = new Uint8Array(B);
+    this.blockMark = new Int32Array(B);
+    this.markStamp = 0;
+    this.countsDirty = true;
     this.standOwner = new Int32Array(this.af.stands.length).fill(-1);
     for (let i = 0; i < MAX_AIRCRAFT; i++) {
       this.heldNode[i] = -1;
-      this.curBlock[i] = -1;
-      this.prevBlock[i] = -1;
-      this.nextBlock[i] = -1;
+      this.claimFrom[i] = -1;
+      this.claimTo[i] = -1;
+      this.oppWait[i] = 0;
       this.nextAcq[i] = -1;
       this.waitingFor[i] = -1;
       this.reqNode[i] = -1;
@@ -463,8 +484,13 @@ export class Traffic {
       return;
     }
     if (st === AcState.Turnaround) return;
+    if (st === AcState.TowBack) {
+      this.state[i] = this.towState[i];
+      this.towIdx[i] = -1;
+    }
+    if (this.placeOnNetwork(i)) return;
     const from = this.nearestNode(this.x[i], this.y[i]);
-    const goal = this.nearestNode(this.goalX[i], this.goalY[i]);
+    const goal = this.goalNode(i);
     if (from < 0 || goal < 0) {
       this.removeAircraft(i, 'lost');
       return;
@@ -483,6 +509,11 @@ export class Traffic {
     this.dist[i] = 0;
     this.speed[i] = 0;
     if (st === AcState.Holding || st === AcState.LineUp || st === AcState.Pushback) this.state[i] = AcState.TaxiOut;
+    this.afterReplan(i);
+  }
+
+  /** A departure finds the entry it was heading for again and lets go of the stand it has left. */
+  private afterReplan(i: number): void {
     if (this.state[i] === AcState.TaxiOut) {
       // Entry indexes change with the airfield, so find the entry this aircraft was heading for again.
       this.entryIdx[i] = -1;
@@ -493,6 +524,80 @@ export class Traffic {
       if (sIdx >= 0 && this.standOwner[sIdx] === i) this.standOwner[sIdx] = -1;
       this.standId[i] = -1;
     }
+  }
+
+  /**
+   * Keeps a ground aircraft where it is when the network is rebuilt (T87): on the nearest point of an edge it
+   * may use, facing the way its nose points along it (tail first for a push back), with a route on from the
+   * end of that edge to the same goal. False when no edge is near or no route exists; the caller then falls back.
+   */
+  private placeOnNetwork(i: number): boolean {
+    const net = this.net;
+    const st = this.state[i];
+    const sIdx = this.standIndexOf(this.standId[i]);
+    const back = st === AcState.Pushback ? -1 : 1;
+    const hx = cosLut(this.heading[i]) * back;
+    const hy = sinLut(this.heading[i]) * back;
+    const c = { x: 0, y: 0, t: 0 };
+    let bestE = -1;
+    let bestD = PLACE_RADIUS_M;
+    let bestC = 0;
+    let bestDir = 1;
+    for (let e = 0; e < net.edgeCount; e++) {
+      const k = net.edgeKind[e];
+      if (k === EdgeKind.Runway) continue;
+      if (!isTaxiEdge(k) && (sIdx < 0 || (net.edgeStand[e] !== sIdx && net.edgeForkStand[e] !== sIdx))) continue;
+      const s0 = net.edgeSampleStart[e];
+      const n = net.edgeSampleCount[e];
+      const step = n > 1 ? net.edgeLen[e] / (n - 1) : 0;
+      for (let q = 0; q + 1 < n; q++) {
+        const ax = net.sampleX[s0 + q];
+        const ay = net.sampleY[s0 + q];
+        const bx = net.sampleX[s0 + q + 1];
+        const by = net.sampleY[s0 + q + 1];
+        closestOnSegment(this.x[i], this.y[i], ax, ay, bx, by, c);
+        const d = Math.hypot(c.x - this.x[i], c.y - this.y[i]);
+        if (d >= bestD) continue;
+        bestD = d;
+        bestE = e;
+        bestC = Math.min(net.edgeLen[e], (q + c.t) * step);
+        bestDir = (bx - ax) * hx + (by - ay) * hy >= 0 ? 1 : -1;
+      }
+    }
+    if (bestE < 0) return false;
+    const end = bestDir === 1 ? net.edgeTo[bestE] : net.edgeFrom[bestE];
+    const goal = st === AcState.TaxiIn && sIdx >= 0 && net.standNode[sIdx] >= 0 ? net.standNode[sIdx] : this.goalNode(i);
+    if (goal < 0) return false;
+    let n = 0;
+    if (end !== goal) {
+      n = net.route(end, goal, CODES_OF[this.type[i]], ACR_OF[this.type[i]], MASKS[this.type[i]], this.tmpEdge, this.tmpDir, MAX_ROUTE - 1);
+      if (n < 0) return false;
+    }
+    const base = i * MAX_ROUTE;
+    this.routeEdge[base] = bestE;
+    this.routeDir[base] = bestDir;
+    for (let k = 0; k < n; k++) {
+      this.routeEdge[base + 1 + k] = this.tmpEdge[k];
+      this.routeDir[base + 1 + k] = this.tmpDir[k];
+    }
+    this.routeLen[i] = n + 1;
+    this.routeIdx[i] = 0;
+    this.dist[i] = bestDir === 1 ? bestC : net.edgeLen[bestE] - bestC;
+    if (st === AcState.Holding || st === AcState.LineUp || (st === AcState.Pushback && isTaxiEdge(net.edgeKind[bestE]))) this.state[i] = AcState.TaxiOut;
+    if (this.state[i] === AcState.TaxiOut) this.afterReplan(i);
+    return true;
+  }
+
+  /**
+   * The node a ground aircraft is heading for after a rebuild. A departure heads for its runway entry, whose node
+   * lies on the runway, so it is found among the entries rather than among the taxi nodes (T87).
+   */
+  private goalNode(i: number): number {
+    for (let e = 0; e < this.af.entries.length; e++) {
+      const en = this.af.entries[e];
+      if (this.net.entryNode[e] >= 0 && Math.hypot(en.x - this.goalX[i], en.y - this.goalY[i]) < 15) return this.net.entryNode[e];
+    }
+    return this.nearestNode(this.goalX[i], this.goalY[i]);
   }
 
   private nearestNode(x: number, y: number): number {
@@ -1191,9 +1296,10 @@ export class Traffic {
       if (this.active[i] === 0) {
         this.active[i] = 1;
         this.heldNode[i] = -1;
-        this.curBlock[i] = -1;
-        this.prevBlock[i] = -1;
-        this.nextBlock[i] = -1;
+        this.claimFrom[i] = -1;
+        this.claimTo[i] = -1;
+        this.oppWait[i] = 0;
+        this.towIdx[i] = -1;
         this.nextAcq[i] = -1;
         this.waitingFor[i] = -1;
         this.reqNode[i] = -1;
@@ -1251,13 +1357,10 @@ export class Traffic {
       if (this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
       this.heldNode[i] = -1;
     }
-    for (const arr of [this.curBlock, this.prevBlock, this.nextBlock]) {
-      const e = arr[i];
-      if (e >= 0 && e < this.blockCount.length && this.blockCount[e] > 0) this.blockCount[e]--;
-      arr[i] = -1;
-    }
+    this.dropClaim(i);
     this.nextAcq[i] = -1;
     this.waitingFor[i] = -1;
+    this.oppWait[i] = 0;
     this.reqNode[i] = -1;
   }
 
@@ -1305,14 +1408,14 @@ export class Traffic {
         case AcState.Backtrack:
           this.updateBacktrack(i);
           break;
+        case AcState.TowBack:
+          this.updateTow(i);
+          break;
         default:
           break;
       }
     }
-    if (tick % 20 === 0) {
-      this.recountBlocks();
-      this.detectDeadlocks();
-    }
+    if (tick % 20 === 0) this.detectDeadlocks();
     if (tick % 50 === 0) this.updateCongestion();
   }
 
@@ -1339,7 +1442,11 @@ export class Traffic {
       this.rwyS[i] += this.speed[i] * DT;
       if (this.rwyS[i] >= sExit) {
         // Wait on the runway at the exit until the connector is clear of other aircraft.
-        if (this.connectorBusy(this.net.entryNode[this.entryIdx[i]], i)) {
+        // A claim held the other way on the exit itself keeps the arrival on the runway too (T87). Held only
+        // further on, the arrival vacates onto the exit and holds short at its first junction.
+        const opposed = this.claimBlocker(i, 0, this.sameBlockEnd(i, 0));
+        if (opposed >= 0) this.waitingFor[i] = opposed;
+        if (opposed >= 0 || this.connectorBusy(this.net.entryNode[this.entryIdx[i]], i)) {
           this.rwyS[i] = sExit;
           this.speed[i] = 0;
           if (this.rwySlot[i] >= 0) this.rsvEnd[this.rwySlot[i]] = this.tick + 300;
@@ -1359,7 +1466,7 @@ export class Traffic {
       const j = this.activeList[k];
       if (j === self) continue;
       const s = this.state[j];
-      if (s !== AcState.TaxiIn && s !== AcState.TaxiOut && s !== AcState.Pushback && s !== AcState.Holding && s !== AcState.LineUp) continue;
+      if (s !== AcState.TaxiIn && s !== AcState.TaxiOut && s !== AcState.Pushback && s !== AcState.Holding && s !== AcState.LineUp && s !== AcState.TowBack) continue;
       if (Math.hypot(this.x[j] - nx, this.y[j] - ny) < 45) return true;
     }
     return false;
@@ -1380,15 +1487,11 @@ export class Traffic {
     this.dist[i] = 0;
     this.speed[i] = Math.min(this.speed[i], 10);
     this.rwyIdx[i] = -1;
-    // Take the first edge's block so departures do not drive onto it from the other end.
-    const e0 = this.routeEdge[i * MAX_ROUTE];
-    const b0 = this.net.edgeBlock[e0];
-    if (b0 >= 0) {
-      this.blockCount[b0]++;
-      this.blockDir[b0] = this.routeDir[i * MAX_ROUTE];
-      this.blockLast[b0] = i;
-      this.curBlock[i] = b0;
-    }
+    this.waitingFor[i] = -1;
+    // Claim the two way stretch past the exit so departures do not drive onto it from the other end, or the
+    // exit alone when the rest is held the other way.
+    const full = this.runEnd(i, 0);
+    this.grantClaim(i, 0, this.claimBlocker(i, 0, full) < 0 ? full : this.sameBlockEnd(i, 0));
     this.applyEdgePose(i);
   }
 
@@ -1403,7 +1506,7 @@ export class Traffic {
     if (dir === -1 && this.state[i] !== AcState.Pushback) h += PI;
     // Near a junction node the aircraft drives the turn curve the paint shows instead of the corner (T84).
     const st = this.state[i];
-    if (st === AcState.TaxiIn || st === AcState.TaxiOut) {
+    if (st === AcState.TaxiIn || st === AcState.TaxiOut || st === AcState.TowBack) {
       const idx = this.routeIdx[i];
       if (idx + 1 < this.routeLen[i] && this.cornerPose(e, dir, this.routeEdge[k + 1], this.routeDir[k + 1], this.dist[i] - len)) h = this.pos.h;
       else if (idx > 0 && this.cornerPose(this.routeEdge[k - 1], this.routeDir[k - 1], e, dir, this.dist[i])) h = this.pos.h;
@@ -1511,11 +1614,11 @@ export class Traffic {
       goal = len;
       // Ask for the junction and the next edge when close enough.
       const nextE = this.routeEdge[base + idx + 1];
-      const nextD = this.routeDir[base + idx + 1];
       const node = dir === 1 ? net.edgeTo[e] : net.edgeFrom[e];
-      const lookahead = Math.max(60, this.speed[i] * 8);
+      const hold = this.holdShortM(i, node);
+      const lookahead = Math.max(60, this.speed[i] * 8) + hold;
       if (len - this.dist[i] < lookahead && this.nextAcq[i] !== nextE) {
-        if (this.tick < this.yieldUntil[i] || !this.tryEnter(i, node, nextE, nextD)) goal = Math.max(0, len - (AIRCRAFT[t].dimensions.wingspanM * 0.5 + 12));
+        if (this.tick < this.yieldUntil[i] || !this.tryEnter(i, node, nextE)) goal = Math.max(0, len - hold);
       }
     }
     if (st === AcState.Pushback) {
@@ -1531,6 +1634,16 @@ export class Traffic {
     // Keep a gap to the aircraft ahead.
     const gap = this.leaderLimit(i, e, dir, idx, last);
     if (gap < allowed) allowed = gap;
+    // Stopped by an aircraft coming the other way: name it, so the deadlock check sees the pair (T87).
+    if (this.oppBlocker >= 0 && allowed < 0.05) {
+      if (this.waitingFor[i] < 0 || this.oppWait[i] === 1) {
+        this.waitingFor[i] = this.oppBlocker;
+        this.oppWait[i] = 1;
+      }
+    } else if (this.oppWait[i] === 1) {
+      this.waitingFor[i] = -1;
+      this.oppWait[i] = 0;
+    }
     if (this.speed[i] < allowed) this.speed[i] = Math.min(allowed, this.speed[i] + TAXI_ACCEL * DT);
     else this.speed[i] = Math.max(allowed, this.speed[i] - TAXI_DECEL * 1.5 * DT);
     this.dist[i] += this.speed[i] * DT;
@@ -1542,18 +1655,6 @@ export class Traffic {
       // Cross into the next edge only once the junction is reserved.
       const nextE = this.routeEdge[base + idx + 1];
       if (this.nextAcq[i] === nextE || this.ignoreLocks[i] > 0) {
-        // A new block replaces the current one, a block shared with the next edge is simply kept.
-        if (this.nextBlock[i] >= 0) {
-          if (this.prevBlock[i] >= 0 && this.blockCount[this.prevBlock[i]] > 0) this.blockCount[this.prevBlock[i]]--;
-          this.prevBlock[i] = this.curBlock[i];
-          this.curBlock[i] = this.nextBlock[i];
-          this.nextBlock[i] = -1;
-        } else if (this.net.edgeBlock[nextE] !== this.curBlock[i]) {
-          // Leaving a locked taxiway for an unlocked edge: the old block is released once the tail clears.
-          if (this.prevBlock[i] >= 0 && this.blockCount[this.prevBlock[i]] > 0) this.blockCount[this.prevBlock[i]]--;
-          this.prevBlock[i] = this.curBlock[i];
-          this.curBlock[i] = -1;
-        }
         this.nextAcq[i] = -1;
         this.routeIdx[i] = idx + 1;
         if (st === AcState.TaxiIn && this.entryCounted[i] === 1) this.uncount(i);
@@ -1644,9 +1745,16 @@ export class Traffic {
   /** Frees the junction and the edge lock behind the aircraft once its tail has cleared. */
   private releaseBehind(i: number, t: number): void {
     const a = AIRCRAFT[t];
-    if (this.prevBlock[i] >= 0 && this.dist[i] >= a.dimensions.lengthM * 0.6) {
-      if (this.blockCount[this.prevBlock[i]] > 0) this.blockCount[this.prevBlock[i]]--;
-      this.prevBlock[i] = -1;
+    // Claimed edges behind the aircraft are let go once its tail has cleared them.
+    if (this.claimTo[i] >= 0) {
+      const idx = this.routeIdx[i];
+      let from = this.claimFrom[i];
+      while (from < idx && (from < idx - 1 || this.dist[i] >= a.dimensions.lengthM * 0.6)) from++;
+      if (from > this.claimTo[i]) this.dropClaim(i);
+      else if (from !== this.claimFrom[i]) {
+        this.claimFrom[i] = from;
+        this.countsDirty = true;
+      }
     }
     if (this.heldNode[i] >= 0 && this.nextAcq[i] < 0 && this.dist[i] >= a.dimensions.wingspanM * 0.5 + 8) {
       if (this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
@@ -1655,23 +1763,10 @@ export class Traffic {
   }
 
   /**
-   * The aircraft to wait for on a block held the other way: one of its holders that is waiting itself,
-   * so the deadlock check sees the whole cycle, else the last to enter it.
-   */
-  private blockHolder(i: number, nb: number): number {
-    for (let k = 0; k < this.count; k++) {
-      const j = this.activeList[k];
-      if (j === i || this.waitingFor[j] < 0) continue;
-      if (this.curBlock[j] === nb || this.nextBlock[j] === nb) return j;
-    }
-    return this.blockLast[nb];
-  }
-
-  /**
    * What stops aircraft i from entering the junction `node` onto `nextE`, without writing any state.
    * -1 when free, the aircraft index that holds it, or -2 when a stand lead refuses it with no one to wait for.
    */
-  private entryBlocker(i: number, node: number, nextE: number, nextD: number): number {
+  private entryBlocker(i: number, node: number, nextE: number): number {
     const net = this.net;
     const ignore = this.ignoreLocks[i] > 0;
     const owner = this.nodeOwner[node];
@@ -1680,10 +1775,12 @@ export class Traffic {
       const j = this.conflictHolder(i, node, nextE);
       if (j >= 0) return j;
     }
-    const nb = net.edgeBlock[nextE];
-    // A block the aircraft already holds (the same taxiway) needs no new reservation.
-    const needsBlock = nb >= 0 && nb !== this.curBlock[i];
-    if (needsBlock && this.blockCount[nb] > 0 && this.blockDir[nb] !== nextD && this.blockLast[nb] !== i && !ignore) return this.blockHolder(i, nb);
+    // Two way pavement ahead is claimed as a whole run, up to where the route leaves it (T87).
+    const k0 = this.routeIdx[i] + 1;
+    if (!ignore && net.edgeBlock[nextE] >= 0 && !this.inClaim(i, k0)) {
+      const j = this.claimBlocker(i, k0, this.runEnd(i, k0));
+      if (j >= 0) return j;
+    }
     // A stand lead in and its fork arcs are only for the aircraft that owns the stand, so an arrival
     // waits on the taxilane and never blocks the way out of the aircraft still on the stand.
     const leadKind = net.edgeKind[nextE];
@@ -1728,20 +1825,20 @@ export class Traffic {
       const end = this.routeDir[jk] === 1 ? net.edgeTo[e] : net.edgeFrom[e];
       if (end !== node) continue;
       const nextK = jk + 1;
-      if (this.entryBlocker(j, node, this.routeEdge[nextK], this.routeDir[nextK]) !== -1) continue;
+      if (this.entryBlocker(j, node, this.routeEdge[nextK]) !== -1) continue;
       if (best < 0 || this.outranks(j, best)) best = j;
     }
     return best;
   }
 
-  private tryEnter(i: number, node: number, nextE: number, nextD: number): boolean {
+  private tryEnter(i: number, node: number, nextE: number): boolean {
     const net = this.net;
     if (this.reqNode[i] !== node) {
       this.reqNode[i] = node;
       this.reqTick[i] = this.tick;
       this.reqClass[i] = this.priorityClass(i);
     }
-    const b = this.entryBlocker(i, node, nextE, nextD);
+    const b = this.entryBlocker(i, node, nextE);
     if (b !== -1) {
       if (b >= 0) this.waitingFor[i] = b;
       return false;
@@ -1753,18 +1850,11 @@ export class Traffic {
         return false;
       }
     }
-    const nb = net.edgeBlock[nextE];
-    // A block the aircraft already holds (the same taxiway) needs no new reservation.
-    const needsBlock = nb >= 0 && nb !== this.curBlock[i];
+    const k0 = this.routeIdx[i] + 1;
+    if (net.edgeBlock[nextE] >= 0 && !this.inClaim(i, k0)) this.grantClaim(i, k0, this.runEnd(i, k0));
     if (this.heldNode[i] >= 0 && this.heldNode[i] !== node && this.nodeOwner[this.heldNode[i]] === i) this.nodeOwner[this.heldNode[i]] = -1;
     this.nodeOwner[node] = i;
     this.heldNode[i] = node;
-    if (needsBlock) {
-      this.blockCount[nb]++;
-      this.blockDir[nb] = nextD;
-      this.blockLast[nb] = i;
-      this.nextBlock[i] = nb;
-    }
     this.nextAcq[i] = nextE;
     this.waitingFor[i] = -1;
     this.reqNode[i] = -1;
@@ -1784,9 +1874,11 @@ export class Traffic {
       const j = this.activeList[k];
       if (j === i) continue;
       const st = this.state[j];
-      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback && st !== AcState.Holding) continue;
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback && st !== AcState.Holding && st !== AcState.TowBack) continue;
       // Two aircraft held back by each other would deadlock: the lower index goes first, the other keeps waiting.
       if (this.waitingFor[j] === i && j > i) continue;
+      // An aircraft holding short of the node with no clearance into it is clear of whoever passes (T87).
+      if (this.holdingShort(j, node)) continue;
       const jk = j * MAX_ROUTE + this.routeIdx[j];
       const ej = this.routeEdge[jk];
       // The aircraft sweeps the end of the edge it is on as well as the start of the next one.
@@ -1830,17 +1922,15 @@ export class Traffic {
         const other = this.net.forkEdge[this.net.edgeForkStand[this.routeEdge[nextIdx]] * 2 + 1 - this.net.edgeForkSide[this.routeEdge[nextIdx]]];
         if (other >= 0 && this.forkSideBlocker(i, other) < 0 && this.rerouteFrom(i, nextIdx, other)) blocker = -1;
       }
-      // The taxiway past the arc must not be held the other way, or the push would meet that traffic head on.
-      if (blocker < 0 && this.routeIdx[i] + 2 < this.routeLen[i]) {
-        const nb = this.net.edgeBlock[this.routeEdge[nextIdx + 1]];
-        if (nb >= 0 && this.blockCount[nb] > 0 && this.blockDir[nb] !== this.routeDir[nextIdx + 1] && this.blockLast[nb] !== i) blocker = this.blockHolder(i, nb);
-      }
+      // The taxiway past the arc must not be claimed the other way, or the push would meet that traffic head on.
+      if (blocker < 0) blocker = this.pushClaimBlocker(i);
       // Taxiing traffic about to pass where the push meets the taxilane goes first (user, 2026-11-17).
       if (blocker < 0) blocker = this.approachingNode(i, this.net.edgeFrom[this.routeEdge[nextIdx]]);
       if (blocker >= 0) {
         this.waitingFor[i] = blocker;
         return false;
       }
+      this.pushClaim(i);
       return true;
     }
     // Pushback goes from the stand to the junction, which is the far end of that edge in travel direction.
@@ -1853,7 +1943,7 @@ export class Traffic {
       const j = this.activeList[k];
       if (j === i) continue;
       const s = this.state[j];
-      if (s === AcState.TaxiIn || s === AcState.TaxiOut || s === AcState.Pushback) {
+      if (s === AcState.TaxiIn || s === AcState.TaxiOut || s === AcState.Pushback || s === AcState.TowBack) {
         if (Math.hypot(this.x[j] - this.net.nodeX[node], this.y[j] - this.net.nodeY[node]) < 28) return false;
       }
     }
@@ -1865,7 +1955,13 @@ export class Traffic {
         return false;
       }
     }
+    const opposed = this.pushClaimBlocker(i);
+    if (opposed >= 0) {
+      this.waitingFor[i] = opposed;
+      return false;
+    }
     if (this.nodeOwner[node] !== i) this.holdNode(i, node);
+    this.pushClaim(i);
     return true;
   }
 
@@ -1908,6 +2004,8 @@ export class Traffic {
     for (let k = 0; k < this.count; k++) {
       const j = this.activeList[k];
       if (j === i || this.state[j] !== AcState.Pushback) continue;
+      // Two push backs that have not started yet would wait on each other: the lower index goes first (T87).
+      if (j > i && !this.pushStarted(j)) continue;
       // Another push back on its lead in or arc toward the same taxilane node.
       for (let q = this.routeIdx[j]; q < Math.min(this.routeLen[j], this.routeIdx[j] + 2); q++) {
         const ej = this.routeEdge[j * MAX_ROUTE + q];
@@ -1916,6 +2014,13 @@ export class Traffic {
     }
     const slot = net.edgeForkStand[arc] * 2 + net.edgeForkSide[arc];
     return this.stretchOccupant(i, end, net.forkAwayX[slot], net.forkAwayY[slot], AIRCRAFT[this.type[i]].dimensions.wingspanM / 2);
+  }
+
+  /** True once a push back has left its parked position. */
+  private pushStarted(j: number): boolean {
+    if (this.routeIdx[j] > 0) return true;
+    const e = this.routeEdge[j * MAX_ROUTE];
+    return this.dist[j] >= this.pushStartLimit(j, e, this.net.edgeLen[e]);
   }
 
   /** Replaces the route from position k on with a push along `arc` and a route from its taxilane end to the same goal. */
@@ -1953,7 +2058,7 @@ export class Traffic {
       const j = this.activeList[k];
       if (j === i) continue;
       const st = this.state[j];
-      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback) continue;
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback && st !== AcState.TowBack) continue;
       const rx = this.x[j] - nx;
       const ry = this.y[j] - ny;
       const along = rx * ax + ry * ay;
@@ -1985,26 +2090,49 @@ export class Traffic {
     return true;
   }
 
-  /** Speed limit from the aircraft ahead, on this edge or at the start of the next one. */
+  /**
+   * Speed limit from the aircraft ahead, on this edge or at the start of the next one. An aircraft coming the
+   * other way on either edge is a hard stop short of its nose, so nobody ever drives through another (T87);
+   * the last one that set the limit is left in oppBlocker.
+   */
   private leaderLimit(i: number, e: number, dir: number, idx: number, last: boolean): number {
     const span = AIRCRAFT[this.type[i]].dimensions.wingspanM;
+    const lenI = AIRCRAFT[this.type[i]].dimensions.lengthM;
     let limit = Infinity;
+    this.oppBlocker = -1;
     const base = i * MAX_ROUTE;
     const len = this.net.edgeLen[e];
     const nextE = last ? -1 : this.routeEdge[base + idx + 1];
+    const nextD = last ? 0 : this.routeDir[base + idx + 1];
     for (let k = 0; k < this.count; k++) {
       const j = this.activeList[k];
       if (j === i) continue;
       const s = this.state[j];
-      if (s !== AcState.TaxiIn && s !== AcState.TaxiOut && s !== AcState.Pushback && s !== AcState.Holding && s !== AcState.LineUp) continue;
+      if (s !== AcState.TaxiIn && s !== AcState.TaxiOut && s !== AcState.Pushback && s !== AcState.Holding && s !== AcState.LineUp && s !== AcState.TowBack) continue;
       const jb = j * MAX_ROUTE + this.routeIdx[j];
+      const ej = this.routeEdge[jb];
+      const dj = this.routeDir[jb];
       let gap = -1;
-      if (this.routeEdge[jb] === e && this.routeDir[jb] === dir && this.dist[j] > this.dist[i]) gap = this.dist[j] - this.dist[i];
-      else if (nextE >= 0 && this.routeEdge[jb] === nextE && this.routeDir[jb] === this.routeDir[base + idx + 1]) gap = len - this.dist[i] + this.dist[j];
+      let opposite = false;
+      if (ej === e && dj === dir && this.dist[j] > this.dist[i]) gap = this.dist[j] - this.dist[i];
+      else if (nextE >= 0 && ej === nextE && dj === nextD) gap = len - this.dist[i] + this.dist[j];
+      else if (ej === e && dj === -dir && len - this.dist[j] > this.dist[i]) {
+        gap = len - this.dist[j] - this.dist[i];
+        opposite = true;
+      } else if (nextE >= 0 && ej === nextE && dj === -nextD) {
+        gap = len - this.dist[i] + this.net.edgeLen[nextE] - this.dist[j];
+        opposite = true;
+      }
       if (gap < 0) continue;
-      const need = 20 + 0.5 * span + 0.5 * AIRCRAFT[this.type[j]].dimensions.wingspanM + 2 * this.speed[i];
-      const v = Math.sqrt(this.speed[j] * this.speed[j] + 2 * TAXI_DECEL * Math.max(0, gap - need));
-      if (v < limit) limit = v;
+      const need = opposite
+        ? 10 + 0.5 * lenI + 0.5 * AIRCRAFT[this.type[j]].dimensions.lengthM
+        : 20 + 0.5 * span + 0.5 * AIRCRAFT[this.type[j]].dimensions.wingspanM + 2 * this.speed[i];
+      const vj = opposite ? 0 : this.speed[j];
+      const v = Math.sqrt(vj * vj + 2 * TAXI_DECEL * Math.max(0, gap - need));
+      if (v < limit) {
+        limit = v;
+        this.oppBlocker = opposite ? j : -1;
+      }
     }
     return limit;
   }
@@ -2349,16 +2477,389 @@ export class Traffic {
 
   // Deadlocks and congestion -----------------------------------------------
 
-  /** Rebuilds block counts from what aircraft actually hold, so a missed release can never lock a taxiway for good. */
-  private recountBlocks(): void {
+  // Claims on two way pavement (T87) ---------------------------------------
+
+  /** Block counts and directions from the claims, worked out again only after a claim changed. */
+  private ensureCounts(): void {
+    if (!this.countsDirty) return;
+    this.countsDirty = false;
+    const net = this.net;
     this.blockCount.fill(0);
+    this.blockMixed.fill(0);
     for (let k = 0; k < this.count; k++) {
       const i = this.activeList[k];
-      if (this.curBlock[i] >= 0) this.blockCount[this.curBlock[i]]++;
-      if (this.prevBlock[i] >= 0) this.blockCount[this.prevBlock[i]]++;
-      if (this.nextBlock[i] >= 0) this.blockCount[this.nextBlock[i]]++;
+      if (this.claimTo[i] < 0) continue;
+      this.markStamp++;
+      const base = i * MAX_ROUTE;
+      for (let q = this.claimFrom[i]; q <= this.claimTo[i]; q++) {
+        const e = this.routeEdge[base + q];
+        const b = net.edgeBlock[e];
+        if (b < 0 || this.blockMark[b] === this.markStamp) continue;
+        this.blockMark[b] = this.markStamp;
+        const d = this.routeDir[base + q] * net.edgeBlockSign[e];
+        if (this.blockCount[b] === 0) this.blockDir[b] = d;
+        else if (this.blockDir[b] !== d) this.blockMixed[b] = 1;
+        this.blockCount[b]++;
+      }
     }
-    for (let b = 0; b < this.blockCount.length; b++) if (this.blockCount[b] === 0) this.blockLast[b] = -1;
+  }
+
+  /** The last route position of the run of two way edges that starts at k0, or k0 - 1 when route position k0 has no block. */
+  private runEnd(i: number, k0: number): number {
+    const base = i * MAX_ROUTE;
+    let k = k0;
+    while (k < this.routeLen[i] && this.net.edgeBlock[this.routeEdge[base + k]] >= 0) k++;
+    return k - 1;
+  }
+
+  /** The last route position from k0 on that stays in the block of route position k0, or k0 - 1 when it has none. */
+  private sameBlockEnd(i: number, k0: number): number {
+    const base = i * MAX_ROUTE;
+    const b = this.net.edgeBlock[this.routeEdge[base + k0]];
+    if (b < 0) return k0 - 1;
+    let k = k0;
+    while (k + 1 < this.routeLen[i] && this.net.edgeBlock[this.routeEdge[base + k + 1]] === b) k++;
+    return k;
+  }
+
+  private inClaim(i: number, q: number): boolean {
+    return this.claimTo[i] >= 0 && q >= this.claimFrom[i] && q <= this.claimTo[i];
+  }
+
+  /** Direction of aircraft i's claim on block b, or 0 when it does not hold it. */
+  private claimDir(i: number, b: number): number {
+    if (this.claimTo[i] < 0) return 0;
+    const base = i * MAX_ROUTE;
+    for (let q = this.claimFrom[i]; q <= this.claimTo[i]; q++) {
+      const e = this.routeEdge[base + q];
+      if (this.net.edgeBlock[e] === b) return this.routeDir[base + q] * this.net.edgeBlockSign[e];
+    }
+    return 0;
+  }
+
+  /**
+   * Who keeps aircraft i from claiming route positions k0 to k1: an aircraft holding one of their blocks the
+   * other way, one that is itself waiting when there is a choice so the deadlock check sees whole cycles. -1 when free.
+   */
+  private claimBlocker(i: number, k0: number, k1: number): number {
+    if (k1 < k0) return -1;
+    this.ensureCounts();
+    const net = this.net;
+    const base = i * MAX_ROUTE;
+    for (let q = k0; q <= k1; q++) {
+      const e = this.routeEdge[base + q];
+      const b = net.edgeBlock[e];
+      if (b < 0 || this.blockCount[b] === 0) continue;
+      const d = this.routeDir[base + q] * net.edgeBlockSign[e];
+      if (this.blockDir[b] === d && this.blockMixed[b] === 0) continue;
+      let first = -1;
+      for (let k = 0; k < this.count; k++) {
+        const j = this.activeList[k];
+        if (j === i) continue;
+        const dj = this.claimDir(j, b);
+        if (dj === 0 || dj === d) continue;
+        if (this.waitingFor[j] >= 0) return j;
+        if (first < 0) first = j;
+      }
+      if (first >= 0) return first;
+    }
+    return -1;
+  }
+
+  private grantClaim(i: number, k0: number, k1: number): void {
+    if (k1 < k0) return;
+    if (this.claimTo[i] < 0) this.claimFrom[i] = k0;
+    if (k1 > this.claimTo[i]) this.claimTo[i] = k1;
+    this.countsDirty = true;
+  }
+
+  private dropClaim(i: number): void {
+    if (this.claimTo[i] < 0 && this.claimFrom[i] < 0) return;
+    this.claimFrom[i] = -1;
+    this.claimTo[i] = -1;
+    this.countsDirty = true;
+  }
+
+  /** The first route position past the stand edges a push back or a forward departure drives first, or -1 when the route has none. */
+  private firstTaxiPos(i: number): number {
+    const base = i * MAX_ROUTE;
+    for (let q = this.routeIdx[i]; q < this.routeLen[i]; q++) {
+      const k = this.net.edgeKind[this.routeEdge[base + q]];
+      if (k !== EdgeKind.StandLeadIn && k !== EdgeKind.StandFork && k !== EdgeKind.StandLeadOut) return q;
+    }
+    return -1;
+  }
+
+  /** Who holds the two way stretch a push back would drive onto the other way, or -1. */
+  private pushClaimBlocker(i: number): number {
+    const k0 = this.firstTaxiPos(i);
+    if (k0 < 0 || this.inClaim(i, k0)) return -1;
+    return this.claimBlocker(i, k0, this.runEnd(i, k0));
+  }
+
+  /** A push back claims the two way stretch after its stand before it moves, so nothing enters it from the other end meanwhile. */
+  private pushClaim(i: number): void {
+    const k0 = this.firstTaxiPos(i);
+    if (k0 >= 0 && !this.inClaim(i, k0)) this.grantClaim(i, k0, this.runEnd(i, k0));
+  }
+
+  /**
+   * Center distance at which aircraft i holds short of a junction it may not enter yet: its nose the largest
+   * taxiway object distance of the taxiways there clear of the node, the ICAO intermediate holding position.
+   */
+  private holdShortM(i: number, node: number): number {
+    const d = AIRCRAFT[this.type[i]].dimensions;
+    return Math.max(d.wingspanM * 0.5 + 12, this.net.nodeHoldM[node] + d.lengthM * 0.5);
+  }
+
+  /**
+   * True when aircraft j waits at or behind the holding position of the junction ahead of it with no clearance
+   * into it, and stands at least as far from `node` as it would hold short of that node: then it is clear of
+   * whoever passes `node`, whether that is its own next junction or one nearby on the same taxiway (T87).
+   */
+  private holdingShort(j: number, node: number): boolean {
+    const st = this.state[j];
+    if (st !== AcState.TaxiIn && st !== AcState.TaxiOut) return false;
+    if (this.routeIdx[j] + 1 >= this.routeLen[j]) return false;
+    const k = j * MAX_ROUTE + this.routeIdx[j];
+    const e = this.routeEdge[k];
+    const ahead = this.routeDir[k] === 1 ? this.net.edgeTo[e] : this.net.edgeFrom[e];
+    if (this.nextAcq[j] === this.routeEdge[k + 1]) return false;
+    if (this.net.edgeLen[e] - this.dist[j] < this.holdShortM(j, ahead) - 0.5) return false;
+    return ahead === node || Math.hypot(this.x[j] - this.net.nodeX[node], this.y[j] - this.net.nodeY[node]) >= this.holdShortM(j, node) - 0.5;
+  }
+
+  /**
+   * Claims the stretch each taxiing aircraft stands on and the run ahead of it, in aircraft order, after the
+   * network was rebuilt or an older save was loaded. An aircraft whose stretch is already held the other way
+   * claims nothing; the deadlock check then tows one of the pair back.
+   */
+  private reclaimAll(): void {
+    for (let k = 0; k < this.count; k++) {
+      const i = this.activeList[k];
+      this.claimFrom[i] = -1;
+      this.claimTo[i] = -1;
+    }
+    this.countsDirty = true;
+    for (let k = 0; k < this.count; k++) {
+      const i = this.activeList[k];
+      const st = this.state[i];
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Holding && st !== AcState.LineUp && st !== AcState.Pushback && st !== AcState.TowBack) continue;
+      if (this.routeLen[i] === 0) continue;
+      const k0 = st === AcState.Pushback ? this.firstTaxiPos(i) : this.routeIdx[i];
+      if (k0 < 0) continue;
+      const k1 = this.runEnd(i, k0);
+      if (k1 >= k0 && this.claimBlocker(i, k0, k1) < 0) this.grantClaim(i, k0, k1);
+    }
+  }
+
+  // Tow back (T87) ------------------------------------------------------------
+
+  /** Center distance of aircraft i behind the start node of its route position towIdx, negative while past it. */
+  private towBehind(i: number): number {
+    const base = i * MAX_ROUTE;
+    const idx = this.routeIdx[i];
+    const target = this.towIdx[i];
+    let d: number;
+    if (idx >= target) {
+      d = -this.dist[i];
+      for (let q = target; q < idx; q++) d -= this.net.edgeLen[this.routeEdge[base + q]];
+    } else {
+      d = this.net.edgeLen[this.routeEdge[base + idx]] - this.dist[i];
+      for (let q = idx + 1; q < target; q++) d += this.net.edgeLen[this.routeEdge[base + q]];
+    }
+    return d;
+  }
+
+  /**
+   * At the start of its route, puts the taxi edge that leads most straight on behind the aircraft in front of the
+   * route, so a tow can go on backward. False at a dead end or with a full route.
+   */
+  private extendBehind(i: number): boolean {
+    const net = this.net;
+    const base = i * MAX_ROUTE;
+    if (this.routeLen[i] >= MAX_ROUTE) return false;
+    const e0 = this.routeEdge[base];
+    const d0 = this.routeDir[base];
+    const start = d0 === 1 ? net.edgeFrom[e0] : net.edgeTo[e0];
+    const far = d0 === 1 ? net.edgeTo[e0] : net.edgeFrom[e0];
+    const bx = net.nodeX[start] - net.nodeX[far];
+    const by = net.nodeY[start] - net.nodeY[far];
+    let best = -1;
+    let bestDir = 0;
+    let bestDot = 0;
+    for (let p = net.adjStart[start]; p < net.adjStart[start + 1]; p++) {
+      const f = net.adjEdge[p];
+      if (f === e0 || !isTaxiEdge(net.edgeKind[f])) continue;
+      // Driven forward it must lead into `start`.
+      const dir = net.edgeTo[f] === start ? 1 : -1;
+      if (dir === -1 && net.edgeOneWay[f] === 1) continue;
+      const other = dir === 1 ? net.edgeFrom[f] : net.edgeTo[f];
+      const ox = net.nodeX[other] - net.nodeX[start];
+      const oy = net.nodeY[other] - net.nodeY[start];
+      const dot = (ox * bx + oy * by) / (Math.sqrt((ox * ox + oy * oy) * (bx * bx + by * by)) || 1);
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = f;
+        bestDir = dir;
+      }
+    }
+    if (best < 0) return false;
+    for (let q = this.routeLen[i]; q > 0; q--) {
+      this.routeEdge[base + q] = this.routeEdge[base + q - 1];
+      this.routeDir[base + q] = this.routeDir[base + q - 1];
+    }
+    this.routeEdge[base] = best;
+    this.routeDir[base] = bestDir;
+    this.routeLen[i]++;
+    this.towIdx[i]++;
+    this.dist[i] += net.edgeLen[best];
+    return true;
+  }
+
+  /** True when another ground aircraft stands right behind aircraft i, in the way of a tow. */
+  private towObstacle(i: number): boolean {
+    const k = i * MAX_ROUTE + this.routeIdx[i];
+    const e = this.routeEdge[k];
+    const dir = this.routeDir[k];
+    const len = this.net.edgeLen[e];
+    this.net.pointAt(e, dir === 1 ? this.dist[i] : len - this.dist[i], this.cornerA);
+    const h = dir === 1 ? this.cornerA.h : this.cornerA.h + PI;
+    const bx = -cosLut(h);
+    const by = -sinLut(h);
+    const di = AIRCRAFT[this.type[i]].dimensions;
+    for (let q = 0; q < this.count; q++) {
+      const j = this.activeList[q];
+      if (j === i) continue;
+      const st = this.state[j];
+      if (st !== AcState.TaxiIn && st !== AcState.TaxiOut && st !== AcState.Pushback && st !== AcState.Holding && st !== AcState.LineUp && st !== AcState.TowBack) continue;
+      if (st === AcState.TowBack && this.speed[j] > 0.05) continue;
+      const dj = AIRCRAFT[this.type[j]].dimensions;
+      const rx = this.x[j] - this.x[i];
+      const ry = this.y[j] - this.y[i];
+      const along = rx * bx + ry * by;
+      const lateral = Math.abs(-rx * by + ry * bx);
+      if (along > 0 && along < 0.5 * (di.lengthM + dj.lengthM) + 8 && lateral < 0.5 * (di.wingspanM + dj.wingspanM)) return true;
+    }
+    return false;
+  }
+
+  /** Reverses at push back speed along the route until the junction is cleared, then waits and asks again. */
+  private updateTow(i: number): void {
+    const base = i * MAX_ROUTE;
+    const left = this.towClearM[i] - this.towBehind(i);
+    const stopped = left <= 0.05 || this.towObstacle(i);
+    if (stopped) {
+      this.speed[i] = 0;
+      this.stuckTicks[i]++;
+      // Done, or held at a dead end or behind another aircraft for a minute: taxi on from here.
+      if (left <= 0.05 || this.stuckTicks[i] > 600) this.endTow(i);
+      this.applyEdgePose(i);
+      return;
+    }
+    this.stuckTicks[i] = 0;
+    this.speed[i] = Math.min(PUSHBACK_SPEED, Math.sqrt(2 * TAXI_DECEL * left));
+    this.dist[i] -= Math.min(this.speed[i] * DT, left);
+    while (this.dist[i] < 0) {
+      if (this.routeIdx[i] > 0) {
+        this.routeIdx[i]--;
+        this.dist[i] += this.net.edgeLen[this.routeEdge[base + this.routeIdx[i]]];
+      } else if (!this.extendBehind(i)) {
+        this.dist[i] = 0;
+        this.endTow(i);
+        break;
+      }
+    }
+    this.applyEdgePose(i);
+  }
+
+  private endTow(i: number): void {
+    this.state[i] = this.towState[i];
+    this.towIdx[i] = -1;
+    this.speed[i] = 0;
+    this.stuckTicks[i] = 0;
+    this.nextAcq[i] = -1;
+    this.waitingFor[i] = -1;
+    this.oppWait[i] = 0;
+    this.yieldUntil[i] = this.tick + 100;
+  }
+
+  /** The earliest route position, at or before the current one, along which aircraft m will drive the other way soon, or -1. */
+  private overlapStart(v: number, m: number): number {
+    const vb = v * MAX_ROUTE;
+    const mb = m * MAX_ROUTE;
+    let start = -1;
+    for (let q = this.routeIdx[v]; q >= 0; q--) {
+      const e = this.routeEdge[vb + q];
+      let hit = false;
+      for (let r = this.routeIdx[m]; r < Math.min(this.routeLen[m], this.routeIdx[m] + 16); r++) {
+        if (this.routeEdge[mb + r] === e && this.routeDir[mb + r] === -this.routeDir[vb + q]) hit = true;
+      }
+      if (!hit) break;
+      start = q;
+    }
+    return start;
+  }
+
+  /**
+   * Starts a tow of aircraft v away from m, which needs the pavement v stands on the other way. The aircraft
+   * behind v on that stretch going the same way are towed with it, each held further back. False when v stands
+   * nowhere m needs.
+   */
+  private startTow(v: number, m: number): boolean {
+    const st = this.state[v];
+    if (st !== AcState.TaxiIn && st !== AcState.TaxiOut) return false;
+    const ke = this.overlapStart(v, m);
+    if (ke < 0) return false;
+    const net = this.net;
+    const vb = v * MAX_ROUTE;
+    const e = this.routeEdge[vb + ke];
+    const d = this.routeDir[vb + ke];
+    const node = d === 1 ? net.edgeFrom[e] : net.edgeTo[e];
+    this.beginTow(v, ke, this.holdShortM(v, node));
+    let prev = v;
+    let clear = this.towClearM[v];
+    let prevBehind = -Infinity;
+    // Followers on the same stretch going the same way, from the nearest behind to the furthest back.
+    for (;;) {
+      let next = -1;
+      let nextAt = -1;
+      let nextBehind = Infinity;
+      for (let k = 0; k < this.count; k++) {
+        const j = this.activeList[k];
+        const sj = this.state[j];
+        if (sj !== AcState.TaxiIn && sj !== AcState.TaxiOut) continue;
+        const jb = j * MAX_ROUTE;
+        let kj = -1;
+        for (let q = 0; q < this.routeLen[j] && kj < 0; q++) if (this.routeEdge[jb + q] === e && this.routeDir[jb + q] === d) kj = q;
+        if (kj < 0) continue;
+        this.towIdx[j] = kj;
+        const behind = this.towBehind(j);
+        this.towIdx[j] = -1;
+        const need = Math.max(this.holdShortM(j, node), clear + 0.5 * (AIRCRAFT[this.type[prev]].dimensions.lengthM + AIRCRAFT[this.type[j]].dimensions.lengthM) + 15);
+        if (behind > prevBehind && behind < need && behind < nextBehind) {
+          next = j;
+          nextAt = kj;
+          nextBehind = behind;
+        }
+      }
+      if (next < 0) break;
+      clear = Math.max(this.holdShortM(next, node), clear + 0.5 * (AIRCRAFT[this.type[prev]].dimensions.lengthM + AIRCRAFT[this.type[next]].dimensions.lengthM) + 15);
+      this.beginTow(next, nextAt, clear);
+      prev = next;
+      prevBehind = nextBehind;
+    }
+    return true;
+  }
+
+  private beginTow(i: number, idx: number, clearM: number): void {
+    this.releaseAll(i);
+    this.towState[i] = this.state[i];
+    this.state[i] = AcState.TowBack;
+    this.towIdx[i] = idx;
+    this.towClearM[i] = clearM;
+    this.speed[i] = 0;
+    this.stuckTicks[i] = 0;
   }
 
   private detectDeadlocks(): void {
@@ -2383,7 +2884,8 @@ export class Traffic {
         let m = i;
         for (let n = 0; n < 10; n++) {
           const st = this.state[m];
-          const sc = (st === AcState.TaxiOut || st === AcState.Pushback ? 1000 : 0) + m;
+          // An aircraft with no claim stands where it has no right to be, so it gives way first.
+          const sc = (st === AcState.TaxiOut || st === AcState.Pushback ? 1000 : 0) + (this.claimTo[m] < 0 ? 2000 : 0) + m;
           if (sc > score) {
             score = sc;
             victim = m;
@@ -2391,8 +2893,18 @@ export class Traffic {
           m = this.waitingFor[m];
           if (m === i || m < 0) break;
         }
-        this.releaseAll(victim);
-        this.yieldUntil[victim] = this.tick + 400;
+        // A victim standing where another member of the cycle must drive the other way is towed back clear of
+        // that stretch (T87); anywhere else letting go of its reservations is enough.
+        let towed = false;
+        let m2 = this.waitingFor[victim];
+        for (let n = 0; n < 10 && m2 >= 0 && m2 !== victim && !towed; n++) {
+          towed = this.startTow(victim, m2);
+          m2 = this.waitingFor[m2];
+        }
+        if (!towed) {
+          this.releaseAll(victim);
+          this.yieldUntil[victim] = this.tick + 400;
+        }
         this.deadlocks++;
         // Mark the whole cycle for the debug overlay.
         let w = i;
@@ -2408,7 +2920,7 @@ export class Traffic {
     // Aircraft stuck for a long time behind a closed loop of followers are also nudged.
     for (let k = 0; k < this.count; k++) {
       const i = this.activeList[k];
-      if (this.stuckTicks[i] > 9000 && this.ignoreLocks[i] <= 0) {
+      if (this.stuckTicks[i] > 9000 && this.ignoreLocks[i] <= 0 && this.state[i] !== AcState.TowBack) {
         this.releaseAll(i);
         this.yieldUntil[i] = this.tick + 400;
         this.deadlocks++;
@@ -2419,6 +2931,7 @@ export class Traffic {
 
   private updateCongestion(): void {
     const c = this.net.congestion;
+    this.ensureCounts();
     for (let e = 0; e < c.length; e++) c[e] = this.net.edgeBlock[e] >= 0 ? this.blockCount[this.net.edgeBlock[e]] * 8 : 0;
   }
 
@@ -2428,15 +2941,15 @@ export class Traffic {
     return {
       active: this.active, state: this.state, type: this.type, livery: this.livery, flight: this.flight, x: this.x, y: this.y,
       heading: this.heading, speed: this.speed, dist: this.dist, routeLen: this.routeLen, routeIdx: this.routeIdx,
-      routeEdge: this.routeEdge, routeDir: this.routeDir, heldNode: this.heldNode, curBlock: this.curBlock, prevBlock: this.prevBlock,
-      nextBlock: this.nextBlock, nextAcq: this.nextAcq, waitingFor: this.waitingFor, reqNode: this.reqNode, reqTick: this.reqTick, reqClass: this.reqClass,
+      routeEdge: this.routeEdge, routeDir: this.routeDir, heldNode: this.heldNode, claimFrom: this.claimFrom, claimTo: this.claimTo,
+      oppWait: this.oppWait, towIdx: this.towIdx, towClearM: this.towClearM, towState: this.towState, nextAcq: this.nextAcq, waitingFor: this.waitingFor, reqNode: this.reqNode, reqTick: this.reqTick, reqClass: this.reqClass,
       ignoreLocks: this.ignoreLocks, yieldUntil: this.yieldUntil,
       standId: this.standId, rwyIdx: this.rwyIdx, rwyDir: this.rwyDir, rwyS: this.rwyS, rwyExitS: this.rwyExitS, rwyBack: this.rwyBack, rwySlot: this.rwySlot,
       entryIdx: this.entryIdx, timer: this.timer, stuckTicks: this.stuckTicks, goalX: this.goalX, goalY: this.goalY,
       entryCounted: this.entryCounted, fState: this.fState, fType: this.fType, fLivery: this.fLivery, fEta: this.fEta,
       fTurn: this.fTurn, fAc: this.fAc, fDelay: this.fDelay, fRetryAt: this.fRetryAt, fAirline: this.fAirline, fLate: this.fLate, fStage: this.fStage, fStand: this.fStand, fRot: this.fRot,
       fMovWait: this.fMovWait,
-      nodeOwner: this.nodeOwner, blockCount: this.blockCount, blockDir: this.blockDir, blockLast: this.blockLast, standOwner: this.standOwner,
+      nodeOwner: this.nodeOwner, standOwner: this.standOwner,
       rsvStart: this.rsvStart, rsvEnd: this.rsvEnd, rsvCat: this.rsvCat, entryInbound: this.entryInbound, entryDeparting: this.entryDeparting,
       movStart: this.movStart, movHead: this.movHead, movCount: this.movCount, depWait: this.depWait, depRetryAt: this.depRetryAt,
       boardHold: this.boardHold, fuelOwed: this.fuelOwed, fuelWait: this.fuelWait,
@@ -2496,6 +3009,12 @@ export class Traffic {
       }
     }
     this.rebuildActive();
+    this.countsDirty = true;
+    // Saves from before T87 kept per block counters instead of claims: claim again from where aircraft stand.
+    if (o.arrays.claimTo === undefined) {
+      this.towIdx.fill(-1);
+      this.reclaimAll();
+    }
   }
 
   // Snapshots and hashing --------------------------------------------------
@@ -2528,6 +3047,9 @@ export class Traffic {
     acc = foldInts(acc, this.fMovWait, MAX_FLIGHTS);
     acc = foldInts(acc, this.fStand, MAX_FLIGHTS);
     for (let f = 0; f < MAX_FLIGHTS; f++) acc = foldU32(acc, this.fRot[f]);
+    acc = foldInts(acc, this.claimFrom, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.claimTo, MAX_AIRCRAFT);
+    acc = foldInts(acc, this.towIdx, MAX_AIRCRAFT);
     acc = foldInts(acc, this.depWait, MAX_AIRCRAFT);
     acc = foldInts(acc, this.depRetryAt, MAX_AIRCRAFT);
     acc = foldInts(acc, this.boardHold, MAX_AIRCRAFT);
