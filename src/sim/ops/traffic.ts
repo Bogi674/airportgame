@@ -1,5 +1,5 @@
 import { AIRCRAFT, RUNWAY_OCCUPANCY, wakeSeparationSec, WAKE_ORDER, type AircraftSpec } from '@data/aircraft';
-import { ACCEPT_GA, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type FlightCategory, type Runway } from '@shared/airfield';
+import { ACCEPT_GA, CODES, compassVector, STAND_SIZES_ORDER, type AirfieldPayload, type CodeLetter, type FlightCategory, type Runway } from '@shared/airfield';
 import { SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SEASONS, WIND_BINS, windBand, type Climate } from '@shared/site';
 import { atan2Det, cosLut, PI, sinLut, TWO_PI } from '@shared/trig';
@@ -96,6 +96,12 @@ const SURFACE_BIT: Record<string, number> = { dirt: 1, gravel: 2, grass: 4, asph
 const surfaceMask = (a: AircraftSpec): number => a.surfaces.reduce((m, s) => m | SURFACE_BIT[s], 0);
 const MASKS = AIRCRAFT.map(surfaceMask);
 const CODES_OF: CodeLetter[] = AIRCRAFT.map((a) => a.derivedForReading.code);
+/** Junction turns closer than 1 degree to straight, or turning back by more than 170 degrees, get no curve (T84, as `nodeGeometry`). */
+const STRAIGHT_COS = cosLut((1 * PI) / 180);
+const TURN_BACK_COS = cosLut((170 * PI) / 180);
+/** The tangent distance of the sharpest curved turn, 170 degrees, in turn radii: a quick bound before the curve is built. */
+const MAX_TAN_HALF = sinLut((85 * PI) / 180) / cosLut((85 * PI) / 180);
+const isTaxiEdge = (k: number): boolean => k === EdgeKind.Taxiway || k === EdgeKind.Taxilane || k === EdgeKind.RapidExit;
 /** Flight category of traffic without a flight record, such as test traffic: GA types count as GA. */
 const CAT_OF: FlightCategory[] = AIRCRAFT.map((a) => (a.role === 'ga' ? 'ga' : 'commercial'));
 const WAKE_OF = AIRCRAFT.map((a) => WAKE_ORDER.indexOf(a.derivedForReading.wake));
@@ -256,6 +262,10 @@ export class Traffic {
   private readonly tailEdge = new Int32Array(MAX_ROUTE);
   private readonly tailDir = new Int8Array(MAX_ROUTE);
   private readonly pos: Scratch = { x: 0, y: 0, h: 0 };
+  /** Scratch points of the junction turn curve (T84). */
+  private readonly cornerA: Scratch = { x: 0, y: 0, h: 0 };
+  private readonly cornerB: Scratch = { x: 0, y: 0, h: 0 };
+  private readonly cornerN: Scratch = { x: 0, y: 0, h: 0 };
   private readonly bits = [new Uint32Array(0)];
 
   /** Business callbacks: arrival at the stand, start of push back, departure, and whether a contact stand has a terminal. */
@@ -1389,14 +1399,88 @@ export class Traffic {
     const len = this.net.edgeLen[e];
     const coord = dir === 1 ? this.dist[i] : len - this.dist[i];
     this.net.pointAt(e, coord, this.pos);
-    this.x[i] = this.pos.x;
-    this.y[i] = this.pos.y;
     let h = this.pos.h;
     if (dir === -1 && this.state[i] !== AcState.Pushback) h += PI;
+    // Near a junction node the aircraft drives the turn curve the paint shows instead of the corner (T84).
+    const st = this.state[i];
+    if (st === AcState.TaxiIn || st === AcState.TaxiOut) {
+      const idx = this.routeIdx[i];
+      if (idx + 1 < this.routeLen[i] && this.cornerPose(e, dir, this.routeEdge[k + 1], this.routeDir[k + 1], this.dist[i] - len)) h = this.pos.h;
+      else if (idx > 0 && this.cornerPose(this.routeEdge[k - 1], this.routeDir[k - 1], e, dir, this.dist[i])) h = this.pos.h;
+    }
+    this.x[i] = this.pos.x;
+    this.y[i] = this.pos.y;
     const dh = turnWrap(h - this.heading[i]);
     // Limit the turn rate so corners look smooth, but never lag far behind.
     const maxTurn = TURN_RATE * DT * 4;
     this.heading[i] += Math.abs(dh) < maxTurn ? dh : dh > 0 ? maxTurn : -maxTurn;
+  }
+
+  /** A point `travelled` meters along an edge in travel direction `dir`. */
+  private alongRoute(e: number, dir: number, travelled: number, out: Scratch): void {
+    const len = this.net.edgeLen[e];
+    this.net.pointAt(e, dir === 1 ? travelled : len - travelled, out);
+  }
+
+  /**
+   * The pose on the turn curve between two taxi edges that meet at a node, `s` meters from the node
+   * along the route (negative before it), written to `this.pos` with the travel heading. False when
+   * the aircraft is outside the curve, the edges run straight on or turn back, or one is not a taxi
+   * edge. The curve has the taxiway turn radius of the smaller code, tangent to both edges, as the
+   * fillets of `nodeGeometry` draw it. It is a rational quadratic Bezier with its control point on
+   * the node, which is an exact circular arc, so it needs no trigonometry and stays deterministic.
+   */
+  private cornerPose(inE: number, inDir: number, outE: number, outDir: number, s: number): boolean {
+    const net = this.net;
+    if (!isTaxiEdge(net.edgeKind[inE]) || !isTaxiEdge(net.edgeKind[outE])) return false;
+    const lenIn = net.edgeLen[inE];
+    const lenOut = net.edgeLen[outE];
+    const cap = 0.5 * Math.min(lenIn, lenOut);
+    const r = AIRFIELD.codes[CODES[Math.min(net.edgeMaxCode[inE], net.edgeMaxCode[outE])]].turnRadiusM;
+    const probe = Math.min(cap, r);
+    if (probe <= 0 || Math.abs(s) >= probe * MAX_TAN_HALF) return false;
+    const N = this.cornerN;
+    const A = this.cornerA;
+    const B = this.cornerB;
+    this.alongRoute(inE, inDir, lenIn, N);
+    this.alongRoute(inE, inDir, lenIn - probe, A);
+    this.alongRoute(outE, outDir, probe, B);
+    let ux = N.x - A.x;
+    let uy = N.y - A.y;
+    let vx = B.x - N.x;
+    let vy = B.y - N.y;
+    const ul = Math.sqrt(ux * ux + uy * uy);
+    const vl = Math.sqrt(vx * vx + vy * vy);
+    if (ul < 1e-6 || vl < 1e-6) return false;
+    ux /= ul;
+    uy /= ul;
+    vx /= vl;
+    vy /= vl;
+    const c = ux * vx + uy * vy;
+    if (c > STRAIGHT_COS || c < TURN_BACK_COS) return false;
+    const td = Math.min(r * Math.sqrt((1 - c) / (1 + c)), cap);
+    if (Math.abs(s) >= td) return false;
+    this.alongRoute(inE, inDir, lenIn - td, A);
+    this.alongRoute(outE, outDir, td, B);
+    const w = Math.sqrt((1 + c) / 2);
+    const t = (s + td) / (2 * td);
+    const b0 = (1 - t) * (1 - t);
+    const b1 = 2 * t * (1 - t) * w;
+    const b2 = t * t;
+    const d = b0 + b1 + b2;
+    const px = (b0 * A.x + b1 * N.x + b2 * B.x) / d;
+    const py = (b0 * A.y + b1 * N.y + b2 * B.y) / d;
+    // Derivative direction: N'(t) D(t) - N(t) D'(t), with D'(t) = 2 (1 - 2t) (w - 1).
+    const db0 = -2 * (1 - t);
+    const db1 = 2 * (1 - 2 * t) * w;
+    const db2 = 2 * t;
+    const dd = db0 + db1 + db2;
+    const tx = (db0 * A.x + db1 * N.x + db2 * B.x) * d - (b0 * A.x + b1 * N.x + b2 * B.x) * dd;
+    const ty = (db0 * A.y + db1 * N.y + db2 * B.y) * d - (b0 * A.y + b1 * N.y + b2 * B.y) * dd;
+    this.pos.x = px;
+    this.pos.y = py;
+    this.pos.h = atan2Det(ty, tx);
+    return true;
   }
 
   // Ground movement --------------------------------------------------------

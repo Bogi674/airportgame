@@ -99,20 +99,48 @@ export function standRoadAnchors(s: Stand): StandRoadAnchors | null {
   return { conn: { x: s.x + fwd.x * k, y: s.y + fwd.y * k }, ends: null, fwd, right };
 }
 
-/** Every point the road tool snaps to: depot exits, stand connection points, strip ends and road ends. */
-export function roadSnapPoints(af: AirfieldPayload): Pt[] {
-  const out: Pt[] = [];
-  for (const d of af.depots ?? []) out.push(depotExit(d));
-  for (const b of af.buildings ?? []) out.push(buildingDoor(b));
+/** What a road snap point belongs to (T84), for its tooltip. */
+export type RoadTargetKind = 'depot' | 'building' | 'stand' | 'bay' | 'roadEnd';
+
+export interface RoadTarget {
+  p: Pt;
+  kind: RoadTargetKind;
+  /** Unit direction a road leaves the point in, or null when any direction fits. */
+  dir: Pt | null;
+}
+
+/** Every point the road tool snaps to, with what it belongs to and the way a road leaves it. */
+export function roadSnapTargets(af: AirfieldPayload): RoadTarget[] {
+  const out: RoadTarget[] = [];
+  for (const d of af.depots ?? []) out.push({ p: depotExit(d), kind: 'depot', dir: headingVec(d.headingDeg) });
+  for (const b of af.buildings ?? []) out.push({ p: buildingDoor(b), kind: 'building', dir: headingVec(b.headingDeg) });
   for (const s of af.stands) {
     const a = standRoadAnchors(s);
     if (!a) continue;
-    out.push(a.conn);
-    if (a.ends) out.push(a.ends[0], a.ends[1]);
+    out.push({ p: a.conn, kind: 'stand', dir: a.fwd });
+    if (a.ends) {
+      out.push({ p: a.ends[0], kind: 'stand', dir: { x: -a.right.x, y: -a.right.y } });
+      out.push({ p: a.ends[1], kind: 'stand', dir: a.right });
+    }
   }
-  for (const b of af.bayAnchors ?? []) out.push({ x: b.x, y: b.y });
-  for (const r of af.roads ?? []) out.push(r.points[0], r.points[r.points.length - 1]);
+  for (const b of af.bayAnchors ?? []) out.push({ p: { x: b.x, y: b.y }, kind: 'bay', dir: null });
+  for (const r of af.roads ?? []) {
+    const n = r.points.length;
+    out.push({ p: r.points[0], kind: 'roadEnd', dir: unit(r.points[1], r.points[0]) });
+    out.push({ p: r.points[n - 1], kind: 'roadEnd', dir: unit(r.points[n - 2], r.points[n - 1]) });
+  }
   return out;
+}
+
+/** The unit vector from a to b, or null when they coincide. */
+function unit(a: Pt, b: Pt): Pt | null {
+  const l = Math.hypot(b.x - a.x, b.y - a.y);
+  return l < 1e-9 ? null : { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+}
+
+/** Every point the road tool snaps to: depot exits, building doors, stand connection points, strip ends, baggage bays and road ends. */
+export function roadSnapPoints(af: AirfieldPayload): Pt[] {
+  return roadSnapTargets(af).map((t) => t.p);
 }
 
 export interface RoadGraph {

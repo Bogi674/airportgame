@@ -2,7 +2,7 @@ import { footprintCells, fixtureUseCells, planPropWithUse, propUseRect, useCellB
 import { apronContains, touches } from '@shared/apronGeom';
 import { extendUnitPrice, gaBlockPricing, keptPavement, mergePiece, removePlan, roundApronPoly, standHeading, standRowPricing, type RemovePlan } from '@shared/apronPricing';
 import { AIRFIELD, BUSINESS, GROUND, PAINT, STAND_PLACEMENT, STAND_SIZES, SURFACE_SPEC, SURFACE_DATA } from '@data/index';
-import { buildingRect, depotRect, roadSnapPoints } from '@shared/roadGraph';
+import { buildingDoor, buildingRect, depotExit, depotRect, headingVec, roadSnapTargets, type RoadTarget } from '@shared/roadGraph';
 import { defaultAccepts, sizeCode } from '@shared/standSizes';
 import { ACCEPT_GA, codeIndex, compassVector, CODES, runwaySide, towerRect, type AirfieldPayload, type Apron, type CodeLetter, type HoldingPoint, type PadSide, type Runway, type Stand, type StandSize, type StandType, type Surface, type Taxiway } from '@shared/airfield';
 import {
@@ -48,7 +48,7 @@ import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type MovingItem, type Tool } from '../stores/toolStore';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
-import { markShape, markTip, type SnapMark } from './snapMark';
+import { guideTip, markShape, markTip, type SnapMark } from './snapMark';
 
 export interface Mods {
   shift: boolean;
@@ -63,7 +63,7 @@ interface Deps {
   zoom(): number;
   setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void;
   setCursor(cursor: string): void;
-  setGuide(from: Pt | null, to: Pt | null): void;
+  setGuide(from: Pt | null, to: Pt | null, from2?: Pt, to2?: Pt): void;
 }
 
 /** The tools that draw an apron piece: build, remove (cut out) and extend the selected apron. */
@@ -79,6 +79,8 @@ const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(d
 
 /** How close the cursor must come to a runway threshold before a turn pad previews (task T01 spec). */
 const TURN_PAD_REACH_M = 150;
+/** A laid taxiway point within this distance of a node, end or centerline counts as joined to it. */
+const JOINED_M = 0.5;
 
 /**
  * Turns pointer input into previews and build commands for the active tool. It holds
@@ -122,18 +124,48 @@ export class ToolController {
     const st = useToolStore.getState();
     if (st.tool === 'runway') return this.dragging && this.start !== null;
     if (st.tool === 'terminal') return this.dragging && this.tStart !== null;
+    if (this.apronRectTool()) return this.dragging && this.start !== null;
     return false;
   }
 
   /** True for the tools where a plain click only sets the start point. */
   get twoClick(): boolean {
     const st = useToolStore.getState();
+    // The apron rectangle counts only once its press started a rectangle: a press of the extend tool may pick the apron instead (T84).
+    if (this.apronRectTool()) return this.dragging;
     return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode' && st.tSub !== 'prop' && st.tSub !== 'propRemove' && st.tSub !== 'move');
+  }
+
+  /**
+   * True when the end of the gesture waits for the build confirmation instead of building at once
+   * (T84): the rectangle tools, which are the apron in rectangle mode and the terminal's foundation,
+   * floor, zone and tenant unit rectangles.
+   */
+  get confirmsEnd(): boolean {
+    const st = useToolStore.getState();
+    if (this.apronRectTool()) return this.dragging && this.start !== null;
+    if (st.tool !== 'terminal' || !this.dragging || this.tStart === null) return false;
+    return st.tSub === 'foundation' || st.tSub === 'floor' || st.tSub === 'unit' || (st.tSub === 'zone' && !st.zoneBrush);
   }
 
   /** True while any gesture is in progress, so the map should scroll when the pointer reaches an edge. */
   get gestureActive(): boolean {
     return this.armed || this.dragging || this.pts.length > 0;
+  }
+
+  private apronRectTool(): boolean {
+    const st = useToolStore.getState();
+    return isApronTool(st.tool) && st.apronMode === 'rect';
+  }
+
+  /** The end point of a rectangle waiting for the build confirmation, or null (T84). */
+  private pendingEnd: { p: Pt; mods: Mods } | null = null;
+
+  /** Shows the rectangle ending at p and holds it until the player confirms or cancels it (T84). */
+  holdEnd(p: Pt, mods: Mods): void {
+    this.pendingEnd = null;
+    this.move(p, mods);
+    this.pendingEnd = { p, mods };
   }
 
   /** Outline shapes of an airfield object or terminal, for the hover and selection highlights. */
@@ -328,6 +360,7 @@ export class ToolController {
     this.tGrid = null;
     this.mark = null;
     this.taxiPress = null;
+    this.pendingEnd = null;
     this.deps.setGhost(null);
     useToolStore.getState().set({ hint: null, problem: null, buy: null });
   }
@@ -402,8 +435,9 @@ export class ToolController {
     if (!mods.alt) {
       const g = alignGuide(this.af, this.pts.length > 0 ? this.pts : this.start ? [this.start] : [], p.x, p.y, Math.max(4, 9 / this.deps.zoom()));
       if (g) {
-        this.deps.setGuide(g.from, g.p);
-        this.mark = { kind: 'guide', p: g.p };
+        const [l1, l2] = g.lines;
+        this.deps.setGuide(l1.from, l1.to, l2?.from, l2?.to);
+        this.mark = { kind: 'guide', p: g.p, label: guideTip(g.lines) };
         return g.p;
       }
     }
@@ -598,6 +632,8 @@ export class ToolController {
   }
 
   move(p: Pt, mods: Mods): void {
+    // A rectangle waiting for its confirmation stays as it is until the player answers (T84).
+    if (this.pendingEnd) return;
     this.cursor = p;
     this.deps.setGuide(null, null);
     this.offerGrid(p);
@@ -765,6 +801,12 @@ export class ToolController {
   confirm(): void {
     useToolStore.getState().set({ confirmAt: null });
     const tool = useToolStore.getState().tool;
+    const held = this.pendingEnd;
+    if (held) {
+      this.pendingEnd = null;
+      this.up(held.p, held.mods);
+      return;
+    }
     if (this.armed) {
       this.up(this.cursor, { shift: false, alt: false });
       return;
@@ -1111,6 +1153,11 @@ export class ToolController {
     const shapes: GhostShape[] = [];
     // Every node shows while the tool is open, and the active target gets its own marker.
     for (const n of this.taxiNodes()) shapes.push({ k: 'marker', x: n.p.x, y: n.p.y, shape: 'dot', label: n.arms >= 3 ? n.label : undefined });
+    // Points already laid keep the marker of what they joined, so a joined end never looks loose (T84).
+    for (const b of base) {
+      const hit = findSnap(this.af.taxiways, this.taxiNodes(), b, JOINED_M);
+      if (hit) shapes.push(markShape({ kind: hit.kind, p: hit.p, label: hit.label || undefined }));
+    }
     const snapTip = this.markDecor(shapes);
     let problem: Problem | null = null;
     if (pts.length >= 2) {
@@ -1917,32 +1964,65 @@ export class ToolController {
 
   /** A road point: the nearest depot exit, stand connection point, strip end or road end within reach, else the grid or the pointer. */
   private roadPoint(p: Pt, mods: Mods): Pt {
-    const reach = Math.max(GROUND.road.snapM, 16 / this.deps.zoom());
-    let best: Pt | null = null;
-    let bestD = reach;
-    for (const q of roadSnapPoints(this.af)) {
-      const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d < bestD) {
-        bestD = d;
-        best = q;
-      }
-    }
-    return best ? { x: best.x, y: best.y } : this.placeAt(p, mods);
+    return this.roadSnap(p, mods).p;
   }
 
-  /** Ghost of the road being drawn: the road as it will look, a marker on every point it can join, and its cost. */
-  private previewRoad(p: Pt, mods: Mods): void {
-    const q = this.roadPoint(p, mods);
-    const pts = [...this.pts, q];
-    const shapes: GhostShape[] = roadSnapPoints(this.af).map((s) => ({ k: 'marker', x: s.x, y: s.y, shape: 'dot' }));
-    let problem: Problem | null = null;
-    let label: Ghost['label'];
-    if (pts.length >= 2) {
-      problem = this.landProblem({ pts, widthM: GROUND.road.widthM });
-      const len = polylineLength(pts);
-      label = { x: q.x, y: q.y, text: tFormat('ghost.road', { len: Math.round(len), cost: formatMoney(Math.round(len * GROUND.road.widthM * SURFACE_SPEC[GROUND.road.surface].costPerM2)) }) };
+  /** The road point at the cursor and the target it snapped to, if any (T84). */
+  private roadSnap(p: Pt, mods: Mods): { p: Pt; target: RoadTarget | null } {
+    const reach = Math.max(GROUND.road.snapM, 16 / this.deps.zoom());
+    let best: RoadTarget | null = null;
+    let bestD = reach;
+    for (const t of roadSnapTargets(this.af)) {
+      const d = Math.hypot(t.p.x - p.x, t.p.y - p.y);
+      if (d < bestD) {
+        bestD = d;
+        best = t;
+      }
     }
-    this.show({ valid: problem === null, shapes, preview: pts.length >= 2 ? { roads: [{ id: -1, cost: 0, points: pts }] } : undefined, label }, problem, 'hint.road');
+    return best ? { p: { x: best.p.x, y: best.p.y }, target: best } : { p: this.placeAt(p, mods), target: null };
+  }
+
+  /** Markers on the road snap points near the cursor, so the player sees where a road can join (T84). */
+  private nearbyRoadMarkers(at: Pt, shapes: GhostShape[]): void {
+    for (const t of roadSnapTargets(this.af)) {
+      if (Math.hypot(t.p.x - at.x, t.p.y - at.y) <= GROUND.road.nearbyM) shapes.push({ k: 'marker', x: t.p.x, y: t.p.y, shape: 'dot' });
+    }
+  }
+
+  /** A short road piece leaving `from` along `dir`, or along the grid or runway frame when no direction is given. */
+  private roadStub(from: Pt, dir: Pt | null, mods: Mods): Pt[] {
+    let d = dir;
+    if (!d) {
+      const grid = this.snapGrid(mods);
+      const v = headingVec(grid ? grid.headingDeg : this.frameAt(from));
+      d = { x: v.x, y: v.y };
+    }
+    return [from, { x: from.x + d.x * GROUND.road.stubM, y: from.y + d.y * GROUND.road.stubM }];
+  }
+
+  /** Ghost of the road being drawn: the road as it will look, a marker on every point near the cursor it can join, and its cost. */
+  private previewRoad(p: Pt, mods: Mods): void {
+    const snap = this.roadSnap(p, mods);
+    const q = snap.p;
+    const shapes: GhostShape[] = [];
+    this.nearbyRoadMarkers(q, shapes);
+    let tip: string | undefined;
+    if (snap.target) {
+      shapes.push({ k: 'marker', x: q.x, y: q.y, shape: 'ring' });
+      tip = tDynamic(`ghost.roadTarget.${snap.target.kind}`);
+    }
+    if (this.pts.length === 0) {
+      // Before the first click a road stub follows the cursor, leaving a snapped point the way a road would (T84).
+      const stub = this.roadStub(q, snap.target?.dir ?? null, mods);
+      const problem = this.landProblem({ pts: stub, widthM: GROUND.road.widthM });
+      this.show({ valid: problem === null, shapes, preview: { roads: [{ id: -1, cost: 0, points: stub }] }, tip: tip ? { x: q.x, y: q.y, text: tip } : undefined }, problem, 'hint.roadStart');
+      return;
+    }
+    const pts = [...this.pts, q];
+    const problem = this.landProblem({ pts, widthM: GROUND.road.widthM });
+    const len = polylineLength(pts);
+    const label = { x: q.x, y: q.y, text: tFormat('ghost.road', { len: Math.round(len), cost: formatMoney(Math.round(len * GROUND.road.widthM * SURFACE_SPEC[GROUND.road.surface].costPerM2)) }) };
+    this.show({ valid: problem === null, shapes, preview: { roads: [{ id: -1, cost: 0, points: pts }] }, label, tip: tip ? { x: q.x, y: q.y, text: tip } : undefined }, problem, 'hint.road');
   }
 
   private commitRoad(): void {
@@ -1960,11 +2040,20 @@ export class ToolController {
     if (!problem && towerBlocked(this.af, rect)) problem = { code: 'depotOnPavement' };
     if (!problem && (this.af.depots ?? []).some((o) => towersOverlap(rect, depotRect(o)))) problem = { code: 'onDepot' };
     if (!problem && (this.af.towers ?? []).some((t) => towersOverlap(rect, towerRect(t.x, t.y, BUSINESS.tower.footprintM)))) problem = { code: 'onTower' };
+    const exit = depotExit(d);
     this.show(
-      { valid: problem === null, shapes: [{ k: 'poly', pts: rect }], preview: { depots: [d] }, label: { x: q.x, y: q.y, text: tFormat('ghost.depot', { cost: formatMoney(GROUND.depot.cost) }) } },
+      { valid: problem === null, shapes: this.doorShapes(rect, exit), preview: { depots: [d], roads: [{ id: -1, cost: 0, points: this.roadStub(exit, headingVec(d.headingDeg), mods) }] }, label: { x: q.x, y: q.y, text: tFormat('ghost.depot', { cost: formatMoney(GROUND.depot.cost) }) } },
       problem,
       'hint.depot',
     );
+  }
+
+  /** Footprint outline, the door's road point and the road points near it, for the depot and building ghosts (T84). */
+  private doorShapes(rect: Pt[], door: Pt): GhostShape[] {
+    const shapes: GhostShape[] = [{ k: 'poly', pts: rect }];
+    this.nearbyRoadMarkers(door, shapes);
+    shapes.push({ k: 'marker', x: door.x, y: door.y, shape: 'ring' });
+    return shapes;
   }
 
   /** Ghost of a supporting building: its footprint and look with the doors on the heading side, and its cost. */
@@ -1980,8 +2069,8 @@ export class ToolController {
     this.show(
       {
         valid: problem === null,
-        shapes: [{ k: 'poly', pts: rect }],
-        preview: { buildings: [b] },
+        shapes: this.doorShapes(rect, buildingDoor(b)),
+        preview: { buildings: [b], roads: [{ id: -1, cost: 0, points: this.roadStub(buildingDoor(b), headingVec(b.headingDeg), mods) }] },
         label: { x: q.x, y: q.y, text: tFormat('ghost.building', { name: tDynamic(`building.${st.buildingKind}`), cost: formatMoney(b.cost) }) },
       },
       problem,

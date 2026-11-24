@@ -14,6 +14,10 @@ export const groundSchema = z.strictObject({
     surface: z.enum(['asphalt', 'concrete']),
     snapM: z.number().positive(),
     minSegmentM: z.number().positive(),
+    /** Length of the road stub ghost at the cursor before the first click (T84). */
+    stubM: z.number().positive(),
+    /** Road snap points within this distance of the cursor show their markers (T84). */
+    nearbyM: z.number().positive(),
   }),
   apronLane: lane,
   approach: z.strictObject({ slowLastM: z.number().positive(), speedKmh: z.number().positive() }),

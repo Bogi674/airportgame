@@ -1,0 +1,25 @@
+{
+  "buy": [[2500, 4000, 7000, 7000]],
+  "commands": [
+    { "type": "buildRunway", "x": 3000, "y": 5000, "headingDeg": 90, "lengthM": 3300, "code": "E", "approach": "precision", "surface": "asphalt", "tier": 2 },
+    { "type": "buildParallelTaxiway", "runwayId": 1, "side": "right", "offsetM": 200, "code": "E", "connectors": 4, "surface": "asphalt", "tier": 2 },
+    { "type": "buildApron", "polygon": [{ "x": 3600, "y": 5250 }, { "x": 4000, "y": 5250 }, { "x": 4000, "y": 5400 }, { "x": 3600, "y": 5400 }], "surface": "concrete", "tier": 2 },
+    { "type": "buildStands", "x": 3700, "y": 5330, "headingDeg": 180, "count": 1, "spacingM": 45, "standType": "remote", "size": "medium" },
+    { "type": "buildDepot", "x": 3560, "y": 5470, "headingDeg": 90 }
+  ],
+  "camera": { "x": 3650, "y": 5430, "zoom": 3 },
+  "actions": [
+    { "tool": "tool-handling" },
+    { "tool": "card-road" },
+    { "move": [3640, 5480] },
+    { "wait": 300 },
+    { "shot": "road-stub-free", "clip": { "w": 900, "h": 600 } },
+    { "move": [3577, 5471] },
+    { "wait": 300 },
+    { "shot": "road-stub-snapped", "clip": { "w": 900, "h": 600 } },
+    { "tool": "card-depot" },
+    { "move": [3680, 5520] },
+    { "wait": 300 },
+    { "shot": "depot-door-stub", "clip": { "w": 900, "h": 600 } }
+  ]
+}

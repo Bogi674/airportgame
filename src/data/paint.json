@@ -29,7 +29,10 @@
     "signOffsetM": 2,
     "signBeforeJunctionM": 40,
     "signHeightM": 2.4,
-    "signCharWidthM": 1.3
+    "signCharWidthM": 1.3,
+    "apronEdgeDashM": 4.5,
+    "apronEdgeGapM": 7.5,
+    "apronTouchM": 3
   },
   "tower": {
     "shadowPerM": 0.4,

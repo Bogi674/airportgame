@@ -168,6 +168,9 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
     }
   }
 
+  // Where an apron lies beside a taxiway, the shoulder between them is paved like the apron (T84).
+  paintAreas(ctx, plan.apronJoins, win);
+
   // Service roads go under the taxiway pavement they cross, so the taxiway stays continuous (T60). They are
   // clipped off the shoulders too; paintRoadCrossings carries them on faintly over both.
   ctx.save();
@@ -206,7 +209,7 @@ export function paintAirfield(ctx: Ctx, af: AirfieldPayload, terminals: readonly
   strokeLines(ctx, plan.padCurves, win, YELLOW, TW.centerlineWidthM, TW.centerlineMinPx);
   paintTaxiPlan(ctx, af, plan, win);
   for (const h of plan.holds) paintHold(ctx, h, win);
-  for (const r of af.runways) paintRunwayMarks(ctx, r, win, plan);
+  for (const r of af.runways) paintRunwayMarks(ctx, r, win);
   for (const g of terminals) paintTerminal(ctx, g, win);
   paintStands(ctx, af, af.stands, win);
   paintTowers(ctx, af.towers ?? [], win);
@@ -409,6 +412,10 @@ function paintTaxiPlan(ctx: Ctx, af: AirfieldPayload, plan: Plan, win: Window): 
   strokeLines(ctx, plan.redCenterlines, win, RED, TW.centerlineWidthM, TW.centerlineMinPx);
   if (win.scale >= 1) {
     strokeLines(ctx, plan.edges, win, YELLOW, TW.edgeLineWidthM, TW.edgeLineMinPx);
+    // Beside an apron the edge lines are dashed (T84).
+    ctx.setLineDash([TW.apronEdgeDashM, TW.apronEdgeGapM]);
+    strokeLines(ctx, plan.apronEdges, win, YELLOW, TW.edgeLineWidthM, TW.edgeLineMinPx);
+    ctx.setLineDash([]);
     for (const sg of plan.signs) paintSign(ctx, sg, win);
     ctx.strokeStyle = YELLOW;
     ctx.lineWidth = lineM(win, 0.18);
@@ -535,7 +542,7 @@ function aimingDistance(length: number): number {
   return length >= 2400 ? 300 : length >= 1500 ? 250 : length >= 1200 ? 200 : 150;
 }
 
-function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window, plan: Plan): void {
+function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window): void {
   const b = runwayBounds(r);
   if (!overlaps(win, b[0], b[1], b[2], b[3])) return;
   ctx.save();
@@ -557,18 +564,9 @@ function paintRunwayMarks(ctx: Ctx, r: Runway, win: Window, plan: Plan): void {
     return;
   }
   ctx.fillStyle = WHITE;
-  // Edge stripes, continuous except where a taxiway opens onto the runway.
+  // Edge stripes run on across taxiway openings, as ICAO paints them (T84): the taxiway fillets meet them.
   const edgeW = lineM(win, 0.9);
-  const breaks = (plan.runwayBreaks.get(r.id) ?? []).slice().sort((p, q) => p[0] - q[0]);
-  for (const side of [-1, 1]) {
-    let x = 0;
-    for (const [s0, s1, bs] of breaks) {
-      if (bs !== side) continue;
-      if (s0 > x) ctx.fillRect(x, side * (half - 0.6) - (side > 0 ? edgeW : 0), Math.min(s0, L) - x, edgeW);
-      x = Math.max(x, s1);
-    }
-    if (x < L) ctx.fillRect(x, side * (half - 0.6) - (side > 0 ? edgeW : 0), L - x, edgeW);
-  }
+  for (const side of [-1, 1]) ctx.fillRect(0, side * (half - 0.6) - (side > 0 ? edgeW : 0), L, edgeW);
   const instrument = r.approach !== 'visual';
   const precision = r.approach === 'precision';
   const name = [r.nameA, r.nameB];
@@ -648,7 +646,7 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
   const win: Window = { minX: -1e9, minY: -1e9, maxX: 1e9, maxY: 1e9, scale };
   if (preview.runway) {
     paintRunwayPavement(ctx, preview.runway, win);
-    paintRunwayMarks(ctx, preview.runway, win, planFor(af));
+    paintRunwayMarks(ctx, preview.runway, win);
   }
   if (preview.stands) paintStands(ctx, af, preview.stands, win);
   if (preview.towers) paintTowers(ctx, preview.towers, win);

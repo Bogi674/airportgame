@@ -7,7 +7,9 @@
   "speedKmh": 25,
   "surface": "asphalt",
   "snapM": 8,
-  "minSegmentM": 4
+  "minSegmentM": 4,
+  "stubM": 12,
+  "nearbyM": 300
  },
  "apronLane": {
   "laneOffsetM": 3,
