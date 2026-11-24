@@ -47,7 +47,7 @@ import { useGameStore } from '../stores/gameStore';
 import { GRID_TOOLS, snapModeOf, useToolStore, type Tool } from '../stores/toolStore';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
-import { markShape, markTip, type SnapMark } from './snapMark';
+import { guideTip, markShape, markTip, type SnapMark } from './snapMark';
 
 export interface Mods {
   shift: boolean;
@@ -62,7 +62,7 @@ interface Deps {
   zoom(): number;
   setHighlight(hover: GhostShape[] | null, selected: GhostShape[] | null): void;
   setCursor(cursor: string): void;
-  setGuide(from: Pt | null, to: Pt | null): void;
+  setGuide(from: Pt | null, to: Pt | null, from2?: Pt, to2?: Pt): void;
 }
 
 /** The tools that draw an apron piece: build, remove (cut out) and extend the selected apron. */
@@ -78,6 +78,8 @@ const compassOf = (dx: number, dy: number): number => ((Math.round((Math.atan2(d
 
 /** How close the cursor must come to a runway threshold before a turn pad previews (task T01 spec). */
 const TURN_PAD_REACH_M = 150;
+/** A laid taxiway point within this distance of a node, end or centerline counts as joined to it. */
+const JOINED_M = 0.5;
 
 /**
  * Turns pointer input into previews and build commands for the active tool. It holds
@@ -399,8 +401,9 @@ export class ToolController {
     if (!mods.alt) {
       const g = alignGuide(this.af, this.pts.length > 0 ? this.pts : this.start ? [this.start] : [], p.x, p.y, Math.max(4, 9 / this.deps.zoom()));
       if (g) {
-        this.deps.setGuide(g.from, g.p);
-        this.mark = { kind: 'guide', p: g.p };
+        const [l1, l2] = g.lines;
+        this.deps.setGuide(l1.from, l1.to, l2?.from, l2?.to);
+        this.mark = { kind: 'guide', p: g.p, label: guideTip(g.lines) };
         return g.p;
       }
     }
@@ -1091,6 +1094,11 @@ export class ToolController {
     const shapes: GhostShape[] = [];
     // Every node shows while the tool is open, and the active target gets its own marker.
     for (const n of this.taxiNodes()) shapes.push({ k: 'marker', x: n.p.x, y: n.p.y, shape: 'dot', label: n.arms >= 3 ? n.label : undefined });
+    // Points already laid keep the marker of what they joined, so a joined end never looks loose (T84).
+    for (const b of base) {
+      const hit = findSnap(this.af.taxiways, this.taxiNodes(), b, JOINED_M);
+      if (hit) shapes.push(markShape({ kind: hit.kind, p: hit.p, label: hit.label || undefined }));
+    }
     const snapTip = this.markDecor(shapes);
     let problem: Problem | null = null;
     if (pts.length >= 2) {

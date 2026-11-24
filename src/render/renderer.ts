@@ -121,6 +121,7 @@ export class Renderer {
   /** Snap tip box in device pixels, rewritten each frame while a tip shows. */
   private readonly tipRect = { x: 0, y: 0, w: 0, h: 0 };
   private guide: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
+  private guide2: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null;
   private grid: ConstructionGrid | null = null;
   private readonly gridPoint = { x: 0, y: 0 };
   private hover: GhostShape[] | null = null;
@@ -302,9 +303,10 @@ export class Renderer {
     this.overlay?.setSelected(id);
   }
 
-  /** Dashed alignment guide from an anchor to the snapped point, or none. */
-  setGuide(a: { x: number; y: number } | null, b: { x: number; y: number } | null): void {
+  /** Dashed alignment guide from an anchor to the snapped point, or none, plus a second one where two guides cross (T84). */
+  setGuide(a: { x: number; y: number } | null, b: { x: number; y: number } | null, a2?: { x: number; y: number }, b2?: { x: number; y: number }): void {
     this.guide = a && b ? { a, b } : null;
+    this.guide2 = this.guide && a2 && b2 ? { a: a2, b: b2 } : null;
   }
 
   /** The construction grid to draw under the ghost preview, or none (task T42, R6). */
@@ -693,22 +695,23 @@ export class Renderer {
   }
 
   private drawGuide(a: number, b: number, cc: number, d: number, e: number, f: number): void {
-    const g = this.guide;
-    if (!g) return;
     const ctx = this.ctx;
     const zoom = this.camera.zoom;
     ctx.setTransform(a, b, cc, d, e, f);
     ctx.strokeStyle = 'rgba(255,90,77,0.9)';
     ctx.lineWidth = Math.max(1.5 / zoom, 0.3);
-    ctx.setLineDash([10 / zoom, 6 / zoom]);
-    ctx.beginPath();
-    ctx.moveTo(g.a.x, g.a.y);
-    ctx.lineTo(g.b.x, g.b.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.arc(g.a.x, g.a.y, 4 / zoom, 0, Math.PI * 2);
-    ctx.stroke();
+    for (const g of [this.guide, this.guide2]) {
+      if (!g) continue;
+      ctx.setLineDash([10 / zoom, 6 / zoom]);
+      ctx.beginPath();
+      ctx.moveTo(g.a.x, g.a.y);
+      ctx.lineTo(g.b.x, g.b.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(g.a.x, g.a.y, 4 / zoom, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   /**

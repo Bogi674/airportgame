@@ -1,6 +1,7 @@
+import type { GuideLine } from '@shared/airfieldGeom';
 import type { Pt } from '@shared/geom';
 import type { GhostShape, MarkerShape } from '@shared/ghost';
-import { tFormat } from '../strings';
+import { tDynamic, tFormat } from '../strings';
 
 /**
  * What a drawing tool snapped to (task T70). The taxiway kinds come from `findSnap`, the others from
@@ -51,7 +52,7 @@ export function markTip(m: SnapMark): string | null {
     case 'centerline':
       return tFormat('ghost.snapCenterline', {});
     case 'guide':
-      return tFormat('ghost.snapGuide', {});
+      return m.label ?? tFormat('ghost.snapGuide', {});
     case 'angle':
       return tFormat('ghost.snapAngle', { hdg: m.label ?? '' });
     case 'apronEdge':
@@ -61,4 +62,11 @@ export function markTip(m: SnapMark): string | null {
     case 'grid':
       return null;
   }
+}
+
+/** What an alignment guide follows, for its tooltip: one guide, or both where two cross (T84). */
+export function guideTip(lines: readonly GuideLine[]): string {
+  const one = (l: GuideLine): string => tDynamic(`ghost.guide.${l.kind}${l.square ? 'Square' : ''}`);
+  if (lines.length < 2) return one(lines[0]);
+  return tFormat('ghost.guide.both', { a: one(lines[0]), b: one(lines[1]) });
 }

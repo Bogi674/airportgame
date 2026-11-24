@@ -175,52 +175,164 @@ export function snapToRunwayEdge(af: AirfieldPayload, x: number, y: number, radi
   return best;
 }
 
+/** What a guide line follows (T84). `gesture` is the segment being drawn, `world` the north and east axes. */
+export type GuideKind = 'runway' | 'taxiway' | 'apron' | 'gesture' | 'world';
+
+export interface GuideLine {
+  /** The anchor the line starts from and the point on it nearest the pointer. */
+  from: Pt;
+  to: Pt;
+  kind: GuideKind;
+  /** True for the line at right angles to what it follows. For `world`, true is the east west axis. */
+  square: boolean;
+}
+
+export interface GuideHit {
+  p: Pt;
+  from: Pt;
+  /** One guide, or two when the point sits where two guides cross. */
+  lines: GuideLine[];
+}
+
+/** Guides closer than this many degrees to parallel never make a crossing. */
+const CROSS_MIN_SIN = Math.sin((10 * Math.PI) / 180);
+/** A guide does not snap within this distance of its own anchor, where every line would pass. */
+const GUIDE_MIN_ALONG_M = 20;
+/** A gesture point this close to a taxiway centerline or apron edge lies on it. */
+const ON_LINE_M = 0.5;
+
+interface Cand {
+  ax: number;
+  ay: number;
+  dx: number;
+  dy: number;
+  lat: number;
+  along: number;
+  kind: GuideKind;
+  square: boolean;
+}
+
 /**
- * Alignment guide: when a point is close to the line that continues an existing taxiway or runway
- * axis, or runs square to it, or lines up with the points of the current gesture, it snaps onto that
- * line. Returns the snapped point and the anchor the guide line starts from.
+ * Alignment guides (T84): lines that continue a runway or taxiway axis or an apron edge, the lines at
+ * right angles to them, the last segment of the current gesture and its square, and the world axes
+ * through the gesture's points as the lowest priority. A point near one line snaps onto it; a point
+ * near the crossing of two lines that are not parallel snaps onto the crossing, so a corner can be
+ * square to a taxiway and in line with an apron edge at once.
  */
-export function alignGuide(af: AirfieldPayload, extra: readonly Pt[], x: number, y: number, tol: number): { p: Pt; from: Pt } | null {
-  let best: { p: Pt; from: Pt } | null = null;
-  let bestD = tol;
-  const test = (ax: number, ay: number, ux: number, uy: number): void => {
+export function alignGuide(af: AirfieldPayload, extra: readonly Pt[], x: number, y: number, tol: number): GuideHit | null {
+  const cands: Cand[] = [];
+  const test = (ax: number, ay: number, ux: number, uy: number, kind: GuideKind, square: boolean): void => {
     const l = Math.hypot(ux, uy);
     if (l < 1e-6) return;
     const dx = ux / l;
     const dy = uy / l;
     const along = (x - ax) * dx + (y - ay) * dy;
-    if (Math.abs(along) < 20) return;
+    if (Math.abs(along) < GUIDE_MIN_ALONG_M) return;
     const lat = Math.abs((x - ax) * dy - (y - ay) * dx);
-    if (lat < bestD) {
-      bestD = lat;
-      best = { p: { x: ax + dx * along, y: ay + dy * along }, from: { x: ax, y: ay } };
-    }
+    // Crossings may sit up to the tolerance from each line, so keep a little more than the snap band.
+    if (lat < tol * 1.5) cands.push({ ax, ay, dx, dy, lat, along, kind, square });
   };
-  const anchor = (p: Pt, dirs: [number, number][]): void => {
+  const anchor = (p: Pt, dirs: readonly (readonly [number, number])[], kind: GuideKind): void => {
     for (const [ux, uy] of dirs) {
-      test(p.x, p.y, ux, uy);
-      test(p.x, p.y, -uy, ux);
+      test(p.x, p.y, ux, uy, kind, false);
+      test(p.x, p.y, -uy, ux, kind, true);
     }
   };
   for (const r of af.runways) {
     const d = compassVector(r.headingDeg);
-    anchor({ x: r.x1, y: r.y1 }, [[d.x, d.y]]);
-    anchor({ x: r.x2, y: r.y2 }, [[d.x, d.y]]);
+    anchor({ x: r.x1, y: r.y1 }, [[d.x, d.y]], 'runway');
+    anchor({ x: r.x2, y: r.y2 }, [[d.x, d.y]], 'runway');
   }
   for (const t of af.taxiways) {
     for (let i = 0; i < t.points.length; i++) {
       const dirs: [number, number][] = [];
       if (i > 0) dirs.push([t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y]);
       if (i < t.points.length - 1) dirs.push([t.points[i + 1].x - t.points[i].x, t.points[i + 1].y - t.points[i].y]);
-      anchor(t.points[i], dirs);
+      anchor(t.points[i], dirs, 'taxiway');
+    }
+  }
+  for (const a of af.aprons) {
+    const poly = a.polygon;
+    for (let i = 0; i < poly.length; i++) {
+      const prev = poly[(i + poly.length - 1) % poly.length];
+      const next = poly[(i + 1) % poly.length];
+      anchor(poly[i], [[poly[i].x - prev.x, poly[i].y - prev.y], [next.x - poly[i].x, next.y - poly[i].y]], 'apron');
     }
   }
   for (let i = 0; i < extra.length; i++) {
-    const dirs: [number, number][] = [[0, 1]];
-    if (i > 0) dirs.push([extra[i].x - extra[i - 1].x, extra[i].y - extra[i - 1].y]);
-    anchor(extra[i], dirs);
+    if (i > 0) anchor(extra[i], [[extra[i].x - extra[i - 1].x, extra[i].y - extra[i - 1].y]], 'gesture');
+    // A gesture point laid on a taxiway centerline or an apron edge also guides along and square to it.
+    const on = lineThrough(af, extra[i]);
+    if (on) anchor(extra[i], [[on.dx, on.dy]], on.kind);
+    anchor(extra[i], [[0, 1]], 'world');
   }
-  return best;
+  if (cands.length === 0) return null;
+  // The same line can come several ways, such as an edge's own line and the square of its neighbour,
+  // or a world axis along an edge. It is named by the best of them: a real edge over the world axes,
+  // then its own line over a square.
+  const rank = (c: Cand): number => (c.kind === 'world' ? 2 : 0) + (c.square ? 1 : 0);
+  for (let i = 0; i < cands.length; i++) {
+    for (let j = 0; j < cands.length; j++) {
+      const a = cands[i];
+      const b = cands[j];
+      if (rank(b) >= rank(a) || Math.abs(a.dx * b.dy - a.dy * b.dx) > 1e-6 || Math.abs((b.ax - a.ax) * a.dy - (b.ay - a.ay) * a.dx) > 1e-3) continue;
+      a.kind = b.kind;
+      a.square = b.square;
+    }
+  }
+  const line = (c: Cand, p: Pt): GuideLine => ({ from: { x: c.ax, y: c.ay }, to: p, kind: c.kind, square: c.square });
+  // Two guides that cross near the pointer win over a single one; a pair without the world axes wins over one with them.
+  let cross: { p: Pt; a: Cand; b: Cand; d: number; world: boolean } | null = null;
+  for (let i = 0; i < cands.length; i++) {
+    for (let j = i + 1; j < cands.length; j++) {
+      const a = cands[i];
+      const b = cands[j];
+      if (a.lat >= tol || b.lat >= tol) continue;
+      const den = a.dx * b.dy - a.dy * b.dx;
+      if (Math.abs(den) < CROSS_MIN_SIN) continue;
+      const t = ((b.ax - a.ax) * b.dy - (b.ay - a.ay) * b.dx) / den;
+      const p = { x: a.ax + a.dx * t, y: a.ay + a.dy * t };
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d >= tol) continue;
+      const world = a.kind === 'world' || b.kind === 'world';
+      if (!cross || (cross.world && !world) || (cross.world === world && d < cross.d)) cross = { p, a, b, d, world };
+    }
+  }
+  if (cross) return { p: cross.p, from: { x: cross.a.ax, y: cross.a.ay }, lines: [line(cross.a, cross.p), line(cross.b, cross.p)] };
+  let best: Cand | null = null;
+  for (const c of cands) {
+    if (c.lat >= tol) continue;
+    if (!best || (best.kind === 'world' && c.kind !== 'world')) {
+      best = c;
+      continue;
+    }
+    if ((best.kind === 'world') !== (c.kind === 'world')) continue;
+    // The same line can come as one edge's own line and the square of its neighbour: name it by the edge.
+    if (c.lat < best.lat - 1e-9 || (Math.abs(c.lat - best.lat) <= 1e-9 && best.square && !c.square)) best = c;
+  }
+  if (!best) return null;
+  const p = { x: best.ax + best.dx * best.along, y: best.ay + best.dy * best.along };
+  return { p, from: { x: best.ax, y: best.ay }, lines: [line(best, p)] };
+}
+
+/** The taxiway centerline or apron edge a point lies on, with its direction, or null. */
+function lineThrough(af: AirfieldPayload, p: Pt): { dx: number; dy: number; kind: GuideKind } | null {
+  const c = { x: 0, y: 0, t: 0 };
+  const on = (a: Pt, b: Pt): boolean => {
+    closestOnSegment(p.x, p.y, a.x, a.y, b.x, b.y, c);
+    return Math.hypot(c.x - p.x, c.y - p.y) < ON_LINE_M;
+  };
+  for (const t of af.taxiways) {
+    for (let i = 1; i < t.points.length; i++) if (on(t.points[i - 1], t.points[i])) return { dx: t.points[i].x - t.points[i - 1].x, dy: t.points[i].y - t.points[i - 1].y, kind: 'taxiway' };
+  }
+  for (const a of af.aprons) {
+    for (let i = 0; i < a.polygon.length; i++) {
+      const u = a.polygon[i];
+      const v = a.polygon[(i + 1) % a.polygon.length];
+      if (on(u, v)) return { dx: v.x - u.x, dy: v.y - u.y, kind: 'apron' };
+    }
+  }
+  return null;
 }
 
 /** Alignment frame angles in degrees (compass): one per runway, or north when there is none. */

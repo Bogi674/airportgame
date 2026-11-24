@@ -32,7 +32,7 @@ export function MapView({ client, onRenderer, onPick }: Props) {
       setGhost: (g) => renderer.setGhost(g),
       zoom: () => cam.zoom,
       setHighlight: (h, s) => renderer.setHighlight(h, s),
-      setGuide: (a, b) => renderer.setGuide(a, b),
+      setGuide: (a, b, a2, b2) => renderer.setGuide(a, b, a2, b2),
       setCursor: (c) => {
         canvas.style.cursor = c;
       },
