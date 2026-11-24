@@ -12,6 +12,8 @@ import { t, tDynamic } from './strings';
 
 interface Props {
   onSpeed(s: Speed): void;
+  /** Starts or cancels the skip to the next morning (T92). */
+  onSkip(on: boolean): void;
   onMenu(): void;
   /** Moves the camera to the stand with this number, for the alert center. */
   onJump(stand: string): void;
@@ -48,8 +50,8 @@ function prevailingWind(freq: Float32Array, mean: Float32Array): { deg: number; 
 }
 
 /** Floating HUD: information chips at the top left, game controls at the top right. No bar. */
-export function TopBar({ onSpeed, onMenu, onJump }: Props) {
-  const { tick, cash, speed, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, quality, setQuality, overlay, overlayMenuOpen, toggleOverlayMenu, game } = useGameStore();
+export function TopBar({ onSpeed, onSkip, onMenu, onJump }: Props) {
+  const { tick, cash, speed, skip, business, site, setSheet, tickBacklog, parcelOverlay, toggleParcelOverlay, aircraftCount, standsFree, quality, setQuality, overlay, overlayMenuOpen, toggleOverlayMenu, game } = useGameStore();
   const [settings, setSettings] = useState(false);
   const rating = business ? business.rating : 0;
   const rate = Math.max(0, Math.min(100, rating));
@@ -97,12 +99,28 @@ export function TopBar({ onSpeed, onMenu, onJump }: Props) {
       </div>
       <div class="hud hud-right">
         <span class="cluster" aria-label={t('hud.speedLabel')}>
-          {tickBacklog > 50 && <span style="color:var(--warn);font-size:12px">x1</span>}
-          {SPEEDS.map((s) => (
+          {tickBacklog > 50 && <span style="color:var(--warn);font-size:12px">{`x${Math.max(Math.min(speed, 1), speed / 2)}`}</span>}
+          {skip >= 0 && (
+            <span class="chip" data-testid="skip-progress" title={t('hud.skipping')} aria-label={t('hud.skipping')}>
+              <Icon name="skip" size={12} />
+              <span class="bar">
+                <i style={`width:${Math.round(Math.min(1, skip) * 100)}%`} />
+              </span>
+              <button class="round" data-testid="skip-cancel" title={t('hud.skipCancel')} aria-label={t('hud.skipCancel')} onClick={() => onSkip(false)}>
+                <Icon name="close" size={12} />
+              </button>
+            </span>
+          )}
+          {skip < 0 && SPEEDS.map((s) => (
             <button key={s} class="round" data-testid={`speed-${s}`} title={s === 0 ? t('hud.pause') : `${s}x`} aria-label={s === 0 ? t('hud.pause') : `${s}x`} aria-pressed={speed === s} onClick={() => onSpeed(s)} style="font-size:11px">
               {s === 0 ? <Icon name="pause" size={14} /> : `${s}x`}
             </button>
           ))}
+          {skip < 0 && (
+            <button class="round" data-testid="skip-day" title={t('hud.skipDay')} aria-label={t('hud.skipDay')} onClick={() => onSkip(true)}>
+              <Icon name="skip" size={14} />
+            </button>
+          )}
         </span>
         <span class="cluster">
           {sheetBtn('airlines', 'airlines', t('top.airlines'))}

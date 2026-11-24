@@ -92,6 +92,11 @@ export class SimClient {
     this.post({ type: 'setSpeed', multiplier });
   }
 
+  /** Starts or stops the skip to the next morning (T92). */
+  skipDay(on: boolean): void {
+    this.post({ type: 'skipDay', on });
+  }
+
   /** Subscribes or unsubscribes the terminal overlay feed. Not a command, so it never enters the command log. */
   setOverlaySub(on: boolean): void {
     this.post({ type: 'overlaySub', on });

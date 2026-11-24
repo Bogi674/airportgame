@@ -176,8 +176,8 @@ Goal: MVP 1 is complete and proven in a long session.
 | T88 | Transition fixtures and fixture selection (owner, 2026-11-24): clicking a fixture or prop selects only it (outline and inspector titled with its name), every transition fixture places 2 cells of its exit zone past its exit and 2 cells of its entry zone before its intake, the ghost shows the intake, the exit and those zone blocks, a reminder after placing, the zones overlay while the terminal tool is open and a pulsing exit badge until the zone past it is extended |  | T86 | done 6de43b3 dcf0be9 |
 | T89 | Contact stands operate with an assigned, reachable gate desk; no facade reach and no jet bridge in MVP 1 (owner, 2026-11-24) |  | T66 | doing |
 | T90 | Fixture and prop selection on top of floors and stands on top of aprons: a click picks the topmost item, never the area under it (owner, 2026-11-24) |  | T88 | doing |
-| T91 | Game pace: CLOCK_SCALE 24, 40 ticks per real second at 1x, speeds 1x 2x 4x (15, 7.5, 3.75 min per day), save migration (owner, 2026-11-24) |  |  | todo |
-| T92 | Skip to next day: a HUD button runs the sim at a 30 s day rate until 06:00, with progress and cancel (owner, 2026-11-24) |  | T91 | todo |
+| T91 | Game pace (owner, 2026-11-24): a faster calendar made ground handling overrun its windows, so the clock stays at 12x and 1x runs 30 ticks per real second; speeds 1x 2x 4x 8x give 40, 20, 10 and 5 real minutes per day |  |  | doing |
+| T92 | Skip to next day: a HUD button runs the sim at a 30 s day rate until 06:00, with progress and cancel (owner, 2026-11-24) |  | T91 | doing |
 | T93 | Sandbox works finish instantly (owner, 2026-11-24) |  |  | doing |
 | T94 | Fixture names per kind, never reused, renamable; hover tag and connection lines for gate desks, stands, check in desks (owner, 2026-11-24) |  | T88 | todo |
 | T95 | Default secure airside: unzoned cells take the zone of their nearest outer wall (Secure facing an apron, Public otherwise) (owner, 2026-11-24) |  | T88 | todo |

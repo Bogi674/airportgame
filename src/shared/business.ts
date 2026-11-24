@@ -18,6 +18,12 @@ export const START_MINUTE = 6 * 60;
 export const dayIndex = (tick: number): number => Math.floor((tick + START_MINUTE * TICKS_PER_MINUTE) / TICKS_PER_DAY);
 export const minuteOfDay = (tick: number): number => Math.floor(((tick + START_MINUTE * TICKS_PER_MINUTE) % TICKS_PER_DAY) / TICKS_PER_MINUTE);
 
+/** The first tick after `tick` at which the clock reads `minute` (minutes after midnight), for the skip to the next morning (T92). */
+export function nextClockTick(tick: number, minute: number): number {
+  const offset = ((((minute - START_MINUTE) * TICKS_PER_MINUTE) % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY;
+  return offset + (Math.floor((tick - offset) / TICKS_PER_DAY) + 1) * TICKS_PER_DAY;
+}
+
 export const LEDGER_CATEGORIES = ['construction', 'land', 'landing', 'passengers', 'parking', 'rent', 'wages', 'upkeep', 'interest', 'loan', 'fuel', 'advertising', 'vending', 'ads', 'incidents'] as const;
 export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
 export const LEDGER_DAYS = 30;

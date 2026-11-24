@@ -20,9 +20,10 @@ describe('time scale', () => {
     expect(TICKS_PER_DAY).toBe(72000);
   });
 
-  it('plays motion at twice real time and one game day in 60 real minutes at speed 1', () => {
-    expect(TICKS_PER_REAL_SECOND_AT_1X * TICK_SECONDS).toBe(2);
-    expect(TICKS_PER_DAY / TICKS_PER_REAL_SECOND_AT_1X / 60).toBe(60);
+  it('plays motion at three times real time, one game day in 40 real minutes at speed 1 and 5 at speed 8 (T91)', () => {
+    expect(TICKS_PER_REAL_SECOND_AT_1X * TICK_SECONDS).toBeCloseTo(3, 9);
+    expect(TICKS_PER_DAY / TICKS_PER_REAL_SECOND_AT_1X / 60).toBe(40);
+    expect(TICKS_PER_DAY / (TICKS_PER_REAL_SECOND_AT_1X * 8) / 60).toBe(5);
   });
 
   it('starts the calendar at 06:00 on day 0 and turns the day after 18 game hours', () => {

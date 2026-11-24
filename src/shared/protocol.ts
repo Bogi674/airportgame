@@ -65,6 +65,8 @@ export type ToSimMessage =
   | { type: 'preview'; seed: string; preset: Preset }
   | { type: 'commands'; list: Command[] }
   | { type: 'setSpeed'; multiplier: Speed }
+  /** Runs the sim at the skip rate until the next morning (T92), or stops a skip. Only time passes, so it is not a command. */
+  | { type: 'skipDay'; on: boolean }
   | { type: 'query'; id: number; kind: string; args: unknown }
   | { type: 'returnBuffer'; buffer: ArrayBuffer }
   /** Subscribes the terminal overlay feed. Not a sim command, so it never enters the command log. */
@@ -75,6 +77,8 @@ export interface PerfReport {
   tickBacklog: number;
   aircraftCount: number;
   standsFree: number;
+  /** Progress of a running skip to the next morning, 0 to 1, or -1 when no skip runs (T92). */
+  skip: number;
 }
 
 /** Sim worker to main thread. */

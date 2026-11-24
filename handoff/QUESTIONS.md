@@ -610,7 +610,7 @@ Context: contact stands sat idle without a terminal facade within reach, a game 
 | Question | Answer (owner, 2026-11-24) |
 | --- | --- |
 | What makes a contact stand operate in MVP 1 | An assigned gate desk that passengers can reach. No facade reach and no jet bridge |
-| Game pace | Balanced: motion 4x real at 1x, the calendar 24x motion. Speeds 1x, 2x, 4x give 15, 7.5 and 3.75 real minutes per day |
+| Game pace | Balanced: motion 4x real at 1x, the calendar 24x motion. Speeds 1x, 2x, 4x give 15, 7.5 and 3.75 real minutes per day  Revised: 24x and then 20x made ground handling overrun its turnaround by 38 game minutes, so the owner chose to slow the calendar back until nothing overruns. The clock stays 12x; 1x is 30 ticks per real second (40 min per day), 8x is 5 min per day |
 | Skip to next day | Runs every tick at the rate of a full day in 30 s until 06:00 the next day, as fast as the CPU allows when it cannot keep up, with progress and cancel |
 | Default secure airside | Only the apron side. Each unzoned terminal cell takes the side of its nearest outer wall: Secure if that wall faces an apron or stand, Public otherwise |
 | Fixture names | Kind name plus a number. One counter per kind across the airport, never reused, stored in saves, renamable in the inspector |

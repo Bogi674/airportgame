@@ -387,6 +387,7 @@ export function App() {
       if (document.visibilityState !== 'hidden' || useGameStore.getState().screen !== 'game') return;
       const s = useGameStore.getState();
       if (s.speed !== 0) client.setSpeed(0);
+      if (s.skip >= 0) client.skipDay(false);
       if (autosave) requestSave('auto');
     };
     const onShow = (): void => {
@@ -416,7 +417,8 @@ export function App() {
       else if ((e.key === 'o' || e.key === 'O') && !e.ctrlKey && !e.metaKey && !e.altKey) s.toggleOverlayMenu();
       else if (e.key === 'Escape') {
         const tool = useToolStore.getState();
-        if (s.overlayMenuOpen) s.closeOverlayMenu();
+        if (s.skip >= 0) client.skipDay(false);
+        else if (s.overlayMenuOpen) s.closeOverlayMenu();
         else if (s.sheet) s.setSheet(null);
         else if (s.pauseOpen) resume();
         else if (tool.tool === 'select' && tool.selection === null) pause();
@@ -458,6 +460,7 @@ export function App() {
         <>
           <TopBar
             onSpeed={setSpeed}
+            onSkip={(on) => client.skipDay(on)}
             onMenu={pause}
             onJump={(n) => {
               const st = useGameStore.getState().airfield.stands.find((x) => x.number === n);

@@ -64,7 +64,7 @@ The renderer interpolates positions and headings between the last two snapshots.
 
 ## 3. Time
 
-* 1 tick is 0.1 seconds of motion. The calendar runs `CLOCK_SCALE` 12 times faster than motion, so a game minute is 50 ticks and a game day is 72 000 ticks. At speed 1 the sim runs 20 ticks per real second: aircraft, vehicles and people move at twice real time, and a game day takes 60 real minutes.
+* 1 tick is 0.1 seconds of motion. The calendar runs `CLOCK_SCALE` 12 times faster than motion, so a game minute is 50 ticks and a game day is 72 000 ticks. At speed 1 the sim runs 30 ticks per real second: aircraft, vehicles and people move at three times real time, and a game day takes 40 real minutes. Speeds are 1x, 2x, 4x and 8x, so 8x takes 5 real minutes at 240 ticks per second (T91). Over 50 ticks of backlog the worker halves the speed, at least to 1x. The skip to the next morning (T92) runs every tick at the rate of a day in 30 real seconds, or as fast as the worker can, until 06:00.
 * Physical durations (taxiing, runway occupancy, wake separation, walking) are tick counts. Calendar durations (turnarounds, works, weather, lead times, service seconds in data) are game minutes or game clock seconds, converted through `TICKS_PER_MINUTE` and `gameSecondsToTicks`.
 * Cadences: aircraft and vehicles every tick, people cohorts every 5 ticks, queues and service nodes every 10, baggage and turnaround tasks every 10, ATC sequencing every 20, congestion costs every 50, market, tenants and finance once per game day, events every game hour.
 * If the worker falls behind it drops snapshots, never ticks, and reports `tickBacklog`. Over 50 ticks of backlog, speed caps automatically and the UI says so.

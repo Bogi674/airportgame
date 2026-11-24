@@ -46,6 +46,7 @@ export const businessSchema = z.object({
   version: z.literal(1),
   note: z.string(),
   sandboxCash: z.number().positive(),
+  skipDay: z.object({ note: z.string(), realSeconds: z.number().positive(), untilMinute: z.number().int().min(0).max(1439) }),
   gse: z.record(z.string(), z.object({ price: z.number().nonnegative(), start: z.number().int().nonnegative() })),
   fees: z.object({
     landingPerTonne: z.number().positive(),

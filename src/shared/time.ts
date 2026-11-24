@@ -4,7 +4,8 @@ export const TICK_SECONDS = 0.1;
 /**
  * The game calendar runs this many times faster than physical motion. One tick is always 0.1 s of motion
  * (aircraft, vehicles and walkers), but one tick advances the game clock by CLOCK_SCALE tenths of a game
- * second, so a game minute is 600 / CLOCK_SCALE ticks and a game day is 72000 ticks. Durations given in game
+ * second, so a game minute is 600 / CLOCK_SCALE ticks and a game day is 72000 ticks. A faster calendar was tried for T91 and dropped: ground handling then overran
+ * its turnaround windows, so the pace comes from more ticks per real second instead (owner, 2026-11-24). Durations given in game
  * minutes, hours or days (turnarounds, works, weather, service times in data) follow the calendar; physical
  * durations (taxiing, runway occupancy, wake separation, walking) keep their tick counts.
  */
@@ -19,10 +20,10 @@ export function gameSecondsToTicks(s: number): number {
 }
 
 /**
- * At speed 1 the sim runs 20 ticks per real second: motion at 2x real time, and one game day in 60 real
- * minutes (72000 ticks / 20).
+ * At speed 1 the sim runs 30 ticks per real second: motion at 3x real time, and one game day in 40 real
+ * minutes (72000 ticks / 30). Speed 8 gives 5 real minutes per day with motion at 24x (T91).
  */
-export const TICKS_PER_REAL_SECOND_AT_1X = 20;
+export const TICKS_PER_REAL_SECOND_AT_1X = 30;
 
 /** Snapshots leave the sim worker at a steady 20 Hz regardless of sim speed. */
 export const SNAPSHOT_INTERVAL_MS = 50;

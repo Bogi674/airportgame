@@ -8,6 +8,8 @@ import {
   TICKS_PER_REAL_SECOND_AT_1X,
   type Speed,
 } from '@shared/time';
+import { BUSINESS } from '@data/index';
+import { nextClockTick, TICKS_PER_DAY } from '@shared/business';
 import { Sim } from '@sim/sim';
 import { generateSite, toPayload } from '@sim/world/site';
 import type { WorkerScope } from './scope';
@@ -17,6 +19,10 @@ const scope = self as unknown as WorkerScope<ToSimMessage, FromSimMessage>;
 
 /** Wall clock slice per loop pass, so the worker stays responsive to messages. */
 const MAX_SLICE_MS = 8;
+/** Longer slice while skipping to the morning (T92): the frame rate matters less than the skip, messages still get through. */
+const SKIP_SLICE_MS = 30;
+/** Ticks per real second while skipping: one game day in the configured real seconds. */
+const SKIP_TICKS_PER_SECOND = TICKS_PER_DAY / BUSINESS.skipDay.realSeconds;
 const PERF_INTERVAL_MS = 500;
 
 const pool = new SnapshotPool(3);
@@ -29,6 +35,9 @@ let lastLoop = 0;
 let lastSnapshot = 0;
 let lastPerf = 0;
 let tickAccumulator = 0;
+/** The tick a running skip ends at, and the tick it started at; -1 when no skip runs (T92). */
+let skipUntil = -1;
+let skipFrom = 0;
 let msAccumulator = 0;
 let ticksMeasured = 0;
 const eventScratch: string[] = [];
@@ -47,8 +56,8 @@ function viewsFor(buffer: ArrayBuffer): SnapshotViews {
 }
 
 function effectiveSpeed(): number {
-  // Over 50 ticks of backlog the speed caps automatically.
-  return backlog > BACKLOG_SPEED_CAP_TICKS ? Math.min(speed, 1) : speed;
+  // Over 50 ticks of backlog the speed drops to half (at least 1x), so 8x on a busy airport settles near what the CPU holds (T91).
+  return backlog > BACKLOG_SPEED_CAP_TICKS ? Math.max(Math.min(speed, 1), speed / 2) : speed;
 }
 
 function postOwnershipIfDirty(): void {
@@ -146,7 +155,26 @@ function loop(): void {
   const dt = Math.min(now - lastLoop, 250);
   lastLoop = now;
 
-  if (speed > 0) {
+  if (skipUntil >= 0) {
+    // Skip to the morning: every tick runs, at the skip rate or as fast as the slice allows, whatever the speed.
+    tickAccumulator += (dt / 1000) * SKIP_TICKS_PER_SECOND;
+    const start = performance.now();
+    while (tickAccumulator >= 1 && sim.tick < skipUntil && performance.now() - start < SKIP_SLICE_MS) {
+      const t0 = performance.now();
+      sim.step();
+      postOverlayIfDue();
+      msAccumulator += performance.now() - t0;
+      ticksMeasured++;
+      tickAccumulator -= 1;
+    }
+    if (tickAccumulator > SKIP_TICKS_PER_SECOND / 4) tickAccumulator = SKIP_TICKS_PER_SECOND / 4;
+    backlog = 0;
+    if (sim.tick >= skipUntil) {
+      skipUntil = -1;
+      tickAccumulator = 0;
+      lastPerf = 0;
+    }
+  } else if (speed > 0) {
     tickAccumulator += (dt / 1000) * TICKS_PER_REAL_SECOND_AT_1X * effectiveSpeed();
     const start = performance.now();
     while (tickAccumulator >= 1 && performance.now() - start < MAX_SLICE_MS) {
@@ -190,6 +218,7 @@ function loop(): void {
         tickBacklog: backlog,
         aircraftCount: sim.aircraftCount,
         standsFree: sim.standsFree,
+        skip: skipUntil >= 0 ? (sim.tick - skipFrom) / Math.max(1, skipUntil - skipFrom) : -1,
       },
     });
     msAccumulator = 0;
@@ -213,6 +242,7 @@ scope.onmessage = (event) => {
       case 'init':
         scope.postMessage({ type: 'reset' });
         sim = new Sim(msg.seed, msg.options);
+        skipUntil = -1;
         if (msg.saveData !== undefined) sim.restore(msg.saveData);
         lastLoop = performance.now();
         tickAccumulator = 0;
@@ -235,6 +265,14 @@ scope.onmessage = (event) => {
         break;
       case 'setSpeed':
         speed = msg.multiplier;
+        break;
+      case 'skipDay':
+        if (sim && msg.on) {
+          skipFrom = sim.tick;
+          skipUntil = nextClockTick(sim.tick, BUSINESS.skipDay.untilMinute);
+        } else skipUntil = -1;
+        tickAccumulator = 0;
+        lastPerf = 0;
         break;
       case 'overlaySub':
         // Publishes at once, even while paused, so an overlay opened in pause shows data.

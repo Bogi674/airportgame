@@ -172,6 +172,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   game: { seed: 'GOLDEN-0001', preset: 'flatCoastal', mode: 'career', airport: airportFromSeed('GOLDEN-0001') },
   simMsPerTick: 0,
   tickBacklog: 0,
+  skip: -1,
   aircraftCount: 0,
   standsFree: 0,
   setScreen: (screen) => set({ screen }),
