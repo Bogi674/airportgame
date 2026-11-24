@@ -18,7 +18,7 @@ export function foldF64(h: number, bits: Uint32Array, count: number): number {
 
 /** Folds the first `count` elements of an Int32Array or Uint8Array. */
 // hot
-export function foldInts(h: number, arr: Int32Array | Uint8Array, count: number): number {
+export function foldInts(h: number, arr: Int32Array | Int16Array | Uint8Array, count: number): number {
   let acc = h;
   for (let i = 0; i < count; i++) acc = foldU32(acc, arr[i]);
   return acc;

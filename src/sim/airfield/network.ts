@@ -6,6 +6,8 @@ import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { nearestOnLines, standForks, standLeadOut } from '@shared/standFork';
 
 export const EdgeKind = { Taxiway: 0, Taxilane: 1, RapidExit: 2, Runway: 3, StandLeadIn: 4, StandFork: 5, StandLeadOut: 6 } as const;
+/** Taxiway, taxilane and rapid exit edges: the ones aircraft taxi along under their own power. */
+export const isTaxiEdge = (k: number): boolean => k === EdgeKind.Taxiway || k === EdgeKind.Taxilane || k === EdgeKind.RapidExit;
 export const SAMPLE_M = 2;
 const MERGE_M = 3.5;
 const SNAP_M = 7;
@@ -92,9 +94,17 @@ export class TaxiNetwork {
   edgeSource = new Int32Array(0);
   /** Line id per edge: the taxiway a section belongs to (T71), else the source id. */
   edgeLine = new Int32Array(0);
-  /** Reservation block per edge, or -1 for one way edges. Two way taxiway edges share one block per taxiway, so opposing aircraft never meet on it. */
+  /**
+   * Reservation block per edge, or -1 for runway, one way and stand edges. A block is a run of two way taxi edges
+   * between junctions (T87): a node where anything but two such edges meet, a stand joins or a one way or runway
+   * edge starts ends the run. Aircraft claim every block of a run on their route at once.
+   */
   edgeBlock = new Int32Array(0);
+  /** Direction of each edge inside its block: +1 when from to runs the block's way, else -1. */
+  edgeBlockSign = new Int8Array(0);
   blockTotal = 0;
+  /** Center distance an aircraft holds short of a node, minus its half length: the largest taxiway object distance of the taxi edges there. */
+  nodeHoldM = new Float32Array(0);
   /**
    * Conflict sets in compressed form: the edges that conflict with edge e are
    * conflictEdge[conflictStart[e] .. conflictStart[e + 1]). Only taxiway, taxilane and rapid exit edges take part.
@@ -261,6 +271,52 @@ export class TaxiNetwork {
     this.splitCrossings(lines);
     this.snapEnds(lines);
     this.assemble(lines, af);
+  }
+
+  /** Runs of two way taxi edges between junctions become blocks, each edge with its direction inside the run (T87). */
+  private buildBlocks(): void {
+    const E = this.edgeCount;
+    this.edgeBlock = new Int32Array(E).fill(-1);
+    this.edgeBlockSign = new Int8Array(E);
+    this.nodeHoldM = new Float32Array(this.nodeCount);
+    const twoWay = (e: number): boolean => isTaxiEdge(this.edgeKind[e]) && this.edgeOneWay[e] === 0 && this.edgeFrom[e] !== this.edgeTo[e];
+    for (let n = 0; n < this.nodeCount; n++) {
+      for (let p = this.adjStart[n]; p < this.adjStart[n + 1]; p++) {
+        const e = this.adjEdge[p];
+        if (isTaxiEdge(this.edgeKind[e])) this.nodeHoldM[n] = Math.max(this.nodeHoldM[n], AIRFIELD.codes[CODES[this.edgeMaxCode[e]]].taxiObjectM);
+      }
+    }
+    // The other edge of a node where exactly two two way taxi edges meet and nothing else, else -1.
+    const through = (n: number, e: number): number => {
+      if (this.adjStart[n + 1] - this.adjStart[n] !== 2) return -1;
+      for (let p = this.adjStart[n]; p < this.adjStart[n + 1]; p++) {
+        const f = this.adjEdge[p];
+        if (f !== e) return twoWay(f) ? f : -1;
+      }
+      return -1;
+    };
+    const stack: number[] = [];
+    let b = 0;
+    for (let e0 = 0; e0 < E; e0++) {
+      if (!twoWay(e0) || this.edgeBlock[e0] >= 0) continue;
+      this.edgeBlock[e0] = b;
+      this.edgeBlockSign[e0] = 1;
+      stack.push(e0);
+      while (stack.length > 0) {
+        const e = stack.pop() as number;
+        const ahead = this.edgeBlockSign[e] === 1 ? this.edgeTo[e] : this.edgeFrom[e];
+        for (const n of [this.edgeFrom[e], this.edgeTo[e]]) {
+          const f = through(n, e);
+          if (f < 0 || this.edgeBlock[f] >= 0) continue;
+          this.edgeBlock[f] = b;
+          // Past the node the block runs on away from it; behind the node it runs into it.
+          this.edgeBlockSign[f] = n === ahead ? (this.edgeFrom[f] === n ? 1 : -1) : this.edgeTo[f] === n ? 1 : -1;
+          stack.push(f);
+        }
+      }
+      b++;
+    }
+    this.blockTotal = b;
   }
 
   /** Inserts shared vertices where two lines cross. */
@@ -493,20 +549,6 @@ export class TaxiNetwork {
         sh.push(atan2Det(b.y - a.y, b.x - a.x));
       }
     });
-    const blockOfKey = new Map<number, number>();
-    for (let e = 0; e < E; e++) {
-      const kind = this.edgeKind[e];
-      if (kind === EdgeKind.Runway || this.edgeOneWay[e] === 1) continue;
-      // Taxiway edges share their taxiway's block, stand lead ins have their own.
-      const key = kind === EdgeKind.StandLeadIn || kind === EdgeKind.StandFork || kind === EdgeKind.StandLeadOut ? 1_000_000 + e : this.edgeLine[e];
-      let b = blockOfKey.get(key);
-      if (b === undefined) {
-        b = blockOfKey.size;
-        blockOfKey.set(key, b);
-      }
-      this.edgeBlock[e] = b;
-    }
-    this.blockTotal = blockOfKey.size;
     this.sampleX = Float32Array.from(sx);
     this.sampleY = Float32Array.from(sy);
     this.sampleH = Float32Array.from(sh);
@@ -530,6 +572,8 @@ export class TaxiNetwork {
       this.adjEdge[p] = e;
       this.adjDir[p] = -1;
     }
+
+    this.buildBlocks();
 
     // Stand and entry nodes.
     this.standNode = new Int32Array(af.stands.length).fill(-1);

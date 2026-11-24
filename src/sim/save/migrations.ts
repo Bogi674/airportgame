@@ -11,7 +11,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 42;
+export const SAVE_VERSION = 43;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -426,6 +426,13 @@ export function migrate(raw: unknown): SaveData {
     const airlines = (save as { business?: { airlines?: { id: number }[] } }).business?.airlines;
     if (airlines) airlines.forEach((a, i) => (a.id = i));
     save.version = 42;
+  }
+  if (save.version < 43) {
+    // T87: aircraft hold claims on whole runs of two way pavement instead of per block counters. The counters go;
+    // Traffic.loadState sees no claims and claims again from where each aircraft stands.
+    const arrays = (save as { traffic?: { arrays?: Record<string, unknown> } }).traffic?.arrays;
+    if (arrays) for (const k of ['curBlock', 'prevBlock', 'nextBlock', 'blockCount', 'blockDir', 'blockLast']) delete arrays[k];
+    save.version = 43;
   }
   return save as SaveData;
 }
