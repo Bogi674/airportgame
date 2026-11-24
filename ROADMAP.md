@@ -67,7 +67,7 @@ MVP 1 ends with the acceptance task T38.
 | 3 | People | T54, T67, T20, T68, T79, T80, T81 | done |
 | 3b | Terminal kit | T73, T74, T75, T76, T77 | done |
 | 4 | Tenants and events | T32, T82, T50 | done |
-| 5 | Shell and release | T35, T36, T45, T37, T38 | todo |
+| 5 | Shell and release | T35, T36, T45, T37, T38 | doing |
 
 Phase 3 depends only on finished work until T20, so T54 and T67 may run in a second session beside phase 1 or 2. Phase 3b depends only on finished work and may run beside phase 2 or 3. Every other phase waits for the one before it.
 
@@ -167,8 +167,8 @@ Goal: MVP 1 is complete and proven in a long session.
 | T35 | Main menu, new game wizard, load screen, settings and pause menu per `docs/UI_DESIGN.md` |  | phase 4 | done 55c076d 5c7b654 |
 | T36 | Left rail flyouts, alert center, overlay list |  | phase 4 | done 03d9bcd |
 | T45 | Asset sharpness at maximum zoom: diagnose, then fix |  |  | done caa064b |
-| T37 | Playwright smoke and visual tests in three engines |  | T35, T36 | todo |
-| T38 | MVP 1 acceptance: every exit criterion above holds, a 3 hour session at 4x runs without errors or budget breaches |  | all | todo |
+| T37 | Playwright smoke and visual tests in three engines |  | T35, T36 | done 729bd39 |
+| T38 | MVP 1 acceptance: every exit criterion above holds, a 3 hour session at 4x runs without errors or budget breaches |  | all | doing (automated part done: verify, soak 765bbd5, three engines; waits for the owner's 3 hour session, `handoff/work/T38.md`) |
 
 Exit: T38 passes.
 
