@@ -273,7 +273,7 @@ export class Tenants {
 
   payload(): TenantsPayload {
     const pool = this.poolSize();
-    return { units: this.units.map((u) => this.view(u)), pool: TENANT_CATEGORY_KEYS.map(() => pool) };
+    return { units: this.units.map((u) => this.view(u)), pool: TENANT_CATEGORY_KEYS.map(() => pool), paxYear: Math.round(this.paxYear) };
   }
 
   /** Draw data of the units of one grid: outline, furnishing in the brand color and the sign. */

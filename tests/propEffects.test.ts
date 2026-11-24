@@ -34,8 +34,9 @@ describe('prop effect data', () => {
     expect(P.adPerPax['screen.ledWall']).toBe(0.05);
     expect(P.paxPerAdSlot).toBe(500);
     expect(P.wayfindingAreaM2).toBe(400);
-    expect(LEDGER_CATEGORIES.slice(-2)).toEqual(['vending', 'ads']);
-    expect(SAVE_VERSION).toBe(40);
+    // T50 appended the incidents row after these two.
+    expect(LEDGER_CATEGORIES.slice(-3)).toEqual(['vending', 'ads', 'incidents']);
+    expect(SAVE_VERSION).toBe(42);
   });
 });
 

@@ -196,6 +196,15 @@ export class Staff {
   private seatInStation = 0;
   /** Set when a cap changed, so the next update runs a staffing pass. */
   private capsDirty = false;
+  /** Share of every role's positions left unfilled through a staff shortage event (T50). Derived from the event director, never saved. */
+  private shortShare = 0;
+
+  /** Sets the shortage share; a change runs a staffing pass on the next update unless pass is false (a restore). */
+  setShortage(share: number, pass = true): void {
+    if (share === this.shortShare) return;
+    this.shortShare = share;
+    if (pass) this.capsDirty = true;
+  }
   /** Walk row caches of the staff audience per grid, for the people sample. Derived, never saved or hashed. */
   private sampleCaches: SampleCache[] = [];
   private sampleCacheVersion = -1;
@@ -522,7 +531,8 @@ export class Staff {
     const relief = need > 0 ? Math.ceil(STAFF.reliefShare * need) : 0;
     const block = need + relief;
     const all = SHIFTS * block;
-    const allowed = this.caps[r]! < 0 ? all : Math.min(all, this.caps[r]!);
+    const capped = this.caps[r]! < 0 ? all : Math.min(all, this.caps[r]!);
+    const allowed = this.shortShare > 0 ? Math.floor(capped * (1 - this.shortShare)) : capped;
     for (let p = 0; p < allowed; p++) {
       const i = Math.floor(p / block);
       const sh = (run + i) % SHIFTS;

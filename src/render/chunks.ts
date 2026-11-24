@@ -1,7 +1,7 @@
 import { CHUNK_SIZE_M, SITE_SIZE_M } from '@shared/math';
 
 /** Raster scale in pixels per meter used when baking each band, doubling from band to band. */
-export const BAND_RASTER_SCALE = [0.25, 0.5, 1, 2, 4, 8, 16, 32] as const;
+export const BAND_RASTER_SCALE = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64] as const;
 export const BAND_COUNT = BAND_RASTER_SCALE.length;
 /** How far a band may be magnified on screen before the next band takes over, so the map stays sharp. */
 const MAX_MAGNIFY = 1.25;

@@ -3,7 +3,7 @@ import type { Command } from '@sim/commands';
 import type { BusinessPayload, TerminalGrid } from '@shared/business';
 import type { AirfieldMessage, FromSimMessage, GameOptions, OwnershipPayload, PerfReport, ToSimMessage } from '@shared/protocol';
 import type { OverlayData } from '@shared/overlay';
-import type { SitePayload } from '@shared/site';
+import type { Preset, SitePayload } from '@shared/site';
 import { createSnapshotViews, SnapHeader, type SnapshotViews } from '@shared/snapshot';
 import { SNAPSHOT_INTERVAL_MS, type Speed } from '@shared/time';
 
@@ -26,6 +26,8 @@ export interface ClientEvents {
   /** The sim stopped: the tick, seed, error and the last commands, for the crash panel and the copied report. */
   onCrash?(report: CrashReport): void;
   onSite?(site: SitePayload): void;
+  /** The site of a preview request (T35). */
+  onPreview?(site: SitePayload): void;
   onOwnership?(ownership: OwnershipPayload): void;
   onEvents?(list: string[]): void;
   onAirfield?(msg: AirfieldMessage): void;
@@ -44,6 +46,11 @@ export class SimClient {
   private prev: Held | null = null;
   private readonly outbox: Command[] = [];
   private flushScheduled = false;
+  /**
+   * Inits sent whose reset has not come back yet. While one is pending, messages still come from an older sim (the demo
+   * airport behind the menu, or the game before a load) and are dropped, so they cannot overwrite the new game (T38).
+   */
+  private resetsPending = 0;
 
   constructor(private readonly events: ClientEvents = {}) {
     // Inline workers run from a blob URL, so the built game also runs from a single file on disk.
@@ -60,7 +67,15 @@ export class SimClient {
   }
 
   init(seed: string, options: GameOptions, saveData?: unknown): void {
+    // Commands not yet sent were meant for the sim this init replaces.
+    this.outbox.length = 0;
+    this.resetsPending++;
     this.post({ type: 'init', seed, options, saveData });
+  }
+
+  /** Asks the worker for the site of a seed and preset. The answer arrives through `onPreview`. */
+  preview(seed: string, preset: Preset): void {
+    this.post({ type: 'preview', seed, preset });
   }
 
   /** Asks the worker for the full state. The answer arrives through `onSaved`. */
@@ -98,6 +113,16 @@ export class SimClient {
   }
 
   private handle(msg: FromSimMessage): void {
+    if (msg.type === 'reset') {
+      this.resetsPending = Math.max(0, this.resetsPending - 1);
+      return;
+    }
+    // A save asked of the old sim still arrives, and a site preview belongs to no sim.
+    const keep = msg.type === 'saved' || msg.type === 'error' || (msg.type === 'staticData' && msg.kind === 'preview');
+    if (this.resetsPending > 0 && !keep) {
+      if (msg.type === 'snapshot') this.post({ type: 'returnBuffer', buffer: msg.buffer }, [msg.buffer]);
+      return;
+    }
     switch (msg.type) {
       case 'snapshot': {
         // Return the buffer from two snapshots ago, keep the last two for interpolation.
@@ -108,6 +133,7 @@ export class SimClient {
       }
       case 'staticData':
         if (msg.kind === 'site') this.events.onSite?.(msg.payload);
+        else if (msg.kind === 'preview') this.events.onPreview?.(msg.payload);
         else if (msg.kind === 'ownership') this.events.onOwnership?.(msg.payload);
         else if (msg.kind === 'airfield') this.events.onAirfield?.(msg.payload);
         else if (msg.kind === 'business') this.events.onBusiness?.(msg.payload);

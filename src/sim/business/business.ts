@@ -1,6 +1,6 @@
 import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
-import { AcState, FlState, GA_AIRLINE } from '../ops/traffic';
+import { AcState, DIVERT_AIRLINE, FlState, GA_AIRLINE } from '../ops/traffic';
 import { takeoffWeight } from '../ops/performance';
 import { BAGGAGE, BUSINESS, GROUND, MARKET, STAFF, STAND_ACCESS, SURFACE_SPEC, TURNAROUNDS } from '@data/index';
 import { CAUSE_CREW_LEAVING, isVehicleCause } from '@shared/turnaround';
@@ -29,7 +29,7 @@ import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells,
 import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { GA_LABEL, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
+import { DIVERT_LABEL, GA_LABEL, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
 import { cellsOfRect, convertLegacyFixtures, planProp, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -93,6 +93,10 @@ export class Business {
     atcCells = 0;
   /** Ground support vehicles owned, by catalog index. They live in depots, so a new game owns none (T60). */
   fleet: number[] = GSE.map(() => 0);
+  /** Vehicles out of service through an event, by catalog index (T50). Derived from the event director, never saved. */
+  vehiclesOut: ReadonlyMap<number, number> = new Map();
+  /** No fuel tanker delivers before this tick (T50). Derived from the event director, never saved. */
+  fuelHeldUntil = 0;
   /** Vehicles the depots can hold, set by the sim from the depot count (D18). */
   depotCapacity = 0;
   /** Fuel in the farms in liters, and tankers on the way as due tick and liters pairs (T65, D19). */
@@ -117,7 +121,7 @@ export class Business {
     let inbound = 0;
     const keep: number[] = [];
     for (let i = 0; i < this.fuelOrders.length; i += 2) {
-      if (this.fuelOrders[i] <= tick) this.fuelStockL = Math.min(cap, this.fuelStockL + this.fuelOrders[i + 1]);
+      if (this.fuelOrders[i] <= tick && tick >= this.fuelHeldUntil) this.fuelStockL = Math.min(cap, this.fuelStockL + this.fuelOrders[i + 1]);
       else {
         keep.push(this.fuelOrders[i], this.fuelOrders[i + 1]);
         inbound += this.fuelOrders[i + 1];
@@ -171,6 +175,11 @@ export class Business {
     this.version++;
   }
 
+  /** Vehicles of a kind the depots can send out: the owned fleet less those out of service. */
+  available(k: number): number {
+    return Math.max(0, (this.fleet[k] ?? 0) - (this.vehiclesOut.get(k) ?? 0));
+  }
+
   /** Buys vehicles for the ground handling fleet. */
   buyGse(kind: string, count: number): string | null {
     const i = GSE.findIndex((v) => v.id === kind);
@@ -197,7 +206,7 @@ export class Business {
     let worst = 1;
     for (const id of ['beltloader', 'refueller', 'gpu', 'tug']) {
       const k = GSE.findIndex((v) => v.id === id);
-      if (k >= 0 && busy > 0) worst = Math.min(worst, Math.max(0, this.fleet[k]) / busy);
+      if (k >= 0 && busy > 0) worst = Math.min(worst, this.available(k) / busy);
     }
     t.serviceSlowdown = 1 + 0.6 * (1 - Math.min(1, worst));
   }
@@ -237,8 +246,11 @@ export class Business {
   loan = 0;
   loanOriginal = 0;
   weather: WeatherKind = 'clear';
-  private weatherStart = 0;
   private weatherEnd = 0;
+  /** Draws the event of a new game day, set by the sim (T50). */
+  newDay: ((tick: number) => void) | null = null;
+  /** The flat fee of a diverted flight that docks, set by the sim (T50). */
+  diversionFee: ((f: number) => number) | null = null;
   private nextTerminalId = 1;
   private day = 0;
   private readonly today = new Float64Array(LEDGER_CATEGORIES.length);
@@ -309,8 +321,11 @@ export class Business {
 
   // Airlines -----------------------------------------------------------------
 
+  /** Sandbox mode (T35): airlines sign whatever their rating gate. Set by the sim. */
+  sandbox = false;
+
   signAirline(id: number, on: boolean): string | null {
-    const r = this.market.sign(id, on, this.rating, this.traffic.nowTick);
+    const r = this.market.sign(id, on, this.sandbox ? Infinity : this.rating, this.traffic.nowTick);
     this.version++;
     return r;
   }
@@ -1016,6 +1031,7 @@ export class Business {
   // Hooks from traffic -------------------------------------------------------
 
   paxFor(f: number): number {
+    if (this.traffic.fAirline[f] === DIVERT_AIRLINE) return 0;
     const a = this.traffic.fAirline[f] >= 0 ? this.airlines[this.traffic.fAirline[f]] : null;
     const seats = AIRCRAFT[this.traffic.fType[f]].capacity.seatsTypical;
     const lf = a ? this.loadFactor(a) : 0.7;
@@ -1079,6 +1095,7 @@ export class Business {
   /** Row label for a flight: the airline name, GA for general aviation, Test for the test flights. */
   private airlineLabel(al: number): string {
     if (al >= 0) return this.airlines[al].name;
+    if (al === DIVERT_AIRLINE) return DIVERT_LABEL;
     return al === GA_AIRLINE ? GA_LABEL : 'Test';
   }
 
@@ -1086,9 +1103,12 @@ export class Business {
     const t = this.traffic.fType[f];
     const spec = AIRCRAFT[t];
     const m = this.mult(f);
-    // General aviation pays landing and parking only, so it carries no passengers.
-    const ga = this.traffic.fAirline[f] === GA_AIRLINE;
-    this.host.book('landing', Math.round((spec.weights.mtowKg / 1000) * BUSINESS.fees.landingPerTonne * m));
+    // General aviation pays landing and parking only, so it carries no passengers. A diversion pays its flat fee
+    // instead and keeps its passengers on board (T50).
+    const divert = this.traffic.fAirline[f] === DIVERT_AIRLINE;
+    const ga = divert || this.traffic.fAirline[f] === GA_AIRLINE;
+    if (divert) this.host.book('landing', this.diversionFee?.(f) ?? 0);
+    else this.host.book('landing', Math.round((spec.weights.mtowKg / 1000) * BUSINESS.fees.landingPerTonne * m));
     let pax = ga ? 0 : this.paxFor(f);
     if (!ga && this.needsTerminal(f)) {
       if (!this.arrivalEntry(f)) {
@@ -1112,7 +1132,8 @@ export class Business {
 
   private onPushback(f: number): void {
     const m = this.mult(f);
-    const ga = this.traffic.fAirline[f] === GA_AIRLINE;
+    const divert = this.traffic.fAirline[f] === DIVERT_AIRLINE;
+    const ga = divert || this.traffic.fAirline[f] === GA_AIRLINE;
     let pax = ga ? 0 : this.paxFor(f);
     if (!ga && this.needsTerminal(f)) {
       // Only passengers who boarded through the terminal fly. The rest miss the flight.
@@ -1129,7 +1150,7 @@ export class Business {
       this.handlingScore += (handled - this.handlingScore) * TURNAROUNDS.ratingWeight;
     }
     const hours = Math.max(0.25, (this.traffic.nowTick - this.flightDockedAt[f]) / (TICKS_PER_MINUTE * 60));
-    this.host.book('parking', Math.round(hours * BUSINESS.fees.parkingPerStandHour * m));
+    if (!divert) this.host.book('parking', Math.round(hours * BUSINESS.fees.parkingPerStandHour * m));
     const al = this.traffic.fAirline[f];
     if (al >= 0) {
       this.airlines[al].pax += pax;
@@ -1151,21 +1172,17 @@ export class Business {
     this.finishFixtureWorks(tick);
     if (tick % 10 === 0) for (let i = 0; i < this.serviceNodes.length; i++) serviceUpdate(this.serviceNodes[i]!, tick, this.serviceRng);
     if (tick % TICKS_PER_DAY === dayStartOffset()) this.dailyClose(tick);
-    if (this.weather !== 'clear' && tick >= this.weatherEnd) this.setWeather('clear', tick);
-    else if (this.weather === 'clear' && this.weatherStart > 0 && tick >= this.weatherStart && this.pendingKind !== 'clear') this.setWeather(this.pendingKind, tick);
+    if (this.weather !== 'clear' && tick >= this.weatherEnd) this.setWeather('clear', 0);
   }
 
-  private pendingKind: WeatherKind = 'clear';
-
-  private setWeather(kind: WeatherKind, tick: number): void {
+  /** Starts a weather event for the ticks, or clears the weather. The event director draws it (T50). */
+  setWeather(kind: WeatherKind, ticks: number): void {
     this.weather = kind;
     this.traffic.setWeather(kind);
-    if (kind === 'clear') {
-      this.weatherStart = 0;
-      this.host.emit('weatherEnd');
-    } else {
+    if (kind === 'clear') this.host.emit('weatherEnd');
+    else {
       this.host.emit(`weatherStart|kind=${kind}`);
-      this.weatherEnd = tick + this.rng.int(3, 8) * 60 * TICKS_PER_MINUTE;
+      this.weatherEnd = this.traffic.nowTick + ticks;
     }
     this.version++;
   }
@@ -1191,15 +1208,8 @@ export class Business {
     this.paxToday = 0;
     this.flightsToday = 0;
     this.lostToday = 0;
-    // Weather for the day.
-    const c = this.site.climate;
-    const r = this.rng.next();
-    let kind: WeatherKind = 'clear';
-    if (r < c.fogDays / 365) kind = 'fog';
-    else if (r < (c.fogDays + c.rainDays) / 365) kind = 'rain';
-    else if (r < (c.fogDays + c.rainDays) / 365 + 0.03) kind = 'wind';
-    this.pendingKind = kind;
-    this.weatherStart = kind === 'clear' ? 0 : tick + this.rng.int(0, 12) * 60 * TICKS_PER_MINUTE + 1;
+    // The event of the day, weather included (T50).
+    this.newDay?.(tick);
     // The placed series of signed airlines become the day's flights.
     this.market.dailyClose(tick, this.atcOk);
     // Today's flights take free stands now; this runs in the business step, after the airfield copy is current.
@@ -1372,7 +1382,7 @@ export class Business {
     return out;
   }
 
-  payload(tick: number): Omit<BusinessPayload, 'baggage'> {
+  payload(tick: number): Omit<BusinessPayload, 'baggage' | 'event'> {
     const stands = this.airfield.data.stands;
     const staffing = this.staffRows?.() ?? [];
     return {
@@ -1434,8 +1444,8 @@ export class Business {
   saveState(): unknown {
     return {
       fleet: this.fleet, fuelStockL: this.fuelStockL, fuelOrders: this.fuelOrders, fireGraceUntil: this.fireGraceUntil, version: this.version, grids: this.grids.map(saveGrid), airlines: this.airlines, rating: this.rating, satisfaction: this.satisfaction,
-      onTime: this.onTime, cleanScore: this.cleanScore, handlingScore: this.handlingScore, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather, weatherStart: this.weatherStart,
-      weatherEnd: this.weatherEnd, pendingKind: this.pendingKind, nextTerminalId: this.nextTerminalId, day: this.day,
+      onTime: this.onTime, cleanScore: this.cleanScore, handlingScore: this.handlingScore, loan: this.loan, loanOriginal: this.loanOriginal, weather: this.weather,
+      weatherEnd: this.weatherEnd, nextTerminalId: this.nextTerminalId, day: this.day,
       today: Array.from(this.today), history: this.history.map((h) => Array.from(h)), paxToday: this.paxToday,
       flightsToday: this.flightsToday, lostToday: this.lostToday,
       flightPax: packTyped(this.flightPax), flightDockedAt: packTyped(this.flightDockedAt),
@@ -1449,7 +1459,7 @@ export class Business {
   loadState(raw: unknown): void {
     const o = raw as {
       version: number; grids: SavedGrid[]; airlines: Airline[]; rating: number; satisfaction: number; onTime: number; loan: number;
-      loanOriginal: number; weather: WeatherKind; weatherStart: number; weatherEnd: number; pendingKind: WeatherKind; nextTerminalId: number;
+      loanOriginal: number; weather: WeatherKind; weatherEnd: number; nextTerminalId: number;
       day: number; today: number[]; history: number[][]; paxToday: number; flightsToday: number; lostToday: number;
       flightPax: string; flightDockedAt: string; rng: number; marketRng: number;
       service?: ServiceSave[]; serviceRng?: number;
@@ -1485,9 +1495,7 @@ export class Business {
     this.loanOriginal = o.loanOriginal;
     this.weather = o.weather;
     this.traffic.setWeather(o.weather);
-    this.weatherStart = o.weatherStart;
     this.weatherEnd = o.weatherEnd;
-    this.pendingKind = o.pendingKind;
     this.nextTerminalId = o.nextTerminalId;
     this.day = o.day;
     this.today.set(o.today.slice(0, this.today.length));

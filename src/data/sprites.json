@@ -1,12 +1,14 @@
 {
   "version": 1,
-  "note": "Aircraft sprite tiers, cache limit and liveries. Tiers follow docs/ART_AND_ASSETS.md section 2: 0 heading arrow, 1 flat silhouette with shadow, 2 reference style, 3 close up. minZoom is the lowest camera zoom in px per m that selects the tier; the reference style with livery starts at 1.5 and the close up at 6, so liveries show at apron working zoom (user, 2026-11-17). bakePpm is the resolution the tier is baked at. arrowMinPx is the smallest on screen length of the tier 0 arrow, a marker that grows when zoomed out so it stays visible.",
+  "note": "Aircraft sprite tiers, cache limit and liveries. Tiers follow docs/ART_AND_ASSETS.md section 2: 0 heading arrow, 1 flat silhouette with shadow, 2 reference style, 3 close up. minZoom is the lowest camera zoom in px per m that selects the tier; the reference style with livery starts at 1.5 and the close up at 6, so liveries show at apron working zoom (user, 2026-11-17). bakePpm is the resolution the tier is baked at. sharpPpm are the close up resolutions above the tier 3 bake, picked by device zoom (camera zoom times device pixel ratio) so no aircraft is magnified more than 1.25 times on screen; sharpMaxPx caps the side of such a bake, and cache.sharpEntries bounds how many are kept, since only a few aircraft fit the view that close (T45, owner 2026-11-23). arrowMinPx is the smallest on screen length of the tier 0 arrow, a marker that grows when zoomed out so it stays visible.",
   "tiers": {
     "minZoom": [0, 0.3, 1.5, 6],
     "bakePpm": [2, 4, 8, 16],
-    "arrowMinPx": 24
+    "arrowMinPx": 24,
+    "sharpPpm": [32, 64],
+    "sharpMaxPx": 4096
   },
-  "cache": { "maxEntries": 96 },
+  "cache": { "maxEntries": 96, "sharpEntries": 6 },
   "padM": 4,
   "liveries": [
     { "body": "#eef0f2", "fin": "#c8102e", "nacelle": null, "winglet": "#c8102e", "crown": "#1d2b53" },

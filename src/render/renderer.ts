@@ -21,10 +21,10 @@ import { Camera } from './camera';
 import { createChunkBaker, type ChunkBaker } from './bake/chunkBaker';
 import { ParcelOverlay } from './overlay';
 import { blockedLinks, drawBagOverlay, type BagOverlayColors } from './bagOverlay';
-import { aircraftTier, SpriteCache } from './sprites/aircraftSprite';
+import { aircraftTier, sharpLevel, SpriteCache } from './sprites/aircraftSprite';
 import { People } from './people';
 import { QualityGovernor, type QualityPreset } from './quality';
-import { vehicleSprite } from './sprites/vehicleSprite';
+import { vehicleBakePpm, vehicleSprite } from './sprites/vehicleSprite';
 import { bandForZoom, ChunkCache, chunkKey, chunkPixelSize, chunkSizeM, chunksPerSide, BAND_RASTER_SCALE, CHUNKS_PER_SIDE, type ChunkEntry } from './chunks';
 import { buildRamp, overlayMax, rampIndex, withAlpha } from './overlayRamp';
 import { drawZoneOverlay, type ZoneColors } from './zoneOverlay';
@@ -126,6 +126,8 @@ export class Renderer {
   private hover: GhostShape[] | null = null;
   private selected: GhostShape[] | null = null;
   private readonly sprites = new SpriteCache();
+  /** Close up bakes above the tier 3 resolution, few and large, kept apart so they never evict the ordinary sprites (T45). */
+  private readonly sharpSprites = new SpriteCache(undefined, SPRITES.cache.sharpEntries);
   private readonly people = new People();
   private debug = false;
   private readonly governor = new QualityGovernor();
@@ -160,6 +162,20 @@ export class Renderer {
   /** Colors of the Baggage load overlay and, per published building, the links that end at a blocked node (T78). */
   private bagColors: BagOverlayColors | null = null;
   private bagBlocked: Uint8Array[] = [];
+
+  /** A small JPEG of the current view, cropped to fill w by h, for the save cards (T35). Empty when the canvas cannot be read. */
+  thumbnail(w: number, h: number): string {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx || this.canvas.width === 0 || this.canvas.height === 0) return '';
+    const s = Math.max(w / this.canvas.width, h / this.canvas.height);
+    const sw = w / s;
+    const sh = h / s;
+    ctx.drawImage(this.canvas, (this.canvas.width - sw) / 2, (this.canvas.height - sh) / 2, sw, sh, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.7);
+  }
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -1146,9 +1162,11 @@ export class Renderer {
     const n = curr.header[SnapHeader.AircraftCount];
     const pn = prev ? prev.header[SnapHeader.AircraftCount] : 0;
     const tier = aircraftTier(this.camera.zoom, this.governor.level);
+    const sharp = tier === 3 ? sharpLevel(this.camera.zoom * this.dpr) : -1;
+    const cache = sharp < 0 ? this.sprites : this.sharpSprites;
     let pi = 0;
     for (let i = 0; i < n; i++) {
-      const sprite = this.sprites.get(curr.aircraftType[i], curr.aircraftLivery[i], tier);
+      const sprite = cache.get(curr.aircraftType[i], curr.aircraftLivery[i], tier, sharp);
       let x = curr.aircraftX[i];
       let y = curr.aircraftY[i];
       let h = curr.aircraftHeading[i];
@@ -1262,8 +1280,9 @@ export class Renderer {
       ctx.fillRect(-spec.lengthM / 2 + lx, -spec.widthM / 2 + ly, spec.lengthM, spec.widthM);
     }
 
+    const vehiclePpm = vehicleBakePpm(this.camera.zoom * this.dpr);
     for (let k = 0; k < m; k++) {
-      const sprite = vehicleSprite(curr.vehicleKind[idx[k]]);
+      const sprite = vehicleSprite(curr.vehicleKind[idx[k]], vehiclePpm);
       const x = xs[k];
       const y = ys[k];
       const h = hs[k];

@@ -501,3 +501,41 @@ Implementer choices, stated for the owner: zoning a unit is free and the tenant 
 | Wayfinding | Flight boards, info totems, gate displays and overhead signs in passenger zones against one per 400 m2 of passenger floor, capped at 1. It joins comfort and ambience in the Amenities term |
 
 Implementer choices, stated for the owner: vending sales are booked daily on a new ledger row Vending, ad income on a new row Ad income, both appended to the ledger. Daily passengers are counted over the whole airport, not per terminal. The water filler and the ATM pair keep no effect for now.
+
+## 2026-11-23 T50: event director
+
+Values D32 and D33 of the 2026-11-12 batch stand: eight events, one draw per day, two choices each, fallback after 2 game hours, the D33 costs.
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Parallel work | Another session takes T82; this session takes T50, T45 and later phase 5 |
+| Weather choices | Prepare (5 000, halves the weather effect) or ride out; the fallback is ride out |
+| Frequency | Fixed for MVP 1: one draw per game day, weights and the fallback time in data so a preset can scale them later |
+
+Implementer choices, stated for the owner: a weather event weighs its climate share of days times 5 and an operational event 1; a drawn event the airport cannot have (no fuel farm, vehicle, signed airline, diversion type or staff) is a quiet day. Fuel delay holds every tanker delivery for 90 minutes. A breakdown takes one vehicle of a drawn kind out for 2 days. The VIP adds 3 satisfaction to a drawn signed airline; no stand is reserved. A diversion lands 30 minutes after it is accepted, carries no passengers, holds its stand for 3 hours and pays 5 000 in place of landing and parking. Staff shortage hires 25 percent fewer of every role for 24 hours; overtime pays half a day of wages at once.
+
+## 2026-11-23 T45: asset sharpness, and MVP 1 scope
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Sharpness fix | Keep max zoom 40. Add a 64 px/m chunk band and bake aircraft and vehicles at the zoom bucket in use, up to 64 px/m, with a cache cap |
+| Stress baseline | Stale for this hardware (untouched code also fails); rewrite it from a clean run |
+| T83 | Moved to MVP 2, matching section 5 which already parks morale, fatigue and training |
+
+## 2026-11-23 T35: menus
+
+| Question | Answer (owner, 2026-11-23) |
+| --- | --- |
+| Wizard | Site and Airport steps only; difficulty and optional rules wait for MVP 2 |
+| Menu extras | Dimmed demo airport, sandbox mode, credits and version, and multiple distinctly named saves |
+| Load cards | Thumbnail cards |
+| Sandbox | Unlimited cash, the whole site owned, airlines ignore rating gates, events stay |
+| Named saves | Save overwrites the current slot, Save as makes a new named slot; cards rename, duplicate and delete |
+
+
+## 2026-11-24 T36: left rail, alert center
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| Build menu | A flyout beside the left rail replaces the bottom panel |
+| Alert center | Grouped list (critical, warning, info) with merged repeats and counts, an unread badge on the bell, the time of each alert, and a jump to the location; no mute rules and no critical banner in MVP 1 |

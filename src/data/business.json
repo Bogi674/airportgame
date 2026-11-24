@@ -1,6 +1,7 @@
 {
  "version": 1,
- "note": "Fees, terminal modules, shop categories and airline naming. Money in the game currency.",
+ "note": "Fees, terminal modules, shop categories and airline naming. Money in the game currency. sandboxCash is the cash a sandbox game holds, topped up at every daily close so no build is ever refused for money (T35, owner 2026-11-23).",
+ "sandboxCash": 1000000000000,
  "fees": {
   "landingPerTonne": 7.5,
   "passengerDeparting": 22,

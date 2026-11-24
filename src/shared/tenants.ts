@@ -47,6 +47,8 @@ export interface TenantsPayload {
   units: TenantUnitView[];
   /** Brands per category the pool holds today. */
   pool: number[];
+  /** Running yearly passengers, shown on the save cards (T35). */
+  paxYear: number;
 }
 
 export const TENANT_CATEGORY_COUNT = TENANT_CATEGORY_KEYS.length;

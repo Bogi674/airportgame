@@ -19,7 +19,7 @@ const CLASS_RGB: Record<number, [number, number, number]> = {
   [LandClass.Rock]: [128, 122, 112],
 };
 
-function buildBase(site: SitePayload): HTMLCanvasElement {
+export function buildBase(site: SitePayload): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = SIZE;
   c.height = SIZE;

@@ -10,6 +10,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "lint": "eslint .",
+    "soak": "tsx scripts/soak.ts",
     "stress": "tsx scripts/stress.ts",
     "build:offline": "npm run build && tsx scripts/inline.ts",
     "verify": "bash scripts/verify.sh",

@@ -70,6 +70,8 @@ export const AcState = { Free: 0, Approach: 1, Rollout: 2, TaxiIn: 3, Turnaround
 export const FlState = { Free: 0, Scheduled: 1, Inbound: 2, OnGround: 3, Departing: 4, Done: 5 } as const;
 /** Airline id of a general aviation flight. It has no airline, so every `>= 0` airline check skips it. */
 export const GA_AIRLINE = -2;
+/** Airline index of a diverted aircraft accepted through an event (T50): no passengers, a fixed stand time, a flat fee. */
+export const DIVERT_AIRLINE = -3;
 /** Ticks a flight waits for fuel before it is reported grounded (D19). */
 const FUEL_GROUND_TICKS = GROUND.fuel.groundAfterMin * TICKS_PER_MINUTE;
 /** GA arrivals come in the daytime span only, from 06:00 to 20:00 game time. */
@@ -316,6 +318,23 @@ export class Traffic {
     return this.tick;
   }
 
+  /** Share of the full weather effect that acts, 0.5 when the player prepared for it (T50). Derived from the event director, never saved. */
+  weatherSeverity = 1;
+
+  /** Commercial types that land on a runway and fit an open commercial stand, the candidates for a diversion (T50). */
+  diversionTypes(out: number[]): void {
+    out.length = 0;
+    for (let t = 0; t < AIRCRAFT.length; t++) {
+      if (AIRCRAFT[t].role === 'ga') continue;
+      let lands = false;
+      for (let r = 0; r < this.af.runways.length && !lands; r++) lands = checkLanding(AIRCRAFT[t], this.af.runways[r], 0.95).ok;
+      if (!lands) continue;
+      let fits = false;
+      for (let s = 0; s < this.af.stands.length && !fits; s++) fits = this.net.standNode[s] >= 0 && this.standAllows(t, s) && this.standFits(t, s);
+      if (fits) out.push(t);
+    }
+  }
+
   setWeather(kind: 'clear' | 'rain' | 'fog' | 'wind'): void {
     this.weather = kind;
   }
@@ -328,7 +347,7 @@ export class Traffic {
   private lengthFactor(r: Runway, dir: number): number {
     const hdg = dir === 1 ? r.headingDeg : (r.headingDeg + 180) % 360;
     const band = windBand(hdg % 180, this.site.idealHeadingDeg) === 'optimal' ? 0.95 : 1;
-    return band * (this.weather === 'rain' ? 1.15 : 1);
+    return band * (this.weather === 'rain' ? 1 + 0.15 * this.weatherSeverity : 1);
   }
 
   get network(): TaxiNetwork {
@@ -499,7 +518,7 @@ export class Traffic {
   }
 
   private effectiveWind(): number {
-    return this.weather === 'wind' ? this.windKt * 1.8 : this.windKt;
+    return this.weather === 'wind' ? this.windKt * (1 + 0.8 * this.weatherSeverity) : this.windKt;
   }
 
   /** Wind component along a heading (positive is headwind). */
@@ -728,9 +747,9 @@ export class Traffic {
         this.rsvCat[o] = -1;
         continue;
       }
-      const fog = this.weather === 'fog' ? 2 : 1;
-      const sepAfter = (wakeSeparationSec(WAKE_ORDER[this.rsvCat[o]], WAKE_ORDER[cat]) * 10 + (fog === 2 ? 300 : 0)) * 1;
-      const sepBefore = (wakeSeparationSec(WAKE_ORDER[cat], WAKE_ORDER[this.rsvCat[o]]) * 10 + (fog === 2 ? 300 : 0)) * 1;
+      const fog = this.weather === 'fog' ? Math.round(300 * this.weatherSeverity) : 0;
+      const sepAfter = wakeSeparationSec(WAKE_ORDER[this.rsvCat[o]], WAKE_ORDER[cat]) * 10 + fog;
+      const sepBefore = wakeSeparationSec(WAKE_ORDER[cat], WAKE_ORDER[this.rsvCat[o]]) * 10 + fog;
       if (start < this.rsvEnd[o] + sepAfter && end + sepBefore > this.rsvStart[o]) return false;
     }
     return true;

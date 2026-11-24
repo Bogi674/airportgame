@@ -327,7 +327,7 @@ export const CATEGORIES: Category[] = [
 
 const fresh = { barOpen: true, selection: null, hint: null, problem: null, buy: null } as const;
 
-/** Opens a category in the left toolbar: its default tool, its first tab, and the bottom menu. */
+/** Opens a category in the left toolbar: its default tool, its first tab, and the flyout beside the rail. */
 export function openCategory(c: Category): void {
   const s = useToolStore.getState();
   if (s.category === c.id) {
@@ -341,12 +341,13 @@ export function openCategory(c: Category): void {
   if (c.id === 'zoning') useToolStore.getState().set({ tSub: 'zone' });
 }
 
-/** Bottom menu of the open category: tabs for sub menus, and a thumbnail card for each thing that can be built or bought. */
+/** Flyout of the open category beside the left rail (T36): tabs for sub menus, and a thumbnail card for each thing that can be built or bought. It steps aside while a side sheet is open. */
 export function BuildMenu({ send }: { send(cmd: Command): void }) {
   const s = useToolStore();
   const biz = useGameStore((g) => g.business);
+  const sheetOpen = useGameStore((g) => g.sheet !== null);
   const cat = CATEGORIES.find((c) => c.id === s.category);
-  if (!cat || !s.menuOpen) return null;
+  if (!cat || !s.menuOpen || sheetOpen) return null;
   const tab = cat.tabs.find((x) => x.id === s.menuTab) ?? cat.tabs[0];
   return (
     <div data-testid="build-menu" class="panel buildmenu" style={`--h:${cat.hue}`}>

@@ -15,3 +15,4 @@ export * from './baggage';
 export * from './standAccess';
 export * from './staff';
 export * from './tenants';
+export * from './events';

@@ -16,6 +16,12 @@ export interface SaveHeader {
   savedAt: number;
   auto: boolean;
   compressed: boolean;
+  /** Since T35: the airport name, the mode, the career the save belongs to, a small JPEG of the map and passengers per year. */
+  airport?: string;
+  mode?: string;
+  career?: string;
+  thumb?: string;
+  paxYear?: number;
 }
 
 interface SaveRecord extends SaveHeader {
@@ -76,7 +82,11 @@ export async function listSaves(): Promise<SaveHeader[]> {
   try {
     const all = (await tx('readonly', (s) => s.getAll())) as SaveRecord[];
     return all
-      .map((r) => ({ id: r.id, name: r.name, seed: r.seed, preset: r.preset, tick: r.tick, cash: r.cash, savedAt: r.savedAt, auto: r.auto, compressed: r.compressed }))
+      .map((r) => {
+        const { blob, ...header } = r;
+        void blob;
+        return header;
+      })
       .sort((a, b) => b.savedAt - a.savedAt);
   } catch {
     return [];
@@ -88,6 +98,33 @@ export async function loadSave(id: string): Promise<unknown> {
   if (!rec) throw new Error('Save not found');
   const text = typeof rec.blob === 'string' ? rec.blob : await decompress(rec.blob instanceof Blob ? rec.blob : new Blob([rec.blob]), rec.compressed);
   return JSON.parse(text);
+}
+
+/** Gives a save a new name. */
+export async function renameSave(id: string, name: string): Promise<void> {
+  const rec = (await tx('readonly', (s) => s.get(id))) as SaveRecord | undefined;
+  if (!rec) return;
+  await tx('readwrite', (s) => s.put({ ...rec, name }));
+}
+
+/** Copies a save into a new manual slot with the given name. */
+export async function duplicateSave(id: string, name: string): Promise<void> {
+  const rec = (await tx('readonly', (s) => s.get(id))) as SaveRecord | undefined;
+  if (!rec) return;
+  await tx('readwrite', (s) => s.put({ ...rec, id: `manual-${Date.now()}`, name, auto: false, savedAt: Date.now() }));
+}
+
+/** The header of one save, or null. */
+export async function saveHeader(id: string): Promise<SaveHeader | null> {
+  try {
+    const rec = (await tx('readonly', (s) => s.get(id))) as SaveRecord | undefined;
+    if (!rec) return null;
+    const { blob, ...header } = rec;
+    void blob;
+    return header;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteSave(id: string): Promise<void> {

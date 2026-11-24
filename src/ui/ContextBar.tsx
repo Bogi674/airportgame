@@ -17,6 +17,7 @@ import { pickedStandSurface } from './tools/controller';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
+import { bottomCenter } from './layout';
 
 interface Props {
   send(cmd: Command): void;
@@ -106,8 +107,9 @@ function Num({ label, value, min, max, onChange, testId }: { label: string; valu
 /** Bottom bar: options of the active tool, the hint, and the reason a preview is invalid. */
 export function ContextBar({ send }: Props) {
   const s = useToolStore();
-  // Sits above the build menu when that is open.
-  const bottom = s.menuOpen && s.category ? 214 : 12;
+  // The build menu is a flyout beside the rail (T36): the bar keeps the bottom edge and moves right of the flyout.
+  const bottom = 12;
+  const flyout = useGameStore((g) => g.sheet === null) && s.menuOpen && s.category !== null;
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = SURFACE_SPEC[s.surface].pcrTiers;
@@ -128,7 +130,7 @@ export function ContextBar({ send }: Props) {
   ) : null;
   if (!s.barOpen) {
     return problemBlock ? (
-      <div class="panel" style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);padding:6px 12px`}>
+      <div class="panel" style={`position:absolute;${bottomCenter(flyout, 900)};bottom:${bottom}px;padding:6px 12px`}>
         {problemBlock}
       </div>
     ) : null;
@@ -136,7 +138,7 @@ export function ContextBar({ send }: Props) {
   return (
     <div
       data-testid="context-bar"
-      style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);max-width:900px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
+      style={`position:absolute;${bottomCenter(flyout, 900)};bottom:${bottom}px;box-sizing:border-box;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>

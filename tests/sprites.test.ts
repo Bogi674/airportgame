@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { AIRCRAFT, SPRITE_BASES } from '@data/aircraft';
 import { SPRITES } from '@data/index';
-import { LIVERY_SLOTS, SpriteCache, aircraftTier, liveryFor, tierForZoom } from '@render/sprites/aircraftSprite';
+import { LIVERY_SLOTS, SpriteCache, aircraftTier, liveryFor, sharpLevel, tierForZoom } from '@render/sprites/aircraftSprite';
+import { vehicleBakePpm } from '@render/sprites/vehicleSprite';
 import { bounds, buildGeometry, extent, hw, leY, teY, windscreen } from '@render/sprites/geometry';
 
 describe('aircraft sprite calibration', () => {
@@ -103,3 +104,35 @@ describe('sprite tiers and cache', () => {
     expect(bakes).toBe(2);
   });
 });
+
+describe('sharpness at close zoom (T45)', () => {
+  const MAX_DEVICE_ZOOM = 80;
+
+  it('keeps every aircraft bake magnified at most 1.25 times up to the finest close up', () => {
+    for (let z = SPRITES.tiers.minZoom[3]; z <= MAX_DEVICE_ZOOM; z *= 1.05) {
+      const s = sharpLevel(z);
+      const ppm = s < 0 ? SPRITES.tiers.bakePpm[3] : SPRITES.tiers.sharpPpm[s]!;
+      const finest = SPRITES.tiers.sharpPpm[SPRITES.tiers.sharpPpm.length - 1]!;
+      if (z <= finest * 1.25) expect(z / ppm).toBeLessThanOrEqual(1.25 + 1e-9);
+    }
+    expect(sharpLevel(SPRITES.tiers.bakePpm[3])).toBe(-1);
+  });
+
+  it('keeps vehicle bakes magnified at most 1.25 times up to the maximum device zoom', () => {
+    for (let z = 1; z <= MAX_DEVICE_ZOOM; z *= 1.05) expect(z / vehicleBakePpm(z)).toBeLessThanOrEqual(1.25 + 1e-9);
+  });
+
+  it('keys close up bakes apart from the tier 3 bake', () => {
+    const seen: number[] = [];
+    const cache = new SpriteCache((_t, _l, _tier, sharp) => {
+      seen.push(sharp);
+      return { canvas: {} as HTMLCanvasElement, ppm: 1, width: 1, height: 1 };
+    });
+    cache.get(0, 1, 3);
+    cache.get(0, 1, 3, 0);
+    cache.get(0, 1, 3, 1);
+    cache.get(0, 1, 3, 1);
+    expect(seen).toEqual([-1, 0, 1]);
+  });
+});
+

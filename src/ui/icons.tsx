@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 
 export type IconName =
   | 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'demolish'
-  | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close' | 'handling' | 'flightops' | 'infra' | 'staff' | 'zoning' | 'lock' | 'overlay' | 'settings' | 'options'
+  | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close' | 'handling' | 'flightops' | 'infra' | 'staff' | 'zoning' | 'lock' | 'overlay' | 'settings' | 'options' | 'bell'
   | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
 
 const P: Record<IconName, ComponentChildren> = {
@@ -39,6 +39,7 @@ const P: Record<IconName, ComponentChildren> = {
   overlay: (<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>),
   settings: (<><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.600 5.600l2.100 2.100M16.300 16.300l2.100 2.100M5.600 18.400l2.100-2.100M16.300 7.700l2.100-2.100" /></>),
   options: <path d="M4 8h10M18 8h2M4 16h2M10 16h10M14 6v4M6 14v4" />,
+  bell: (<><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z" /><path d="M10 20a2 2 0 0 0 4 0" /></>),
   close: <path d="M6 6l12 12M18 6L6 18" />,
   foundation: (<><path d="M3 16l9-5 9 5-9 5z" /><path d="M3 12l9-5 9 5" /></>),
   floor: (<><rect x="4" y="4" width="16" height="16" /><path d="M4 12h16M12 4v16" /></>),

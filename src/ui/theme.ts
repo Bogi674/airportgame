@@ -1,5 +1,6 @@
 export type Theme = 'dark' | 'light';
 const KEY = 'airfield.theme';
+const MOTION_KEY = 'airfield.reducedMotion';
 
 function stored(): Theme | null {
   try {
@@ -18,6 +19,25 @@ export function setTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   try {
     localStorage.setItem(KEY, theme);
+  } catch {
+    /* private mode: the choice lasts for this session only */
+  }
+}
+
+/** Reduced motion (T35): the saved choice, else the system preference. Stops the menu camera drift. */
+export function reducedMotion(): boolean {
+  try {
+    const v = localStorage.getItem(MOTION_KEY);
+    if (v === '1' || v === '0') return v === '1';
+  } catch {
+    /* private mode: fall back to the system preference */
+  }
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+export function setReducedMotion(on: boolean): void {
+  try {
+    localStorage.setItem(MOTION_KEY, on ? '1' : '0');
   } catch {
     /* private mode: the choice lasts for this session only */
   }

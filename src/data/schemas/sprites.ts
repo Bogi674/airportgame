@@ -19,8 +19,12 @@ export const spritesSchema = z.strictObject({
     minZoom: z.tuple([z.number().nonnegative(), z.number().positive(), z.number().positive(), z.number().positive()]),
     bakePpm: z.tuple([z.number().positive(), z.number().positive(), z.number().positive(), z.number().positive()]),
     arrowMinPx: z.number().positive(),
+    /** Close up bake resolutions in px per m above the tier 3 bakePpm, picked by device zoom (T45). */
+    sharpPpm: z.array(z.number().positive()).min(1),
+    /** Largest side in pixels of a sharp bake; a bigger type bakes at the ppm that fits. */
+    sharpMaxPx: z.number().int().positive(),
   }),
-  cache: z.strictObject({ maxEntries: z.number().int().min(8) }),
+  cache: z.strictObject({ maxEntries: z.number().int().min(8), sharpEntries: z.number().int().min(1) }),
   padM: z.number().positive(),
   liveries: z.array(liverySchema).length(8),
   neutral: liverySchema,
