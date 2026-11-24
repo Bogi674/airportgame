@@ -539,3 +539,16 @@ Implementer choices, stated for the owner: a weather event weighs its climate sh
 | --- | --- |
 | Build menu | A flyout beside the left rail replaces the bottom panel |
 | Alert center | Grouped list (critical, warning, info) with merged repeats and counts, an unread badge on the bell, the time of each alert, and a jump to the location; no mute rules and no critical banner in MVP 1 |
+
+
+## 2026-11-24 T84: build tool feedback
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| Scope | One task, T84, holds all nine items of the feedback, done in slices |
+| Apron join | Where an apron touches a taxiway the pavement runs through with no shoulder, and the taxiway edge line turns dashed along the shared stretch |
+| Runway join | A taxiway drawn into a runway gets what the parallel tool gives: lead in centerlines both ways, pavement fillets whose yellow edge lines curve out and stop at the runway edge; the white runway edge stripe stays continuous |
+| Click place | Every rectangle tool places by click, move, click, then the build confirmation; press and drag keeps working |
+| Guides | Guides follow apron edges, taxiway and runway axes and lines at right angles to them, with the world axes kept as the lowest priority; each active guide is drawn from what it follows; two crossing guides snap to their crossing |
+| Apron menu | One Apron button on the rail, Build, Extend and Remove as tabs in its flyout, Rectangle and Polygon stay in the context bar |
+| Road cursor | A road stub ghost follows the cursor with its start and the nearby snap points; every object that joins the service road shows its snap points the same way, also while it is being placed |

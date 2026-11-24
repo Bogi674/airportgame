@@ -1,6 +1,7 @@
 import { CODES, codeIndex, type AirfieldPayload, type CodeLetter, type Surface } from '@shared/airfield';
 import { AIRFIELD } from '@data/index';
 import { atan2Det } from '@shared/trig';
+import { roundCorners } from '@shared/pavement/fillet';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
 import { nearestOnLines, standForks, standLeadOut } from '@shared/standFork';
 
@@ -31,6 +32,19 @@ interface Line {
   /** Stand index for fork arcs (0 left, 1 right) and lead out lines, else -1. */
   forkStand: number;
   forkSide: number;
+  /** Bend radius of a taxiway line, or 0 where its bends stay sharp (T84). */
+  turnR?: number;
+}
+
+/** Arc point spacing of the bends inside an edge, finer than the 2 m movement samples. */
+const BEND_STEP_M = 1;
+/** Bends tighter than the half width plus this cannot be laid, as in `buildNode` (`pavement.ts`). */
+const MIN_RADIUS_MARGIN_M = 0.5;
+
+/** The centerline bend radius of a taxiway of this code and width, or 0 when the pavement draws a sharp corner. */
+function bendRadius(code: CodeLetter, widthM: number): number {
+  const r = AIRFIELD.codes[code].turnRadiusM;
+  return r < widthM / 2 + MIN_RADIUS_MARGIN_M ? 0 : r;
 }
 
 const isStandLine = (l: Line): boolean => l.edgeKind === EdgeKind.StandLeadIn || l.edgeKind === EdgeKind.StandFork || l.edgeKind === EdgeKind.StandLeadOut;
@@ -156,6 +170,7 @@ export class TaxiNetwork {
         standIdx: -1,
         forkStand: -1,
         forkSide: -1,
+        turnR: bendRadius(t.code, t.widthM),
       });
     }
     // Extend taxiway ends that touch a runway edge to the entry point on the centerline.
@@ -450,6 +465,9 @@ export class TaxiNetwork {
         this.nodeOnRunway[r.from] = 1;
         this.nodeOnRunway[r.to] = 1;
       }
+      // Bends inside an edge follow the fillet the pavement draws (T84), so aircraft drive the curve
+      // instead of the corner point. Nodes stay where they are; only the edge's path changes.
+      if (r.line.turnR !== undefined && r.line.turnR > 0 && r.pts.length > 2) r.pts = roundCorners(r.pts, r.line.turnR, BEND_STEP_M);
       // Resample every 2 m.
       let total = 0;
       for (let i = 1; i < r.pts.length; i++) total += Math.hypot(r.pts[i].x - r.pts[i - 1].x, r.pts[i].y - r.pts[i - 1].y);
