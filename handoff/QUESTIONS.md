@@ -575,3 +575,16 @@ Context: the check in ghost and the placed desk disagreed (the bag chute ignored
 | Demolish confirmation | A confirm popup before removing, naming the item and what removal pays back |
 
 Implementer choices, stated for the owner: an audit of every kit sprite found each one inside its declared size and every kit fixture footprint equal to its art, so no footprint changes. The legacy reclaim belt, a 1 cell block with no art that loads as a carousel (docs/BAGGAGE.md), leaves the build menu; the sized carousel in the Baggage menu replaces it.
+
+## 2026-11-24 T87: taxi deadlocks and the edit snap
+
+Context: the owner's screenshot shows an arrival and a GA departure nose to nose on a connector joined to an apron taxilane, the departure off its centerline and rotated. Blocks are claimed one at a time, the detector cannot back anyone out, and every airfield edit replans taxiing aircraft from the nearest node and wipes reservations.
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| How an aircraft claims two way pavement | The whole chain of two way stretches on its route at once, up to where it leaves two way pavement |
+| Pairs already nose to nose | Tow the lower priority aircraft back to the junction it entered from, then it asks again |
+| Off centerline | Find the cause and fix it. Context given: the small aircraft departed from the GA stands, the larger one had just landed |
+| Stand joins | Count as junctions, so an arrival claims only up to its stand; others wait at the nearest junction and queue, as at a real airport. If unwise, pick the most robust rule |
+
+Implementer choices, stated for the owner: an aircraft cannot wait on the centerline at a stand join, since it still blocks the lane, so waiting happens on the waiting aircraft's own branch with its nose the ICAO taxiway object distance (`taxiObjectM`) clear of the junction; that distance already lives in `airfield_codes.json`, so the rule adds no new number.
