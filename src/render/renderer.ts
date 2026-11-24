@@ -109,6 +109,9 @@ const OVERLAY_LABEL_PX = 11;
 const OVERLAY_LABEL_COLOR = '#10161c';
 
 /** Canvas 2D renderer. Static layer from baked chunks, dynamic layer from interpolated snapshots. */
+/** Period of the pulsing ring on an exit whose zone is not carried on yet (T87). */
+const PENDING_PULSE_MS = 1400;
+
 export class Renderer {
   readonly camera = new Camera();
   private readonly ctx: CanvasRenderingContext2D;
@@ -618,11 +621,13 @@ export class Renderer {
     const colors = this.zoneColors;
     if (!colors) return;
     const ctx = this.ctx;
+    // Exits whose zone is not carried on yet pulse once every PENDING_PULSE_MS (T87).
+    const pulse = (performance.now() % PENDING_PULSE_MS) / PENDING_PULSE_MS;
     for (let i = 0; i < this.overlayGrids.length; i++) {
       const g = this.overlayGrids[i]!;
       const m = this.overlayMatrixFor(i, a, b, cc, d, e, f);
       ctx.setTransform(m[0]! / TERMINAL_CELL_M, m[1]! / TERMINAL_CELL_M, m[2]! / TERMINAL_CELL_M, m[3]! / TERMINAL_CELL_M, m[4]!, m[5]!);
-      drawZoneOverlay(ctx, g, colors);
+      drawZoneOverlay(ctx, g, colors, pulse);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -938,6 +943,8 @@ export class Renderer {
     ctx.fillStyle = fill;
     ctx.strokeStyle = stroke;
     ctx.lineJoin = 'round';
+    // Zone labels go last, above every shape, so they stay readable.
+    const tags: Extract<GhostShape, { k: 'zoneTag' }>[] = [];
     for (const sh of g.shapes) {
       ctx.setTransform(a, b, cc, d, e, f);
       ctx.lineWidth = Math.max(1.2 / zoom, 0.3);
@@ -1006,10 +1013,17 @@ export class Renderer {
         this.drawHatch(sh.pts, sh.blocked || !g.valid, zoom);
         ctx.fillStyle = fill;
         ctx.strokeStyle = stroke;
+      } else if (sh.k === 'zoneCell') {
+        this.drawZoneCell(sh.pts, sh.zone, zoom);
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+      } else if (sh.k === 'zoneTag') {
+        tags.push(sh);
       } else {
         this.drawMarker(sh.shape, a * sh.x + cc * sh.y + e, b * sh.x + d * sh.y + f, sh.label);
       }
     }
+    if (tags.length > 0) this.drawZoneTags(tags, a, b, cc, d, e, f);
     if (g.tags) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const k = this.dpr;
@@ -1133,6 +1147,86 @@ export class Renderer {
   }
 
   /** A snap marker at screen position (x, y): node dots, the ring, square or diamond of the active target, or a grid plus. */
+  /** Solid zone color of the zones overlay by zone id, or null before the theme is read. */
+  private zoneSolid(zone: number): string | null {
+    const c = this.zoneColors;
+    if (!c) return null;
+    return [null, c.public, c.commercial, c.secure, c.staff, c.international][zone] ?? null;
+  }
+
+  /** A cell a transition fixture paints with a zone (T87): the zone tint with a dashed edge in its color. */
+  private drawZoneCell(pts: Pt[], zone: number, zoom: number): void {
+    const hex = this.zoneSolid(zone);
+    if (!hex || pts.length < 3) return;
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(pts[0]!.x, pts[0]!.y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
+    ctx.closePath();
+    ctx.fillStyle = withAlpha(hex, 0.4);
+    ctx.fill();
+    ctx.strokeStyle = withAlpha(hex, 0.9);
+    ctx.lineWidth = Math.max(1 / zoom, 0.12);
+    ctx.setLineDash([3 / zoom, 3 / zoom]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /**
+   * Intake and exit labels of a transition fixture ghost (T87), in screen pixels: a dark pill with a border and an
+   * arrow in the zone's color. A label whose box would touch one already drawn is left out, so labels never overlap.
+   */
+  private drawZoneTags(tags: readonly Extract<GhostShape, { k: 'zoneTag' }>[], a: number, b: number, cc: number, d: number, e: number, f: number): void {
+    const ctx = this.ctx;
+    const k = this.dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = `bold ${11 * k}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const h = 20 * k;
+    const arrowW = 14 * k;
+    const pad = 6 * k;
+    const gap = 4 * k;
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    for (const tg of tags) {
+      const sx = a * tg.x + cc * tg.y + e;
+      const sy = b * tg.x + d * tg.y + f;
+      const w = pad + arrowW + gap + ctx.measureText(tg.text).width + pad;
+      const box = { x0: sx - w / 2, y0: sy - h / 2, x1: sx + w / 2, y1: sy + h / 2 };
+      if (placed.some((p) => box.x0 < p.x1 + gap && p.x0 < box.x1 + gap && box.y0 < p.y1 + gap && p.y0 < box.y1 + gap)) continue;
+      placed.push(box);
+      const col = this.zoneSolid(tg.zone) ?? '#ffffff';
+      ctx.fillStyle = 'rgba(16,22,28,0.92)';
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5 * k;
+      ctx.beginPath();
+      ctx.roundRect(box.x0, box.y0, w, h, h / 2);
+      ctx.fill();
+      ctx.stroke();
+      // The arrow follows the flow on screen: the world direction through the camera matrix.
+      const vx = a * tg.dx + cc * tg.dy;
+      const vy = b * tg.dx + d * tg.dy;
+      const len = Math.hypot(vx, vy) || 1;
+      const ux = vx / len;
+      const uy = vy / len;
+      const ax = box.x0 + pad + arrowW / 2;
+      const r = arrowW * 0.42;
+      ctx.beginPath();
+      ctx.moveTo(ax - ux * r, sy - uy * r);
+      ctx.lineTo(ax + ux * r, sy + uy * r);
+      ctx.moveTo(ax + ux * r - (ux * 0.55 - uy * 0.5) * r, sy + uy * r - (uy * 0.55 + ux * 0.5) * r);
+      ctx.lineTo(ax + ux * r, sy + uy * r);
+      ctx.lineTo(ax + ux * r - (ux * 0.55 + uy * 0.5) * r, sy + uy * r - (uy * 0.55 - ux * 0.5) * r);
+      ctx.lineWidth = 2 * k;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillText(tg.text, box.x0 + pad + arrowW + gap, sy + 0.5 * k);
+    }
+  }
+
   private drawMarker(shape: MarkerShape, x: number, y: number, label?: string): void {
     const ctx = this.ctx;
     const k = this.dpr;

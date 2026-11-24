@@ -353,8 +353,8 @@ export function App() {
     return () => observer.disconnect();
   }, [renderer]);
 
-  // The zones overlay also shows by itself while the zone or door tool of the terminal is active.
-  const zoneTool = useToolStore((s) => s.tool === 'terminal' && (s.tSub === 'zone' || s.tSub === 'door'));
+  // The zones overlay also shows by itself while the terminal tool is open, so the sides of every transition read (T87).
+  const zoneTool = useToolStore((s) => s.tool === 'terminal');
   const shownOverlay = store.overlay === 'zones' || zoneTool ? 'zones' : store.overlay;
   useEffect(() => {
     renderer?.setOverlay(shownOverlay, shownOverlay === 'zones' ? null : store.overlayData, store.terminalGrids);

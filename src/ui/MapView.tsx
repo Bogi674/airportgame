@@ -158,7 +158,7 @@ export function MapView({ client, onRenderer, onPick }: Props) {
 
     // The selected outline follows the selection and any change to the airfield.
     const unsubSelection = useToolStore.subscribe((s, prev) => {
-      if (s.selection !== prev.selection) controller.refreshSelection();
+      if (s.selection !== prev.selection || s.fixturePick !== prev.fixturePick || s.propPick !== prev.propPick) controller.refreshSelection();
     });
     const unsubAirfield = useGameStore.subscribe((s, prev) => {
       if (s.airfield !== prev.airfield || s.terminalGrids !== prev.terminalGrids) controller.refreshSelection();

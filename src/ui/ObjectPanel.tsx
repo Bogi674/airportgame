@@ -6,6 +6,7 @@ import { polylineLength } from '@shared/geom';
 import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY, fixtureKey, type FixtureKey } from '@shared/business';
 import { cellIndex } from '@shared/terminalOps';
 import { propAt, propSpec } from '@shared/props';
+import { transitionOf } from '@shared/transitionPads';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
@@ -461,12 +462,50 @@ export function ObjectPanel({ send }: Props) {
     const picked = pGrid && pIndex >= 0 ? pGrid.props[pIndex]! : null;
     const target = itemTarget(grids, pick, pp, send);
     const itemBlock = target && <ItemButtons key={target.key} target={target} prefix="item" />;
-    const propBlock = pp && pGrid && picked && (
-      <div data-testid="prop-block" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
-        <div style="font-weight:600">{propSpec(picked.asset)?.name ?? picked.asset}</div>
-        {itemBlock}
-      </div>
-    );
+    // A picked fixture or prop is the selection on its own (T87): the panel is titled with the item and names the
+    // terminal under it, and Show terminal returns to the building.
+    const showTerminal = (): void => useToolStore.getState().set({ fixturePick: null, propPick: null, pickAt: null });
+    const transition = pick && grid && cell >= 0 && fixtureName !== null ? transitionOf(fixtureName, grid.fixtureMode[cell] ?? 0) : null;
+    if ((pick && grid && cell >= 0 && fixtureName !== null) || (pp && pGrid && picked)) {
+      const title = picked ? (propSpec(picked.asset)?.name ?? picked.asset) : tDynamic(`fixture.${fixtureId}`);
+      return (
+        <div data-testid="item-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+          <div data-testid="item-title" style="font-weight:600">{title}</div>
+          <div style="color:var(--muted);font-size:12px">{tFormat('inspector.inTerminal', { id: term.id })}</div>
+          {picked ? (
+            <div data-testid="prop-block">{itemBlock}</div>
+          ) : (
+            pick &&
+            grid &&
+            fixtureName !== null && (
+              <div data-testid="fixture-block">
+                {transition && <div data-testid="fixture-transition">{tFormat('inspector.transition', { from: tDynamic(`zone.${transition.from}`), to: tDynamic(`zone.${transition.to}`) })}</div>}
+                {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
+                <FixtureLevel grid={grid} cell={cell} name={fixtureName} send={send} />
+                {itemBlock}
+                {MODE_FIXTURE_NAMES.includes(fixtureName) && (
+                  <div style="display:flex;gap:4px;margin-top:4px">
+                    {[0, 1].map((m) => (
+                      <button
+                        key={m}
+                        data-testid={`fixture-mode-${m}`}
+                        aria-pressed={grid.fixtureMode[cell] === m}
+                        onClick={() => send({ type: 'terminalBuild', building: grid.id, ox: grid.ox, oy: grid.oy, headingDeg: grid.headingDeg, edit: { op: 'mode', x0: pick.x, y0: pick.y, x1: pick.x + 1, y1: pick.y + 1, variant: m } })}
+                      >
+                        {tDynamic(fixtureName === 'security' ? `opt.use.${m}` : `opt.mode.${m}`)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          )}
+          <button data-testid="show-terminal" style="margin-top:8px" onClick={showTerminal}>
+            {t('inspector.showTerminal')}
+          </button>
+        </div>
+      );
+    }
     return (
       <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
@@ -492,29 +531,6 @@ export function ObjectPanel({ send }: Props) {
             {tDynamic(`ready.${k}`)}
           </div>
         ))}
-        {pick && grid && cell >= 0 && fixtureName !== null && (
-          <div data-testid="fixture-block" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
-            <div style="font-weight:600">{tDynamic(`fixture.${fixtureId}`)}</div>
-            {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
-            <FixtureLevel grid={grid} cell={cell} name={fixtureName} send={send} />
-            {itemBlock}
-            {MODE_FIXTURE_NAMES.includes(fixtureName) && (
-              <div style="display:flex;gap:4px;margin-top:4px">
-                {[0, 1].map((m) => (
-                  <button
-                    key={m}
-                    data-testid={`fixture-mode-${m}`}
-                    aria-pressed={grid.fixtureMode[cell] === m}
-                    onClick={() => send({ type: 'terminalBuild', building: grid.id, ox: grid.ox, oy: grid.oy, headingDeg: grid.headingDeg, edit: { op: 'mode', x0: pick.x, y0: pick.y, x1: pick.x + 1, y1: pick.y + 1, variant: m } })}
-                  >
-                    {tDynamic(fixtureName === 'security' ? `opt.use.${m}` : `opt.mode.${m}`)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {propBlock}
         <div style="margin-top:4px;color:var(--muted);font-size:12px">{t('inspector.terminalHint')}</div>
         <button
           data-testid="demolish"

@@ -23,7 +23,15 @@ export type GhostShape =
   /** A prop drawn with its kit sprite (T85): asset, quarter turns, world center and the building heading. */
   | { k: 'prop'; asset: string; rot: number; x: number; y: number; headingDeg: number }
   /** A hatched area an item needs clear, its use area (T85). blocked draws it red. */
-  | { k: 'hatch'; pts: Pt[]; blocked: boolean };
+  | { k: 'hatch'; pts: Pt[]; blocked: boolean }
+  /** A cell a transition fixture paints with a zone when placed (T87), tinted in that zone's overlay color. */
+  | { k: 'zoneCell'; pts: Pt[]; zone: number }
+  /**
+   * A label pinned at a fixed size on screen, outlined in a zone's color (T87): the intake or exit side of a transition
+   * fixture. The arrow points along the flow, given as a world direction. A label that would overlap one drawn earlier
+   * is left out.
+   */
+  | { k: 'zoneTag'; x: number; y: number; text: string; zone: number; dx: number; dy: number };
 
 /** Screen shapes of snap markers: node dots, and the ring, square, diamond or plus of the active target. */
 export type MarkerShape = 'dot' | 'ring' | 'square' | 'diamond' | 'plus';

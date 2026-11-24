@@ -575,3 +575,17 @@ Context: the check in ghost and the placed desk disagreed (the bag chute ignored
 | Demolish confirmation | A confirm popup before removing, naming the item and what removal pays back |
 
 Implementer choices, stated for the owner: an audit of every kit sprite found each one inside its declared size and every kit fixture footprint equal to its art, so no footprint changes. The legacy reclaim belt, a 1 cell block with no art that loads as a carousel (docs/BAGGAGE.md), leaves the build menu; the sized carousel in the Baggage menu replaces it.
+
+## 2026-11-24 T87: transition fixtures and fixture selection
+
+Context: clicking a placed fixture selected the whole terminal (the floor highlight) and the inspector carried the terminal title over the fixture block, so it was unclear what was selected. The secure side of a security lane was easy to miss. Benchmark notes: `handoff/reference/benchmark-zoning.md`.
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| What a fixture click selects | Only the fixture or prop: the outline follows its footprint, the inspector is titled with its name and the terminal under it, shows only the item and its buttons, and a Show terminal button opens the terminal. Clicking empty floor still selects the terminal |
+| Zone blocks a security lane carries | Past the exit, as wide as the lane and 2 cells (4 m) deep, painted Secure on floored cells that are unzoned or public. The intake side gets the same block in Public. The ghost shows them before placing |
+| Which fixtures | Every transition fixture: security lane, security exit, passport control and the automated passport gate, each with its own from and to zones by mode |
+| Reminder | A notice after placing, the zones overlay while the terminal tool is open, and a pulsing badge on the exit until the zone past it reaches beyond the attached blocks |
+| Ghost (follow up) | The ghost of a transition fixture marks its intake side and its exit side |
+
+Implementer choices, stated for the owner: the exit block paints the to zone over cells that are unzoned or in the from zone, the intake block paints the from zone over unzoned cells only, and neither paints a cell whose fixture does not allow that zone. A zone is extended once the region of the exit zone joined to the exit block holds more cells than the block. The blocks are part of the same edit, so undo removes them with the fixture.

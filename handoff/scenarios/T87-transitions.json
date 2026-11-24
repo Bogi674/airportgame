@@ -1,0 +1,145 @@
+{
+ "buy": [
+  [
+   3990,
+   4990,
+   4060,
+   5040
+  ]
+ ],
+ "commands": [
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 0,
+    "y0": 0,
+    "x1": 24,
+    "y1": 14,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 0,
+    "y0": 0,
+    "x1": 24,
+    "y1": 14,
+    "variant": 2
+   }
+  }
+ ],
+ "camera": {
+  "x": 4024,
+  "y": 5014,
+  "zoom": 14
+ },
+ "hideUi": false,
+ "actions": [
+  {
+   "tool": "tool-terminal"
+  },
+  {
+   "tool": "menutab-processing"
+  },
+  {
+   "tool": "card-security"
+  },
+  {
+   "move": [
+    4024,
+    5007
+   ]
+  },
+  {
+   "wait": 500
+  },
+  {
+   "shot": "ghost",
+   "clip": {
+    "w": 1600,
+    "h": 1000
+   }
+  },
+  {
+   "down": [
+    4024,
+    5007
+   ]
+  },
+  {
+   "up": [
+    4024,
+    5007
+   ]
+  },
+  {
+   "key": "Enter"
+  },
+  {
+   "wait": 900
+  },
+  {
+   "shot": "placed",
+   "clip": {
+    "w": 1600,
+    "h": 1000
+   }
+  },
+  {
+   "tool": "tool-select"
+  },
+  {
+   "wait": 300
+  },
+  {
+   "move": [
+    4024,
+    5012
+   ]
+  },
+  {
+   "click": [
+    4024,
+    5012
+   ]
+  },
+  {
+   "wait": 600
+  },
+  {
+   "shot": "selected",
+   "clip": {
+    "w": 1600,
+    "h": 1000
+   }
+  },
+  {
+   "tool": "show-terminal"
+  },
+  {
+   "wait": 400
+  },
+  {
+   "shot": "terminal",
+   "clip": {
+    "w": 1600,
+    "h": 1000
+   }
+  }
+ ],
+ "report": [
+  "cash",
+  "alerts"
+ ]
+}

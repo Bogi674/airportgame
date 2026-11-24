@@ -1,5 +1,5 @@
 import { TERMINAL_CELL_M, ZONE, type TerminalGrid } from '@shared/business';
-import { effectiveZones, transitionBadges, zoneAccess, zoneBreaches, type TransitionBadge, type ZoneEdge } from '@shared/terminalZones';
+import { effectiveZones, pendingExitBadges, transitionBadges, zoneAccess, zoneBreaches, type TransitionBadge, type ZoneEdge } from '@shared/terminalZones';
 import { withAlpha } from './overlayRamp';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
@@ -27,6 +27,9 @@ const BADGE_R_M = 0.9;
 const BADGE_STROKE_M = 0.22;
 const BADGE_ARROW_WIDTH_M = 0.2;
 const BREACH_STROKE_M = 0.18;
+/** The pending ring grows by this many badge radii over one pulse. */
+const PENDING_GROW = 1.1;
+const PENDING_STROKE_M = 0.3;
 const BREACH_BAR_W_M = 0.18;
 const BREACH_DOT_R_M = 0.11;
 
@@ -51,6 +54,8 @@ const paintCache = new WeakMap<ZoneColors, ZonePaint>();
 interface ZoneView {
   eff: Uint8Array;
   badges: TransitionBadge[];
+  /** Badges whose exit zone is not carried on yet (T87), drawn with a pulsing ring. */
+  pending: TransitionBadge[];
   breaches: ZoneEdge[];
 }
 
@@ -59,9 +64,11 @@ const viewCache = new WeakMap<TerminalGrid, ZoneView>();
 function viewOf(g: TerminalGrid): ZoneView {
   const cached = viewCache.get(g);
   if (cached) return cached;
+  const eff = effectiveZones(g);
   const view: ZoneView = {
-    eff: effectiveZones(g),
+    eff,
     badges: transitionBadges(g),
+    pending: pendingExitBadges(g, eff),
     breaches: zoneBreaches(g, zoneAccess(g)),
   };
   viewCache.set(g, view);
@@ -158,6 +165,15 @@ function drawTransitionBadge(ctx: Ctx, b: TransitionBadge, paint: ZonePaint): vo
   ctx.restore();
 }
 
+/** Pulsing ring around the badge of an exit whose zone is not carried on yet (T87). pulse runs from 0 to 1. */
+function drawPendingRing(ctx: Ctx, b: TransitionBadge, paint: ZonePaint, pulse: number): void {
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, BADGE_R_M * (1.25 + PENDING_GROW * pulse), 0, 2 * Math.PI);
+  ctx.strokeStyle = withAlpha(paint.solid[b.to] ?? paint.badge, 0.9 * (1 - pulse));
+  ctx.lineWidth = PENDING_STROKE_M;
+  ctx.stroke();
+}
+
 /** Breach badge on a wall edge: red circle with a white bar and dot. The edge is at the badge center. */
 function drawBreachBadge(ctx: Ctx, e: ZoneEdge, paint: ZonePaint): void {
   const C = TERMINAL_CELL_M;
@@ -179,6 +195,34 @@ function drawBreachBadge(ctx: Ctx, e: ZoneEdge, paint: ZonePaint): void {
   ctx.fill();
 }
 
+/** Clear space kept between two badges, in meters. */
+const BADGE_GAP_M = 0.2;
+const shownCache = new WeakMap<TerminalGrid, ZoneEdge[]>();
+
+/**
+ * The breach badges that fit: a badge that would touch a transition badge, the largest pending ring or a breach
+ * badge kept earlier is left out, so badges never overlap. Breaches come in edge order, so the choice is stable.
+ */
+function shownBreaches(g: TerminalGrid, breaches: readonly ZoneEdge[], badges: readonly TransitionBadge[], pending: readonly TransitionBadge[]): ZoneEdge[] {
+  const cached = shownCache.get(g);
+  if (cached) return cached;
+  const C = TERMINAL_CELL_M;
+  const r = BADGE_R_M;
+  const taken: { x: number; y: number; r: number }[] = [];
+  for (const b of badges) taken.push({ x: b.x, y: b.y, r });
+  for (const b of pending) taken.push({ x: b.x, y: b.y, r: r * (1.25 + PENDING_GROW) + PENDING_STROKE_M / 2 });
+  const out: ZoneEdge[] = [];
+  for (const e of breaches) {
+    const x = e.horizontal ? (e.x + 0.5) * C : e.x * C;
+    const y = e.horizontal ? e.y * C : (e.y + 0.5) * C;
+    if (taken.some((t) => Math.hypot(t.x - x, t.y - y) < t.r + r + BADGE_GAP_M)) continue;
+    taken.push({ x, y, r });
+    out.push(e);
+  }
+  shownCache.set(g, out);
+  return out;
+}
+
 /** Zone id of a floor cell of the grid, 0 outside the grid or without floor. */
 function zoneAt(eff: Uint8Array, W: number, H: number, x: number, y: number): number {
   return x < 0 || y < 0 || x >= W || y >= H ? 0 : eff[y * W + x]!;
@@ -187,12 +231,13 @@ function zoneAt(eff: Uint8Array, W: number, H: number, x: number, y: number): nu
 /**
  * Zones overlay of one terminal grid, drawn in grid meters: the caller maps grid meters to the device. Floor cells
  * take their effective zone tint (staff hatched), every edge where the zone changes or the floor ends gets an inner
- * line, each transition fixture an arrow badge and each breach a red badge.
+ * line, each transition fixture an arrow badge and each breach a red badge. An exit whose zone is not carried on yet
+ * gets a ring that grows and fades with pulse, from 0 to 1.
  */
-export function drawZoneOverlay(ctx: Ctx, g: TerminalGrid, colors: ZoneColors): void {
+export function drawZoneOverlay(ctx: Ctx, g: TerminalGrid, colors: ZoneColors, pulse = 0): void {
   const C = TERMINAL_CELL_M;
   const paint = paintFor(colors);
-  const { eff, badges, breaches } = viewOf(g);
+  const { eff, badges, pending, breaches } = viewOf(g);
   const W = g.w;
   ctx.save();
   for (let y = 0; y < g.h; y++) {
@@ -213,7 +258,8 @@ export function drawZoneOverlay(ctx: Ctx, g: TerminalGrid, colors: ZoneColors): 
       if (zoneAt(eff, W, g.h, x, y + 1) !== z) edgeLine(ctx, X, Y, 3);
     }
   }
+  for (const b of pending) drawPendingRing(ctx, b, paint, pulse);
   for (const b of badges) drawTransitionBadge(ctx, b, paint);
-  for (const e of breaches) drawBreachBadge(ctx, e, paint);
+  for (const e of shownBreaches(g, breaches, badges, pending)) drawBreachBadge(ctx, e, paint);
   ctx.restore();
 }

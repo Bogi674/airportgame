@@ -20,8 +20,9 @@ import {
 import type { Ghost, GhostShape } from '@shared/ghost';
 import { closestOnSegment, distToSegment, polylineLength, type Pt } from '@shared/geom';
 import { windBand, type SitePayload } from '@shared/site';
-import { fixtureKey, isBaggageFixture, TERMINAL_CELL_M, type Prop, type TerminalGrid } from '@shared/business';
+import { fixtureKey, isBaggageFixture, TERMINAL_CELL_M, type FixtureKey, type Prop, type TerminalGrid } from '@shared/business';
 import { dropOutCell, screeningRoomOk, validateBagNode, type BagNodeSpec } from '@shared/baggageNodes';
+import { padTarget, padsBackwards, transitionOf, transitionPads } from '@shared/transitionPads';
 import { footprintSteps, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { unitProblem } from '@shared/tenants';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
@@ -310,16 +311,28 @@ export class ToolController {
     const term = hit ? null : this.terminalAt(p);
     const kind = hit ? hit.kind : term !== null ? 'terminal' : '';
     const id = hit ? hit.id : term ?? 0;
-    const key = kind ? `${kind}:${id}` : '';
+    // Over a fixture or prop the hover outlines that item, as a click selects only it (T87).
+    const propHit = term !== null ? this.propUnder(p) : null;
+    const pc = propHit ? worldToCell(propHit.g, p.x, p.y) : null;
+    const propPick = propHit && pc ? { building: propHit.g.id, x: pc.cx * TERMINAL_CELL_M, y: pc.cy * TERMINAL_CELL_M } : null;
+    const fixturePick = term !== null && !propPick ? this.fixtureAt(p, term) : null;
+    const item = term !== null && (propPick || fixturePick) ? this.pickedItemShape(term, fixturePick, propPick) : null;
+    const key = item ? `item:${propPick ? `p${propPick.x}:${propPick.y}` : `f${fixturePick?.x}:${fixturePick?.y}`}` : kind ? `${kind}:${id}` : '';
     if (key === this.hovered) return;
     this.hovered = key;
-    this.deps.setHighlight(kind ? this.shapesFor(kind, id) : null, this.selectedShapes());
+    this.deps.setHighlight(item ? [item] : kind ? this.shapesFor(kind, id) : null, this.selectedShapes());
     this.deps.setCursor(kind ? 'pointer' : 'default');
   }
 
   selectedShapes(): GhostShape[] | null {
-    const sel = useToolStore.getState().selection;
+    const st = useToolStore.getState();
+    const sel = st.selection;
     if (!sel) return null;
+    // A picked fixture or prop is the selection itself (T87): only its footprint is outlined, not the whole terminal.
+    if (sel.kind === 'terminal') {
+      const item = this.pickedItemShape(sel.id, st.fixturePick, st.propPick);
+      if (item) return [item];
+    }
     const shapes = this.shapesFor(sel.kind, sel.id);
     // A selected runway shows its obstacle surfaces and where they are penetrated.
     const r = sel.kind === 'runway' ? this.af.runways.find((x) => x.id === sel.id) : undefined;
@@ -337,6 +350,34 @@ export class ToolController {
     const { site, owner, terminalGrids } = useGameStore.getState();
     if (!site || !owner) return [];
     return previewPenetrations(r, { heights: site.heights, landClass: site.landClass, parcelId: site.parcelId, parcelOwner: owner, buildings: this.buildingBoxes(terminalGrids) });
+  }
+
+  /** Footprint outline of the fixture or prop picked in a terminal, or null when none is picked there. */
+  private pickedItemShape(building: number, fixturePick: { building: number; x: number; y: number } | null, propPick: { building: number; x: number; y: number } | null): GhostShape | null {
+    const g = useGameStore.getState().terminalGrids.find((x) => x.id === building);
+    if (!g) return null;
+    if (propPick?.building === building) {
+      const i = propAt(g.props, propPick.x, propPick.y);
+      const r = i >= 0 ? propRect(g.props[i]!) : null;
+      const k = PROP_STEP_M / TERMINAL_CELL_M;
+      return r ? { k: 'poly', pts: rectWorld(g, r.sx0 * k, r.sy0 * k, r.sx1 * k, r.sy1 * k) } : null;
+    }
+    if (fixturePick?.building !== building) return null;
+    const cells = fixtureCells(g, fixtureAnchor(g, cellIndex(g, fixturePick.x, fixturePick.y)));
+    if (cells.length === 0) return null;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const c of cells) {
+      const x = (c % g.w) + g.x0;
+      const y = Math.floor(c / g.w) + g.y0;
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x + 1);
+      y1 = Math.max(y1, y + 1);
+    }
+    return { k: 'poly', pts: rectWorld(g, x0, y0, x1, y1) };
   }
 
   /** Called when the selection or the airfield changes, so the selected outline follows. */
@@ -2623,6 +2664,7 @@ export class ToolController {
       }
       const c = cornerWorld(g, (x0 + x1) / 2, (y0 + y1) / 2);
       shapes.push({ k: 'fixture', f: edit.variant, level, code: 1 + rot, x: c.x, y: c.y, headingDeg: g.headingDeg });
+      shapes.push(...this.padGhost(g, key, level, edit.mode ?? 0, a.x, a.y, rot));
       // A desk or bag drop places its bag chute on the cell behind it, so the ghost shows that chute too (T86).
       if (key === 'checkIn' || key === 'bagDrop') {
         const [ox, oy] = dropOutCell(a.x, a.y, rot as 0 | 1 | 2 | 3);
@@ -2631,6 +2673,36 @@ export class ToolController {
       }
     }
     return shapes;
+  }
+
+  /**
+   * The zone blocks a transition fixture will paint (T87), tinted in their zone, with an Intake label before the
+   * fixture and an Exit label past it. Cells that will not take the zone (no floor, another zone, a fixture that
+   * refuses it) are left out unless they already hold it.
+   */
+  private padGhost(g: TerminalGrid, key: FixtureKey, level: number, mode: number, x: number, y: number, rot: number): GhostShape[] {
+    const pads = transitionPads(key, level, mode, x, y, rot);
+    if (!pads) return [];
+    const out: GhostShape[] = [];
+    const over = padsBackwards(g, pads) ? 0 : pads.from;
+    const side = (cells: readonly [number, number][], zone: number, overZone: number, text: string): void => {
+      let sx = 0;
+      let sy = 0;
+      for (const [cx, cy] of cells) {
+        sx += cx + 0.5;
+        sy += cy + 0.5;
+        const i = cellIndex(g, cx, cy);
+        if (padTarget(g, cx, cy, zone, overZone) >= 0 || (i >= 0 && g.floor[i] !== 0 && g.zone[i] === zone)) out.push({ k: 'zoneCell', pts: rectWorld(g, cx, cy, cx + 1, cy + 1), zone });
+      }
+      if (cells.length === 0) return;
+      const c = cornerWorld(g, sx / cells.length, sy / cells.length);
+      const o = cornerWorld(g, 0, 0);
+      const t = cornerWorld(g, pads.flow[0], pads.flow[1]);
+      out.push({ k: 'zoneTag', x: c.x, y: c.y, text, zone, dx: t.x - o.x, dy: t.y - o.y });
+    };
+    side(pads.intake, pads.from, 0, tFormat('ghost.intake', { zone: tDynamic(`zone.${pads.from}`) }));
+    side(pads.exit, pads.to, over, tFormat('ghost.exit', { zone: tDynamic(`zone.${pads.to}`) }));
+    return out;
   }
 
   private finishTerminal(p: Pt): void {
@@ -2679,6 +2751,14 @@ export class ToolController {
     }
     this.deps.send({ type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit });
     this.deps.setGhost(null);
+    // Every transition fixture placed reminds the player to carry its exit zone on (T87).
+    const t = edit.op === 'fixture' ? transitionOf(fixtureKey(edit.variant), edit.mode ?? 0) : null;
+    if (t) {
+      const gs = useGameStore.getState();
+      const text = tFormat('alert.transitionPlaced', { name: tDynamic(`fixture.${edit.variant}`), from: tDynamic(`zone.${t.from}`), to: tDynamic(`zone.${t.to}`) });
+      // The same reminder twice in a row would only stack up, so a repeat of the latest one is left out.
+      if (gs.alerts[gs.alerts.length - 1]?.text !== text) gs.pushAlert(text, 'info');
+    }
   }
 
   // Demolish -------------------------------------------------------------
