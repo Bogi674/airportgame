@@ -545,7 +545,7 @@ Implementer choices, stated for the owner: a weather event weighs its climate sh
 
 | Question | Answer (owner, 2026-11-24) |
 | --- | --- |
-| Scope | One task, T84, holds all nine items of the feedback, done in slices |
+| Scope | One task, T84, holds all nine items of the feedback, done in slices; a tenth item (aircraft cut the corner at taxiway bends) was added during the session |
 | Apron join | Where an apron touches a taxiway the pavement runs through with no shoulder, and the taxiway edge line turns dashed along the shared stretch |
 | Runway join | A taxiway drawn into a runway gets what the parallel tool gives: lead in centerlines both ways, pavement fillets whose yellow edge lines curve out and stop at the runway edge; the white runway edge stripe stays continuous |
 | Click place | Every rectangle tool places by click, move, click, then the build confirmation; press and drag keeps working |
