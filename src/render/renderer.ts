@@ -961,6 +961,8 @@ export class Renderer {
       ctx.stroke();
       ctx.fillStyle = PAINT.colors.snap;
       ctx.textBaseline = 'middle';
+      // The ghost objects drawn before may leave the text centred, which pushed the tip text out of its box.
+      ctx.textAlign = 'start';
       ctx.fillText(g.tip.text, sx + 12 * k, sy);
     }
     if (g.label) {

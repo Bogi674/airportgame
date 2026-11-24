@@ -100,6 +100,10 @@ export function MapView({ client, onRenderer, onPick }: Props) {
         if (!endClick && click && controller.twoClick) {
           // A click without a drag sets the start point. The next click sets the end point.
           controller.move(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });
+        } else if (controller.confirmsEnd) {
+          // A rectangle waits for the build confirmation at the pointer (T84).
+          controller.holdEnd(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });
+          useToolStore.getState().set({ confirmAt: { x: e.offsetX, y: e.offsetY } });
         } else controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });
       } else if (panning && e.button === 0 && click && useToolStore.getState().tool === 'select') {
         controller.up(toWorld(e), { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey });

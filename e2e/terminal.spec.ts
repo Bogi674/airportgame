@@ -45,6 +45,8 @@ test('lays a terminal with foundation, flooring, walls and fixtures using the mo
   await page.getByTestId('tool-terminal').click();
   await page.getByTestId('tsub-foundation').click();
   await drag([4000, 5440], [4080, 5470]);
+  // A rectangle waits for the build confirmation (T84).
+  await page.keyboard.press('Enter');
   await expect.poll(async () => (await summary())?.cells ?? 0).toBeGreaterThan(300);
   const cells = (await summary())?.cells ?? 0;
 
@@ -52,6 +54,7 @@ test('lays a terminal with foundation, flooring, walls and fixtures using the mo
   const cash0 = await page.evaluate(() => window.__store?.getState().cash ?? 0);
   await page.getByTestId('tsub-floor').click();
   await drag([4000, 5440], [4080, 5470]);
+  await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => window.__store?.getState().cash ?? 0)).toBeLessThan(cash0);
   await page.getByTestId('tsub-wall').click();
   await drag([4000, 5440], [4080, 5440]);
@@ -114,6 +117,7 @@ test('the walk overlay toggle shows the walking graph of the selected terminal',
   await page.mouse.down();
   await page.mouse.move(b.x, b.y, { steps: 6 });
   await page.mouse.up();
+  await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => window.__store?.getState().business?.terminals.length ?? 0)).toBeGreaterThan(0);
 
   await page.getByTestId('tool-select').click();

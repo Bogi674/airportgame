@@ -110,11 +110,14 @@ test('extends an apron with the extend tool and cuts a strip out of it with the 
     await page.mouse.down();
     await page.mouse.move(box.x + b.x, box.y + b.y, { steps: 4 });
     await page.mouse.up();
+    // A rectangle waits for the build confirmation (T84).
+    await page.keyboard.press('Enter');
   };
 
   // Extend: select the apron, then draw a rectangle that touches its west edge.
   const before = await totalApronArea(page);
-  await page.getByTestId('tool-apron-extend').click();
+  await page.getByTestId('tool-apron').click();
+  await page.getByTestId('menutab-extend').click();
   const inside = await screenOf(page, 4050, 5330);
   await page.mouse.click(box.x + inside.x, box.y + inside.y);
   await page.getByTestId('apron-mode-rect').click();
@@ -123,7 +126,7 @@ test('extends an apron with the extend tool and cuts a strip out of it with the 
 
   // Remove: cut a strip across the apron with the rectangle mode of the remove tool.
   const extended = await totalApronArea(page);
-  await page.getByTestId('tool-apron-remove').click();
+  await page.getByTestId('menutab-remove').click();
   await page.getByTestId('apron-mode-rect').click();
   await dragRect({ x: 3950, y: 5240 }, { x: 4010, y: 5420 });
   await expect.poll(() => totalApronArea(page)).toBeLessThan(extended);

@@ -170,23 +170,12 @@ export const CATEGORIES: Category[] = [
     hue: 190,
     testId: 'tool-apron',
     tool: 'apron',
-    tabs: [{ id: 'build', items: [{ id: 'apron', thumb: 'apron', icon: 'apron', run: (s) => s.set({ tool: 'apron' }), active: (s) => s.tool === 'apron' }] }],
-  },
-  {
-    id: 'apronRemove',
-    icon: 'demolish',
-    hue: 190,
-    testId: 'tool-apron-remove',
-    tool: 'apronRemove',
-    tabs: [{ id: 'build', items: [{ id: 'apronRemove', thumb: 'apron', icon: 'demolish', run: (s) => s.set({ tool: 'apronRemove' }), active: (s) => s.tool === 'apronRemove' }] }],
-  },
-  {
-    id: 'apronExtend',
-    icon: 'apron',
-    hue: 190,
-    testId: 'tool-apron-extend',
-    tool: 'apronExtend',
-    tabs: [{ id: 'build', items: [{ id: 'apronExtend', thumb: 'apron', icon: 'apron', run: (s) => s.set({ tool: 'apronExtend' }), active: (s) => s.tool === 'apronExtend' }] }],
+    // One menu for every apron tool (T84): build, extend and remove are its tabs.
+    tabs: [
+      { id: 'build', items: [{ id: 'apron', thumb: 'apron', icon: 'apron', run: (s) => s.set({ tool: 'apron' }), active: (s) => s.tool === 'apron' }] },
+      { id: 'extend', items: [{ id: 'apronExtend', thumb: 'apron', icon: 'apron', run: (s) => s.set({ tool: 'apronExtend' }), active: (s) => s.tool === 'apronExtend' }] },
+      { id: 'remove', items: [{ id: 'apronRemove', thumb: 'apron', icon: 'demolish', run: (s) => s.set({ tool: 'apronRemove' }), active: (s) => s.tool === 'apronRemove' }] },
+    ],
   },
   {
     id: 'stand',
@@ -327,6 +316,18 @@ export const CATEGORIES: Category[] = [
 
 const fresh = { barOpen: true, selection: null, hint: null, problem: null, buy: null } as const;
 
+/**
+ * Opens a tab of the flyout. In a category whose tabs are modes of one tool, such as the apron's
+ * build, extend and remove (T84), the tab also picks its tool, so the tab and the tool never disagree.
+ */
+function pickTab(c: Category, tab: Tab): void {
+  const s = useToolStore.getState();
+  s.set({ menuTab: tab.id });
+  if (c.id !== 'apron') return;
+  const first = tab.items.find((i) => i.run && !i.locked);
+  if (first?.run) first.run(useToolStore.getState());
+}
+
 /** Opens a category in the left toolbar: its default tool, its first tab, and the flyout beside the rail. */
 export function openCategory(c: Category): void {
   const s = useToolStore.getState();
@@ -357,7 +358,7 @@ export function BuildMenu({ send }: { send(cmd: Command): void }) {
         </span>
         <div class="tabs" role="tablist" style="margin:0;border:0">
           {cat.tabs.map((x) => (
-            <button key={x.id} role="tab" class="tab" data-testid={`menutab-${x.id}`} aria-pressed={tab.id === x.id} onClick={() => s.set({ menuTab: x.id })}>
+            <button key={x.id} role="tab" class="tab" data-testid={`menutab-${x.id}`} aria-pressed={tab.id === x.id} onClick={() => pickTab(cat, x)}>
               {tDynamic(`menu.${cat.id}.${x.id}`)}
             </button>
           ))}
