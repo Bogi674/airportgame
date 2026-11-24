@@ -126,7 +126,7 @@ Icon buttons with labels on hover:
 9. Staff
 10. Tenants
 
-Build categories open a flyout palette next to the rail: a grid of tool cards with an icon, name and cost. Management categories open a side sheet.
+Build categories open a flyout palette next to the rail: a grid of tool cards with an icon, name and cost. Management categories open a side sheet. MVP 1 (T36): the flyout is 296 px wide with two card columns and wrapping tabs, it hides while a side sheet is open, and the context bar and overlay legend centre in the free band between it and the minimap.
 
 ### Context bar
 
@@ -165,7 +165,7 @@ Key O, or the overlay button in the top bar, opens a compact list anchored under
 ### Alerts and toasts
 
 * Toasts at the top right for events, 4 seconds, at most 3 visible, stacked. Each has a jump to location button.
-* The alert center (bell) groups alerts by severity: Critical, Warning, Info. Similar alerts merge with a count. Each alert has a jump button and a mute rule ("mute this type for 7 days").
+* The alert center (bell) groups alerts by severity: Critical, Warning, Info. Similar alerts merge with a count. Each alert has a jump button and a mute rule ("mute this type for 7 days"). MVP 1 (owner, 2026-11-24) builds the groups, counts, unread badge, time and jump; mute rules and the critical banner wait for MVP 2.
 * Critical alerts (a closed runway, a fire category shortfall) also pin a slim banner under the top bar until resolved.
 
 ## 6. Building interactions
@@ -207,7 +207,10 @@ Key O, or the overlay button in the top bar, opens a compact list anchored under
 | Ctrl (hold) | Apron tool: cut a piece out |
 | Space | Pause and resume |
 | 1 to 4 | Game speed |
-| O | Overlay list (one overlay at a time), Escape closes it |
+| O | Overlay list: one terminal overlay at a time, plus the traffic reservations, walking graph and land parcel layers that toggle on their own; Escape closes it |
+| P | Land parcels (land mode) |
+| Bell button | Alert center: alerts by severity with merged repeats, the time and a Show button that moves the camera to the stand |
+| Rail button | Opens its build flyout beside the rail; the same button closes it |
 | B | Last build category |
 | F | Find object or flight |
 | N | Align view to runway, press again for north up |

@@ -7,7 +7,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 ## Next session: start here
 
 1. Read `CLAUDE.md`, then this file.
-2. Phases 1, 2, 3, 3b and 4 are done. T81, T32, T82 (prop effects), T50 (events) and T45 (asset sharpness) closed on 2026-11-23; T83 moved to MVP 2 (owner, 2026-11-23). T35 (menus) closed on 2026-11-23. Next is **T36** (left rail flyouts, alert center, overlay list), then T37 and T38. Run the `grill-me` skill and write the spec first.
+2. Phases 1, 2, 3, 3b and 4 are done. T81, T32, T82 (prop effects), T50 (events) and T45 (asset sharpness) closed on 2026-11-23; T83 moved to MVP 2 (owner, 2026-11-23). T35 (menus) closed on 2026-11-23, T36 (flyouts, alert center, overlay list) on 2026-11-24. Next is **T37** (browser tests in three engines), then T38. Run the `grill-me` skill and write the spec first.
 3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 4. Findings for T71 from the 2026-11-16 session are in `handoff/work/SESSION-2026-11-16.md`.
 5. A second session may take **T54** (people walk and dwell along routes) at the same time. It touches the cohort store and the people renderer only.
@@ -52,7 +52,7 @@ A player can start a seeded game, buy land, build an airport, sign airlines and 
 | Flights | A destination network of 80 generated airports per seed, airlines that sign with flight series on fixed weekdays, a weekly planner with day tabs where one drop places a series on all its days, an auto planner, airline satisfaction with cancellations, renewals and new airlines approaching as stars grow, flights board, general aviation arriving on its own |
 | Ground handling | A ground handling depot that stores the fleet (24 vehicles each, a starter set on build) and service roads the player draws, joined to the road strips of contact stands, with hold lines where they cross a taxiway. Vehicles leave the depot, drive the road keeping right and giving way at junctions and to aircraft at crossings, take stand paths that never cross the aircraft to door positions from data, and drive home. Tractors tow 1 to 4 carts by stand size. A commercial stand with no road from a depot turns around 25 percent slower and shows an amber badge. Supporting buildings: a fuel farm with tanker deliveries that sells fuel and holds flights it cannot fuel, a fire station whose vehicles set the fire category that airline types need after a 7 day grace, a catering unit that sends its own trucks, and a staff center, cleaning depot and maintenance workshop that wait for later tasks. Aircraft stop with the nose gear on their stop line. Airline turnarounds run a task list (chocks, power, stairs, deboarding, unloading, cleaning, catering, fuel, water and waste, loading, boarding, doors) whose vehicle tasks wait for a docked vehicle of the owned fleet, and the flights board shows each delay with its cause and whether the airport or the airline owns it. GA keeps a fixed turnaround time. Stand upgrades through works: a hydrant pit fuels by dispenser, fixed ground power replaces the GPU, a bus bay lets a stand far from its gate board by bus. The stand inspector assigns the gate desk |
 | Business | Seven generated airline slots with rating gates, contracts and fees, stars from passenger and airline experience (cleanliness and ground handling included), daily ledger, one term loan, tenant units with generated brands, applications, campaigns, rent and sales share (T32), ratings, a seeded event director with a deck of eight events and two choices each (T50) |
-| UI | Main menu over a demo airport, a two step new game panel, career and sandbox modes, named saves with thumbnail cards, settings, credits and a full pause menu (T35), top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
+| UI | Main menu over a demo airport, a two step new game panel, career and sandbox modes, named saves with thumbnail cards, settings, credits and a full pause menu (T35), build flyouts beside the left rail, an alert center with grouped alerts and a jump to the stand, an overlay list with every overlay and map layer (T36), top bar, tool rail, build menu, context bar, inspectors, sheets, toasts, guided start checklist |
 
 
 ## 4. MVP 1 phases
@@ -165,7 +165,7 @@ Goal: MVP 1 is complete and proven in a long session.
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
 | T35 | Main menu, new game wizard, load screen, settings and pause menu per `docs/UI_DESIGN.md` |  | phase 4 | done 55c076d 5c7b654 |
-| T36 | Left rail flyouts, alert center, overlay list |  | phase 4 | todo |
+| T36 | Left rail flyouts, alert center, overlay list |  | phase 4 | doing |
 | T45 | Asset sharpness at maximum zoom: diagnose, then fix |  |  | done caa064b |
 | T37 | Playwright smoke and visual tests in three engines |  | T35, T36 | todo |
 | T38 | MVP 1 acceptance: every exit criterion above holds, a 3 hour session at 4x runs without errors or budget breaches |  | all | todo |

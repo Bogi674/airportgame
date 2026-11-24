@@ -121,12 +121,14 @@ test('the walk overlay toggle shows the walking graph of the selected terminal',
   await page.mouse.click(inside.x, inside.y);
   await expect(page.getByTestId('terminal-panel')).toBeVisible();
 
+  // The walking graph is a layer in the overlay list (T36).
+  await page.getByTestId('overlay-menu').click();
   const toggle = page.getByTestId('walk-toggle');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
   expect(errors).toEqual([]);
 });
 

@@ -6,7 +6,7 @@ import type { AirportIdentity, GameMode, GameOptions, WalkGraphView } from '@sha
 import type { Preset, SitePayload } from '@shared/site';
 import type { Speed } from '@shared/time';
 import { SimClient } from '../worker/client';
-import { alertText, ALERT_CODES, parseEvent } from './alerts';
+import { alertText, ALERT_CODES, parseEvent, severityOf } from './alerts';
 import { BuildMenu } from './BuildMenu';
 import { ConfirmPopup } from './ConfirmPopup';
 import { ContextBar } from './ContextBar';
@@ -29,7 +29,7 @@ import { useToolStore } from './stores/toolStore';
 import { Toasts } from './Toasts';
 import { ToolRail } from './ToolRail';
 import { TopBar } from './TopBar';
-import { t, tFormat } from './strings';
+import { noticeText, t, tFormat } from './strings';
 
 const ALERT_MS = 9000;
 const AUTOSAVE_KEY = 'airfield.autosave';
@@ -104,16 +104,22 @@ export function App() {
         },
         onEvents: (list) => {
           for (const code of list) {
-            const { name } = parseEvent(code);
+            const { name, args } = parseEvent(code);
+            // The demo airport behind the menu keeps no alerts.
+            if (demo.current) continue;
+            const stand = args.stand ?? null;
             if (ALERT_CODES.has(name)) {
               const a = alertText(code);
               const s = useGameStore.getState();
               s.pushAlert(a.text, a.tone);
+              s.logAlert(a.text, severityOf(name, a.tone), client.tick, stand);
               const latest = useGameStore.getState().alerts;
               const id = latest[latest.length - 1]?.id;
               if (id !== undefined) setTimeout(() => useGameStore.getState().dismissAlert(id), ALERT_MS);
             } else {
               useGameStore.getState().showNotice(code);
+              // A notice about a stand is an operational warning, so the alert center keeps it with its jump.
+              if (stand !== null) useGameStore.getState().logAlert(noticeText(name, args), 'warning', client.tick, stand);
             }
           }
         },
@@ -452,6 +458,13 @@ export function App() {
           <TopBar
             onSpeed={setSpeed}
             onMenu={pause}
+            onJump={(n) => {
+              const st = useGameStore.getState().airfield.stands.find((x) => x.number === n);
+              if (st && rendererRef.current) {
+                rendererRef.current.camera.x = st.x;
+                rendererRef.current.camera.y = st.y;
+              }
+            }}
           />
           {!store.parcelOverlay && <ToolRail onUndo={() => client.send({ type: 'undo' })} onRedo={() => client.send({ type: 'redo' })} />}
           {!store.parcelOverlay && <Guide />}

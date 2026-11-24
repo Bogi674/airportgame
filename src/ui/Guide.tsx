@@ -1,4 +1,5 @@
 import { useGameStore } from './stores/gameStore';
+import { useToolStore } from './stores/toolStore';
 import { t, tDynamic, type StringKey } from './strings';
 
 /** Short guided start: the five steps that get the first flight landing. Steps tick themselves off. */
@@ -8,8 +9,9 @@ export function Guide() {
   const hidden = useGameStore((s) => s.guideHidden);
   const hide = useGameStore((s) => s.setGuideHidden);
   const sheetOpen = useGameStore((s) => s.sheet !== null);
-  // The card sits where the side sheets open, so it steps aside while one is shown.
-  if (hidden || sheetOpen) return null;
+  const menuOpen = useToolStore((s) => s.menuOpen && s.category !== null);
+  // The card sits where the side sheets and the build flyout open, so it steps aside while one is shown.
+  if (hidden || sheetOpen || menuOpen) return null;
   const miss = b ? b.readiness : ['noTerminal'];
   const terminalReady = !!b && !miss.some((k) => k !== 'noAtc');
   const steps: { key: StringKey; done: boolean }[] = [

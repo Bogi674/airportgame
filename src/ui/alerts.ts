@@ -5,6 +5,15 @@ import { choiceText } from './eventText';
 /** Event codes that become alerts, as opposed to build notices. */
 export const ALERT_CODES = new Set(['airlineSigned', 'airlineIdle', 'noAtc', 'atcLost', 'weatherStart', 'weatherEnd', 'flightRefused', 'flightDiverted', 'flightLost', 'deadlock', 'seriesExpired', 'seriesRenewal', 'seriesCancelled', 'seriesOffered', 'airlineLeft', 'airlineApproach', 'fuelShort', 'flightGrounded', 'fuelOrdered', 'fireGrace', 'beltsKept', 'tenantApplied', 'tenantOpened', 'unitRemoved', 'eventStart', 'eventResolved', 'eventFallback']);
 
+/** Alerts that stop flights or the airport outright, shown first in the alert center (T36). */
+const CRITICAL = new Set(['atcLost', 'deadlock', 'flightLost']);
+
+/** Alert center group of an event: critical codes, else by tone. */
+export function severityOf(name: string, tone: 'info' | 'warn'): 'critical' | 'warning' | 'info' {
+  if (CRITICAL.has(name)) return 'critical';
+  return tone === 'warn' ? 'warning' : 'info';
+}
+
 export function parseEvent(code: string): { name: string; args: Record<string, string> } {
   const parts = code.split('|');
   const args: Record<string, string> = {};

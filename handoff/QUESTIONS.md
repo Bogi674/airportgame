@@ -532,3 +532,10 @@ Implementer choices, stated for the owner: a weather event weighs its climate sh
 | Sandbox | Unlimited cash, the whole site owned, airlines ignore rating gates, events stay |
 | Named saves | Save overwrites the current slot, Save as makes a new named slot; cards rename, duplicate and delete |
 
+
+## 2026-11-24 T36: left rail, alert center
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| Build menu | A flyout beside the left rail replaces the bottom panel |
+| Alert center | Grouped list (critical, warning, info) with merged repeats and counts, an unread badge on the bell, the time of each alert, and a jump to the location; no mute rules and no critical banner in MVP 1 |

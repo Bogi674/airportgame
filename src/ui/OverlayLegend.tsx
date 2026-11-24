@@ -5,6 +5,7 @@ import { Icon } from './icons';
 import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { t, type StringKey } from './strings';
+import { bottomCenter } from './layout';
 
 type Shown = Exclude<OverlayKind, 'none'>;
 
@@ -62,8 +63,8 @@ const STEPS = 16;
 /** Gap between the legend and a bottom centre panel it stacks above, and its default distance from the bottom edge. */
 const GAP = 8;
 const BASE_BOTTOM = 16;
-/** Bottom centre panels the legend stacks above: the build menu and the context bar. */
-const STACKED = '[data-testid="build-menu"], [data-testid="context-bar"]';
+/** Bottom centre panels the legend stacks above: the context bar. The build flyout ends above the legend (T36). */
+const STACKED = '[data-testid="context-bar"]';
 
 /**
  * Each step shows its own slice of one gradient built from the theme tokens. A step is one sixteenth of a
@@ -98,6 +99,8 @@ export function OverlayLegend() {
   // Only the fields that show or move the build menu and context bar. A string compares by value, so pointer
   // moves in the tool store do not rerender the legend.
   const stack = useToolStore((s) => `${s.tool}|${s.menuOpen}|${s.category}|${s.hint ? 1 : 0}|${s.problem ? 1 : 0}`);
+  const sheetOpen = useGameStore((s) => s.sheet !== null);
+  const flyout = useToolStore((s) => s.menuOpen && s.category !== null) && !sheetOpen;
   const ref = useRef<HTMLDivElement>(null);
   const [bottom, setBottom] = useState(BASE_BOTTOM);
   const max = useMemo(() => (overlay === 'none' ? 0 : overlayMax(overlay, overlayData ?? [])), [overlay, overlayData]);
@@ -121,7 +124,7 @@ export function OverlayLegend() {
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     root.querySelectorAll<HTMLElement>(STACKED).forEach((el) => observer?.observe(el));
     return () => observer?.disconnect();
-  }, [shown, stack]);
+  }, [shown, stack, flyout]);
   if (overlay === 'none') return null;
   return (
     <div
@@ -129,7 +132,7 @@ export function OverlayLegend() {
       class="chip"
       role="status"
       data-testid="overlay-legend"
-      style={`position:absolute;left:50%;bottom:${bottom}px;transform:translateX(-50%);z-index:5;max-width:min(440px, calc(100vw - 32px));white-space:nowrap`}
+      style={`position:absolute;${bottomCenter(flyout, 440)};bottom:${bottom}px;z-index:5;white-space:nowrap`}
     >
       <b style="min-width:0;overflow:hidden;text-overflow:ellipsis">{t(NAME[overlay])}</b>
       {overlay === 'zones' ? (

@@ -3,12 +3,11 @@ import type { AirportIdentity, GameMode } from '@shared/protocol';
 import { PRESETS, type Preset, type SitePayload } from '@shared/site';
 import pkg from '../../package.json';
 import { BRAND_COLORS, codesFor } from './airportIdentity';
-import { formatInt } from './format';
 import { deleteSave, duplicateSave, listSaves, renameSave, storageAvailable, type SaveHeader } from './saves';
 import { Settings } from './Settings';
 import { SitePreview } from './SitePreview';
 import { t, tDynamic, tFormat } from './strings';
-import { formatClock } from './TopBar';
+import { formatClock, formatInt } from './format';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export function randomSeed(): string {
