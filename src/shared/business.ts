@@ -218,6 +218,11 @@ export interface TerminalGrid {
   cost: number;
   /** Props on this floor in placement order (T76): furniture, washroom items, decoration and the like on the 0.5 m grid. */
   props: Prop[];
+  /**
+   * Zone an unzoned floor cell behaves as (T95): Secure on the apron side, Public on the landside, per cell. Derived
+   * from the floor and the airfield by the sim, never saved; absent means every unzoned cell is Public.
+   */
+  sides?: Uint8Array;
   /** Baggage nodes to draw, set only on the copies sent to the renderer, never saved. */
   bagNodes?: BagDrawNode[];
   /** Tenant units of this building with their furnishing, set only on the copies sent to the renderer (T32). */

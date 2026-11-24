@@ -24,6 +24,8 @@
   "staffDoorPerEdge": 2500,
   "atcRangeM": 3500,
   "transitionPadCells": 2,
+  "airsideProbeM": 40,
+  "airsideProbeStepM": 4,
   "walk": { "latticeCells": 3, "dirtyMarginCells": 8, "cacheSources": 64, "travelatorRefWalkMps": 1.3 },
   "service": { "cv": 0.4, "queueDensityPerM2": 1, "queueReachCells": 4, "queueSlots": 32 }
  },

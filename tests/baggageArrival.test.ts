@@ -103,6 +103,9 @@ describe('arrival bag flow (T43)', () => {
     gate({ op: 'foundation', x0: 44, y0: 39, x1: 48, y1: 40, variant: 0 });
     gate({ op: 'floor', x0: 44, y0: 39, x1: 48, y1: 40, variant: 2 });
     run(r.sim, { type: 'terminalBuild', building: r.building, ox, oy, headingDeg: 90, edit: { op: 'wall', x0: 44, y0: 40, x1: 46, y1: 40, variant: 3 } });
+    // Unzoned floor on the apron side defaults to Secure (T95), so the landside hall is painted Public first.
+    gate({ op: 'zone', x0: 40, y0: 39, x1: 70, y1: 46, variant: 1 });
+    gate({ op: 'zone', x0: 60, y0: 46, x1: 70, y1: 53, variant: 1 });
     gate({ op: 'zone', x0: 62, y0: 40, x1: 70, y1: 46, variant: 3 });
     gate({ op: 'fixture', x0: 63, y0: 41, x1: 65, y1: 42, variant: 16 });
     expect(r.sim.business.curbNode(0)).toBeGreaterThanOrEqual(0);

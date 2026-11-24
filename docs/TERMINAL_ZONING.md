@@ -10,14 +10,14 @@ How terminal zones work: what each zone means, how people cross between zones, a
 
 | Index | Key | Name | Meaning |
 | --- | --- | --- | --- |
-| 0 | none | Unzoned | Behaves as Public. The room tool asks the player to zone it |
+| 0 | none | Unzoned | Takes its default side (T95): Secure when its nearest seeding outer wall faces an apron or stand within `terminal.airsideProbeM` (40 m), Public when that wall faces away from the apron. Walls square to the apron seed nothing, so a hall splits straight across. With no apron in reach it is Public. The room tool asks the player to zone it |
 | 1 | public | Public, landside | Open to everyone: check in, bag drop, kiosks, arrivals hall, baggage claim, customs, landside shops |
 | 2 | commercial | Commercial | Shop units. A commercial area takes the security side of the zones it touches. One that touches both landside and airside cells is a breach |
 | 3 | secure | Secure, airside domestic | After security. Domestic gates and airside shops. Left only through a security exit |
 | 4 | staff | Staff only | Back of house: offices, baggage screening room, janitor room, control rooms. Entered only through a staff door |
 | 5 | international | International, airside | Appended. After passport control on departure, and the arrival side before immigration. International gates and their shops |
 
-The apron outside the building is airside for vehicles and staff. It is not painted.
+The apron outside the building is airside for vehicles and staff. It is not painted. Because the apron side of a terminal starts Secure, the player joins the landside to it with a security lane and a security exit (owner, 2026-11-24). The overlay shows the default split as a zone edge line without breach badges; nobody crosses it all the same.
 
 Landside means zone 1 and landside commercial. Airside means zones 3 and 5 and airside commercial.
 

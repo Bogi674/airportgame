@@ -180,7 +180,7 @@ Goal: MVP 1 is complete and proven in a long session.
 | T92 | Skip to next day: a HUD button runs the sim at a 30 s day rate until 06:00, with progress and cancel (owner, 2026-11-24) |  | T91 | doing |
 | T93 | Sandbox works finish instantly (owner, 2026-11-24) |  |  | doing |
 | T94 | Fixture names per kind, never reused, renamable; hover tag and connection lines for gate desks, stands, check in desks (owner, 2026-11-24) |  | T88 | todo |
-| T95 | Default secure airside: unzoned cells take the zone of their nearest outer wall (Secure facing an apron, Public otherwise) (owner, 2026-11-24) |  | T88 | todo |
+| T95 | Default secure airside: unzoned cells take the zone of their nearest outer wall (Secure facing an apron, Public otherwise) (owner, 2026-11-24) |  | T88 | doing |
 
 Exit: T38 passes.
 

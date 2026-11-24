@@ -200,7 +200,7 @@ const BADGE_GAP_M = 0.2;
 const shownCache = new WeakMap<TerminalGrid, ZoneEdge[]>();
 
 /**
- * The breach badges that fit: a badge that would touch a transition badge, the largest pending ring or a breach
+ * The breach badges that fit, none on the default split of unzoned floor: a badge that would touch a transition badge, the largest pending ring or a breach
  * badge kept earlier is left out, so badges never overlap. Breaches come in edge order, so the choice is stable.
  */
 function shownBreaches(g: TerminalGrid, breaches: readonly ZoneEdge[], badges: readonly TransitionBadge[], pending: readonly TransitionBadge[]): ZoneEdge[] {
@@ -213,6 +213,10 @@ function shownBreaches(g: TerminalGrid, breaches: readonly ZoneEdge[], badges: r
   for (const b of pending) taken.push({ x: b.x, y: b.y, r: r * (1.25 + PENDING_GROW) + PENDING_STROKE_M / 2 });
   const out: ZoneEdge[] = [];
   for (const e of breaches) {
+    // Between two unzoned cells the edge is the default landside and airside split (T95): its line shows it, a badge
+    // on every cell of it would only be noise. Nobody walks across it all the same.
+    const c = (e.y - g.y0) * g.w + (e.x - g.x0);
+    if (g.zone[c] === 0 && g.zone[e.horizontal ? c - g.w : c - 1] === 0) continue;
     const x = e.horizontal ? (e.x + 0.5) * C : e.x * C;
     const y = e.horizontal ? e.y * C : (e.y + 0.5) * C;
     if (taken.some((t) => Math.hypot(t.x - x, t.y - y) < t.r + r + BADGE_GAP_M)) continue;

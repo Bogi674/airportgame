@@ -30,7 +30,7 @@ export function flowStep(code: number): readonly [number, number] {
 const isPlain = (wall: number): boolean => wall === WALL.None || wall === WALL.Door;
 
 /**
- * The zone each cell behaves as. Unzoned floor counts as public. A commercial region (commercial cells joined by
+ * The zone each cell behaves as. Unzoned floor takes its default side (T95): Secure facing the apron, else Public. A commercial region (commercial cells joined by
  * open edges or plain doors) takes the one zone among public, secure and international it touches through open edges
  * or plain doors, and stays commercial when it touches none or more than one. Cells without floor are 0.
  */
@@ -38,7 +38,7 @@ export function effectiveZones(g: TerminalGrid): Uint8Array {
   const W = g.w;
   const n = W * g.h;
   const out = new Uint8Array(n);
-  for (let i = 0; i < n; i++) if (g.floor[i] > 0) out[i] = g.zone[i] === 0 ? PUBLIC : g.zone[i];
+  for (let i = 0; i < n; i++) if (g.floor[i] > 0) out[i] = g.zone[i] === 0 ? g.sides?.[i] || PUBLIC : g.zone[i];
   const seen = new Uint8Array(n);
   const stack: number[] = [];
   const members: number[] = [];

@@ -1,4 +1,9 @@
 import { planPropWithUse } from '@shared/useArea';
+import { apronContains } from '@shared/apronGeom';
+import { standBox } from '@shared/clearance';
+import { defaultZones } from '@shared/defaultZones';
+import { pointInPolygon } from '@shared/geom';
+import { standSlot } from '@shared/standGeom';
 import { AIRCRAFT } from '@data/aircraft';
 import { GSE } from '@data/index';
 import { AcState, DIVERT_AIRLINE, FlState, GA_AIRLINE } from '../ops/traffic';
@@ -477,6 +482,7 @@ export class Business {
     if (plan.cost > this.host.getCash()) return `insufficientFunds|cost=${plan.cost}`;
     if (plan.cost > 0) this.host.book('construction', -plan.cost);
     plan.apply();
+    const sidesMoved = this.updateSides(grid);
     if (fresh) {
       this.nextTerminalId++;
       this.grids.push(grid);
@@ -510,7 +516,9 @@ export class Business {
           }
         }
       }
-      this.refreshGrid(id, x0, y0, x1, y1);
+      // A floor edit can move the nearest outer wall of cells far away, and with it their default side (T95).
+      if (sidesMoved) this.refreshGrid(id, grid.x0, grid.y0, grid.x0 + grid.w, grid.y0 + grid.h);
+      else this.refreshGrid(id, x0, y0, x1, y1);
     }
     this.tenants.prune(this.grids);
     this.onGridEdited?.(id);
@@ -534,6 +542,47 @@ export class Business {
   }
 
   // Fixture levels (T74) ----------------------------------------------------
+
+  // Default sides of unzoned floor (T95) -----------------------------------
+
+  /** Airfield version the default sides were last worked out for. */
+  private sidesAirfield = -1;
+
+  /** True when a point lies on an apron or a stand box: the airside the apron facing walls look onto. */
+  private readonly onAirside = (x: number, y: number): boolean => {
+    const af = this.airfield.data;
+    for (const a of af.aprons) if (apronContains(a, x, y)) return true;
+    for (const st of af.stands) {
+      const slot = standSlot(st.size);
+      if (slot && pointInPolygon(x, y, standBox(st, slot))) return true;
+    }
+    return false;
+  };
+
+  /** Works out the default side of every unzoned cell of one floor. True when any cell changed. */
+  private updateSides(g: TerminalGrid): boolean {
+    const t = BUSINESS.terminal;
+    const next = defaultZones(g, this.onAirside, t.airsideProbeM, t.airsideProbeStepM);
+    const prev = g.sides;
+    g.sides = next;
+    if (!prev || prev.length !== next.length) return true;
+    for (let i = 0; i < next.length; i++) if (prev[i] !== next[i]) return true;
+    return false;
+  }
+
+  /** Aprons or stands changed: floors whose default sides moved get their walking graph and service nodes rebuilt. */
+  private airfieldMoved(): void {
+    this.sidesAirfield = this.airfield.version;
+    let moved = false;
+    for (let i = 0; i < this.grids.length; i++) {
+      const g = this.grids[i]!;
+      if (!this.updateSides(g)) continue;
+      moved = true;
+      this.walkGraphs[i] = buildWalkGraph(g);
+      this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, g, this.walkGraphs[i]!, this.closedCells(g));
+    }
+    if (moved) this.bumpTerminals();
+  }
 
   /** Fixtures under upgrade works, in the order they started. Saved. */
   fixtureWorks: FixtureWorks[] = [];
@@ -891,6 +940,7 @@ export class Business {
       this.dropGrid(i);
       return true;
     }
+    this.updateSides(g);
     this.walkGraphs[i] = buildWalkGraph(g);
     this.dropStaleWorks(g);
     this.serviceNodes[i] = rebuildServiceNodes(this.serviceNodes[i]!, g, this.walkGraphs[i]!, this.closedCells(g));
@@ -912,6 +962,7 @@ export class Business {
   restoreGridForHistory(copy: GridCopy): boolean {
     if (this.gridIndex(copy.id) >= 0) return false;
     const g = copyGrid(copy);
+    this.updateSides(g);
     this.grids.push(g);
     const wg = buildWalkGraph(g);
     this.walkGraphs.push(wg);
@@ -1360,6 +1411,7 @@ export class Business {
 
   /** Called every tick, cheap. Does its work only on day and hour boundaries. */
   update(tick: number): void {
+    if (this.airfield.version !== this.sidesAirfield) this.airfieldMoved();
     if (tick % 100 === 0) this.updateServiceLevel();
     if (tick % (60 * TICKS_PER_MINUTE) === 0) this.updateFuel(tick);
     this.finishFixtureWorks(tick);
@@ -1665,6 +1717,8 @@ export class Business {
     this.fireGraceUntil = fu.fireGraceUntil ?? GROUND.fire.graceDays;
     this.grids.length = 0;
     for (const sg of o.grids) this.grids.push(loadGrid(sg));
+    for (const g of this.grids) this.updateSides(g);
+    this.sidesAirfield = this.airfield.version;
     this.walkGraphs.length = 0;
     for (const g of this.grids) this.walkGraphs.push(buildWalkGraph(g));
     this.walkVersion++;
