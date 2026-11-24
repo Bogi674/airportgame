@@ -26,11 +26,11 @@ import {
 } from '@shared/business';
 import type { Stand } from '@shared/airfield';
 import { terminalIssues } from '@shared/terminalRooms';
-import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
+import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, fixtureCost, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { isLeveled, levelCost, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
-import { DIVERT_LABEL, GA_LABEL, fixtureKey, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
+import { DIVERT_LABEL, GA_LABEL, fixtureKey, isBaggageFixture, TERMINAL_LEVEL_MIN, ZONE, type Prop, type StaffRow } from '@shared/business';
 import { cellsOfRect, convertLegacyFixtures, propAt, propCost, propRect, propTotals } from '@shared/props';
 import { AUD } from '@shared/terminalZones';
 import { towerLevelOf } from '@shared/towerBudget';
@@ -668,6 +668,127 @@ export class Business {
     const [prop] = g.props.splice(i, 1);
     this.host.book('construction', propCost(prop!.asset));
     this.refreshProp(g, prop!);
+    return null;
+  }
+
+  /** Moves the topmost prop under (x, y) in grid meters to a new corner and turn, free of charge (T85). */
+  moveProp(building: number, x: number, y: number, toX: number, toY: number, rot: 0 | 1 | 2 | 3): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const i = propAt(g.props, x, y);
+    if (i < 0) return 'nothingThere';
+    const [old] = g.props.splice(i, 1);
+    const moved: Prop = { asset: old!.asset, x: toX, y: toY, rot };
+    const plan = planPropWithUse(g, moved);
+    if (plan.problem) {
+      g.props.splice(i, 0, old!);
+      return plan.problem.code + argsOf(plan.problem.args);
+    }
+    g.props.splice(i, 0, moved);
+    this.refreshProp(g, old!);
+    this.refreshProp(g, moved);
+    return null;
+  }
+
+  // Placed fixtures (T85) ------------------------------------------------------
+
+  /** The anchor array cell of the movable fixture covering logical (x, y), or a problem code. */
+  private movableAnchor(g: TerminalGrid, x: number, y: number): number | string {
+    const a = fixtureAnchor(g, cellIndex(g, x, y));
+    if (a < 0) return 'nothingThere';
+    if (isBaggageFixture(g.fixture[a]!)) return 'baggageNodeTool';
+    const at = cellOf(g, a);
+    if (this.worksAt(g.id, at.x, at.y)) return 'fixtureWorksRunning';
+    return a;
+  }
+
+  /** Clears every cell of the fixture anchored at array cell a and returns the cells with their old values. */
+  private liftFixture(g: TerminalGrid, a: number): { cells: number[]; values: number[] } {
+    const cells = fixtureCells(g, a);
+    const values: number[] = [];
+    for (const c of cells) {
+      values.push(g.fixture[c]!, g.fixtureRot[c]!, g.fixtureOff[c]!, g.fixtureLevel[c]!, g.fixtureMode[c]!, g.leased[c]!);
+      g.fixture[c] = 0;
+      g.fixtureRot[c] = 0;
+      g.fixtureOff[c] = 0;
+      g.fixtureLevel[c] = 0;
+      g.fixtureMode[c] = 0;
+      g.leased[c] = 0;
+    }
+    return { cells, values };
+  }
+
+  private dropFixture(g: TerminalGrid, lifted: { cells: number[]; values: number[] }): void {
+    lifted.cells.forEach((c, k) => {
+      const v = lifted.values.slice(k * 6, k * 6 + 6);
+      g.fixture[c] = v[0]!;
+      g.fixtureRot[c] = v[1]!;
+      g.fixtureOff[c] = v[2]!;
+      g.fixtureLevel[c] = v[3]!;
+      g.fixtureMode[c] = v[4]!;
+      g.leased[c] = v[5]!;
+    });
+  }
+
+  /** Refreshes a grid over the logical bounds of some array cells, plus extra logical points. */
+  private refreshCells(g: TerminalGrid, cells: readonly number[], extra: readonly { x: number; y: number }[] = []): void {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const add = (x: number, y: number): void => {
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    };
+    for (const c of cells) {
+      const at = cellOf(g, c);
+      add(at.x, at.y);
+    }
+    for (const p of extra) add(p.x, p.y);
+    if (x0 === Infinity) return;
+    this.refreshGrid(g.id, x0, y0, x1, y1);
+    this.tenants.prune(this.grids);
+    this.onGridEdited?.(g.id);
+  }
+
+  /**
+   * Removes the fixture covering logical cell (x, y) and keeps the floor, as erase does for the fixture alone: no
+   * refund, and the building's spent total drops by the fixture's price so a later demolition does not refund it.
+   */
+  removeFixture(building: number, x: number, y: number): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const a = this.movableAnchor(g, x, y);
+    if (typeof a === 'string') return a;
+    g.cost = Math.max(0, g.cost - fixtureCost(g.fixture[a]!, g.fixtureLevel[a]!));
+    const lifted = this.liftFixture(g, a);
+    this.refreshCells(g, lifted.cells);
+    return null;
+  }
+
+  /**
+   * Moves the fixture covering logical cell (x, y) so its anchor stands on (toX, toY) facing rot, free of charge, with
+   * its level and mode. It must fit there by the same rules as a new fixture, use area included; otherwise nothing changes.
+   */
+  moveFixture(building: number, x: number, y: number, toX: number, toY: number, rot: 0 | 1 | 2 | 3, ctx: BuildContext): string | null {
+    const g = this.grids.find((q) => q.id === building);
+    if (!g) return 'nothingThere';
+    const a = this.movableAnchor(g, x, y);
+    if (typeof a === 'string') return a;
+    const variant = g.fixture[a]!;
+    const level = g.fixtureLevel[a]!;
+    const mode = g.fixtureMode[a]!;
+    const lifted = this.liftFixture(g, a);
+    const plan = planEdit(g, { op: 'fixture', x0: toX, y0: toY, x1: toX + 1, y1: toY + 1, variant, rot, level, mode }, { ctx, af: this.airfield.data, others: this.grids });
+    if (plan.problem || plan.changes === 0) {
+      this.dropFixture(g, lifted);
+      return plan.problem ? plan.problem.code + argsOf(plan.problem.args) : 'nothingThere';
+    }
+    plan.apply();
+    const now = fixtureCells(g, cellIndex(g, toX, toY));
+    this.refreshCells(g, [...lifted.cells, ...now]);
     return null;
   }
 

@@ -4,7 +4,8 @@ import { standsReached } from '@shared/roadGraph';
 import { stationCategory } from '@shared/fireCover';
 import { polylineLength } from '@shared/geom';
 import { BAGGAGE_FIXTURE_KEYS, FIXTURE_KEYS, TICKS_PER_DAY, fixtureKey, type FixtureKey } from '@shared/business';
-import { cellIndex } from '@shared/terminalOps';
+import { cellIndex, fixtureAnchor } from '@shared/terminalOps';
+import { propAt, propSpec } from '@shared/props';
 import { movementsPerHour, runwayCapOf } from '@shared/towerBudget';
 import { runwayWorksDays, SURFACE_ORDER, surfaceAllowsCode, surfaceChange } from '@shared/surfaceRules';
 import { formatMoney, formatNumber } from './format';
@@ -429,6 +430,23 @@ function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
   );
 }
 
+/** Move, rotate and remove buttons for a picked fixture or prop (T85). */
+function ItemActions({ onMove, onRotate, onRemove }: { onMove: () => void; onRotate: () => void; onRemove: () => void }) {
+  return (
+    <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
+      <button data-testid="item-move" onClick={onMove}>
+        {t('inspector.itemMove')}
+      </button>
+      <button data-testid="item-rotate" onClick={onRotate}>
+        {t('inspector.itemRotate')}
+      </button>
+      <button data-testid="item-remove" onClick={onRemove}>
+        {t('inspector.itemRemove')}
+      </button>
+    </div>
+  );
+}
+
 /** Inspector for the selected airfield object, with segment properties, resurfacing and demolition. */
 export function ObjectPanel({ send }: Props) {
   const selection = useToolStore((s) => s.selection);
@@ -436,6 +454,7 @@ export function ObjectPanel({ send }: Props) {
   const biz = useGameStore((st) => st.business);
   const grids = useGameStore((st) => st.terminalGrids);
   const fixturePick = useToolStore((s) => s.fixturePick);
+  const propPick = useToolStore((s) => s.propPick);
   if (!selection) return null;
   const { kind, id } = selection;
   if (kind === 'bagNode') return <BagNodePanel id={id} send={send} />;
@@ -450,6 +469,24 @@ export function ObjectPanel({ send }: Props) {
     const fixtureId = grid && cell >= 0 ? grid.fixture[cell] : 0;
     const fixtureName = fixtureId > 0 ? fixtureKey(fixtureId) : null;
     const zoneIssueKeys = ZONE_ISSUES.filter((k) => biz.readiness.includes(k));
+    // A picked prop (T85): its name and the move, turn and remove buttons, read from the grid so it follows edits.
+    const pp = propPick?.building === id ? propPick : null;
+    const pGrid = pp ? grids.find((x) => x.id === id) : undefined;
+    const pIndex = pp && pGrid ? propAt(pGrid.props, pp.x, pp.y) : -1;
+    const picked = pGrid && pIndex >= 0 ? pGrid.props[pIndex]! : null;
+    const propBlock = pp && pGrid && picked && (
+      <div data-testid="prop-block" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">
+        <div style="font-weight:600">{propSpec(picked.asset)?.name ?? picked.asset}</div>
+        <ItemActions
+          onMove={() => useToolStore.getState().set({ moving: { kind: 'prop', building: id, x: pp.x, y: pp.y, asset: picked.asset, rot: picked.rot }, tool: 'terminal', tSub: 'move', hint: 'hint.terminal.move', problem: null, buy: null })}
+          onRotate={() => send({ type: 'moveProp', building: id, x: pp.x, y: pp.y, toX: picked.x, toY: picked.y, rot: ((picked.rot + 1) % 4) as 0 | 1 | 2 | 3 })}
+          onRemove={() => {
+            send({ type: 'removeProp', building: id, x: pp.x, y: pp.y });
+            useToolStore.getState().set({ propPick: null });
+          }}
+        />
+      </div>
+    );
     return (
       <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
@@ -480,6 +517,30 @@ export function ObjectPanel({ send }: Props) {
             <div style="font-weight:600">{tDynamic(`fixture.${fixtureId}`)}</div>
             {fixtureName === 'securityExit' && <div data-testid="fixture-level">{tFormat('inspector.level', { n: grid.fixtureLevel[cell] })}</div>}
             <FixtureLevel grid={grid} cell={cell} name={fixtureName} send={send} />
+            {!BAGGAGE_FIXTURE_KEYS.includes(fixtureName) && (
+              <ItemActions
+                onMove={() => {
+                  const anchor = fixtureAnchor(grid, cell);
+                  const code = grid.fixtureRot[anchor] ?? 0;
+                  useToolStore.getState().set({
+                    moving: { kind: 'fixture', building: grid.id, x: pick.x, y: pick.y, f: fixtureId, level: grid.fixtureLevel[anchor] ?? 1, mode: grid.fixtureMode[anchor] ?? 0, rot: (code === 0 ? 0 : code - 1) as 0 | 1 | 2 | 3 },
+                    tool: 'terminal',
+                    tSub: 'move',
+                    hint: 'hint.terminal.move',
+                    problem: null,
+                    buy: null,
+                  });
+                }}
+                onRotate={() => {
+                  const code = grid.fixtureRot[fixtureAnchor(grid, cell)] ?? 0;
+                  send({ type: 'moveFixture', building: grid.id, x: pick.x, y: pick.y, toX: pick.x, toY: pick.y, rot: ((code === 0 ? 1 : code) % 4) as 0 | 1 | 2 | 3 });
+                }}
+                onRemove={() => {
+                  send({ type: 'removeFixture', building: grid.id, x: pick.x, y: pick.y });
+                  useToolStore.getState().set({ fixturePick: null });
+                }}
+              />
+            )}
             {MODE_FIXTURE_NAMES.includes(fixtureName) && (
               <div style="display:flex;gap:4px;margin-top:4px">
                 {[0, 1].map((m) => (
@@ -496,6 +557,7 @@ export function ObjectPanel({ send }: Props) {
             )}
           </div>
         )}
+        {propBlock}
         <div style="margin-top:4px;color:var(--muted);font-size:12px">{t('inspector.terminalHint')}</div>
         <button
           data-testid="demolish"

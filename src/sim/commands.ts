@@ -79,6 +79,12 @@ export type Command =
   | { type: 'placeProp'; building: number; asset: string; x: number; y: number; rot: 0 | 1 | 2 | 3 }
   /** Removes the topmost prop under the point (x, y) in grid meters with a full refund (T76). */
   | { type: 'removeProp'; building: number; x: number; y: number }
+  /** Moves the topmost prop under (x, y) in grid meters to corner (toX, toY) with rot quarter turns, free (T85). */
+  | { type: 'moveProp'; building: number; x: number; y: number; toX: number; toY: number; rot: 0 | 1 | 2 | 3 }
+  /** Removes the fixture covering logical cell (x, y) and keeps the floor (T85). */
+  | { type: 'removeFixture'; building: number; x: number; y: number }
+  /** Moves the fixture covering logical cell (x, y) so its anchor stands on (toX, toY) facing rot, free (T85). */
+  | { type: 'moveFixture'; building: number; x: number; y: number; toX: number; toY: number; rot: 0 | 1 | 2 | 3 }
   /** Baggage network (T43): place a node on a building grid, remove it, assign a stand to a bay (bayId -1 unassigns), or rerun the link rule of a node. */
   /** Zones a rectangle of logical cells on a terminal floor as a tenant unit of a category (T32). */
   | { type: 'zoneUnit'; building: number; x: number; y: number; w: number; h: number; category: number }

@@ -642,6 +642,15 @@ export class Sim {
       case 'removeProp':
         this.recordGrid(cmd.building, () => this.business.removeProp(cmd.building, cmd.x, cmd.y));
         break;
+      case 'moveProp':
+        this.recordGrid(cmd.building, () => this.business.moveProp(cmd.building, cmd.x, cmd.y, cmd.toX, cmd.toY, cmd.rot));
+        break;
+      case 'removeFixture':
+        this.recordGrid(cmd.building, () => this.business.removeFixture(cmd.building, cmd.x, cmd.y));
+        break;
+      case 'moveFixture':
+        this.recordGrid(cmd.building, () => this.business.moveFixture(cmd.building, cmd.x, cmd.y, cmd.toX, cmd.toY, cmd.rot, this.buildContext()));
+        break;
       case 'placeBaggageNode': {
         const cash = this.cash;
         const r = this.baggage.place(cmd);
