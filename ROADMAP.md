@@ -165,7 +165,7 @@ Goal: MVP 1 is complete and proven in a long session.
 | Id | Task | Replaces | Depends | Status |
 | --- | --- | --- | --- | --- |
 | T35 | Main menu, new game wizard, load screen, settings and pause menu per `docs/UI_DESIGN.md` |  | phase 4 | done 55c076d 5c7b654 |
-| T36 | Left rail flyouts, alert center, overlay list |  | phase 4 | doing |
+| T36 | Left rail flyouts, alert center, overlay list |  | phase 4 | done 03d9bcd |
 | T45 | Asset sharpness at maximum zoom: diagnose, then fix |  |  | done caa064b |
 | T37 | Playwright smoke and visual tests in three engines |  | T35, T36 | todo |
 | T38 | MVP 1 acceptance: every exit criterion above holds, a 3 hour session at 4x runs without errors or budget breaches |  | all | todo |
