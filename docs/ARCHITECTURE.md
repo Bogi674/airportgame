@@ -582,6 +582,9 @@ Record every architectural choice with a date and one line of reason.
 * 2026-11-24 T85: one shared undo history in the sim orders every build step. Airfield steps keep their content on the airfield stack and the history only marks their place; terminal edits, props, fixture moves and baggage nodes record a patch of the cells, wall edges, cost and props they changed (by logical coordinates, so it survives growth), or a whole copy when they made or removed a building. Undo books the opposite of the step's money and redo books it again, as airfield undo did. The history is not saved, like the airfield's before it, and holds at most 200 steps.
 * 2026-11-24 T85: use areas live in `business.json` `useAreas` (owner choice: they refuse placement). A fixture's front is one quarter turn after its direction, which is the bottom edge of its sprite, so the use area, the sprite and the side its queue starts on turn together; a transition fixture's entry is its front. Every fixture now stores its direction, one cell ones included; old code 0 reads as direction 0, the facing they were always drawn with, so saves need no migration.
 * 2026-11-24 T85: removing a fixture refunds nothing, as erasing it did, and lowers the building's spent total so a later demolition does not refund it either; moving or turning a placed fixture or prop is free. Walls keep their 0.35 m width but draw at least 3 px wide with a light casing, the pixel floor other markings already had.
+* 2026-11-24 T86: a check in drop takes its desk's rotation (code 0 reads as 0), because the chute must leave from the back cell the use area keeps clear; no save shape changes.
+* 2026-11-24 T86: agent posts per fixture live in `staff.json` `operator.posts`, because the desk art puts the chair off the anchor centre.
+* 2026-11-24 T86: a drop node is never picked by a click, since it shares its desk's anchor cell and the desk carries the edit actions.
 
 ## 13. Known limits
 

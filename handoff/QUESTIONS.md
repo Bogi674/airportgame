@@ -564,3 +564,14 @@ Implementer choices, stated for the owner: a weather event weighs its climate sh
 | Undo | One shared history: Ctrl+Z undoes the last action of any kind (airfield, terminal structure, zone, fixture, prop, baggage node), with today's money rules |
 
 Implementer choices, stated for the owner: walls keep their true 0.35 m width but are drawn at least 3 px wide with a light casing, as other markings already have a pixel floor. The back to back bench sprite had both rows facing inward; the rows are swapped so the backs meet on the shared beam.
+
+## 2026-11-24 T86: fixture placement fixes
+
+Context: the check in ghost and the placed desk disagreed (the bag chute ignored the rotation and landed on the next desk in a row), the desk agent stood on the belt, and clicking a desk selected its bag drop so the T85 edit buttons never showed. The owner asked for footprints that follow the sprite sizes.
+
+| Question | Answer (owner, 2026-11-24) |
+| --- | --- |
+| Where the edit actions live | Both: a popup next to the picked fixture or prop with Relocate, Rotate and Demolish, and the same buttons in the inspector |
+| Demolish confirmation | A confirm popup before removing, naming the item and what removal pays back |
+
+Implementer choices, stated for the owner: an audit of every kit sprite found each one inside its declared size and every kit fixture footprint equal to its art, so no footprint changes. The legacy reclaim belt, a 1 cell block with no art that loads as a carousel (docs/BAGGAGE.md), leaves the build menu; the sized carousel in the Baggage menu replaces it.
