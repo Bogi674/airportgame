@@ -8,7 +8,7 @@ Last restructured on 2026-11-12, after the revamp brief.
 
 1. Read `CLAUDE.md`, then this file.
 2. Phases 1, 2, 3, 3b and 4 are done. T81, T32, T82 (prop effects), T50 (events) and T45 (asset sharpness) closed on 2026-11-23; T83 moved to MVP 2 (owner, 2026-11-23). T35 (menus) closed on 2026-11-23, T36 (flyouts, alert center, overlay list) on 2026-11-24. T37 (three engines) closed on 2026-11-24. Next is **T38** (acceptance): the automated part is done, see `handoff/work/T38.md`; it waits for the owner's 3 hour session. Run the `grill-me` skill and write the spec first.
-2. Phases 1, 2, 3, 3b and 4 are done. T81, T32, T82 (prop effects), T50 (events) and T45 (asset sharpness) closed on 2026-11-23; T83 moved to MVP 2 (owner, 2026-11-23). T35 (menus) closed on 2026-11-23, T36 (flyouts, alert center, overlay list) on 2026-11-24. T37 (three engines) closed on 2026-11-24. Next is **T38** (acceptance): the automated part is done, see `handoff/work/T38.md`; it waits for the owner's 3 hour session. Run the `grill-me` skill and write the spec first.
+3. Build on what T59 and T47 left: `src/shared/standSnap.ts` (single stand snapping), `Stand.accepts`, the marking layout in `src/render/markings/standLayout.ts` (`sheetFunnel`, `frontZones`) with its painter in `standPaint.ts`, and the map badges in `src/render/standStates.ts`.
 6. Known leftovers are in `handoff/BACKLOG.md`, known limits in `docs/ARCHITECTURE.md` section 13.
 7. Browser tests in the cloud session run with `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium npx playwright test --project=chromium --trace off`. Firefox and WebKit are in `/opt/pw-browsers` too: add `E2E_ALL=1 --project=firefox --workers=1` (or webkit); more workers run out of memory.
 
