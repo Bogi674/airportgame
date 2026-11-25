@@ -617,3 +617,12 @@ Context: contact stands sat idle without a terminal facade within reach, a game 
 | Connection lines | Gate desk and its stands (and stand to desk, chute, carousel), check in desk to the chute and belt that serve it, name tag on hover |
 | Saves | Old saves migrate: ticks rescale to the new clock and existing fixtures are numbered in placement order |
 | Sandbox works | Every work (runway, stand, surface, fixture upgrade) finishes the instant it is ordered |
+
+## Bug: arrivals lost at a stand with an assigned gate desk (2026-11-25)
+
+Context: Stand 9 had Gate desk 2 in a Secure zone and the terminal had a door in the outer wall near check in, yet every arrival raised "no gate desk can take its arriving passengers". A door only became a walk node with floor on both sides, so an outer door never gave the terminal a curb and arrivalEntry refused every flight.
+
+| Question | Answer (owner, 2026-11-25) |
+| --- | --- |
+| Setup at the failing stand | Desk in a Secure zone, a door facing outside near check in, a door from the secure hall toward the stands |
+| Domestic flight whose desks are all International | Keep the zoning rule (domestic arrivals need a Secure desk) and show a notice that names the zone mismatch |

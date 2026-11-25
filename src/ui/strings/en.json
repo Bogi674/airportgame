@@ -286,6 +286,8 @@
   "notice.noServiceRoad": "Stand {stand} has no service road from a depot, so its turnarounds run slower.",
   "notice.standNeedsBusBay": "Stand {stand} is too far from its gate desk to board on foot. Build a bus bay there, or boarding runs slower.",
   "notice.arrivalNoGate": "Stand {stand}: no gate desk can take its arriving passengers. They were lost. Build a gate desk in a secure zone, or an international one for international flights.",
+  "notice.arrivalNoCurb": "Stand {stand}: its arriving passengers were lost because no terminal has an entrance. Build a door in an outer wall on public floor.",
+  "notice.arrivalDomesticAtIntl": "Stand {stand}: a domestic flight arrived but every gate desk is in an international zone. Its passengers were lost. Build a gate desk in a secure zone for domestic flights.",
   "notice.intlNoImmigration": "Stand {stand}: an international flight arrived with no international gate desk. Its passengers skipped immigration and customs.",
   "notice.intlFlowMissing": "{name}: international flights cancelled today. Build the international flow in one terminal: passport control in departure mode, an international gate desk, passport control in arrival mode and customs.",
   "notice.noVehicle": "An airline flight waits for a {vehicle}, and the airport owns none. Build a ground handling depot and buy one.",

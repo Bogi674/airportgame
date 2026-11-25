@@ -912,13 +912,40 @@ describe('arrival entry desk (T20)', () => {
     return 9001;
   }
 
-  function terminalSim(gateDesk: number): Sim {
+  function terminalSim(gateDesk: number, doorStrip = true): Sim {
     const sim = ownedSim();
     sim.cash = 100_000_000;
     buildTestAirport(sim, { standsPerRow: 8 });
-    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk })).toEqual([]);
+    expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk, doorStrip })).toEqual([]);
     return sim;
   }
+
+  it('a curb door that opens onto bare ground still lets a docked flight in', () => {
+    const sim = terminalSim(2, false);
+    expect(sim.business.curbNode(0)).toBeGreaterThanOrEqual(0);
+    const { f, events } = dock(sim, -1);
+    expect(sim.business.flightPaxOf(f)).toBe(sim.business.paxFor(f));
+    expect(events.some((e) => e.startsWith('arrival'))).toBe(false);
+  });
+
+  it('a terminal with no public door loses the passengers and says the curb is missing', () => {
+    const sim = terminalSim(2);
+    const g = sim.business.grids[0]!;
+    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: { op: 'removeWall', x0: 70, y0: 52, x1: 72, y1: 52, variant: 0 } })).toEqual([]);
+    const { events } = dock(sim, -1);
+    expect(events.some((e) => e.startsWith('arrivalNoCurb|stand='))).toBe(true);
+    expect(events.some((e) => e.startsWith('arrivalNoGate'))).toBe(false);
+  });
+
+  it('a domestic flight whose only desks are International says so instead of no gate desk', () => {
+    const sim = terminalSim(2);
+    const g = sim.business.grids[0]!;
+    expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: 90, edit: { op: 'zone', x0: 76, y0: 42, x1: 80, y1: 44, variant: 5 } })).toEqual([]);
+    const { f, events } = dock(sim, -1);
+    expect(sim.business.flightPaxOf(f)).toBe(0);
+    expect(events.some((e) => e.startsWith('arrivalDomesticAtIntl|stand='))).toBe(true);
+    expect(events.some((e) => e.startsWith('arrivalNoGate'))).toBe(false);
+  });
 
   it('a domestic flight docking at a terminal with gate desks is served with all its passengers', () => {
     const sim = terminalSim(2);

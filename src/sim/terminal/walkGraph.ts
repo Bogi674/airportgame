@@ -132,13 +132,15 @@ function floodGroup(g: TerminalGrid, acc: ZoneAccess, ax0: number, ay0: number, 
   return tail;
 }
 
-/** True when the edge on any side of floor cell (ax, ay) is a door with floor on its far side. */
+/** True when the edge on any side of floor cell (ax, ay) is a door, including an outer door with bare ground beyond. */
 function doorBeside(g: TerminalGrid, ax: number, ay: number): boolean {
   const W = g.w;
-  if (ax > 0 && g.vWall[ay * (W + 1) + ax] === WALL.Door && g.floor[ay * W + ax - 1]! > 0) return true;
-  if (ax < W - 1 && g.vWall[ay * (W + 1) + ax + 1] === WALL.Door && g.floor[ay * W + ax + 1]! > 0) return true;
-  if (ay > 0 && g.hWall[ay * W + ax] === WALL.Door && g.floor[(ay - 1) * W + ax]! > 0) return true;
-  return ay < g.h - 1 && g.hWall[(ay + 1) * W + ax] === WALL.Door && g.floor[(ay + 1) * W + ax]! > 0;
+  return (
+    g.vWall[ay * (W + 1) + ax] === WALL.Door ||
+    g.vWall[ay * (W + 1) + ax + 1] === WALL.Door ||
+    g.hWall[ay * W + ax] === WALL.Door ||
+    g.hWall[(ay + 1) * W + ax] === WALL.Door
+  );
 }
 
 /** Marks the nodes of one block. Its cells are the array cells whose logical block is (bx, by). */
@@ -186,7 +188,8 @@ function fillBlock(g: TerminalGrid, wg: WalkGraph, bx: number, by: number): void
     if (g.floor[c]! <= 0 || wg.blocked[c] === 1) continue;
     const fixture = g.fixture[c]!;
     if (fixture > 0 && fixture !== SEATING && g.fixtureRot[c]! < TAIL_ROT) wg.cellKind[c] = WALK_NODE.Fixture;
-    else if (wg.cellKind[c] === 0 && doorBeside(g, ax, ay)) wg.cellKind[c] = WALK_NODE.Door;
+    // A door cell that is also its group's lattice node must still read as a door, or the terminal loses its curb.
+    else if ((wg.cellKind[c] === 0 || wg.cellKind[c] === WALK_NODE.Lattice) && doorBeside(g, ax, ay)) wg.cellKind[c] = WALK_NODE.Door;
     else if (wg.cellKind[c] === 0 && wg.rideEnd[c] === 1) wg.cellKind[c] = WALK_NODE.Ride;
     else if (wg.cellKind[c] !== WALK_NODE.Door && gateBeside(wg.access, g, ax, ay)) wg.cellKind[c] = WALK_NODE.Gate;
   }
