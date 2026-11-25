@@ -97,7 +97,7 @@
    }
   },
   {
-   "tool": "tool-select"
+   "tool": "task-select"
   },
   {
    "wait": 300

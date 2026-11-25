@@ -71,7 +71,7 @@ test('R turns the bag drop about to be placed, and the placed tail follows', asy
     return out;
   });
 
-  await page.getByTestId('tool-terminal').click();
+  await page.getByTestId('tool-stations').click();
   await page.getByTestId('menutab-processing').click();
   await page.getByTestId('card-bagDrop').click();
   await page.mouse.move(box.x + target.x, box.y + target.y);
