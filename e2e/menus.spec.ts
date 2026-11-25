@@ -6,7 +6,8 @@ test('category menus, fleet purchase, stand management and land mode', async ({ 
   await startNewGame(page);
   // Ground handling opens on the depot and road tools, then lists vehicles to buy. Vehicles live in a depot (T60),
   // so buying one before any depot is built is refused with a notice and costs nothing.
-  await page.getByTestId('tool-handling').click();
+  await page.getByTestId('tool-flightops').click();
+  await page.getByTestId('menutab-depot').click();
   await expect(page.getByTestId('build-menu')).toBeVisible();
   await page.getByTestId('card-depot').click();
   await expect(page.getByTestId('card-depot')).toHaveAttribute('aria-pressed', 'true');
@@ -30,7 +31,7 @@ test('category menus, fleet purchase, stand management and land mode', async ({ 
   await expect(page.getByTestId('auto-stands')).toBeChecked();
   await page.getByTestId('sheet-close').click();
   // Land mode is separate from building.
-  await page.getByTestId('parcel-toggle').click();
+  await page.getByTestId('task-land').click();
   await expect(page.getByTestId('land-banner')).toBeVisible();
   await expect(page.getByTestId('tool-rail')).toHaveCount(0);
   await page.getByTestId('land-exit').click();

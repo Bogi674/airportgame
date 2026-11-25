@@ -82,7 +82,7 @@
       "tool": "tool-terminal"
     },
     {
-      "tool": "menutab-processing"
+      "tool": "tool-stations"
     },
     {
       "tool": "card-checkIn"

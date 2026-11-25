@@ -17,7 +17,7 @@ import { pickedStandSurface } from './tools/controller';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
-import { bottomCenter } from './layout';
+import { ABOVE_TASKBAR_PX, bottomCenter } from './layout';
 
 interface Props {
   send(cmd: Command): void;
@@ -108,7 +108,7 @@ function Num({ label, value, min, max, onChange, testId }: { label: string; valu
 export function ContextBar({ send }: Props) {
   const s = useToolStore();
   // The build menu is a flyout beside the rail (T36): the bar keeps the bottom edge and moves right of the flyout.
-  const bottom = 12;
+  const bottom = ABOVE_TASKBAR_PX;
   const flyout = useGameStore((g) => g.sheet === null) && s.menuOpen && s.category !== null;
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';

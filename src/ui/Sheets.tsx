@@ -28,7 +28,7 @@ export function Sheet({ title, children, testId }: { title: string; children: pr
   const setSheet = useGameStore((s) => s.setSheet);
   const current = useGameStore((s) => s.sheet);
   return (
-    <div data-testid={testId} role="dialog" aria-label={title} class="panel" style="position:absolute;top:56px;left:50%;transform:translateX(-50%);width:min(860px,94vw);max-height:calc(100% - 110px);overflow:auto;padding:12px 16px;z-index:20">
+    <div data-testid={testId} role="dialog" aria-label={title} class="pn z-sheet" style="overflow:auto;padding:12px 16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span class="sheet-title">{title}</span>
         <button class="round" style="width:28px;height:28px" data-testid="sheet-close" title={t('sheet.close')} aria-label={t('sheet.close')} onClick={() => setSheet(null)}>

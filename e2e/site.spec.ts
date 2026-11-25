@@ -4,7 +4,8 @@ import { startNewGame, watchErrors } from './helpers';
 test('generates a site, buys land, and navigates with the minimap tools', async ({ page }) => {
   const errors = watchErrors(page);
   await startNewGame(page);
-  await page.getByTestId('open-site').click();
+  await page.getByTestId('tool-staff').click();
+  await page.getByTestId('card-site').click();
   await expect(page.getByTestId('site-info')).toBeVisible();
   await expect(page.getByTestId('minimap')).toBeVisible();
   expect(await page.getByTestId('site-info').textContent()).toContain('$120,000,000');
@@ -23,7 +24,7 @@ test('generates a site, buys land, and navigates with the minimap tools', async 
 
   // Parcel overlay and picking.
   await page.keyboard.press('p');
-  await expect(page.getByTestId('parcel-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('task-land')).toHaveAttribute('aria-pressed', 'true');
   const box = await page.getByTestId('map').boundingBox();
   if (!box) throw new Error('no map box');
   // Click away from the owned start area, near the left edge of the view.

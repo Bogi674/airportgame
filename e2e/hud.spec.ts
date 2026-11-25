@@ -5,7 +5,7 @@ test('build flyouts open beside the rail, clear of the guide and the context bar
   const errors = watchErrors(page);
   await startNewGame(page);
   const rail = await page.getByTestId('tool-rail').boundingBox();
-  for (const id of ['runway', 'taxiway', 'apron', 'stands', 'handling', 'terminal', 'furnish', 'flightops', 'infra', 'staff', 'zoning']) {
+  for (const id of ['runway', 'taxiway', 'apron', 'stands', 'terminal', 'stations', 'furnish', 'commercial', 'flightops', 'infra', 'staff', 'zoning']) {
     await page.getByTestId(`tool-${id}`).click();
     const menu = page.getByTestId('build-menu');
     await expect(menu).toBeVisible();

@@ -16,7 +16,7 @@ export function ParcelPanel({ onBuy }: Props) {
   const forSale = type !== ParcelType.Protected;
   const price = site.parcelPrice[p];
   return (
-    <div data-testid="parcel" style="position:absolute;right:12px;top:52px;width:240px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+    <div data-testid="parcel" class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5">
       <div style="font-weight:600">
         {t('parcel.title')} {p}: {tDynamic(`parcel.type.${Math.min(type, PARCEL_TYPE_COUNT - 1)}`)}
       </div>

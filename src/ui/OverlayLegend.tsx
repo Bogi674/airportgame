@@ -5,7 +5,7 @@ import { Icon } from './icons';
 import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { t, type StringKey } from './strings';
-import { bottomCenter } from './layout';
+import { ABOVE_TASKBAR_PX, bottomCenter } from './layout';
 
 type Shown = Exclude<OverlayKind, 'none'>;
 
@@ -62,7 +62,7 @@ function BagKey() {
 const STEPS = 16;
 /** Gap between the legend and a bottom centre panel it stacks above, and its default distance from the bottom edge. */
 const GAP = 8;
-const BASE_BOTTOM = 16;
+const BASE_BOTTOM = ABOVE_TASKBAR_PX;
 /** Bottom centre panels the legend stacks above: the context bar. The build flyout ends above the legend (T36). */
 const STACKED = '[data-testid="context-bar"]';
 

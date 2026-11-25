@@ -397,7 +397,7 @@ function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
     return { kind: o ? t(`inspector.bag.kind.${o.kind}`) : '', n: bagNodeNumber(nodes, other) };
   };
   return (
-    <div data-testid="bag-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+    <div data-testid="bag-panel" class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5">
       <div style="font-weight:600">{t(`inspector.bag.kind.${node.kind}`)}</div>
       <div style="color:var(--ink-2);font-size:11px" data-testid="bag-id">
         {tFormat('inspector.bag.id', { id: node.id })}
@@ -498,7 +498,7 @@ export function ObjectPanel({ send }: Props) {
     if ((pick && grid && cell >= 0 && fixtureName !== null) || (pp && pGrid && picked)) {
       const title = picked ? (propSpec(picked.asset)?.name ?? picked.asset) : (fixtureLabelAt(grid!, cell, biz.fixtureNames) ?? tDynamic(`fixture.${fixtureId}`));
       return (
-        <div data-testid="item-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+        <div data-testid="item-panel" class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5">
           <div data-testid="item-title" style="font-weight:600">{title}</div>
           <div style="color:var(--ink-2);font-size:12px">{tFormat('inspector.inTerminal', { id: term.id })}</div>
           {picked ? (
@@ -537,7 +537,7 @@ export function ObjectPanel({ send }: Props) {
       );
     }
     return (
-      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+      <div data-testid="terminal-panel" class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
         <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
         <div>{tFormat('terminal.arrivals', { n: biz.arrDay[0] ?? 0 })}</div>
@@ -582,7 +582,7 @@ export function ObjectPanel({ send }: Props) {
     return (
       <div
         data-testid="object-panel"
-        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+        class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5"
       >
         <div style="font-weight:600">{tDynamic(`building.${b.kind}`)}</div>
         <div data-testid="building-upkeep">{tFormat('inspector.upkeep', { cost: formatMoney(Math.round(b.cost * GROUND.buildingUpkeepShare)) })}</div>
@@ -621,7 +621,7 @@ export function ObjectPanel({ send }: Props) {
     return (
       <div
         data-testid="object-panel"
-        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+        class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5"
       >
         <div style="font-weight:600">{t(road ? 'inspector.road' : 'inspector.depot')}</div>
         {road && <div data-testid="road-length">{tFormat('inspector.roadLength', { len: Math.round(polylineLength(road.points)) })}</div>}
@@ -650,7 +650,7 @@ export function ObjectPanel({ send }: Props) {
     return (
       <div
         data-testid="object-panel"
-        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+        class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5"
       >
         <div style="font-weight:600">{tFormat('inspector.title', { kind: t('inspector.tower'), name: '' }).trim()}</div>
         <div data-testid="tower-level">
@@ -849,7 +849,7 @@ export function ObjectPanel({ send }: Props) {
   return (
     <div
       data-testid="object-panel"
-      style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+      class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5"
     >
       <div style="font-weight:600">{tFormat('inspector.title', { kind: tDynamic(`inspector.${kind}`), name })}</div>
       {body}

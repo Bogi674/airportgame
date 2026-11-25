@@ -17,17 +17,17 @@ export function AlertCenter({ onJump }: { onJump(stand: string): void }) {
   const toggle = useGameStore((s) => s.toggleAlerts);
   const clear = useGameStore((s) => s.clearAlertLog);
   return (
-    <span style="position:relative;display:inline-flex">
-      <button class="round" data-testid="alert-bell" title={t('alerts.title')} aria-label={unread > 0 ? tFormat('alerts.unread', { n: unread }) : t('alerts.title')} aria-expanded={open} onClick={toggle}>
+    <span style="display:inline-flex">
+      <button class="tb-bell" data-testid="alert-bell" title={t('alerts.title')} aria-label={unread > 0 ? tFormat('alerts.unread', { n: unread }) : t('alerts.title')} aria-expanded={open} onClick={toggle}>
         <Icon name="bell" size={16} />
         {unread > 0 && (
-          <span data-testid="alert-unread" style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--bad);color:var(--surface);font-size:10px;line-height:16px;text-align:center">
+          <span data-testid="alert-unread" style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--bad);color:#fff;font:700 9px/16px var(--font-ui);text-align:center;box-shadow:0 0 0 2px var(--surface)">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>
       {open && (
-        <div class="panel" data-testid="alert-center" role="dialog" aria-label={t('alerts.title')} style="position:fixed;right:12px;top:72px;width:min(360px,calc(100vw - 32px));max-height:60vh;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px;z-index:30;box-sizing:border-box">
+        <div class="pn pop" data-testid="alert-center" role="dialog" aria-label={t('alerts.title')} style="position:fixed;right:10px;top:64px;width:min(340px,calc(100vw - 32px));max-height:calc(100vh - 140px);overflow:auto;display:flex;flex-direction:column;gap:10px;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
             <div class="section">{t('alerts.title')}</div>
             {log.length > 0 && (
