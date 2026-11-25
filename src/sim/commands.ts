@@ -66,6 +66,8 @@ export type Command =
   | { type: 'reclassRunway'; id: number; code: CodeLetter; approach: Approach }
   /** Builds a turn pad at one end of a runway on the given side, or removes it with null. */
   | { type: 'turnPad'; runwayId: number; end: 'a' | 'b'; side: PadSide | null }
+  /** Cuts the stretch of a service road between the points nearest the two ends of a stroke (DEM2): two roads, one, or none remain. */
+  | { type: 'cutRoad'; id: number; at: Pt; at2: Pt }
   | { type: 'editTaxiway'; id: number; op: 'extend' | 'trim' | 'cut'; end?: 'start' | 'end'; points?: Pt[]; at?: Pt; at2?: Pt }
   | { type: 'resurface'; kind: 'runway' | 'taxiway' | 'apron'; id: number; surface: Surface; tier: number }
   /** level is the floor index and defaults to 0, the only floor that can be built for now. */
