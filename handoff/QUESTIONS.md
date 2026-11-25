@@ -626,3 +626,20 @@ Context: Stand 9 had Gate desk 2 in a Secure zone and the terminal had a door in
 | --- | --- |
 | Setup at the failing stand | Desk in a Secure zone, a door facing outside near check in, a door from the secure hall toward the stands |
 | Domestic flight whose desks are all International | Keep the zoning rule (domestic arrivals need a Secure desk) and show a notice that names the zone mismatch |
+
+## 2026-11-25 Revision 6 UI revamp and demolish rework
+
+Context: the owner asked to build the Blue Hangar UI of `docs/DESIGN_REVISION_6.md` and to rework every demolish and erase tool around it.
+
+| Question | Answer (owner, 2026-11-25) |
+| --- | --- |
+| Scope of this session | The in game HUD (R6-01 to R6-08) plus the demolish rework. Main menu, wizard, pause menu, map palette and screenshot scenarios stay `todo` |
+| Fonts | System fonts for now. No `@fontsource` packages, revisit later |
+| Line demolish | Every laid object gets a Demolish button in its build flyout that works like its build tool: the stroke removes the section drawn over. Runway, taxiway, taxilane, rapid exit, service road, terminal walls, and any later laid object (conveyor belts) |
+| Runway cut in the middle | Refused. A runway stroke may only trim from an end. Taxiways, roads and walls split into two pieces |
+| Refund of a cut | The usual refund share times the removed length share |
+| Items left without access | Allowed. Every item that loses its link (a stand off its taxiway, a depot or bay off its road) raises an alert saying it stopped working because its access was cut and needs to be connected again |
+| General bulldoze | A Bulldoze tool with two modes: Selection (click one item) and Area (drag a box, filter by type checklist) |
+| Area sweep scope | The render's terminal rows plus Stands, Runways and taxiways, Roads, Buildings. Objects fully inside the box go whole; aprons (Airside pavement) are cut to the box |
+| Cost and time | Refund only, no demolition cost or time. Items in use are skipped (sim rule kept), the switch shows on and locked |
+| Confirmation | Every demolish act opens a centered danger modal: what goes, the refund, Demolish (Enter) and Cancel (Esc) |

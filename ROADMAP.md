@@ -181,6 +181,29 @@ Goal: MVP 1 is complete and proven in a long session.
 
 Exit: T38 passes.
 
+### Phase 6. Blue Hangar UI (design revision 6)
+
+Goal: every UI surface follows `docs/DESIGN_REVISION_6.md`. Decisions in `handoff/QUESTIONS.md` under 2026-11-25.
+
+| Id | Task | Replaces | Depends | Status |
+| --- | --- | --- | --- | --- |
+| R6-01 | Tokens: light default, every UI color from a token, dark mapping (system fonts, owner 2026-11-25) |  |  | todo |
+| R6-02 | Kit primitives in `src/ui/kit/` with a `?kit` test page |  | R6-01 | todo |
+| R6-03 | Layout zones and the layout test |  | R6-02 | todo |
+| R6-04 | Top bar and its popovers |  | R6-03 | todo |
+| R6-05 | Rail regroup |  | R6-03 | todo |
+| R6-06 | Build flyout with variant tiles and tray |  | R6-05 | todo |
+| R6-07 | Right panel modes: select, build, edit, area bulldoze |  | R6-06 | todo |
+| R6-08 | Task bar and minimap states |  | R6-03 | todo |
+| DEM1 | Demolish confirm modal for every demolish act |  | R6-02 | todo |
+| DEM2 | Line demolish: a Demolish button per laid object that cuts the stroked section (runway trims ends only), pro rata refund, alerts for items that lose access |  | DEM1 | todo |
+| DEM3 | Bulldoze tool with Selection and Area modes, type checklist with counts |  | DEM1, R6-07 | todo |
+| R6-09 | Main menu |  | R6-02 | todo |
+| R6-10 | New career wizard |  | R6-09 | todo |
+| R6-11 | Pause menu |  | R6-02 | todo |
+| R6-12 | Map placeholder palette |  |  | todo |
+| R6-13 | Screenshot scenarios per render |  | all R6 | todo |
+
 ## 5. Out of MVP 1
 
 Moved to MVP 2:
