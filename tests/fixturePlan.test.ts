@@ -118,6 +118,13 @@ describe('tier gating', () => {
     expect(planFixture(ops, 2, 0, PPM, null).body).toHaveLength(2);
   });
 
+  it('puts floor layer ops under the bodies and gives them no shadow (Revision 6)', () => {
+    const plan = planFixture([rect({ fl: 1, ht: 1 }), rect({ ht: 1 })], 3, 0, PPM, null);
+    expect(plan.floor).toHaveLength(1);
+    expect(plan.body).toHaveLength(1);
+    expect(plan.shadows).toHaveLength(1);
+  });
+
   it('always keeps text ops in body', () => {
     const ops: FixtureOp[] = [{ k: 't', x: 0, y: 0, s: 'GATE', size: 0.5, f: '#ffffff' }];
     expect(planFixture(ops, 1, 0, PPM, null).body).toHaveLength(1);

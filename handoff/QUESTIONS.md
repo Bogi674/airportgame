@@ -617,3 +617,20 @@ Context: contact stands sat idle without a terminal facade within reach, a game 
 | Connection lines | Gate desk and its stands (and stand to desk, chute, carousel), check in desk to the chute and belt that serve it, name tag on hover |
 | Saves | Old saves migrate: ticks rescale to the new clock and existing fixtures are numbered in placement order |
 | Sandbox works | Every work (runway, stand, surface, fixture upgrade) finishes the instant it is ordered |
+
+## 2026-11-25 Revision 6 slice 1: check in desk sizes and basic security lane
+
+Context: Revision 6 (`docs/DESIGN_REVISION_6.md`) proposed a 1.5 cell level 2 check in desk. The grill-me round settled the footprint and the scope of the first slice. Slice 2 (doors and windows) is a separate task.
+
+| Question | Answer (owner, 2026-11-25) |
+| --- | --- |
+| Check in desk footprint per level | Whole cells only, no half cell snap. Level 1 is 1 x 1 cells (2 x 2 m), level 2 is 2 x 1 cells (4 m grid footprint, 3 m art with a 1 m walkable strip at the tail end), level 3 is 2 x 1 cells (4 x 2 m). This overrides the half cell recommendation of the spec and of `docs/DESIGN_REVISION_6.md` |
+| Scope of this run | Slice 1 only: check in desk sizes, level aware span, upgrade rules and the security level 1 art swap. Doors and windows stay in slice 2 |
+| Delivery | One branch, a commit per slice, a pull request against main at the end |
+| Ramp cell | Stays the cell directly behind the left cell (anchor) for every level and rotation, no change to baggage rules |
+| Upgrade rule | A check in desk needs free cells to the right of its current footprint (level 1 to 2 needs 1 more cell, level 2 to 3 needs none). Blocked: reject with Needs room to the right. Existing saves keep the anchor cell, a level 2 or 3 desk that cannot fit on load drops to level 1 with a one time alert, never deleted |
+| Security level 1 | Art swap only: same 16 x 4 m footprint, stats, officers and upgrade path |
+
+Open for the owner: security level 1 has fewer stations, so it may need 3 officers instead of 4. Not changed in this slice. The service times of check in levels 2 and 3 (105 s and 95 s) stay proposals.
+
+Implementer choices, stated for the owner: level 2 art is anchored at the anchor end of its 4 m footprint, so the free 1 m strip lies at the tail end and the desk does not move on upgrade from level 1.

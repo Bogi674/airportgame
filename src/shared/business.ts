@@ -83,7 +83,7 @@ export const FIXTURE_ZONES: Record<FixtureKey, readonly number[]> = {
   travelator: [1, 2, 3, 4, 5],
   bar: [2, 3, 5],
 };
-/** Cells a fixture covers. Two cell fixtures keep their direction in the terminal grid. */
+/** Cells a fixture covers at level 1. Two cell fixtures keep their direction in the terminal grid. Levels differ for the check in desk: use checkInSpan or footprintOf. */
 export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
   checkIn: 1,
   security: 1,
@@ -115,7 +115,8 @@ export const FIXTURE_SPAN: Record<FixtureKey, 1 | 2> = {
  * perpendicular. A fixture without levels has one entry; a level past the last entry uses the last one.
  */
 export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, number])[]> = {
-  checkIn: [[1, 1]],
+  // Revision 6 (owner 2026-11-25): whole cells only. Level 2 draws a 3 m desk on 2 cells, the last meter stays walkable.
+  checkIn: [[1, 1], [2, 1], [2, 1]],
   security: [[2, 8]],
   belt: [[1, 1]],
   seating: [[1, 1]],
@@ -140,6 +141,8 @@ export const FIXTURE_FOOTPRINT: Record<FixtureKey, readonly (readonly [number, n
   travelator: [[4, 2], [8, 2], [12, 2]],
   bar: [[1, 1]],
 };
+/** Footprint of a check in desk at a level as [along, across] cells: 1 x 1, 2 x 1 and 2 x 1 for levels 1 to 3. */
+export const checkInSpan = (level: number): readonly [number, number] => footprintOf('checkIn', level);
 /** Fixtures that move people from one zone to another. */
 export const TRANSITION_KEYS: readonly FixtureKey[] = ['security', 'securityExit', 'passport', 'eGate'];
 export function footprintOf(key: FixtureKey, level: number): readonly [number, number] {

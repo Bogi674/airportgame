@@ -34,6 +34,7 @@ import { terminalIssues } from '@shared/terminalRooms';
 import { transitionPads } from '@shared/transitionPads';
 import { cellCount, cellIndex, cellOf, cornerWorld, fixtureAnchor, fixtureCells, fixtureCost, floorBounds, newGrid, planEdit, rectWorld, summarize, type TerminalEdit } from '@shared/terminalOps';
 import { fixtureNameKey } from '@shared/fixtureNames';
+import { growBlocked, growCells, growFixture } from '@shared/fixtureGrow';
 import { isLeveled, levelCost,MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays, type FixtureWorks, type LeveledKey } from '@shared/fixtureLevels';
 import type { Pt } from '@shared/geom';
 import type { WalkGraphView } from '@shared/protocol';
@@ -670,6 +671,8 @@ export class Business {
     const key = fixtureKey(g.fixture[a]) as LeveledKey;
     const from = g.fixtureLevel[a];
     if (from >= MAX_FIXTURE_LEVEL) return 'fixtureMaxLevel';
+    // A larger footprint needs free cells beside the desk (Revision 6): the check in desk grows to its right.
+    if (growBlocked(g, a, from + 1).length > 0) return 'needsRoomRight';
     const cost = upgradeCost(key, from);
     if (cost > this.host.getCash()) return `insufficientFunds|cost=${cost}`;
     this.host.book('construction', -cost);
@@ -708,8 +711,18 @@ export class Business {
       const g = this.grids.find((q) => q.id === w.building);
       if (!g) continue;
       const a = cellIndex(g, w.x, w.y);
-      for (const c of fixtureCells(g, a)) g.fixtureLevel[c] = w.to;
-      this.refreshGrid(w.building, w.x, w.y, w.x, w.y);
+      // The cells beside the desk were free when the works began, so a later edit can have taken them: refund then.
+      if (growBlocked(g, a, w.to).length > 0) {
+        this.host.book('construction', w.cost);
+        g.cost -= w.cost;
+        this.refreshGrid(w.building, w.x, w.y, w.x, w.y);
+        this.host.emit('fixtureUpgradeBlocked');
+        continue;
+      }
+      const grown = growCells(g, a, w.to);
+      growFixture(g, a, w.to);
+      const rect = grown.reduce((r, c) => ({ x0: Math.min(r.x0, c.x), y0: Math.min(r.y0, c.y), x1: Math.max(r.x1, c.x), y1: Math.max(r.y1, c.y) }), { x0: w.x, y0: w.y, x1: w.x, y1: w.y });
+      this.refreshGrid(w.building, rect.x0, rect.y0, rect.x1, rect.y1);
       this.onGridEdited?.(w.building);
       this.host.emit(`fixtureUpgraded|level=${w.to}`);
     }
@@ -742,6 +755,38 @@ export class Business {
     }
     if (removed > 0) this.bumpTerminals();
     return removed;
+  }
+
+  /**
+   * Gives the check in desks of a save from before version 45 their Revision 6 footprint: a level 2 or 3 desk was one
+   * cell and now covers two. A desk whose second cell is not free drops to level 1 and is kept, never deleted.
+   * Returns the number of desks that dropped.
+   */
+  growLegacyDesks(): number {
+    const desk = FIXTURE_KEYS.indexOf('checkIn') + 1;
+    let dropped = 0;
+    let any = false;
+    for (let gi = 0; gi < this.grids.length; gi++) {
+      const g = this.grids[gi]!;
+      let changed = false;
+      for (let i = 0; i < g.fixture.length; i++) {
+        if (g.fixture[i] !== desk || g.fixtureRot[i]! >= 5 || g.fixtureLevel[i]! < 2) continue;
+        const level = g.fixtureLevel[i]!;
+        if (growBlocked(g, i, level, 1).length > 0) {
+          g.fixtureLevel[i] = 1;
+          dropped++;
+        } else {
+          growFixture(g, i, level, 1);
+        }
+        changed = true;
+      }
+      if (!changed) continue;
+      any = true;
+      this.walkGraphs[gi] = buildWalkGraph(g);
+      this.serviceNodes[gi] = rebuildServiceNodes(this.serviceNodes[gi]!, g, this.walkGraphs[gi]!, this.closedCells(g));
+    }
+    if (any) this.bumpTerminals();
+    return dropped;
   }
 
   // Props (T76) ----------------------------------------------------------------

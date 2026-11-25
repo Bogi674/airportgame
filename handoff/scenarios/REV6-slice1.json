@@ -1,0 +1,142 @@
+{
+ "buy": [
+  [
+   3900,
+   4900,
+   4200,
+   5200
+  ]
+ ],
+ "commands": [
+  {
+   "type": "terminalBuild",
+   "building": -1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "foundation",
+    "x0": 0,
+    "y0": 0,
+    "x1": 36,
+    "y1": 12,
+    "variant": 0
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "floor",
+    "x0": 0,
+    "y0": 0,
+    "x1": 36,
+    "y1": 12,
+    "variant": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 1,
+    "y0": 3,
+    "x1": 2,
+    "y1": 4,
+    "variant": 1,
+    "level": 1
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 4,
+    "y0": 3,
+    "x1": 5,
+    "y1": 4,
+    "variant": 1,
+    "level": 2
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 8,
+    "y0": 3,
+    "x1": 9,
+    "y1": 4,
+    "variant": 1,
+    "level": 3
+   }
+  },
+  {
+   "type": "terminalBuild",
+   "building": 1,
+   "ox": 4000,
+   "oy": 5000,
+   "headingDeg": 90,
+   "edit": {
+    "op": "fixture",
+    "x0": 22,
+    "y0": 3,
+    "x1": 23,
+    "y1": 4,
+    "variant": 2,
+    "level": 1,
+    "rot": 1
+   }
+  }
+ ],
+ "camera": {
+  "x": 4013,
+  "y": 5008,
+  "zoom": 28
+ },
+ "hideUi": true,
+ "actions": [
+  {
+   "shot": "desks",
+   "clip": {
+    "w": 900,
+    "h": 500
+   }
+  },
+  {
+   "camera": {
+    "x": 4038,
+    "y": 5007,
+    "zoom": 24
+   }
+  },
+  {
+   "wait": 300
+  },
+  {
+   "shot": "security-l1",
+   "clip": {
+    "w": 1000,
+    "h": 400
+   }
+  }
+ ],
+ "report": [
+  "terminalGrids.0.fixtureLevel.length"
+ ]
+}

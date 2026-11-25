@@ -36,7 +36,7 @@ describe('prop effect data', () => {
     expect(P.wayfindingAreaM2).toBe(400);
     // T50 appended the incidents row after these two.
     expect(LEDGER_CATEGORIES.slice(-3)).toEqual(['vending', 'ads', 'incidents']);
-    expect(SAVE_VERSION).toBe(44);
+    expect(SAVE_VERSION).toBe(45);
   });
 });
 

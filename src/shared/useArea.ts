@@ -20,7 +20,7 @@ const STEP: readonly (readonly [number, number])[] = [
   [0, -1],
 ];
 
-const solid = (w: number): boolean => w === WALL.Wall || w === WALL.Glass;
+export const solid = (w: number): boolean => w === WALL.Wall || w === WALL.Glass;
 
 /** Front and back depth in cells of a fixture, zero for fixtures without a use area. */
 export function useDepth(key: FixtureKey): { front: number; back: number } {
@@ -114,7 +114,7 @@ const overlap = (a: StepRect, b: StepRect): boolean => a.sx0 < b.sx1 && b.sx0 < 
 const cellRect = (x: number, y: number): StepRect => ({ sx0: x * SUB, sy0: y * SUB, sx1: (x + 1) * SUB, sy1: (y + 1) * SUB });
 
 /** True when a floor prop other than `skip` covers part of a logical cell. */
-function propOnCell(g: TerminalGrid, x: number, y: number, skip: number): boolean {
+export function propOnCell(g: TerminalGrid, x: number, y: number, skip: number): boolean {
   const c = cellRect(x, y);
   for (let i = 0; i < g.props.length; i++) {
     if (i === skip) continue;
