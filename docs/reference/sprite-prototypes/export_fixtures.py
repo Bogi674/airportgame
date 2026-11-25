@@ -15,6 +15,7 @@ import fixtures_general as fg
 import fixtures_building as fb
 import fixtures_zoning as fz
 import fixtures_baggage as fbg
+import fixtures_rev6 as r6
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 OUT = os.path.join(ROOT, "src", "data", "fixtures")
@@ -45,27 +46,72 @@ E = []
 
 
 def add(id_, name, cat, fn, w, h, kw=None, *, family=None, level=None, grid="sub", mount="floor", zones=None,
-        gameKey=None, newKey=None, stats=None, confirm=(), ramps=None, sheet=None, gen=None):
+        gameKey=None, newKey=None, stats=None, confirm=(), ramps=None, sheet=None, gen=None, extra=None):
+    """extra holds optional catalog fields (cells, service) that only some assets carry."""
     E.append(dict(id=id_, name=name, category=cat, fn=fn, kw=kw or {}, size=[w, h], family=family or id_,
                   level=level, grid=grid, mount=mount, zones=zones or PAX, gameKey=gameKey, newKey=newKey,
                   stats=stats or {}, confirm=list(confirm), ramps=ramps or [], sheet=sheet,
-                  generator=gen or f"{fn.__module__}.{fn.__name__}"))
+                  generator=gen or f"{fn.__module__}.{fn.__name__}", extra=extra or {}))
+
+
+def rev6_ops(asset_id):
+    """Draw ops of a Revision 6 asset (fixtures_rev6.py) in the game schema: pts becomes p, the preview only tag is
+    dropped, the flags ov, fl and swing become 1, and floats are rounded to 4 places."""
+    ops = next(a for i, _, a in r6.ASSETS if i == asset_id)["ops"]
+    out = []
+    for o in ops:
+        n = {}
+        for k, v in o.items():
+            if k == "tag":
+                continue
+            if k == "pts":
+                k = "p"
+            if k in ("ov", "fl", "swing"):
+                v = 1
+            n[k] = _round4(v)
+        out.append(n)
+    return out
+
+
+def _round4(v):
+    if isinstance(v, float):
+        return round(v, 4)
+    if isinstance(v, list):
+        return [_round4(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _round4(x) for k, x in v.items()}
+    return v
+
+
+def _rev6(fn_name):
+    def fn(d, **kw):
+        raise AssertionError("Revision 6 assets carry their own ops")
+    fn.__module__ = "fixtures_rev6"
+    fn.__name__ = fn_name
+    return fn
 
 
 # ---------------- processing -----------------------------------------------------------------------------------
 S_PROC = "docs/art/terminal_processing_kit.png"
+# Revision 6 (docs/DESIGN_REVISION_6.md): art 2 x 2, 3 x 2 and 4 x 2 m on 1 x 1, 2 x 1 and 2 x 1 whole cells.
+# Cells are along then across in the sprite frame, the art starts at the anchor end of its footprint.
+CHECKIN_CELLS = {1: [1, 1], 2: [2, 1], 3: [2, 1]}
+CHECKIN_ART_M = {1: 2, 2: 3, 3: 4}
+SERVICE_POINTS = dict(agent=[0.3, 0.4], passenger=[1.0, 1.85])
 for lv, t in ((1, 120), (2, 105), (3, 95)):
-    add(f"checkIn.l{lv}", f"Check in desk, level {lv}", "processing", fp.checkin, 2, 2,
-        dict(level=lv, livery="#c8102e"), family="checkIn", level=lv, grid="cell", zones=LAND, gameKey="checkIn",
+    add(f"checkIn.l{lv}", f"Check in desk, level {lv}", "processing", _rev6("checkin"), CHECKIN_ART_M[lv], 2,
+        dict(rev6=True), family="checkIn", level=lv, grid="cell", zones=LAND, gameKey="checkIn",
         stats=dict(serviceTimeS=t, servers=1, staff=1, acceptsBags=True, premiumClasses=lv == 3),
-        confirm=[] if lv == 1 else ["serviceTimeS"], ramps=[dict(cell=[0, -1], dir="out")], sheet=S_PROC)
+        confirm=[] if lv == 1 else ["serviceTimeS"], ramps=[dict(cell=[0, -1], dir="out")], sheet=S_PROC,
+        extra=dict(cells=CHECKIN_CELLS[lv], service=SERVICE_POINTS))
 add("kiosk", "Self check in kiosk", "processing", fp.kiosk_checkin, 2, 2, dict(livery="#1f6fd1"), level=None,
     grid="cell", zones=LAND, gameKey="kiosk", stats=dict(serviceTimeS=75, servers=1, staff=0), sheet=S_PROC)
 add("bagDrop", "Self bag drop", "processing", fp.bagdrop_self, 4, 2, dict(livery="#1f6fd1"), grid="cell",
     zones=LAND, gameKey="bagDrop", stats=dict(serviceTimeS=40, servers=1, staffPerUnits=0.25),
     confirm=["staffPerUnits"], ramps=[dict(cell=[0, -1], dir="out")], sheet=S_PROC)
 for lv, ph, off in ((1, 300, 4), (2, 360, 5), (3, 450, 4)):
-    add(f"security.l{lv}", f"Security lane, level {lv}", "processing", fp.security, 16, 4, dict(level=lv),
+    add(f"security.l{lv}", f"Security lane, level {lv}", "processing", _rev6("security_l1") if lv == 1 else fp.security,
+        16, 4, dict(rev6=True) if lv == 1 else dict(level=lv),
         family="security", level=lv, grid="cell", zones=["public", "secure"], gameKey="security",
         stats=dict(throughputPerHour=ph, serviceTimeS=round(3600 / ph, 1), staff=off, remoteScreener=lv == 3,
                    transition=["public", "secure"]),
@@ -304,6 +350,8 @@ for id_, name, fn, w, h, kw, mount in (
 
 
 def _run(e, kw):
+    if kw.get("rev6"):
+        return rev6_ops(e["id"] if e["id"] != "security.l1" else "securityLane.l1")
     d = D(60.0, 3, 0)
     e["fn"](d, **kw)
     return d.ops
@@ -313,7 +361,7 @@ def ops_of(e):
     """Draw ops at rotation 0. For assets with an airline livery the parts in the livery color are marked with
     fLiv or sLiv: the shade factor (fixture_core.shade) to apply to the airline color."""
     ops = _run(e, e["kw"])
-    if "livery" not in e["kw"]:
+    if "livery" not in e["kw"] or e["kw"].get("rev6"):
         return ops
     probe = "#3d6e9f"
     other = _run(e, dict(e["kw"], livery=probe))
@@ -342,9 +390,10 @@ def main():
         seen.add(e["id"])
         ops = ops_of(e)
         packs[e["category"]]["assets"][e["id"]] = dict(size=e["size"], ops=ops)
-        catalog["assets"].append({k: e[k] for k in ("id", "name", "category", "family", "level", "size", "grid",
-                                                     "mount", "zones", "gameKey", "newKey", "stats", "confirm",
-                                                     "ramps", "sheet", "generator")})
+        entry = {k: e[k] for k in ("id", "name", "category", "family", "level", "size", "grid", "mount", "zones",
+                                   "gameKey", "newKey", "stats", "confirm", "ramps", "sheet", "generator")}
+        entry.update(e["extra"])
+        catalog["assets"].append(entry)
     with open(os.path.join(OUT, "catalog.json"), "w") as f:
         json.dump(catalog, f, indent=1, ensure_ascii=False)
         f.write("\n")

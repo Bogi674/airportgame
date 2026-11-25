@@ -104,7 +104,21 @@
     }
    ],
    "sheet": "docs/art/terminal_processing_kit.png",
-   "generator": "fixtures_processing.checkin"
+   "generator": "fixtures_rev6.checkin",
+   "cells": [
+    1,
+    1
+   ],
+   "service": {
+    "agent": [
+     0.3,
+     0.4
+    ],
+    "passenger": [
+     1.0,
+     1.85
+    ]
+   }
   },
   {
    "id": "checkIn.l2",
@@ -113,7 +127,7 @@
    "family": "checkIn",
    "level": 2,
    "size": [
-    2,
+    3,
     2
    ],
    "grid": "cell",
@@ -143,7 +157,21 @@
     }
    ],
    "sheet": "docs/art/terminal_processing_kit.png",
-   "generator": "fixtures_processing.checkin"
+   "generator": "fixtures_rev6.checkin",
+   "cells": [
+    2,
+    1
+   ],
+   "service": {
+    "agent": [
+     0.3,
+     0.4
+    ],
+    "passenger": [
+     1.0,
+     1.85
+    ]
+   }
   },
   {
    "id": "checkIn.l3",
@@ -152,7 +180,7 @@
    "family": "checkIn",
    "level": 3,
    "size": [
-    2,
+    4,
     2
    ],
    "grid": "cell",
@@ -182,7 +210,21 @@
     }
    ],
    "sheet": "docs/art/terminal_processing_kit.png",
-   "generator": "fixtures_processing.checkin"
+   "generator": "fixtures_rev6.checkin",
+   "cells": [
+    2,
+    1
+   ],
+   "service": {
+    "agent": [
+     0.3,
+     0.4
+    ],
+    "passenger": [
+     1.0,
+     1.85
+    ]
+   }
   },
   {
    "id": "kiosk",
@@ -279,7 +321,7 @@
    "confirm": [],
    "ramps": [],
    "sheet": "docs/art/terminal_security_kit.png",
-   "generator": "fixtures_processing.security"
+   "generator": "fixtures_rev6.security_l1"
   },
   {
    "id": "security.l2",

@@ -368,8 +368,9 @@ export function bakeFixture(assetId: string, tier: Tier, rot: Rot, ppm: number, 
 
   const plan = planFixture(asset.ops, tier, rot, ppm, livery);
   applyBaseFrame(ctx, ppm, padM);
-  drawShadows(ctx, plan.shadows, ppm, padM);
   const patterns = patternsFor(ppm);
+  for (const planned of plan.floor) drawPlanned(ctx, planned, ppm, patterns);
+  drawShadows(ctx, plan.shadows, ppm, padM);
   for (const planned of plan.body) drawPlanned(ctx, planned, ppm, patterns);
   for (const planned of plan.over) drawPlanned(ctx, planned, ppm, patterns);
 

@@ -1,4 +1,5 @@
 import { TICKS_PER_DAY, type FixtureKey, type TerminalGrid } from '@shared/business';
+import { growBlocked } from '@shared/fixtureGrow';
 import { isLeveled, MAX_FIXTURE_LEVEL, upgradeCost, upgradeDays } from '@shared/fixtureLevels';
 import { cellOf, fixtureAnchor } from '@shared/terminalOps';
 import type { Command } from '@sim/commands';
@@ -24,6 +25,7 @@ export function FixtureLevel({ grid, cell, name, send }: Props) {
   const level = grid.fixtureLevel[anchor];
   const works = grid.works?.find((w) => w.x === at.x && w.y === at.y);
   const cmd = { building: grid.id, x: at.x, y: at.y };
+  const noRoom = !works && level < MAX_FIXTURE_LEVEL && growBlocked(grid, anchor, level + 1).length > 0;
   return (
     <div data-testid="fixture-level-block" style="display:grid;gap:4px;margin-top:4px">
       <div data-testid="fixture-level">
@@ -39,8 +41,8 @@ export function FixtureLevel({ grid, cell, name, send }: Props) {
       ) : level < MAX_FIXTURE_LEVEL ? (
         <button
           data-testid="fixture-upgrade"
-          disabled={cash < upgradeCost(name, level)}
-          title={cash < upgradeCost(name, level) ? t('inspector.stand.upgradeNoCash') : undefined}
+          disabled={noRoom || cash < upgradeCost(name, level)}
+          title={noRoom ? t('notice.needsRoomRight') : cash < upgradeCost(name, level) ? t('inspector.stand.upgradeNoCash') : undefined}
           onClick={() => send({ type: 'upgradeFixture', ...cmd })}
         >
           {tFormat('inspector.fixtureUpgrade', { name: tDynamic(`opt.level.${name}.${level + 1}`), cost: formatMoney(upgradeCost(name, level)), days: upgradeDays(name) })}

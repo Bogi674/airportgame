@@ -13,6 +13,7 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 | Doc | Read when |
 | --- | --- |
 | `ROADMAP.md` (repo root) | Always. What is built, the MVP 1 phases, task status and exit criteria. Work on one task at a time |
+| `docs/DESIGN_REVISION_6.md` | First, for the check in desk sizes and footprint, the security lane level 1 look, and (slice 2, not built yet) doors and windows. It overrides revision 5 decision 2 for the check in desk |
 | `docs/DESIGN_REVISION_5.md` | First, for any terminal fixture, prop, furniture, zone, security exit, baggage node or circulation work. It points to `docs/TERMINAL_FIXTURES.md`, `docs/TERMINAL_ZONING.md` and `docs/BAGGAGE.md` and overrides older docs on those subjects |
 | `docs/DESIGN_REVISION_4.md` | First, for any stand, flight planning, airline, ground handling, supporting building, passenger, staff, tenant or event work. It overrides the revisions and docs below where they disagree |
 | `docs/DESIGN_REVISION_3.md` | First, for any aircraft sprite, calibration, stand marking or jet bridge work. It overrides revision 2 and the older docs where they disagree |
@@ -54,7 +55,7 @@ Terse mode is always on for code work: no narration between tool calls, no recap
 
 ## Precedence
 
-When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_5.md` for its subjects (terminal assets, zoning, baggage), then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
+When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_6.md` for the check in desk footprint, security level 1 art, doors and windows, then `docs/DESIGN_REVISION_5.md` for its subjects (terminal assets, zoning, baggage), then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
 
 ## Hard rules
 

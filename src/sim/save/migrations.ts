@@ -13,7 +13,7 @@ import { LEGACY_SERVICE_COUNT, SERVICE_KEYS, V33_SERVICE_COUNT, type ServiceSave
 import { TRAIT, TRAIT_COUNT, memberSeedOf, writeTraits } from '../cohorts/traits';
 
 /** Bump on every change to the saved shape and add a migration for the old version. */
-export const SAVE_VERSION = 44;
+export const SAVE_VERSION = 45;
 
 /** Saves before version 15 counted 600 ticks per game minute, 12 times the 50 of today. */
 const OLD_CLOCK_RATIO = 12;
@@ -43,6 +43,8 @@ export interface SaveData {
   cleaning?: unknown;
   /** The event director (T50), since version 41. */
   events?: unknown;
+  /** Set by the migration to version 45 (Revision 6): level 2 and 3 check in desks grow to two cells on restore. Never written by a save. */
+  convertDesks?: boolean;
   /** Set by the migration to version 33 (T78): legacy belts become carousels on restore. Never written by a save. */
   convertBelts?: boolean;
   /**
@@ -492,6 +494,13 @@ export function migrate(raw: unknown): SaveData {
       business.fixtureNames = {};
     }
     save.version = 44;
+  }
+  // Version 44 to 45: check in desk sizes (Revision 6, owner 2026-11-25). A level 2 or 3 desk covers two cells, but older
+  // saves hold one. Every desk keeps its anchor cell and grows into the cell beside it on restore; a desk with no room
+  // there drops to level 1 and the player is told.
+  if (save.version < 45) {
+    (save as { convertDesks?: boolean }).convertDesks = true;
+    save.version = 45;
   }
   return save as SaveData;
 }

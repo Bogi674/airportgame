@@ -56,6 +56,8 @@ export interface PlannedOp {
 }
 
 export interface FixturePlan {
+  /** Floor layer ops (fl), drawn first, under the shadows and the bodies, and never casting a shadow. */
+  floor: PlannedOp[];
   body: PlannedOp[];
   over: PlannedOp[];
   /** One convex shadow outline in sprite meters per kept shape op with a height. */
@@ -300,6 +302,7 @@ function planOp(op: FixtureOp, tier: Tier, ppm: number, livery: string | null): 
  * used only for pixel stroke widths. livery is a hex color or null to keep the exported colors.
  */
 export function planFixture(ops: readonly FixtureOp[], tier: Tier, rot: Rot, ppm: number, livery: string | null): FixturePlan {
+  const floor: PlannedOp[] = [];
   const body: PlannedOp[] = [];
   const over: PlannedOp[] = [];
   const shadows: Pt[][] = [];
@@ -308,13 +311,14 @@ export function planFixture(ops: readonly FixtureOp[], tier: Tier, rot: Rot, ppm
     if (overhead && tier < 2) continue;
     const planned = planOp(op, tier, ppm, livery);
     if (planned === undefined) continue;
-    (overhead ? over : body).push(planned);
-    if (!isShape(op) || overhead) continue;
+    const onFloor = 'fl' in op && op.fl === 1;
+    (overhead ? over : onFloor ? floor : body).push(planned);
+    if (!isShape(op) || overhead || onFloor) continue;
     const h = op.ht ?? 0;
     const outline = h > 0 ? outlinePts(op) : [];
     if (outline.length === 0) continue;
     const [dx, dy] = shadowOffset(h, rot);
     shadows.push(hull([...outline, ...outline.map(([x, y]): Pt => [x + dx, y + dy])]));
   }
-  return { body, over, shadows };
+  return { floor, body, over, shadows };
 }

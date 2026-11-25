@@ -1368,7 +1368,8 @@ export class Baggage {
       const y = g.y0 + Math.floor(i / g.w);
       // A check in desk sends bags out of its back cell, so its drop turns with the desk (T86). Code 0 is a desk from a
       // save before T85, which faces rotation 0.
-      if (g.fixture[i] === CHECK_IN_ID) out.push({ x, y, rot: g.fixtureRot[i] >= 1 && g.fixtureRot[i] <= 4 ? ((g.fixtureRot[i] - 1) as 0 | 1 | 2 | 3) : 0 });
+      // Only the anchor holds a drop: a level 2 or 3 desk covers two cells and its tail has footprint code 5 and up.
+      if (g.fixture[i] === CHECK_IN_ID && g.fixtureRot[i]! < 5) out.push({ x, y, rot: g.fixtureRot[i] >= 1 && g.fixtureRot[i] <= 4 ? ((g.fixtureRot[i] - 1) as 0 | 1 | 2 | 3) : 0 });
       else if (g.fixture[i] === BAG_DROP_ID && g.fixtureRot[i] >= 1 && g.fixtureRot[i] <= 4) out.push({ x, y, rot: (g.fixtureRot[i] - 1) as 0 | 1 | 2 | 3 });
     }
     return out;
