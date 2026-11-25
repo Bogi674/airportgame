@@ -194,12 +194,12 @@ Goal: every UI surface follows `docs/DESIGN_REVISION_6.md`. Decisions in `handof
 | R6-04 | Top bar and its popovers |  | R6-03 | done 633293b |
 | R6-05 | Rail regroup |  | R6-03 | done 633293b |
 | R6-06 | Build flyout with variant tiles and tray |  | R6-05 | done 633293b |
-| R6-07 | Right panel modes: area bulldoze (the select, build and edit modes moved to R6-07b) |  | R6-06 | done DEMHASH |
+| R6-07 | Right panel modes: area bulldoze (the select, build and edit modes moved to R6-07b) |  | R6-06 | done 8eeb4cd |
 | R6-07b | Right panel select, build and edit modes: build options leave the context bar for the right panel, plus the UI scale setting |  | R6-07 | todo |
 | R6-08 | Task bar and minimap states |  | R6-03 | done 633293b |
-| DEM1 | Demolish confirm modal for every demolish act |  | R6-02 | done DEMHASH |
-| DEM2 | Line demolish: a Demolish button per laid object that cuts the stroked section (runway trims ends only), pro rata refund, alerts for items that lose access |  | DEM1 | done DEMHASH |
-| DEM3 | Bulldoze tool with Selection and Area modes, type checklist with counts |  | DEM1, R6-07 | done DEMHASH |
+| DEM1 | Demolish confirm modal for every demolish act |  | R6-02 | done 8eeb4cd |
+| DEM2 | Line demolish: a Demolish button per laid object that cuts the stroked section (runway trims ends only), pro rata refund, alerts for items that lose access |  | DEM1 | done 8eeb4cd |
+| DEM3 | Bulldoze tool with Selection and Area modes, type checklist with counts |  | DEM1, R6-07 | done 8eeb4cd |
 | R6-09 | Main menu |  | R6-02 | todo |
 | R6-10 | New career wizard |  | R6-09 | todo |
 | R6-11 | Pause menu |  | R6-02 | todo |
