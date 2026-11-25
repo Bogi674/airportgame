@@ -48,6 +48,10 @@ import { tDynamic, tFormat, type StringKey } from '../strings';
 import { useGameStore } from '../stores/gameStore';
 import { fixtureLabelAt } from '../fixtureLabel';
 import { GRID_TOOLS, snapModeOf, useToolStore, type MovingItem, type Selection, type Tool } from '../stores/toolStore';
+import { askDemolish } from '../stores/demolishStore';
+import { objectDemolish } from '../demolishTargets';
+import { itemTarget } from '../itemActions';
+import { planLineCut } from './demolishPlans';
 import { bagCost, bagGhostCells, bagOrigin, nextBagRot } from './baggageTool';
 import { brushCellEdit, cellLine, doorEdit, enterBrushCell, fixtureEdit, footprintRect, hasRotation, nextFixtureRot, transitionOrientationBreaks, zoneEdit } from './fixtureRot';
 import { guideTip, markShape, markTip, type SnapMark } from './snapMark';
@@ -140,7 +144,7 @@ export class ToolController {
     const st = useToolStore.getState();
     // The apron rectangle counts only once its press started a rectangle: a press of the extend tool may pick the apron instead (T84).
     if (this.apronRectTool()) return this.dragging;
-    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode' && st.tSub !== 'prop' && st.tSub !== 'propRemove' && st.tSub !== 'move');
+    return st.tool === 'runway' || (st.tool === 'terminal' && st.tSub !== 'door' && st.tSub !== 'bagNode' && st.tSub !== 'prop' && st.tSub !== 'move');
   }
 
   /**
@@ -757,6 +761,10 @@ export class ToolController {
       this.rectFrame = null;
       this.start = this.rectCorner(p, this.apronFrame(p, mods), mods);
       this.dragging = true;
+    } else if (tool === 'lineDemolish' || (tool === 'demolish' && useToolStore.getState().bulldozeMode === 'area')) {
+      this.start = p;
+      this.dragging = true;
+      if (tool === 'demolish') useToolStore.getState().set({ areaBox: null });
     } else if (tool === 'terminal') {
       this.terminalDown(p, mods);
     } else if ((tool === 'taxiway' || tool === 'taxilane') && this.taxiDrawing()) {
@@ -795,7 +803,7 @@ export class ToolController {
         break;
       case 'taxiway':
       case 'taxilane':
-        if (!this.taxiDrawing()) this.previewTaxiEdit(p);
+        if (!this.taxiDrawing()) this.previewTaxiEdit();
         else this.previewTaxiway(p, mods, st.tool === 'taxilane');
         break;
       case 'rapidExit':
@@ -836,7 +844,11 @@ export class ToolController {
         this.previewTerminal(p, mods);
         break;
       case 'demolish':
-        this.previewDemolish(p);
+        if (st.bulldozeMode === 'area') this.previewArea(p);
+        else this.previewDemolish(p);
+        break;
+      case 'lineDemolish':
+        this.previewLine(p);
         break;
       case 'select':
         if (this.holdDrag) this.previewHold(p);
@@ -927,16 +939,23 @@ export class ToolController {
         this.finishTerminal(p);
         break;
       case 'demolish': {
+        if (useToolStore.getState().bulldozeMode === 'area') {
+          this.commitArea(p);
+          break;
+        }
         // A terminal prop or fixture right under the cursor wins over an airfield object within the pick radius.
         if (this.propUnder(p) || this.fixtureUnder(p)) {
           this.removePropAt(p);
           break;
         }
         const hit = pickObject(this.af, p.x, p.y, Math.max(8, 14 / this.deps.zoom()));
-        if (hit?.kind === 'tower') this.deps.send({ type: 'demolishTower', id: hit.id });
-        else if (hit) this.deps.send({ type: 'demolish', kind: hit.kind, id: hit.id });
+        const req = hit ? objectDemolish(this.af, hit.kind, hit.id) : null;
+        if (req) askDemolish(req);
         break;
       }
+      case 'lineDemolish':
+        this.commitLine(p);
+        break;
       case 'select':
         useToolStore.getState().set(this.pickUnder(p));
         break;
@@ -981,6 +1000,12 @@ export class ToolController {
       // The first Escape gives a turned stand back to auto facing, the next one leaves the tool.
       st.set({ standHeading: null });
       this.move(this.cursor, { shift: false, alt: false });
+      return true;
+    }
+    if (e.key === 'Escape' && st.tool === 'demolish' && st.areaBox) {
+      // The first Escape drops the area box, the next one leaves the tool.
+      st.set({ areaBox: null });
+      this.deps.setGhost(null);
       return true;
     }
     const moving = st.tool === 'terminal' && st.tSub === 'move' ? st.moving : null;
@@ -1088,7 +1113,7 @@ export class ToolController {
     const proj = (p.x - from.x) * outward.x + (p.y - from.y) * outward.y;
     const mode = useToolStore.getState().runwayMode;
     const amount = Math.round(Math.abs(proj) / 5) * 5;
-    const delta = mode === 'extend' ? (proj > 0 ? amount : 0) : proj < 0 ? -amount : 0;
+    const delta = mode === 'extend' && proj > 0 ? amount : 0;
     return { r, delta, outward, from };
   }
 
@@ -1102,7 +1127,7 @@ export class ToolController {
         shapes.push({ k: 'ring', x: r.x1, y: r.y1, r: 22 }, { k: 'ring', x: r.x2, y: r.y2, r: 22 });
       }
       this.deps.setGhost({ valid: true, shapes });
-      st.set({ hint: st.runwayMode === 'extend' ? 'hint.runwayExtendPick' : 'hint.runwayShortenPick', problem: null, buy: null });
+      st.set({ hint: 'hint.runwayExtendPick', problem: null, buy: null });
       return;
     }
     const m = this.resizeDelta(p);
@@ -1394,140 +1419,26 @@ export class ToolController {
     return best;
   }
 
-  /** Nearest point of a taxiway centerline and its arc length, within a few taxiway widths. */
-  private taxiArc(t: Taxiway, p: Pt): { arc: number; pt: Pt } | null {
-    let best = Infinity;
-    let arc = 0;
-    let run = 0;
-    let pt: Pt = t.points[0];
-    const c = { x: 0, y: 0, t: 0 };
-    for (let i = 1; i < t.points.length; i++) {
-      const a = t.points[i - 1];
-      const b = t.points[i];
-      closestOnSegment(p.x, p.y, a.x, a.y, b.x, b.y, c);
-      const d = Math.hypot(p.x - c.x, p.y - c.y);
-      const sl = Math.hypot(b.x - a.x, b.y - a.y);
-      if (d < best) {
-        best = d;
-        arc = run + sl * c.t;
-        pt = { x: c.x, y: c.y };
-      }
-      run += sl;
-    }
-    return best <= Math.max(t.widthM * 1.5, 20 / this.deps.zoom()) ? { arc, pt } : null;
-  }
-
-  /** The part of a taxiway between two arc lengths. */
-  private taxiSlice(t: Taxiway, s0: number, s1: number): Pt[] {
-    const lo = Math.min(s0, s1);
-    const hi = Math.max(s0, s1);
-    const out: Pt[] = [];
-    let run = 0;
-    const at = (a: Pt, b: Pt, s: number): Pt => {
-      const sl = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-      const k = (s - run) / sl;
-      return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
-    };
-    for (let i = 1; i < t.points.length; i++) {
-      const a = t.points[i - 1];
-      const b = t.points[i];
-      const sl = Math.hypot(b.x - a.x, b.y - a.y);
-      const e = run + sl;
-      if (e >= lo && run <= hi) {
-        if (out.length === 0) out.push(at(a, b, Math.max(lo, run)));
-        if (hi <= e) {
-          out.push(at(a, b, hi));
-          break;
-        }
-        out.push(b);
-      }
-      run = e;
-    }
-    return out;
-  }
-
-  private previewTaxiEdit(p: Pt): void {
-    const st = useToolStore.getState();
-    const mode = st.taxiMode;
+  /** The extend mode picks a taxiway end first: every end is ringed. */
+  private previewTaxiEdit(): void {
     const shapes: GhostShape[] = [];
-    let valid = true;
-    let problem: Problem | null = null;
-    let hint = mode === 'extend' ? 'hint.taxiExtendPick' : mode === 'trim' ? 'hint.taxiTrimPick' : 'hint.taxiCutPick';
-    if (mode === 'extend' || (mode === 'trim' && !this.tEdit)) {
-      for (const t of this.af.taxiways) {
-        shapes.push({ k: 'ring', x: t.points[0].x, y: t.points[0].y, r: 14 }, { k: 'ring', x: t.points[t.points.length - 1].x, y: t.points[t.points.length - 1].y, r: 14 });
-      }
-    } else {
-      const t = this.af.taxiways.find((x) => x.id === (this.tEdit ? this.tEdit.id : -1));
-      const hit = t ? this.taxiArc(t, p) : null;
-      if (mode === 'trim' && t && this.tEdit && this.tEdit.end) {
-        hint = 'hint.taxiTrimTo';
-        const total = this.arcTotal(t);
-        if (hit) shapes.push({ k: 'strip', pts: this.taxiSlice(t, this.tEdit.end === 'start' ? 0 : total, hit.arc), w: t.widthM }, { k: 'ring', x: hit.pt.x, y: hit.pt.y, r: 10 });
-        else valid = false;
-      } else if (mode === 'cut') {
-        const t0 = this.tEdit ? t : this.af.taxiways.find((x) => this.taxiArc(x, p) !== null);
-        const h0 = t0 ? this.taxiArc(t0, p) : null;
-        if (!this.tEdit) {
-          if (h0) shapes.push({ k: 'ring', x: h0.pt.x, y: h0.pt.y, r: 10 });
-          else valid = false;
-        } else if (t0 && this.tEdit.at && h0) {
-          const a = this.taxiArc(t0, this.tEdit.at);
-          if (a) shapes.push({ k: 'strip', pts: this.taxiSlice(t0, a.arc, h0.arc), w: t0.widthM }, { k: 'ring', x: a.pt.x, y: a.pt.y, r: 10 });
-          hint = 'hint.taxiCutTo';
-        } else valid = false;
-      }
+    for (const t of this.af.taxiways) {
+      shapes.push({ k: 'ring', x: t.points[0].x, y: t.points[0].y, r: 14 }, { k: 'ring', x: t.points[t.points.length - 1].x, y: t.points[t.points.length - 1].y, r: 14 });
     }
-    if (!valid) problem = null;
     this.deps.setGhost({ valid: true, shapes });
-    st.set({ hint, problem, buy: null });
+    useToolStore.getState().set({ hint: 'hint.taxiExtendPick', problem: null, buy: null });
   }
 
-  private arcTotal(t: Taxiway): number {
-    let l = 0;
-    for (let i = 1; i < t.points.length; i++) l += Math.hypot(t.points[i].x - t.points[i - 1].x, t.points[i].y - t.points[i - 1].y);
-    return l;
-  }
-
+  /** The extend mode: a click on a taxiway end starts laying the extension from it. */
   private taxiEditClick(p: Pt): void {
     const st = useToolStore.getState();
-    const mode = st.taxiMode;
-    if (mode === 'extend') {
-      const e = this.taxiEndAt(p);
-      if (!e) return;
-      this.tEdit = { id: e.t.id, end: e.end, at: null };
-      this.pts = [e.pt];
-      this.previewTaxiway(p, { shift: false, alt: false }, st.tool === 'taxilane');
-      return;
-    }
-    if (mode === 'trim') {
-      if (!this.tEdit) {
-        const e = this.taxiEndAt(p);
-        if (e) this.tEdit = { id: e.t.id, end: e.end, at: null };
-        return;
-      }
-      const t = this.af.taxiways.find((x) => x.id === this.tEdit?.id);
-      const hit = t ? this.taxiArc(t, p) : null;
-      if (!t || !hit || !this.tEdit.end) return;
-      this.deps.send({ type: 'editTaxiway', id: t.id, op: 'trim', end: this.tEdit.end, at: hit.pt });
-      this.tEdit = null;
-      this.deps.setGhost(null);
-      return;
-    }
-    // Cut: the first click picks the taxiway and one end of the section, the second the other end.
-    if (!this.tEdit) {
-      const t = this.af.taxiways.find((x) => this.taxiArc(x, p) !== null);
-      const hit = t ? this.taxiArc(t, p) : null;
-      if (t && hit) this.tEdit = { id: t.id, end: null, at: hit.pt };
-      return;
-    }
-    const t = this.af.taxiways.find((x) => x.id === this.tEdit?.id);
-    const hit = t ? this.taxiArc(t, p) : null;
-    if (!t || !hit || !this.tEdit.at) return;
-    this.deps.send({ type: 'editTaxiway', id: t.id, op: 'cut', at: this.tEdit.at, at2: hit.pt });
-    this.tEdit = null;
-    this.deps.setGhost(null);
+    const e = this.taxiEndAt(p);
+    if (!e) return;
+    this.tEdit = { id: e.t.id, end: e.end, at: null };
+    this.pts = [e.pt];
+    this.previewTaxiway(p, { shift: false, alt: false }, st.tool === 'taxilane');
   }
+
 
   // Rapid exit and parallel taxiway -------------------------------------
 
@@ -1808,7 +1719,10 @@ export class ToolController {
     if (st.tool === 'apronExtend') {
       const target = this.extendTarget();
       if (target) this.deps.send({ type: 'extendApron', apronId: target.id, polygon });
-    } else if (cut) this.deps.send({ type: 'removeApronArea', polygon });
+    } else if (cut) {
+      const plan = this.cutPlan(polygon);
+      if (plan.pieces.length > 0) askDemolish({ what: tFormat('demolish.apronCut', { area: formatNumber(Math.round(plan.area)) }), refund: Math.round(plan.refund), commands: [{ type: 'removeApronArea', polygon }] });
+    }
     else this.deps.send({ type: 'buildApron', polygon, surface: st.surface, tier: st.tier });
   }
 
@@ -2360,7 +2274,7 @@ export class ToolController {
         x1 = e.x1;
         y1 = e.y1;
       }
-      return { op: 'wall', x0, y0, x1, y1, variant: st.wallType };
+      return { op: st.wallRemove ? 'removeWall' : 'wall', x0, y0, x1, y1, variant: st.wallRemove ? 0 : st.wallType };
     }
     void g;
     const x0 = Math.floor(Math.min(a.cx, b.cx));
@@ -2369,7 +2283,6 @@ export class ToolController {
     const y1 = Math.floor(Math.max(a.cy, b.cy)) + 1;
     if (sub === 'foundation') return { op: 'foundation', x0, y0, x1, y1, variant: 0 };
     if (sub === 'floor') return { op: 'floor', x0, y0, x1, y1, variant: st.floorType };
-    if (sub === 'erase') return { op: 'erase', x0, y0, x1, y1, variant: 0 };
     if (sub === 'zone') return zoneEdit(x0, y0, x1, y1, st.zoneType);
     return fixtureEdit(x0, y0, x1, y1, st.fixtureId, st.fixtureRot, st.fixtureLevel, st.fixtureMode);
   }
@@ -2421,7 +2334,7 @@ export class ToolController {
   private terminalDown(p: Pt, mods: Mods): void {
     this.frozen = false;
     const click = useToolStore.getState().tSub;
-    if (click === 'bagNode' || click === 'prop' || click === 'propRemove' || click === 'move') return;
+    if (click === 'bagNode' || click === 'prop' || click === 'move') return;
     const g = this.gridFor(p, mods);
     this.tGrid = g;
     const c = worldToCell(g, p.x, p.y);
@@ -2581,16 +2494,19 @@ export class ToolController {
     this.show({ valid: true, tone: 'remove', shapes: this.cellShapes(fx.g, fx.cells), label: { x: p.x, y: p.y, text: tFormat('ghost.fixtureRemove', { name: tDynamic(`fixture.${f}`) }) } }, null, 'hint.terminal.propRemove');
   }
 
+  /** Opens the demolish confirm for the prop under the cursor, or else the fixture. */
   private removePropAt(p: Pt): void {
+    const grids = useGameStore.getState().terminalGrids;
     const hit = this.propUnder(p);
     if (hit) {
       const c = worldToCell(hit.g, p.x, p.y);
-      this.deps.send({ type: 'removeProp', building: hit.g.id, x: c.cx * TERMINAL_CELL_M, y: c.cy * TERMINAL_CELL_M });
+      itemTarget(grids, null, { building: hit.g.id, x: c.cx * TERMINAL_CELL_M, y: c.cy * TERMINAL_CELL_M }, this.deps.send)?.demolish();
       return;
     }
     const fx = this.fixtureUnder(p);
-    if (fx) this.deps.send({ type: 'removeFixture', building: fx.g.id, x: fx.x, y: fx.y });
+    if (fx) itemTarget(grids, { building: fx.g.id, x: fx.x, y: fx.y }, null, this.deps.send)?.demolish();
   }
+
 
   // Move (T85) ---------------------------------------------------------------
 
@@ -2697,10 +2613,6 @@ export class ToolController {
     }
     if (useToolStore.getState().tSub === 'prop') {
       this.previewProp(p);
-      return;
-    }
-    if (useToolStore.getState().tSub === 'propRemove') {
-      this.previewPropRemove(p);
       return;
     }
     if (useToolStore.getState().tSub === 'move') {
@@ -2835,10 +2747,6 @@ export class ToolController {
       this.placeProp(p);
       return;
     }
-    if (useToolStore.getState().tSub === 'propRemove') {
-      this.removePropAt(p);
-      return;
-    }
     if (useToolStore.getState().tSub === 'move') {
       this.dropMove(p);
       return;
@@ -2870,7 +2778,13 @@ export class ToolController {
       this.frozen = true;
       return;
     }
-    this.deps.send({ type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit });
+    const cmd: Command = { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit };
+    // Removing walls is a demolish act (DEM2): it asks first, and walls pay nothing back.
+    if (edit.op === 'removeWall') {
+      askDemolish({ what: tFormat('demolish.walls', { n: plan.changes }), refund: 0, commands: [cmd], after: () => this.deps.setGhost(null) });
+      return;
+    }
+    this.deps.send(cmd);
     this.deps.setGhost(null);
     // Every transition fixture placed reminds the player to carry its exit zone on (T88).
     const t = edit.op === 'fixture' ? transitionOf(fixtureKey(edit.variant), edit.mode ?? 0) : null;
@@ -2883,6 +2797,62 @@ export class ToolController {
   }
 
   // Demolish -------------------------------------------------------------
+
+  /** Line demolish (DEM2): before the press every object of the kind is outlined; while dragging the stretch to cut shows red. */
+  private previewLine(p: Pt): void {
+    const st = useToolStore.getState();
+    const hint = `hint.lineDemolish.${st.lineKind}`;
+    if (!this.dragging || !this.start) {
+      this.deps.setGhost(null);
+      st.set({ hint, problem: null, buy: null });
+      return;
+    }
+    const plan = planLineCut(this.af, st.lineKind, this.start, p);
+    this.show({ valid: plan.problem === null, tone: 'remove', shapes: plan.shapes, label: plan.label ? { x: p.x, y: p.y, text: plan.label } : undefined }, plan.problem, hint);
+  }
+
+  /** Releasing a line demolish stroke opens the confirm for the cut it previewed. */
+  private commitLine(p: Pt): void {
+    const st = useToolStore.getState();
+    const start = this.start;
+    this.start = null;
+    this.dragging = false;
+    if (!start) return;
+    const plan = planLineCut(this.af, st.lineKind, start, p);
+    if (!plan.request) {
+      this.show({ valid: false, shapes: plan.shapes }, plan.problem, `hint.lineDemolish.${st.lineKind}`);
+      return;
+    }
+    this.deps.setGhost({ valid: false, tone: 'remove', shapes: plan.shapes });
+    askDemolish({ ...plan.request, after: () => this.deps.setGhost(null) });
+  }
+
+  /** Area bulldoze (DEM3): the dashed danger box while dragging, then the box stays until the right panel confirms or cancels. */
+  private previewArea(p: Pt): void {
+    const st = useToolStore.getState();
+    const box = this.dragging && this.start ? { x0: this.start.x, y0: this.start.y, x1: p.x, y1: p.y } : st.areaBox;
+    if (!box) {
+      this.deps.setGhost(null);
+      st.set({ hint: 'hint.areaBulldoze', problem: null, buy: null });
+      return;
+    }
+    const x0 = Math.min(box.x0, box.x1);
+    const x1 = Math.max(box.x0, box.x1);
+    const y0 = Math.min(box.y0, box.y1);
+    const y1 = Math.max(box.y0, box.y1);
+    const label = this.dragging ? { x: p.x, y: p.y, text: tFormat('ghost.areaBox', { w: formatNumber(Math.round(x1 - x0)), h: formatNumber(Math.round(y1 - y0)) }) } : undefined;
+    this.deps.setGhost({ valid: false, shapes: [{ k: 'poly', pts: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] }], label });
+  }
+
+  /** Releasing the area drag keeps the box; the right panel lists what is in it and asks. */
+  private commitArea(p: Pt): void {
+    const start = this.start;
+    this.start = null;
+    this.dragging = false;
+    if (!start || Math.hypot(p.x - start.x, p.y - start.y) < 2) return;
+    useToolStore.getState().set({ areaBox: { x0: start.x, y0: start.y, x1: p.x, y1: p.y } });
+    this.previewArea(p);
+  }
 
   private previewDemolish(p: Pt): void {
     if (this.propUnder(p) || this.fixtureUnder(p)) {
@@ -2912,6 +2882,6 @@ export class ToolController {
       const s = af.stands.find((x) => x.id === hit.id);
       if (s) shapes.push({ k: 'ring', x: s.x, y: s.y, r: 8 });
     }
-    this.show({ valid: false, shapes }, null, 'hint.demolishConfirm');
+    this.show({ valid: false, shapes }, null, 'hint.demolish');
   }
 }

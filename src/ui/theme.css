@@ -216,3 +216,19 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 /* A management sheet opens from the left beside the rail and covers at most half the screen (section 5.7); wide planners may take more, up to the right panel. */
 .z-sheet { position: absolute; left: 66px; top: 64px; width: max(50vw, min(860px, calc(100vw - 66px - 320px))); max-width: calc(100vw - 76px); max-height: calc(100vh - 128px); box-sizing: border-box; z-index: 20; }
 .rp { font-size: var(--fs-sm); }
+
+/* Area bulldoze checklist (design revision 6 section 5.6). */
+.area-panel .lbl { font-size: var(--fs-xs); color: var(--ink-2); }
+.ck-head { display: flex; justify-content: space-between; }
+.ck-list { display: flex; flex-direction: column; }
+.ck-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: var(--fs-sm); cursor: pointer; min-width: 0; }
+.ck-row > span { flex: 1; }
+.ck-row > b:first-of-type:not(.num) { flex: 1; }
+.ck-row .num { margin-left: auto; font-weight: 700; }
+.ck-row.empty { color: var(--ink-2); }
+.ck-all { border-bottom: 1.5px solid var(--line-soft); padding-bottom: 8px; }
+.ck-row input[type='checkbox'] { appearance: none; width: 16px; height: 16px; margin: 0; flex: none; border-radius: 4px; border: 1.5px solid #B7C7DD; background: var(--surface); display: inline-grid; place-content: center; cursor: pointer; }
+.ck-row input[type='checkbox']:checked { background: var(--accent); border-color: var(--accent); }
+.ck-row input[type='checkbox']:checked::after { content: ''; width: 8px; height: 4px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) translate(1px, -1px); }
+.card.danger .thumb { color: var(--bad); }
+.area-foot { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 14px; border-top: 1.5px solid var(--line-soft); }

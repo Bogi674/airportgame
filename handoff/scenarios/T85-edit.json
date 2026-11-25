@@ -139,7 +139,7 @@
   "hideUi": false,
   "actions": [
     {
-      "tool": "tool-select"
+      "tool": "task-select"
     },
     {
       "click": [
@@ -243,7 +243,7 @@
       "tool": "item-remove"
     },
     {
-      "tool": "item-demolish-yes"
+      "tool": "demolish-yes"
     },
     {
       "wait": 800

@@ -9,6 +9,8 @@ import { SimClient } from '../worker/client';
 import { alertText, ALERT_CODES, parseEvent, severityOf } from './alerts';
 import { BuildMenu } from './BuildMenu';
 import { ConfirmPopup } from './ConfirmPopup';
+import { AreaBulldoze } from './AreaBulldoze';
+import { DemolishConfirm } from './DemolishConfirm';
 import { ItemMenu } from './ItemMenu';
 import { ContextBar } from './ContextBar';
 import { CrashPanel } from './CrashPanel';
@@ -493,6 +495,8 @@ export function App() {
           {!store.parcelOverlay && <ContextBar send={(c) => client.send(c)} />}
           <Toasts send={(c) => client.send(c)} />
           <ConfirmPopup />
+          {!store.parcelOverlay && <AreaBulldoze />}
+          <DemolishConfirm send={(c) => client.send(c)} />
           {!store.parcelOverlay && <ItemMenu send={(c) => client.send(c)} />}
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}

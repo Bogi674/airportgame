@@ -11,7 +11,7 @@ import { formatMoney } from './format';
 import { Icon, type IconName } from './icons';
 import { useGameStore, type Sheet } from './stores/gameStore';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
-import { useToolStore, type TerminalSub, type Tool } from './stores/toolStore';
+import { useToolStore, type LineKind, type TerminalSub, type Tool } from './stores/toolStore';
 import { t, tDynamic, tFormat, type StringKey } from './strings';
 import { Thumb } from './thumbs';
 import { PropThumb } from './PropThumb';
@@ -40,6 +40,8 @@ interface Item {
   name?: string;
   /** Variants of the item (design revision 6 section 5.5): the tile opens a tray of them instead of arming the tool. */
   variants?: Variant[];
+  /** A demolish tile, drawn in the danger color. */
+  danger?: boolean;
   /** String key of the variant chip, such as "3 levels" or "4 sizes". */
   variantChip?: StringKey;
 }
@@ -153,9 +155,19 @@ const sub = (id: string, tSub: TerminalSub, thumb: string, icon: IconName): Item
   id,
   thumb,
   icon,
-  run: (s) => s.set({ tool: 'terminal', tSub }),
-  active: (s) => s.tool === 'terminal' && s.tSub === tSub,
+  run: (s) => s.set({ tool: 'terminal', tSub, wallRemove: false }),
+  active: (s) => s.tool === 'terminal' && s.tSub === tSub && !(tSub === 'wall' && s.wallRemove),
 });
+
+/** Demolish tile of terminal walls (DEM2): the wall tool, removing the walls along the stroke. */
+const wallDemolish: Item = {
+  id: 'wallDemolish',
+  thumb: 'erase',
+  icon: 'bulldoze',
+  danger: true,
+  run: (s) => s.set({ tool: 'terminal', tSub: 'wall', wallRemove: true, hint: 'hint.lineDemolish.wall', problem: null, buy: null }),
+  active: (s) => s.tool === 'terminal' && s.tSub === 'wall' && s.wallRemove,
+};
 
 const prop = (id: string, name: string): Item => ({
   id,
@@ -168,14 +180,18 @@ const prop = (id: string, name: string): Item => ({
   active: (s) => s.tool === 'terminal' && s.tSub === 'prop' && s.propAsset === id,
 });
 
-/** The card that removes a placed prop or fixture (T85), on every furnishing tab and the terminal structure and processing tabs. */
-const removeProp: Item = {
-  id: 'remove',
-  thumb: 'erase',
-  icon: 'erase',
-  run: (s) => s.set({ tool: 'terminal', tSub: 'propRemove', hint: 'hint.terminal.propRemove', problem: null, buy: null }),
-  active: (s) => s.tool === 'terminal' && s.tSub === 'propRemove',
-};
+/**
+ * A Demolish tile of a laid object (DEM2): it arms line demolish, which works like the build tool of the object but
+ * removes the section the stroke runs over.
+ */
+const lineDemolish = (kind: LineKind): Item => ({
+  id: kind === 'road' ? 'roadDemolish' : 'demolish',
+  thumb: kind === 'runway' ? 'runwayShorten' : 'taxiCut',
+  icon: 'bulldoze',
+  danger: true,
+  run: (s) => s.set({ tool: 'lineDemolish', lineKind: kind, hint: `hint.lineDemolish.${kind}`, problem: null, buy: null }),
+  active: (s) => s.tool === 'lineDemolish' && s.lineKind === kind,
+});
 
 const sheet = (id: string, target: Sheet, icon: IconName): Item => ({ id, thumb: id, icon, run: () => useGameStore.getState().setSheet(target) });
 
@@ -196,8 +212,8 @@ export const CATEGORIES: Category[] = [
         items: [
           { id: 'new', thumb: 'runway', icon: 'runway', run: (s) => s.set({ tool: 'runway', runwayMode: 'new' }), active: (s) => s.tool === 'runway' && s.runwayMode === 'new' },
           { id: 'extend', thumb: 'runwayExtend', icon: 'runway', run: (s) => s.set({ tool: 'runway', runwayMode: 'extend' }), active: (s) => s.tool === 'runway' && s.runwayMode === 'extend' },
-          { id: 'shorten', thumb: 'runwayShorten', icon: 'runway', run: (s) => s.set({ tool: 'runway', runwayMode: 'shorten' }), active: (s) => s.tool === 'runway' && s.runwayMode === 'shorten' },
           { id: 'turnPad', thumb: 'turnPad', icon: 'rapidExit', run: (s) => s.set({ tool: 'turnPad' }), active: (s) => s.tool === 'turnPad' },
+          lineDemolish('runway'),
         ],
       },
       { id: 'upgrade', items: [{ id: 'upgrade', thumb: 'runway', icon: 'select', run: (s) => s.set({ tool: 'select', hint: 'hint.runwayUpgrade' }) }] },
@@ -215,8 +231,7 @@ export const CATEGORIES: Category[] = [
         items: [
           { id: 'new', thumb: 'taxiway', icon: 'taxiway', run: (s) => s.set({ tool: 'taxiway', taxiMode: 'new' }), active: (s) => s.tool === 'taxiway' && s.taxiMode === 'new' },
           { id: 'extend', thumb: 'taxiway', icon: 'taxiway', run: (s) => s.set({ tool: 'taxiway', taxiMode: 'extend' }), active: (s) => s.tool === 'taxiway' && s.taxiMode === 'extend' },
-          { id: 'trim', thumb: 'taxiTrim', icon: 'taxiway', run: (s) => s.set({ tool: 'taxiway', taxiMode: 'trim' }), active: (s) => s.tool === 'taxiway' && s.taxiMode === 'trim' },
-          { id: 'cut', thumb: 'taxiCut', icon: 'taxiway', run: (s) => s.set({ tool: 'taxiway', taxiMode: 'cut' }), active: (s) => s.tool === 'taxiway' && s.taxiMode === 'cut' },
+          lineDemolish('taxiway'),
         ],
       },
       {
@@ -269,7 +284,7 @@ export const CATEGORIES: Category[] = [
     testId: 'tool-terminal',
     tool: 'terminal',
     tabs: [
-      { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), sub('erase', 'erase', 'erase', 'erase'), removeProp] },
+      { id: 'structure', items: [sub('foundation', 'foundation', 'foundation', 'foundation'), sub('floor', 'floor', 'floor', 'floor'), sub('wall', 'wall', 'wall', 'wall'), sub('door', 'door', 'door', 'door'), wallDemolish] },
       { id: 'baggage', items: [bag('machine', 'bagDrop'), bag('bay', 'bagDrop'), bag('carousel', 'belt')] },
       { id: 'circulation', items: [{ ...fx('travelator', 'belt'), price: travelatorCost(1), asset: TRAVELATOR_ASSETS[0] }] },
     ],
@@ -281,7 +296,7 @@ export const CATEGORIES: Category[] = [
     testId: 'tool-stations',
     tool: 'terminal',
     tabs: [
-      { id: 'processing', key: 'terminal.processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk'), removeProp] },
+      { id: 'processing', key: 'terminal.processing', items: [fx('checkIn', 'checkIn'), fx('security', 'security'), fx('kiosk', 'kiosk'), fx('bagDrop', 'bagDrop'), fx('passport', 'passport'), fx('gateDesk', 'gateDesk')] },
       {
         id: 'transitions',
         key: 'terminal.transitions',
@@ -306,7 +321,7 @@ export const CATEGORIES: Category[] = [
     group: 'trm',
     testId: 'tool-furnish',
     tool: 'terminal',
-    tabs: PROP_CATEGORIES.map((cat) => ({ id: cat, items: [...propsOfCategory(cat).map((a) => prop(a.id, a.name)), removeProp] })),
+    tabs: PROP_CATEGORIES.map((cat) => ({ id: cat, items: propsOfCategory(cat).map((a) => prop(a.id, a.name)) })),
   },
   {
     id: 'commercial',
@@ -332,6 +347,7 @@ export const CATEGORIES: Category[] = [
         items: [
           { id: 'depot', thumb: 'depot', icon: 'handling', price: GROUND.depot.cost, run: (s) => s.set({ tool: 'depot' }), active: (s) => s.tool === 'depot' },
           { id: 'road', thumb: 'road', icon: 'taxiway', run: (s) => s.set({ tool: 'road' }), active: (s) => s.tool === 'road' },
+          lineDemolish('road'),
         ],
       },
       {
@@ -388,6 +404,23 @@ export const CATEGORIES: Category[] = [
       },
     ],
   },
+  {
+    // Bulldoze of design revision 6 (DEM3): one item by click, or a box with a type checklist.
+    id: 'bulldoze',
+    icon: 'bulldoze',
+    group: 'tool',
+    testId: 'tool-demolish',
+    tool: 'demolish',
+    tabs: [
+      {
+        id: 'modes',
+        items: [
+          { id: 'single', thumb: 'single', icon: 'select', danger: true, run: (s) => s.set({ tool: 'demolish', bulldozeMode: 'single', areaBox: null, hint: 'hint.demolish', problem: null, buy: null }), active: (s) => s.tool === 'demolish' && s.bulldozeMode === 'single' },
+          { id: 'area', thumb: 'area', icon: 'area', danger: true, run: (s) => s.set({ tool: 'demolish', bulldozeMode: 'area', areaBox: null, hint: 'hint.areaBulldoze', problem: null, buy: null }), active: (s) => s.tool === 'demolish' && s.bulldozeMode === 'area' },
+        ],
+      },
+    ],
+  },
 ];
 
 const fresh = { barOpen: true, selection: null, hint: null, problem: null, buy: null } as const;
@@ -427,7 +460,6 @@ function itemName(c: Category, tab: Tab, it: Item): string {
   const spec = it.gse ? GSE.find((v) => v.id === it.gse) : undefined;
   if (spec) return spec.name;
   if (it.name) return it.name;
-  if (it.id === 'remove' && (c.id === 'furnish' || c.id === 'terminal' || c.id === 'stations')) return t('menu.furnish.remove');
   return tDynamic(`menu.${tabKey(c, tab)}.${it.id}` as StringKey);
 }
 
@@ -488,7 +520,7 @@ export function BuildMenu({ send }: { send(cmd: Command): void }) {
     const on = it.active ? it.active(s) : false;
     const trayOpen = tray === it.id && !!it.variants;
     cells.push(
-      <div key={it.id} class={`card${on ? ' on' : ''}${trayOpen ? ' tray-open' : ''}${it.locked ? ' locked' : ''}`}>
+      <div key={it.id} class={`card${on ? ' on' : ''}${trayOpen ? ' tray-open' : ''}${it.locked ? ' locked' : ''}${it.danger ? ' g-bad danger' : ''}`}>
         <button
           class="card-main"
           data-testid={`card-${it.id}`}

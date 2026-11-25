@@ -129,6 +129,8 @@ test('extends an apron with the extend tool and cuts a strip out of it with the 
   await page.getByTestId('menutab-remove').click();
   await page.getByTestId('apron-mode-rect').click();
   await dragRect({ x: 3950, y: 5240 }, { x: 4010, y: 5420 });
+  // Cutting pavement is a demolish act and asks first.
+  await page.getByTestId('demolish-yes').click();
   await expect.poll(() => totalApronArea(page)).toBeLessThan(extended);
   expect(errors).toEqual([]);
 });

@@ -26,6 +26,8 @@ import { useState } from 'preact/hooks';
 import { useGameStore } from './stores/gameStore';
 import { useToolStore } from './stores/toolStore';
 import { t, tDynamic, tFormat } from './strings';
+import { askDemolish } from './stores/demolishStore';
+import { objectDemolish, terminalDemolish } from './demolishTargets';
 
 interface Props {
   send(cmd: Command): void;
@@ -37,7 +39,7 @@ const ZONE_ISSUES = ['zoneBreach', 'transitionOrientation', 'paxCannotLeave', 's
 const MODE_FIXTURE_NAMES: readonly FixtureKey[] = ['passport', 'eGate', 'security'];
 
 /**
- * Class, surface and strength of a taxiway, plus reversing it and the tools to extend, trim or cut it.
+ * Class, surface and strength of a taxiway, plus reversing it, extending it and demolishing a section of it.
  * The surface bar shows the price and works time before Apply (docs/DESIGN_REVISION_2.md section 2.5).
  */
 function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
@@ -47,7 +49,7 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
   const tiers = SURFACE_SPEC[surface].pcrTiers;
   const [tier, setTier] = useState(Math.max(0, SURFACE_SPEC[x.surface].pcrTiers.indexOf(x.pcr)));
   const tierNow = Math.min(tier, tiers.length - 1);
-  const mode = (m: 'extend' | 'trim' | 'cut'): void => {
+  const mode = (m: 'extend'): void => {
     useToolStore.getState().set({ tool: x.kind === 'taxilane' ? 'taxilane' : 'taxiway', taxiMode: m, category: 'taxiway', menuTab: 'build', menuOpen: true, selection: null, hint: null, problem: null });
   };
   const pickCode = (c: CodeLetter): void => {
@@ -128,11 +130,12 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
         <button data-testid="tw-extend" onClick={() => mode('extend')}>
           {t('inspector.extendEnd')}
         </button>
-        <button data-testid="tw-trim" onClick={() => mode('trim')}>
-          {t('inspector.trimEnd')}
-        </button>
-        <button data-testid="tw-cut" onClick={() => mode('cut')}>
-          {t('inspector.cutOut')}
+        <button
+          class="btn br sm"
+          data-testid="tw-demolish-section"
+          onClick={() => useToolStore.getState().set({ tool: 'lineDemolish', lineKind: 'taxiway', category: 'taxiway', menuTab: 'build', menuOpen: true, selection: null, hint: null, problem: null })}
+        >
+          {t('inspector.demolishSection')}
         </button>
       </div>
       <ClassHelp />
@@ -428,8 +431,12 @@ function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
           <button
             data-testid="bag-remove"
             onClick={() => {
-              send({ type: 'removeBaggageNode', id });
-              useToolStore.getState().set({ selection: null });
+              askDemolish({
+                what: t(`inspector.bag.kind.${node.kind}`),
+                refund: 0,
+                commands: [{ type: 'removeBaggageNode', id }],
+                after: () => useToolStore.getState().set({ selection: null }),
+              });
             }}
           >
             {t('inspector.bag.remove')}
@@ -566,8 +573,8 @@ export function ObjectPanel({ send }: Props) {
           data-testid="demolish"
           style="margin-top:8px"
           onClick={() => {
-            send({ type: 'demolishTerminal', id });
-            useToolStore.getState().set({ selection: null });
+            const g = grids.find((x) => x.id === id);
+            if (g) askDemolish(terminalDemolish(g, () => useToolStore.getState().set({ selection: null })));
           }}
         >
           {t('inspector.demolishTerminal')}
@@ -603,8 +610,8 @@ export function ObjectPanel({ send }: Props) {
           data-testid="demolish"
           style="margin-top:6px"
           onClick={() => {
-            send({ type: 'demolish', kind: 'building', id });
-            useToolStore.getState().set({ selection: null });
+            const r = objectDemolish(af, 'building', id, () => useToolStore.getState().set({ selection: null }));
+            if (r) askDemolish(r);
           }}
         >
           {t('inspector.demolish')}
@@ -631,8 +638,8 @@ export function ObjectPanel({ send }: Props) {
           data-testid="demolish"
           style="margin-top:6px"
           onClick={() => {
-            send({ type: 'demolish', kind, id });
-            useToolStore.getState().set({ selection: null });
+            const r = objectDemolish(af, kind, id, () => useToolStore.getState().set({ selection: null }));
+            if (r) askDemolish(r);
           }}
         >
           {t('inspector.demolish')}
@@ -673,8 +680,8 @@ export function ObjectPanel({ send }: Props) {
           <button
             data-testid="demolish"
             onClick={() => {
-              send({ type: 'demolishTower', id });
-              useToolStore.getState().set({ selection: null });
+              const r = objectDemolish(af, 'tower', id, () => useToolStore.getState().set({ selection: null }));
+              if (r) askDemolish(r);
             }}
           >
             {t('inspector.demolish')}
@@ -865,8 +872,8 @@ export function ObjectPanel({ send }: Props) {
         <button
           data-testid="demolish"
           onClick={() => {
-            send({ type: 'demolish', kind: kind as 'runway' | 'taxiway' | 'apron' | 'stand', id });
-            useToolStore.getState().set({ selection: null });
+            const r = objectDemolish(af, kind as 'runway' | 'taxiway' | 'apron' | 'stand', id, () => useToolStore.getState().set({ selection: null }));
+            if (r) askDemolish(r);
           }}
         >
           {t('inspector.demolish')}

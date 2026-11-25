@@ -390,6 +390,9 @@
       ]
     },
     {
+      "tool": "demolish-yes"
+    },
+    {
       "wait": 800
     },
     {
@@ -399,7 +402,7 @@
       }
     },
     {
-      "tool": "card-remove"
+      "tool": "tool-demolish"
     },
     {
       "move": [
@@ -418,6 +421,9 @@
         4019,
         5002.5
       ]
+    },
+    {
+      "tool": "demolish-yes"
     },
     {
       "wait": 800

@@ -66,13 +66,16 @@ test('lays a terminal with foundation, flooring, walls and fixtures using the mo
   await expect.poll(async () => (await summary())?.counts.checkIn ?? 0).toBeGreaterThan(3);
   expect((await summary())?.cells).toBe(cells);
 
-  // Erasing a cell removes the desk there.
+  // Bulldozing a desk asks first, then removes it.
   const desks = (await summary())?.counts.checkIn ?? 0;
-  await page.getByTestId('tsub-erase').click();
-  await drag([4004, 5446], [4006, 5446]);
+  await page.getByTestId('tool-demolish').click();
+  await drag([4004, 5446], [4004.5, 5446]);
+  await expect(page.getByTestId('demolish-confirm')).toBeVisible();
+  await page.getByTestId('demolish-yes').click();
   await expect.poll(async () => (await summary())?.counts.checkIn ?? 0).toBeLessThan(desks);
 
   // A foundation on the apron side of the layout is refused with an explanation.
+  await page.getByTestId('tool-terminal').click();
   await page.getByTestId('tsub-foundation').click();
   await page.mouse.move(box.x + 700, box.y + 200);
   expect(errors).toEqual([]);
@@ -120,7 +123,7 @@ test('the walk overlay toggle shows the walking graph of the selected terminal',
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => window.__store?.getState().business?.terminals.length ?? 0)).toBeGreaterThan(0);
 
-  await page.getByTestId('tool-select').click();
+  await page.getByTestId('task-select').click();
   const inside = await at(4040, 5455);
   await page.mouse.click(inside.x, inside.y);
   await expect(page.getByTestId('terminal-panel')).toBeVisible();

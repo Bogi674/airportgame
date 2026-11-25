@@ -114,7 +114,7 @@ export function ContextBar({ send }: Props) {
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = SURFACE_SPEC[s.surface].pcrTiers;
   const apronTool = s.tool === 'apron' || s.tool === 'apronRemove' || s.tool === 'apronExtend';
-  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower' && s.tool !== 'apronRemove' && s.tool !== 'apronExtend';
+  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'lineDemolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower' && s.tool !== 'apronRemove' && s.tool !== 'apronExtend';
   const showCode = showPavement && s.tool !== 'apron';
   const taxiTool = s.tool === 'taxiway' || s.tool === 'taxilane';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
@@ -144,10 +144,10 @@ export function ContextBar({ send }: Props) {
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
         {GRID_TOOLS.includes(s.tool) && <GridControls tool={s.tool} />}
         {s.tool === 'runway' && (
-          <Select label={t('opt.mode')} value={s.runwayMode} testId="opt-runway-mode" options={(['new', 'extend', 'shorten'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ runwayMode: v, hint: null, problem: null })} />
+          <Select label={t('opt.mode')} value={s.runwayMode} testId="opt-runway-mode" options={(['new', 'extend'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ runwayMode: v, hint: null, problem: null })} />
         )}
         {(s.tool === 'taxiway' || s.tool === 'taxilane') && (
-          <Select label={t('opt.mode')} value={s.taxiMode} testId="opt-taxi-mode" options={(['new', 'extend', 'trim', 'cut'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ taxiMode: v, hint: null, problem: null })} />
+          <Select label={t('opt.mode')} value={s.taxiMode} testId="opt-taxi-mode" options={(['new', 'extend'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ taxiMode: v, hint: null, problem: null })} />
         )}
         {showCode && (
           <Select
@@ -215,8 +215,8 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'terminal' && (
           <>
-            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'propRemove' | 'unit' | 'move'>[]).map((sub) => (
-              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
+            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'unit' | 'move'>[]).map((sub) => (
+              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, wallRemove: false, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
                 <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
               </button>
