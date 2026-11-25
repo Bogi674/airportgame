@@ -72,7 +72,7 @@ const STACKED = '[data-testid="context-bar"]';
  */
 function stepStyle(i: number): string {
   const pos = (i / (STEPS - 1)) * 100;
-  return `flex:1 1 0;min-width:0;height:8px;background-image:linear-gradient(90deg, var(--ok), var(--warn), var(--bad));background-size:1600% 100%;background-position:${pos}% 0`;
+  return `flex:1 1 0;min-width:0;height:8px;background-image:linear-gradient(90deg, var(--good), var(--warn), var(--bad));background-size:1600% 100%;background-position:${pos}% 0`;
 }
 
 /** Zone swatches with the transition and breach rows of the zones overlay. It has no scale, so it shows no ramp. */

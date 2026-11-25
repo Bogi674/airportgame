@@ -21,7 +21,7 @@ export function AlertCenter({ onJump }: { onJump(stand: string): void }) {
       <button class="round" data-testid="alert-bell" title={t('alerts.title')} aria-label={unread > 0 ? tFormat('alerts.unread', { n: unread }) : t('alerts.title')} aria-expanded={open} onClick={toggle}>
         <Icon name="bell" size={16} />
         {unread > 0 && (
-          <span data-testid="alert-unread" style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--bad);color:var(--panel-solid);font-size:10px;line-height:16px;text-align:center">
+          <span data-testid="alert-unread" style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--bad);color:var(--surface);font-size:10px;line-height:16px;text-align:center">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -36,7 +36,7 @@ export function AlertCenter({ onJump }: { onJump(stand: string): void }) {
               </button>
             )}
           </div>
-          {log.length === 0 && <div style="color:var(--muted);font-size:12px">{t('alerts.empty')}</div>}
+          {log.length === 0 && <div style="color:var(--ink-2);font-size:12px">{t('alerts.empty')}</div>}
           {GROUPS.map((g) => {
             const rows = log.filter((a) => a.severity === g);
             if (rows.length === 0) return null;
@@ -47,7 +47,7 @@ export function AlertCenter({ onJump }: { onJump(stand: string): void }) {
                   <div key={a.id} data-testid="alert-row" style={`display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line);border-left:3px solid ${TONE[g]};border-radius:8px`}>
                     <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
                       <span style="font-size:12px;line-height:1.35">{a.text}</span>
-                      <span style="font-size:11px;color:var(--muted)">
+                      <span style="font-size:11px;color:var(--ink-2)">
                         {formatClock(a.tick)}
                         {a.count > 1 ? `, ${tFormat('alerts.count', { n: a.count })}` : ''}
                       </span>

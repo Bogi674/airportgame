@@ -92,10 +92,10 @@ function TaxiwayUpgrade({ x, send }: { x: Taxiway; send(cmd: Command): void }) {
         ))}
       </div>
       <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;flex-wrap:wrap">
-        <span style="color:var(--muted)">{tFormat('inspector.surfaceCurrent', { surface: tDynamic(`surface.${x.surface}`) })}</span>
+        <span style="color:var(--ink-2)">{tFormat('inspector.surfaceCurrent', { surface: tDynamic(`surface.${x.surface}`) })}</span>
         {change && <span style="color:var(--accent)">{tFormat('inspector.surfaceSelected', { surface: tDynamic(`surface.${surface}`), change: t(change.upgrade ? 'inspector.surfaceUpgrade' : 'inspector.surfaceDowngrade') })}</span>}
       </div>
-      {!surfaceAllowsCode('grass', code) && <div style="color:var(--muted);font-size:11px">{t('inspector.surfaceNeedsPaved')}</div>}
+      {!surfaceAllowsCode('grass', code) && <div style="color:var(--ink-2);font-size:11px">{t('inspector.surfaceNeedsPaved')}</div>}
       {tiers.length > 1 && (
         <label style="display:flex;justify-content:space-between;gap:6px">
           {t('inspector.runwayStrength')}
@@ -210,9 +210,9 @@ function RunwayUpgrade({ r, send }: { r: Runway; send(cmd: Command): void }) {
           </select>
         </label>
       )}
-      <div style="color:var(--muted);font-size:11px">{t('inspector.runwayUpgradeHint')}</div>
+      <div style="color:var(--ink-2);font-size:11px">{t('inspector.runwayUpgradeHint')}</div>
       {r.works && (
-        <div style="font-size:11px;color:var(--warn)" data-testid="rw-works">
+        <div style="font-size:11px;color: var(--warn-text)" data-testid="rw-works">
           {tFormat('inspector.runwayWorks', { days: daysLeft })}
         </div>
       )}
@@ -237,16 +237,16 @@ function StandLink({ stand, linked }: { stand: Stand; linked: boolean }) {
   const out = fork ? standLeadOut(stand, lines) : null;
   if (!linked) {
     return (
-      <div style="color:var(--warn)" data-testid="stand-link">
+      <div style="color: var(--warn-text)" data-testid="stand-link">
         {t('inspector.stand.noTaxiway')}
       </div>
     );
   }
   const road = standsReached(af)[af.stands.indexOf(stand)] === true;
   return (
-    <div style="color:var(--muted)" data-testid="stand-link">
+    <div style="color:var(--ink-2)" data-testid="stand-link">
       {fork ? tFormat('inspector.stand.leadIn', { name: af.taxiways[fork.lane].name }) : t('inspector.stand.linked')}
-      <div data-testid="stand-road" style={road ? undefined : 'color:var(--warn)'}>
+      <div data-testid="stand-road" style={road ? undefined : 'color: var(--warn-text)'}>
         {road ? t('inspector.stand.road') : t('inspector.stand.noRoad')}
       </div>
       {stand.type === 'through' && <div data-testid="stand-lead-out">{out ? tFormat('inspector.stand.leadOut', { name: af.taxiways[out.lane].name }) : t('inspector.stand.noLeadOut')}</div>}
@@ -293,7 +293,7 @@ function StandAccess({ stand, index, send }: { stand: Stand; index: number; send
           <div key={u} data-testid={`stand-upgrade-${u}`} style="display:flex;justify-content:space-between;gap:6px;align-items:center">
             <span>
               {t(`inspector.stand.upgrade.${u}`)}
-              <span style="color:var(--muted);font-size:11px;display:block">{tFormat('inspector.stand.upgradeCost', { cost: formatMoney(spec.cost), days: spec.days })}</span>
+              <span style="color:var(--ink-2);font-size:11px;display:block">{tFormat('inspector.stand.upgradeCost', { cost: formatMoney(spec.cost), days: spec.days })}</span>
             </span>
             {isBuilt ? (
               <span>{t('inspector.stand.upgradeBuilt')}</span>
@@ -319,12 +319,12 @@ function StandAccess({ stand, index, send }: { stand: Stand; index: number; send
         </select>
       </label>
       {now && (
-        <div style="color:var(--muted);font-size:11px" data-testid="stand-gate-now">
+        <div style="color:var(--ink-2);font-size:11px" data-testid="stand-gate-now">
           {tFormat('inspector.stand.gateNow', { building: now.building, name: deskName(now) })}
         </div>
       )}
       {warnings.map((w) => (
-        <div key={w} style="color:var(--warn)" data-testid={`stand-warn-${w}`}>
+        <div key={w} style="color: var(--warn-text)" data-testid={`stand-warn-${w}`}>
           {t(`inspector.stand.warn.${w}`)}
         </div>
       ))}
@@ -358,17 +358,17 @@ function StandBaggage({ stand, index, send }: { stand: Stand; index: number; sen
         </select>
       </label>
       {now && state.carousel !== null && (
-        <div style="color:var(--muted);font-size:11px" data-testid="stand-carousel">
+        <div style="color:var(--ink-2);font-size:11px" data-testid="stand-carousel">
           {tFormat('inspector.stand.carousel', { n: bagNodeNumber(nodes, state.carousel) })}
         </div>
       )}
       {now && state.warning === 'bayNoRoad' && (
-        <div style="color:var(--warn)" data-testid="stand-warn-bayNoRoad">
+        <div style="color: var(--warn-text)" data-testid="stand-warn-bayNoRoad">
           {tFormat('inspector.stand.bayNoRoad', { n: now.number })}
         </div>
       )}
       {now && state.warning === 'bayNoCarousel' && (
-        <div style="color:var(--warn)" data-testid="stand-warn-bayNoCarousel">
+        <div style="color: var(--warn-text)" data-testid="stand-warn-bayNoCarousel">
           {tFormat('inspector.stand.bayNoCarousel', { n: now.number })}
         </div>
       )}
@@ -378,7 +378,7 @@ function StandBaggage({ stand, index, send }: { stand: Stand; index: number; sen
         </button>
       )}
       {state.warning === 'noBay' && (
-        <div style="color:var(--warn)" data-testid="stand-warn-noBay">
+        <div style="color: var(--warn-text)" data-testid="stand-warn-noBay">
           {t('inspector.stand.warn.noBay')}
         </div>
       )}
@@ -397,26 +397,26 @@ function BagNodePanel({ id, send }: { id: number; send(cmd: Command): void }) {
     return { kind: o ? t(`inspector.bag.kind.${o.kind}`) : '', n: bagNodeNumber(nodes, other) };
   };
   return (
-    <div data-testid="bag-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+    <div data-testid="bag-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
       <div style="font-weight:600">{t(`inspector.bag.kind.${node.kind}`)}</div>
-      <div style="color:var(--muted);font-size:11px" data-testid="bag-id">
+      <div style="color:var(--ink-2);font-size:11px" data-testid="bag-id">
         {tFormat('inspector.bag.id', { id: node.id })}
       </div>
       <div data-testid="bag-buffer">{tFormat('inspector.bag.buffer', { held: node.held, capacity: node.capacity })}</div>
       <div class="section" style="margin:4px 0 2px">{t('inspector.bag.connections')}</div>
-      {node.links.length === 0 && <div style="color:var(--muted)">{t('inspector.bag.none')}</div>}
+      {node.links.length === 0 && <div style="color:var(--ink-2)">{t('inspector.bag.none')}</div>}
       {node.links.map((l) => {
         const outgoing = l.from === node.id;
         const other = label(outgoing ? l.to : l.from);
         return (
           <div key={`${l.from}:${l.to}`} data-testid="bag-link" style="display:flex;justify-content:space-between">
             <span>{tFormat(outgoing ? 'inspector.bag.to' : 'inspector.bag.from', other)}</span>
-            <span style="color:var(--muted)">{t(l.mode === 'auto' ? 'inspector.bag.auto' : 'inspector.bag.manual')}</span>
+            <span style="color:var(--ink-2)">{t(l.mode === 'auto' ? 'inspector.bag.auto' : 'inspector.bag.manual')}</span>
           </div>
         );
       })}
       {node.warnings.map((w) => (
-        <div key={w} style="color:var(--warn)" data-testid={`bag-warn-${w}`}>
+        <div key={w} style="color: var(--warn-text)" data-testid={`bag-warn-${w}`}>
           {t(`inspector.bag.warn.${w}`)}
         </div>
       ))}
@@ -498,9 +498,9 @@ export function ObjectPanel({ send }: Props) {
     if ((pick && grid && cell >= 0 && fixtureName !== null) || (pp && pGrid && picked)) {
       const title = picked ? (propSpec(picked.asset)?.name ?? picked.asset) : (fixtureLabelAt(grid!, cell, biz.fixtureNames) ?? tDynamic(`fixture.${fixtureId}`));
       return (
-        <div data-testid="item-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+        <div data-testid="item-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
           <div data-testid="item-title" style="font-weight:600">{title}</div>
-          <div style="color:var(--muted);font-size:12px">{tFormat('inspector.inTerminal', { id: term.id })}</div>
+          <div style="color:var(--ink-2);font-size:12px">{tFormat('inspector.inTerminal', { id: term.id })}</div>
           {picked ? (
             <div data-testid="prop-block">{itemBlock}</div>
           ) : (
@@ -537,7 +537,7 @@ export function ObjectPanel({ send }: Props) {
       );
     }
     return (
-      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+      <div data-testid="terminal-panel" style="position:absolute;right:12px;top:52px;width:280px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5">
         <div style="font-weight:600">{t('inspector.terminal')} {term.id}</div>
         <div>{tFormat('terminal.summary', { cells: term.cells, area: term.cells * 4 })}</div>
         <div>{tFormat('terminal.arrivals', { n: biz.arrDay[0] ?? 0 })}</div>
@@ -561,7 +561,7 @@ export function ObjectPanel({ send }: Props) {
             {tDynamic(`ready.${k}`)}
           </div>
         ))}
-        <div style="margin-top:4px;color:var(--muted);font-size:12px">{t('inspector.terminalHint')}</div>
+        <div style="margin-top:4px;color:var(--ink-2);font-size:12px">{t('inspector.terminalHint')}</div>
         <button
           data-testid="demolish"
           style="margin-top:8px"
@@ -582,7 +582,7 @@ export function ObjectPanel({ send }: Props) {
     return (
       <div
         data-testid="object-panel"
-        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
       >
         <div style="font-weight:600">{tDynamic(`building.${b.kind}`)}</div>
         <div data-testid="building-upkeep">{tFormat('inspector.upkeep', { cost: formatMoney(Math.round(b.cost * GROUND.buildingUpkeepShare)) })}</div>
@@ -590,7 +590,7 @@ export function ObjectPanel({ send }: Props) {
           <>
             <div data-testid="fire-vehicles">{tFormat('inspector.fireVehicles', { n: b.fireVehicles ?? 0, max: GROUND.fire.maxVehicles, cat: stationCategory(b) })}</div>
             <div data-testid="fire-airport">{tFormat('inspector.fireAirport', { cat: biz?.fireCategory ?? 0 })}</div>
-            {(biz?.fireGraceDays ?? 0) > 0 && <div style="color:var(--warn)">{tFormat('inspector.fireGrace', { days: biz?.fireGraceDays ?? 0 })}</div>}
+            {(biz?.fireGraceDays ?? 0) > 0 && <div style="color: var(--warn-text)">{tFormat('inspector.fireGrace', { days: biz?.fireGraceDays ?? 0 })}</div>}
             <button data-testid="fire-buy" disabled={(b.fireVehicles ?? 0) >= GROUND.fire.maxVehicles} onClick={() => send({ type: 'buyFireVehicle', id })}>
               {tFormat('inspector.fireBuy', { cost: formatMoney(GROUND.fire.vehicleCost) })}
             </button>
@@ -598,7 +598,7 @@ export function ObjectPanel({ send }: Props) {
         )}
         {b.kind === 'fuelFarm' && <div data-testid="fuel-stock">{tFormat('inspector.fuelStock', { stock: m3(biz?.fuelStockL ?? 0), cap: m3(biz?.fuelCapacityL ?? 0), inbound: m3(biz?.fuelInboundL ?? 0) })}</div>}
         {b.kind === 'catering' && <div>{tFormat('inspector.cateringTrucks', { n: GROUND.catering.trucks })}</div>}
-        {(b.kind === 'staff' || b.kind === 'cleaning' || b.kind === 'workshop') && <div style="color:var(--muted);font-size:11px">{t('inspector.buildingLater')}</div>}
+        {(b.kind === 'staff' || b.kind === 'cleaning' || b.kind === 'workshop') && <div style="color:var(--ink-2);font-size:11px">{t('inspector.buildingLater')}</div>}
         <button
           data-testid="demolish"
           style="margin-top:6px"
@@ -621,7 +621,7 @@ export function ObjectPanel({ send }: Props) {
     return (
       <div
         data-testid="object-panel"
-        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
       >
         <div style="font-weight:600">{t(road ? 'inspector.road' : 'inspector.depot')}</div>
         {road && <div data-testid="road-length">{tFormat('inspector.roadLength', { len: Math.round(polylineLength(road.points)) })}</div>}
@@ -650,20 +650,20 @@ export function ObjectPanel({ send }: Props) {
     return (
       <div
         data-testid="object-panel"
-        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+        style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
       >
         <div style="font-weight:600">{tFormat('inspector.title', { kind: t('inspector.tower'), name: '' }).trim()}</div>
         <div data-testid="tower-level">
           {t('inspector.towerLevel')}: {tFormat('inspector.towerLevelValue', { level: tw.level, max })}
         </div>
-        {outrankedBy > tw.level && <div style="color:var(--muted);font-size:11px">{tFormat('inspector.towerOutranked', { level: outrankedBy })}</div>}
+        {outrankedBy > tw.level && <div style="color:var(--ink-2);font-size:11px">{tFormat('inspector.towerOutranked', { level: outrankedBy })}</div>}
         <div data-testid="tower-budget">
           {t('inspector.towerBudget')}: {movementsPerHour(tw.level)}
         </div>
         <div data-testid="tower-runways">
           {t('inspector.towerRunways')}: {cap === -1 ? t('inspector.unlimited') : cap}
         </div>
-        <div data-testid="tower-queue" style={queue > 0 ? 'color:var(--warn)' : undefined}>
+        <div data-testid="tower-queue" style={queue > 0 ? 'color: var(--warn-text)' : undefined}>
           {t('inspector.towerQueue')}: {queue}
         </div>
         <div style="display:flex;gap:6px;margin-top:6px">
@@ -719,7 +719,7 @@ export function ObjectPanel({ send }: Props) {
           </div>
         )}
         {obs && (
-          <div data-testid="runway-obstacles" style={obs.penetrations.length > 0 ? 'color:var(--warn)' : undefined}>
+          <div data-testid="runway-obstacles" style={obs.penetrations.length > 0 ? 'color: var(--warn-text)' : undefined}>
             <div>{dirLine(r.nameA, obs.approachA)}</div>
             <div>{dirLine(r.nameB, obs.approachB)}</div>
             {obs.penetrations.length > 0 && <div style="font-size:11px">{tFormat('inspector.obstacles', { n: obs.penetrations.length, m: obs.penetrations[0].byM })}</div>}
@@ -804,14 +804,14 @@ export function ObjectPanel({ send }: Props) {
         </div>
         {/* Types this stand cannot take, with the reason (docs/DESIGN_REVISION_2.md section 3.1). */}
         {AIRCRAFT.filter((a) => standRefusal(x, a) === 'surface').length > 0 && (
-          <div style="color:var(--muted);font-size:11px" data-testid="stand-refused">
+          <div style="color:var(--ink-2);font-size:11px" data-testid="stand-refused">
             {tFormat('inspector.standSurfaceRefused', { types: AIRCRAFT.filter((a) => standRefusal(x, a) === 'surface').map((a) => a.icaoType).join(', ') })}
           </div>
         )}
         {/* Connection states (docs/DESIGN_REVISION_4.md section 2.3): the taxiway lead in decides whether the stand can be booked. */}
         <StandLink stand={x} linked={biz?.standLinked[af.stands.indexOf(x)] === 1} />
         {af.clearanceBreaches?.includes(x.id) && (
-          <div style="color:var(--warn)" data-testid="stand-clearance-breach">
+          <div style="color: var(--warn-text)" data-testid="stand-clearance-breach">
             {t('inspector.stand.clearanceBreach')}
           </div>
         )}
@@ -832,7 +832,7 @@ export function ObjectPanel({ send }: Props) {
           </label>
         )}
         <StandAccess stand={x} index={af.stands.indexOf(x)} send={send} />
-        {x.type === 'contact' && biz?.standContact[af.stands.indexOf(x)] !== 1 && <div style="color:var(--warn)">{t('inspector.contactWarn')}</div>}
+        {x.type === 'contact' && biz?.standContact[af.stands.indexOf(x)] !== 1 && <div style="color: var(--warn-text)">{t('inspector.contactWarn')}</div>}
       </>
     );
   }
@@ -849,7 +849,7 @@ export function ObjectPanel({ send }: Props) {
   return (
     <div
       data-testid="object-panel"
-      style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5"
+      style="position:absolute;right:12px;top:52px;width:260px;max-height:calc(100vh - 52px - 290px);overflow-y:auto;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;line-height:1.5"
     >
       <div style="font-weight:600">{tFormat('inspector.title', { kind: tDynamic(`inspector.${kind}`), name })}</div>
       {body}

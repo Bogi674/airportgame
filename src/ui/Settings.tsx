@@ -24,7 +24,7 @@ export function Settings({ autosave, onAutosave, onBack }: Props) {
     <div data-testid="settings" style="display:flex;flex-direction:column;gap:10px">
       <section style={group} aria-label={t('settings.display')}>
         <strong>{t('settings.display')}</strong>
-        <span style="color:var(--muted);font-size:12px">{t('settings.quality')}</span>
+        <span style="color:var(--ink-2);font-size:12px">{t('settings.quality')}</span>
         <div style="display:flex;gap:6px">
           {QUALITIES.map((q) => (
             <button key={q} data-testid={`opt-quality-${q}`} aria-pressed={quality === q} style={seg(quality === q)} onClick={() => setQuality(q)}>
@@ -32,7 +32,7 @@ export function Settings({ autosave, onAutosave, onBack }: Props) {
             </button>
           ))}
         </div>
-        <span style="color:var(--muted);font-size:12px">{t('settings.theme')}</span>
+        <span style="color:var(--ink-2);font-size:12px">{t('settings.theme')}</span>
         <div style="display:flex;gap:6px">
           {THEMES.map((th) => (
             <button

@@ -55,7 +55,7 @@ function GridStatus({ tool }: { tool: Tool }) {
   const offered = s.gridId === null ? null : gridsFor(af).find((g) => g.id === s.gridId) ?? null;
   const live: SnapMode = s.altHeld ? 'free' : snapModeOf(s.snapMode, tool);
   return (
-    <span data-testid="snap-mode-label" style="color:var(--muted);font-size:11px">
+    <span data-testid="snap-mode-label" style="color:var(--ink-2);font-size:11px">
       {t('opt.snap')}: {tDynamic(`snap.${live}`)}, {offered === null ? t('grid.none').toLowerCase() : gridText(offered, af)}
     </span>
   );
@@ -119,7 +119,7 @@ export function ContextBar({ send }: Props) {
   const taxiTool = s.tool === 'taxiway' || s.tool === 'taxilane';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
   const problemBlock = problemText ? (
-    <div data-testid="problem" role="status" style="color:var(--bad);font-size:12px;display:flex;gap:8px;align-items:center">
+    <div data-testid="problem" role="status" style="color: var(--bad-text);font-size:12px;display:flex;gap:8px;align-items:center">
       <span>{problemText}</span>
       {s.problem?.code === 'notOwned' && s.buy && s.buy.ids.length > 0 && (
         <button data-testid="buy-land" onClick={() => send({ type: 'buyParcels', ids: s.buy?.ids ?? [] })}>
@@ -138,7 +138,7 @@ export function ContextBar({ send }: Props) {
   return (
     <div
       data-testid="context-bar"
-      style={`position:absolute;${bottomCenter(flyout, 900)};bottom:${bottom}px;box-sizing:border-box;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
+      style={`position:absolute;${bottomCenter(flyout, 900)};bottom:${bottom}px;box-sizing:border-box;padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
@@ -329,7 +329,7 @@ export function ContextBar({ send }: Props) {
       {(s.hint || GRID_TOOLS.includes(s.tool)) && (
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           {GRID_TOOLS.includes(s.tool) && <GridStatus tool={s.tool} />}
-          {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
+          {s.hint && <div style="color:var(--ink-2);font-size:12px">{tDynamic(s.hint)}</div>}
         </div>
       )}
       {problemBlock}

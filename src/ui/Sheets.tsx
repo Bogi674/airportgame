@@ -125,7 +125,7 @@ function FinanceSheet({ send }: Props) {
             <tr key={c}>
               <td>{tDynamic(`finance.cat.${c}`)}</td>
               {rows.map((r, i) => (
-                <td key={i} style={`text-align:right;color:${r[ci] < 0 ? 'var(--bad)' : r[ci] > 0 ? 'var(--ok)' : 'var(--muted)'}`}>
+                <td key={i} style={`text-align:right;color:${r[ci] < 0 ? 'var(--bad)' : r[ci] > 0 ? 'var(--good)' : 'var(--ink-2)'}`}>
                   {r[ci] === 0 ? '' : formatInt(r[ci])}
                 </td>
               ))}
@@ -559,7 +559,7 @@ function StandsSheet({ send }: Props) {
         <button data-testid="auto-assign" onClick={() => send({ type: 'autoAssignStands' })}>
           {t('stands.autoAssign')}
         </button>
-        <span style="color:var(--muted);font-size:12px">{t('stands.help')}</span>
+        <span style="color:var(--ink-2);font-size:12px">{t('stands.help')}</span>
         {dragFlight !== null && <span style="color:var(--accent);font-size:12px">{t('stands.dragHint')}</span>}
       </div>
       {picked && (
@@ -567,7 +567,7 @@ function StandsSheet({ send }: Props) {
           <b>
             {picked.airline} {picked.type}
           </b>
-          <span style="color:var(--muted)">{clock(picked.eta)}</span>
+          <span style="color:var(--ink-2)">{clock(picked.eta)}</span>
           <label style="display:flex;gap:6px;align-items:center;font-size:12px">
             {t('stands.moveTo')}
             <select
@@ -620,7 +620,7 @@ function StandsSheet({ send }: Props) {
               {unLanes.map((x) => renderBlock(x.r, x.lane, null))}
             </div>
           </div>
-          {af.stands.length === 0 && <div style="padding:12px;color:var(--muted)">{t('stands.none')}</div>}
+          {af.stands.length === 0 && <div style="padding:12px;color:var(--ink-2)">{t('stands.none')}</div>}
           {af.stands.map((s) => {
             const mine = packLanes(rows.filter((r) => r.standId === s.id));
             const h = Math.max(1, ...mine.map((x) => x.lane + 1)) * ROW_PX + 8;

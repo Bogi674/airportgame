@@ -85,7 +85,7 @@ export function TopBar({ onSpeed, onSkip, onMenu, onJump }: Props) {
         <Chip label={t('hud.weather')} testId="weather" value={business ? tDynamic(`weather.${business.weather}`) : '-'} />
         {wind && <Chip label={t('hud.wind')} testId="wind" title={t('hud.windTip')} value={`${String(wind.deg).padStart(3, '0')}° ${wind.kt} kt`} />}
         <Chip label={t('hud.cash')} testId="cash" value={game.mode === 'sandbox' ? t('hud.unlimited') : formatMoney(cash)} />
-        <Chip label={t('hud.cashflow')} testId="cashflow" title={t('hud.cashflowTip')} value={`${net >= 0 ? '+' : ''}${formatMoney(net)}`} tone={net >= 0 ? 'var(--ok)' : 'var(--bad)'} />
+        <Chip label={t('hud.cashflow')} testId="cashflow" title={t('hud.cashflowTip')} value={`${net >= 0 ? '+' : ''}${formatMoney(net)}`} tone={net >= 0 ? 'var(--good)' : 'var(--bad)'} />
         <span class="chip" data-testid="rating" title={t('top.rating')}>
           <span class="lbl">{t('top.rating')}</span>
           <b>{Math.round(rating)}</b>
@@ -99,7 +99,7 @@ export function TopBar({ onSpeed, onSkip, onMenu, onJump }: Props) {
       </div>
       <div class="hud hud-right">
         <span class="cluster" aria-label={t('hud.speedLabel')}>
-          {tickBacklog > 50 && <span style="color:var(--warn);font-size:12px">{`x${Math.max(Math.min(speed, 1), speed / 2)}`}</span>}
+          {tickBacklog > 50 && <span style="color: var(--warn-text);font-size:12px">{`x${Math.max(Math.min(speed, 1), speed / 2)}`}</span>}
           {skip >= 0 && (
             <span class="chip" data-testid="skip-progress" title={t('hud.skipping')} aria-label={t('hud.skipping')}>
               <Icon name="skip" size={12} />

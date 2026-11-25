@@ -327,7 +327,7 @@ export function App() {
     const readTheme = (): void => {
       const cs = getComputedStyle(document.documentElement);
       const token = (name: string): string => cs.getPropertyValue(name).trim();
-      renderer.setOverlayTheme(token('--ok'), token('--warn'), token('--bad'), token('--muted'));
+      renderer.setOverlayTheme(token('--good'), token('--warn'), token('--bad'), token('--ink-2'));
       renderer.setZoneColors({
         public: token('--zone-public'),
         commercial: token('--zone-commercial'),
@@ -454,7 +454,7 @@ export function App() {
 
   const inGame = store.screen === 'game';
   return (
-    <div style="position:relative;width:100%;height:100%;font:13px system-ui,sans-serif;color:var(--text)">
+    <div style="position:relative;width:100%;height:100%;font:13px system-ui,sans-serif;color:var(--ink)">
       <MapView client={client} onRenderer={onRenderer} onPick={onPick} />
       {inGame && (
         <>
@@ -476,7 +476,7 @@ export function App() {
           {store.parcelOverlay && (
             <div data-testid="land-banner" class="panel" style="position:absolute;left:50%;top:76px;transform:translateX(-50%);padding:8px 14px;z-index:6;display:flex;gap:12px;align-items:center">
               <b style="letter-spacing:0.14em;text-transform:uppercase;font-size:11px;color:var(--accent)">{t('land.title')}</b>
-              <span style="font-size:12px;color:var(--muted)">{t('land.help')}</span>
+              <span style="font-size:12px;color:var(--ink-2)">{t('land.help')}</span>
               <button data-testid="land-exit" onClick={() => useGameStore.getState().toggleParcelOverlay()}>
                 {t('land.exit')}
               </button>
@@ -499,7 +499,7 @@ export function App() {
             client.setSpeed(0);
           }} />
           {store.error && !store.crash && (
-            <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#4a1515;border:1px solid #a33;border-radius:10px;z-index:60">
+            <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:var(--bad);color:#fff;box-shadow:0 3px 0 var(--bad-deep);border-radius:var(--r-ctl);z-index:60">
               {t('error.title')}: {store.error}
             </div>
           )}

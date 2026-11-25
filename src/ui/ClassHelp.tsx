@@ -10,7 +10,7 @@ export function ClassHelp() {
   return (
     <details class="classhelp" data-testid="class-help">
       <summary>{t('classes.title')}</summary>
-      <div style="font-size:11px;line-height:1.5;color:var(--muted);margin:4px 0">{t('classes.intro')}</div>
+      <div style="font-size:11px;line-height:1.5;color:var(--ink-2);margin:4px 0">{t('classes.intro')}</div>
       <div style="display:grid;gap:5px">
         {CODES.map((c) => {
           const row = AIRFIELD.codes[c];
@@ -23,7 +23,7 @@ export function ClassHelp() {
               <b>{c}</b>
               {' '}
               {tFormat('classes.row', { span: SPAN[c], rw: row.runwayWidthM, tw: row.taxiwayWidthM, r: row.turnRadiusM })}
-              {names && <div style="color:var(--muted)">{names}</div>}
+              {names && <div style="color:var(--ink-2)">{names}</div>}
             </div>
           );
         })}
