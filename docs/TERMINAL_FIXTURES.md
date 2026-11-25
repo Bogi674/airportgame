@@ -1,5 +1,7 @@
 # TERMINAL_FIXTURES.md
 
+> **Revision 6 note (2026-11-25):** `docs/DESIGN_REVISION_6.md` overrides the same footprint rule for the check in desk: its art is 2, 3 and 4 m wide on 1, 2 and 2 whole cells, and security lane level 1 has the simpler Revision 6 look. Everything else here stays.
+
 The terminal asset kit: processing fixtures in three levels, their automated variants, zone transition fixtures, baggage nodes, and the general fixtures, furniture and building infrastructure of a terminal. Approved scope and authority are in `docs/DESIGN_REVISION_5.md`. This document adds to `docs/ART_AND_ASSETS.md` section 11 and to the fixture table in `docs/GAME_DESIGN.md` section 8. Where they disagree, this document wins for fixture art, fixture levels and the asset data. `docs/BAGGAGE.md` wins for everything about bag nodes and ramps, `docs/TERMINAL_ZONING.md` for zones and transitions.
 
 The finished assets the game loads are in `src/data/fixtures/` (section 11).

@@ -1,5 +1,11 @@
 # REV6 BUILD PROMPT: for Claude Code
 
+## Status (2026-11-25)
+
+**Slice 1 is done** (T96): check in desk sizes, level aware span, upgrade rules, security level 1 art and the kit import. The footprint decision changed after the grill-me round: **whole cells only**, level 1 is 1 x 1, levels 2 and 3 are 2 x 1 cells (level 2 draws 3 m of art with a 1 m walkable strip at the tail end), and there is no half cell snap. This overrides Step 2 items 1 and 2 below. Decisions are in `handoff/QUESTIONS.md` (2026-11-25) and `docs/ARCHITECTURE.md` section 12.
+
+**Slice 2 remains** (T97): Step 1 item 3 (category `openings`, pack `openings.json`, six assets), Step 4 and Step 4b (wall types, placement tools, rendering, walking, zones, UI) and their tests. The converter in `docs/reference/sprite-prototypes/export_fixtures.py` already maps the Revision 6 ops (`rev6_ops`), so slice 2 adds the six openings to it and extends the zod enums (grid `edge`, mount `edge`, `edgeSpan`, `nominalOpeningM`, `clearM`, `swingRadiusM`, `walkable`). The `swing` flag is already in the op schema.
+
 Paste or point Claude Code at this file. Read first: `docs/CLAUDE.md`, `docs/DESIGN_REVISION_6.md` (this task's spec), `docs/DESIGN_REVISION_5.md`, `docs/TERMINAL_FIXTURES.md` sections 1 to 4, 8, 10 and 11, `docs/BAGGAGE.md` sections 3 and 7, `docs/TERMINAL_ZONING.md` section 7. Follow every hard rule in `docs/CLAUDE.md`. Never insert into saved lists, only append. Do not write em dashes or hyphen joined sentences in docs, comments or UI strings.
 
 ## Goal
@@ -30,13 +36,10 @@ Livery: ops with `fLiv` take the airline `liveryPrimary` shaded by that factor w
 
 ## Step 2: check in desk sizes
 
-1. `FIXTURE_SPAN` for `checkIn` becomes level aware: level 1 [1,1], level 2 [1.5,1], level 3 [2,1] cells. Add a `checkInSpan(level)` helper next to it. Do not reorder `FIXTURE_KEYS`.
-2. Decision to confirm with the owner, recommended default first:
-   * A (recommended): half cell width snap for the check in desk, so the 3 m level 2 desk is exact. Store occupancy as ceil(width / 2) cells for walking and collision and keep the exact meter width for art and for neighbor spacing.
-   * B (fallback): level 2 occupies 2 x 1 cells and draws 3 m, leaving a 1 m walkable strip.
-   Implement A behind one constant `CHECKIN_HALF_CELL = true` so B is a one line switch. Record the choice in `docs/ARCHITECTURE.md` under Decisions.
+1. (Done, whole cells.) The check in footprint is level aware through `FIXTURE_FOOTPRINT` and the helper `checkInSpan(level)`: level 1 [1,1], level 2 [2,1], level 3 [2,1] cells. `FIXTURE_KEYS` is not reordered.
+2. (Settled by the owner, 2026-11-25.) Whole cells, no half cell snap: level 2 occupies 2 x 1 cells with 3 m of art. The `CHECKIN_HALF_CELL` switch was not built.
 3. The ramp cell never moves: cell (0,-1) behind the left cell, for every level and every rotation. Add a test that the belt lane x 0.6 to 1.4 m meets the ramp stub for all levels and 4 rotations (reuse the existing ramp alignment test from `docs/TERMINAL_FIXTURES.md` section 10).
-4. `upgradeFixture` for `checkIn`: it now needs a free strip to the right of the current footprint (1 m for level 2, 2 m for level 3, counted from the level 1 width, rotated with the desk). If blocked, reject with Needs room to the right and show the blocked cells in the ghost, red. Closing, queue move and undo work as in `docs/TERMINAL_FIXTURES.md` 4. Undo restores the old level and footprint.
+4. `upgradeFixture` for `checkIn`: it now needs a free strip to the right of the current footprint (level 1 to 2 needs one more cell, level 2 to 3 none, rotated with the desk). If blocked, reject with Needs room to the right and show the blocked cells in the ghost, red. Closing, queue move and undo work as in `docs/TERMINAL_FIXTURES.md` 4. Undo restores the old level and footprint.
 5. Queue, service points and the staffing system read the `service` points (agent, passenger) rotated with the fixture. Stats per level stay as documented, `confirm` entries stay out of the sim or use the proposed value with a note in `handoff/QUESTIONS.md`.
 6. Save migration: existing level 1 to 3 desks keep their anchor cell. Level 2 and 3 desks that no longer fit their new width are downgraded to level 1 with a one time alert, never deleted.
 

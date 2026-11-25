@@ -1,5 +1,7 @@
 # DESIGN REVISION 5: Terminal asset kit, fixture levels, zoning and the baggage network
 
+> **Revision 6 note (2026-11-25):** `docs/DESIGN_REVISION_6.md` overrides the same footprint rule for the check in desk: its art is 2, 3 and 4 m wide on 1, 2 and 2 whole cells, and security lane level 1 has the simpler Revision 6 look. Everything else here stays.
+
 Status: asked for by the user on 2026-11-17 and 2026-11-18 in the terminal kit sessions. The gameplay values marked **Confirm** in the documents below are proposals and go to the owner in one decision batch (`handoff/QUESTIONS.md`, 2026-11-18 R5).
 Authority: this document and the three documents it names override `docs/GAME_DESIGN.md` section 8, `docs/ART_AND_ASSETS.md` section 11 and older lines about terminal fixtures, zones and baggage wherever they disagree. Revisions 2, 3 and 4 stay in force for everything else.
 
