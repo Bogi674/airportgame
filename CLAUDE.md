@@ -137,7 +137,8 @@ npm run e2e        playwright smoke and visual tests
 
 One task per session, then a fresh session.
 
-0. For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user in one batch before editing any file, and log the answers in `handoff/QUESTIONS.md`. Never guess a gameplay rule.
+0. Every coding session loads the `antislop` skill (`.claude/skills/antislop/SKILL.md`, owner 2026-11-25) before any code, UI or copy is written, and checks each change against it before commit. Load `antislop-ui` for UI work, `antislop-code` for code comments and `antislop-copywriting` for UI strings and docs. Never skip it. Its release is in `.claude/skills/antislop/VERSION`; it comes from github.com/miqdadbadjuber/anti-slop under the MIT license. The vendored copy spells its em dashes as U+2014 or [em dash] so it passes hard rule 15.
+   For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user in one batch before editing any file, and log the answers in `handoff/QUESTIONS.md`. Never guess a gameplay rule.
 1. Take the task from `ROADMAP.md`: the first `todo` row of the current phase whose dependencies are `done`, unless the user names one. Set it to `doing`.
 2. Read the design docs for the area, `handoff/PITFALLS.md`, and the spec in `handoff/tasks/<id>.md`. If the spec does not exist, write it from the design revision and the grill-me answers: goal, read first, decisions, numbered requirements, acceptance criteria.
 3. Write a short plan in `handoff/work/<id>.md` before changing more than three files. Cut the work into slices of at most about 150 changed lines: sim first, then render, then UI. Never leave a half wired feature visible to the player.
