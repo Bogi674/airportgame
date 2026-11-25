@@ -1299,6 +1299,21 @@ export class Business {
     return false;
   }
 
+  /** Notice key that names why arrivalEntry refused a flight, so the player is told what to build. */
+  private arrivalRefusal(f: number): string {
+    let curb = false;
+    for (let i = 0; i < this.grids.length && !curb; i++) curb = this.curbNode(i) >= 0;
+    if (!curb) return 'arrivalNoCurb';
+    if (this.market.isInternational(f)) return 'arrivalNoGate';
+    for (let i = 0; i < this.grids.length; i++) {
+      const sn = this.serviceNodes[i]!;
+      for (let n = 0; n < sn.count; n++) {
+        if (fixtureKey(sn.kind[n]!) === 'gateDesk' && this.walkGraphs[i]!.effective[sn.cell[n]!] === ZONE.International) return 'arrivalDomesticAtIntl';
+      }
+    }
+    return 'arrivalNoGate';
+  }
+
   /** Fills entryOut[0..1] with a gate desk whose zone is `want`: the stand's own desk first, then grids and nodes ascending. */
   private entryInZone(desk: GateDesk | null, want: number): boolean {
     if (desk) {
@@ -1452,7 +1467,7 @@ export class Business {
       if (!this.arrivalEntry(f)) {
         this.lostToday += pax;
         pax = 0;
-        this.host.emit(`arrivalNoGate|stand=${this.standNumberOf(f)}`);
+        this.host.emit(`${this.arrivalRefusal(f)}|stand=${this.standNumberOf(f)}`);
       } else if (this.market.isInternational(f) && this.entryOut[2] === 0) {
         this.host.emit(`intlNoImmigration|stand=${this.standNumberOf(f)}`);
       }

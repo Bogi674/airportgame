@@ -108,6 +108,8 @@ export interface TerminalOptions {
   toilet?: number;
   gateDesk?: number;
   shop?: boolean;
+  /** Lay a floor strip outside the curb door when gate desks are built. Set false for a door that opens onto bare ground. */
+  doorStrip?: boolean;
   /** Build the ATC tower too. Set false to test the no ATC case. */
   atc?: boolean;
   /** World metres of the terminal origin. Defaults to the spot south of the test apron. */
@@ -133,8 +135,7 @@ export function buildTestTerminal(sim: Sim, o: TerminalOptions = {}): string[] {
   edit(id, { op: 'wall', x0: 40, y0: 40, x1: 100, y1: 40, variant: 1 });
   edit(id, { op: 'wall', x0: 40, y0: 52, x1: 100, y1: 52, variant: 1 });
   edit(id, { op: 'wall', x0: 70, y0: 52, x1: 72, y1: 52, variant: 3 });
-  // A door needs floor on both sides to be a walk node, so a gate desk layout gets a strip outside the door.
-  if ((o.gateDesk ?? 0) > 0) {
+  if ((o.gateDesk ?? 0) > 0 && o.doorStrip !== false) {
     edit(id, { op: 'foundation', x0: 68, y0: 52, x1: 74, y1: 53, variant: 0 });
     edit(id, { op: 'floor', x0: 68, y0: 52, x1: 74, y1: 53, variant: 2 });
   }
