@@ -212,6 +212,9 @@ Goal: every UI surface follows `docs/DESIGN_REVISION_6_UI.md`. Decisions in `han
 | R6-11 | Pause menu |  | R6-02 | todo |
 | R6-12 | Map placeholder palette |  |  | todo |
 | R6-13 | Screenshot scenarios per render |  | all R6 | todo |
+| PL1 | Stand lead in on a taxiway bend: the fork arcs and centerline follow the real taxiway instead of a straight tangent at the hit point (owner 2026-11-26) |  |  | todo |
+| PL2 | Stand snap on an apron: apron edge, construction grid and the next stand (owner 2026-11-26) |  | T42 | todo |
+| PL3 | Edge grids: taxiways, runways, aprons and terminals show a snap grid strip on each side once the cursor is within 60 m; the apron rectangle snaps to them (owner 2026-11-26) |  | T42 | todo |
 
 ## 5. Out of MVP 1
 
