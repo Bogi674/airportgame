@@ -398,6 +398,134 @@
       }
     },
     {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 156,
+      "y": 86,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 156,
+      "y": 87.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 156,
+      "y": 94,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 156,
+      "y": 95.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 166,
+      "y": 86,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 166,
+      "y": 87.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 166,
+      "y": 94,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 166,
+      "y": 95.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 176,
+      "y": 86,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 176,
+      "y": 87.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 176,
+      "y": 94,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 176,
+      "y": 95.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 186,
+      "y": 86,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 186,
+      "y": 87.5,
+      "rot": 0
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 186,
+      "y": 94,
+      "rot": 2
+    },
+    {
+      "type": "placeProp",
+      "building": 1,
+      "asset": "bench.beam5",
+      "x": 186,
+      "y": 95.5,
+      "rot": 0
+    },
+    {
       "type": "buildTower",
       "x": 3300,
       "y": 4900,
@@ -405,7 +533,7 @@
     },
     {
       "type": "setTestTraffic",
-      "perHour": 120,
+      "perHour": 40,
       "turnScale": 1
     }
   ],
@@ -420,10 +548,7 @@
       "tool": "speed-8"
     },
     {
-      "wait": 60000
-    },
-    {
-      "shot": "overview"
+      "wait": 90000
     },
     {
       "camera": {
@@ -443,23 +568,27 @@
       }
     },
     {
-      "shot": "security-a"
-    },
-    {
-      "wait": 400
-    },
-    {
-      "shot": "security-b"
+      "shot": "security"
     },
     {
       "camera": {
         "x": 4060,
         "y": 5452,
-        "zoom": 28
+        "zoom": 40
       }
     },
     {
-      "shot": "gates"
+      "shot": "lounge"
+    },
+    {
+      "camera": {
+        "x": 4045,
+        "y": 5452,
+        "zoom": 12
+      }
+    },
+    {
+      "shot": "overview"
     }
   ],
   "report": [

@@ -21,7 +21,7 @@ import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type 
 import { atan2Det, cosLut, sinLut, TWO_PI } from '@shared/trig';
 import { flowStep } from '@shared/terminalZones';
 import { TRAVELATOR } from '@shared/travelator';
-import { VENDING_KIND } from '@shared/props';
+import { VENDING_KIND, seatSpots, type SeatSpots } from '@shared/props';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
 
 /** Where a cohort is in its journey. Free slots are on the free list. Missed and Boarded are terminal. */
@@ -124,6 +124,15 @@ const SPIRAL = (() => {
 })();
 const DWELL_TRIES = Math.min(PROFILES.walkSample.dwellTries, SPIRAL.length / 2);
 
+/** Offsets (dx, dy) of the cells a group searches for free seats, nearest first, as flat pairs (PX2). Built once. */
+const SEAT_SPIRAL = (() => {
+  const r = PROFILES.walkSample.seatReachCells;
+  const cells: [number, number][] = [];
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) cells.push([dx, dy]);
+  cells.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]) || a[1] - b[1] || a[0] - b[0]);
+  return Int8Array.from(cells.flat());
+})();
+
 const PROFILE_ROWS = PROFILE_KEYS.map((k) => PROFILES.profiles[k]);
 /** Profile index of premium passengers, whom fixture levels treat apart (T74). */
 const PREMIUM = PROFILE_KEYS.indexOf('premium');
@@ -192,6 +201,7 @@ const LAST_SIZE = PROFILE_ROWS.map((r) => {
 /** Need ids by name, and the per need tables: level of 1 000 is the threshold, visit minutes, spend share and the two fixtures that serve it. */
 const NEED_TOILET = NEED_KEYS.indexOf('toilet');
 const NEED_SHOP = NEED_KEYS.indexOf('shop');
+const NEED_REST = NEED_KEYS.indexOf('rest');
 const NEED_THRESHOLD_H = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? 0 : NEEDS.needs[k].thresholdH));
 const NEED_THRESHOLD = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.threshold * 1000 : 1000));
 const NEED_VISIT_MIN = Float64Array.from(NEED_KEYS, (k) => (k === 'shop' ? NEEDS.shop.visitMin : NEEDS.needs[k].visitMin));
@@ -347,6 +357,12 @@ export class Cohorts {
   /** Sample caches of the walk rows, one per grid. Derived, never saved or hashed. */
   private sampleCaches: SampleCache[] = [];
   private sampleCacheVersion = -1;
+  /** Per grid: its single seats, the first seat on each array cell (-1 for none) and the next seat on the same cell. Derived. */
+  private seats: SeatSpots[] = [];
+  private seatHead: Int32Array[] = [];
+  private seatNext: Int32Array[] = [];
+  /** Seats taken in the sample of the grid being written. Scratch. */
+  private seatTaken = new Uint8Array(0);
   /** Visit points per grid. Derived from the grids, never saved or hashed. */
   private visitTables: VisitPoints[] = [];
   private readonly route = new Float64Array(ROUTE_OUT);
@@ -682,6 +698,23 @@ export class Cohorts {
     this.sampleCaches = wgs.map((wg) => newSampleCache(wg));
     this.sampleCacheVersion = this.business.walkVersion;
     this.trailNode.fill(-1, 0, this.hi);
+    this.seats = this.business.grids.map((grid) => seatSpots(grid));
+    this.seatHead = this.business.grids.map((grid) => new Int32Array(grid.w * grid.h).fill(-1));
+    this.seatNext = this.seats.map((sp) => new Int32Array(sp.count).fill(-1));
+    this.business.grids.forEach((grid, g) => {
+      const sp = this.seats[g]!;
+      // Pushed in reverse so each cell lists its seats in ascending order.
+      for (let i = sp.count - 1; i >= 0; i--) {
+        const ax = Math.floor(sp.x[i]!) - grid.x0;
+        const ay = Math.floor(sp.y[i]!) - grid.y0;
+        if (ax < 0 || ay < 0 || ax >= grid.w || ay >= grid.h) continue;
+        const cell = ay * grid.w + ax;
+        this.seatNext[g]![i] = this.seatHead[g]![cell]!;
+        this.seatHead[g]![cell] = i;
+      }
+    });
+    const most = this.seats.reduce((m, sp) => Math.max(m, sp.count), 0);
+    if (this.seatTaken.length < most) this.seatTaken = new Uint8Array(most);
   }
 
   /** World position in metres of the centred logical point (lx, ly) of a grid, left in this.world. */
@@ -763,6 +796,7 @@ export class Cohorts {
       this.axVy = this.axUx;
       if (this.tailExtra.length < t.count) this.tailExtra = new Int32Array(t.count);
       this.tailExtra.fill(0, 0, t.count);
+      this.seatTaken.fill(0);
       n = this.sampleServed(views, n, cap, grid, t, tick);
       n = this.sampleQueued(views, n, cap, grid, wg, t);
       n = this.sampleDwellers(views, n, cap, g, grid, wg, tick);
@@ -799,6 +833,44 @@ export class Cohorts {
       if (!this.clear(views, grid, wg, laneCell, rule, room, true)) continue;
       this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, laneCell);
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * Seats cohort c on a run of free seats of one row, the nearest within reach of logical cell (ax, ay) in a zone its
+   * rule allows, and writes entry n at the middle of the run, facing the seats' way. False when no run is free.
+   */
+  private sit(views: SnapshotViews, n: number, c: number, g: number, grid: TerminalGrid, ax: number, ay: number, rule: number): boolean {
+    const sp = this.seats[g];
+    if (!sp || sp.count === 0) return false;
+    const head = this.seatHead[g]!;
+    const next = this.seatNext[g]!;
+    const size = this.size[c]!;
+    for (let i = 0; i < SEAT_SPIRAL.length; i += 2) {
+      const lx = ax + SEAT_SPIRAL[i]! - grid.x0;
+      const ly = ay + SEAT_SPIRAL[i + 1]! - grid.y0;
+      if (lx < 0 || ly < 0 || lx >= grid.w || ly >= grid.h) continue;
+      const cell = ly * grid.w + lx;
+      const zone = grid.zone[cell];
+      if (rule === 1 ? zone === ZONE.Public : rule === 2 && zone === ZONE.Secure) continue;
+      for (let s = head[cell]!; s >= 0; s = next[s]!) {
+        for (let start = Math.max(0, s - size + 1); start <= s; start++) {
+          let ok = start + size <= sp.count;
+          for (let k = start; ok && k < start + size; k++) ok = sp.row[k] === sp.row[s] && this.seatTaken[k] === 0;
+          if (!ok) continue;
+          let mx = 0;
+          let my = 0;
+          for (let k = start; k < start + size; k++) {
+            this.seatTaken[k] = 1;
+            mx += sp.x[k]!;
+            my += sp.y[k]!;
+          }
+          this.toWorld(grid, mx / size, my / size);
+          this.put(views, n, c, sp.fx[s]!, sp.fy[s]!, PEOPLE_MODE.Seated, -1);
+          return true;
+        }
+      }
     }
     return false;
   }
@@ -963,6 +1035,12 @@ export class Cohorts {
       const anchor = nearestNode(wg, cellAt(wg, ax, ay));
       if (anchor < 0) continue;
       const room = wg.nodeRoom[anchor]!;
+      // Resting visitors and groups waiting airside sit down on free seats near where they wait.
+      const sits = st === Stage.Airside || (st === Stage.Visit && this.visitNeed[c] === NEED_REST);
+      if (sits && this.sit(views, n, c, g, grid, ax, ay, rule)) {
+        n++;
+        continue;
+      }
       for (let i = 0; i < DWELL_TRIES; i++) {
         const dx = SPIRAL[2 * i]!;
         const dy = SPIRAL[2 * i + 1]!;

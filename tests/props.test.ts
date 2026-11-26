@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BUSINESS } from '@data/index';
 import { FIXTURE_KEYS, WALL, ZONE, type Prop, type TerminalGrid } from '@shared/business';
-import { convertLegacyFixtures, footprintSteps, planProp, propBlockMask, propCost, propRect, propSpec, propTotals, seatCells, washrooms } from '@shared/props';
+import { convertLegacyFixtures, footprintSteps, planProp, propBlockMask, propCost, propRect, propSpec, propTotals, seatCells, seatSpots, washrooms } from '@shared/props';
 import { ensureCells, newGrid } from '@shared/terminalOps';
 import { labelRooms } from '@shared/terminalRooms';
 import { Sim } from '@sim/sim';
@@ -156,6 +156,35 @@ describe('washrooms and seats', () => {
     expect(t.passengerAreaM2).toBe(400);
     expect(t.cost).toBe(propCost('bench.padded3') + propCost('decor.palm'));
     expect(seatCells(g)).toEqual([cell(g, 1, 2)]);
+  });
+
+  it('lays out single seats along a row, back to back rows and a lone seat, each facing out of its prop (PX2)', () => {
+    const g = room(ZONE.Secure);
+    // A 3 seat beam turned to face minus y, a back to back 6 and a recliner facing plus y.
+    expect(place(g, { asset: 'bench.beam3', x: 2, y: 4, rot: 2 })).toBeNull();
+    expect(place(g, { asset: 'bench.b2b6', x: 8, y: 8, rot: 0 })).toBeNull();
+    expect(place(g, { asset: 'recliner', x: 14, y: 4, rot: 0 })).toBeNull();
+    const sp = seatSpots(g);
+    expect(sp.count).toBe(3 + 6 + 1);
+    // Beam: three seats one pitch apart on one row, across the prop, all facing minus y.
+    const beam = propRect({ asset: 'bench.beam3', x: 2, y: 4, rot: 2 })!;
+    const pitch = propSpec('bench.beam3')!.size[0] / 3;
+    for (let i = 0; i < 3; i++) {
+      expect(sp.row[i]).toBe(sp.row[0]);
+      expect([sp.fx[i], sp.fy[i]]).toEqual([0, -1]);
+      expect(sp.y[i]).toBeCloseTo(((beam.sy0 + beam.sy1) / 2) * 0.25, 6);
+      if (i > 0) expect(Math.abs(sp.x[i]! - sp.x[i - 1]!) * 2).toBeCloseTo(pitch, 5);
+    }
+    // Back to back: two rows of three facing away from each other.
+    expect(sp.row[3]).not.toBe(sp.row[0]);
+    expect(sp.row[6]).not.toBe(sp.row[3]);
+    for (let i = 3; i < 6; i++) expect([sp.fx[i], sp.fy[i]]).toEqual([0, 1]);
+    for (let i = 6; i < 9; i++) expect([sp.fx[i], sp.fy[i]]).toEqual([0, -1]);
+    expect(sp.y[3]).toBeGreaterThan(sp.y[6]!);
+    // The recliner seats one at its centre on a row of its own.
+    const rec = propRect({ asset: 'recliner', x: 14, y: 4, rot: 0 })!;
+    expect(sp.x[9]).toBeCloseTo(((rec.sx0 + rec.sx1) / 2) * 0.25, 6);
+    expect(sp.row[9]).not.toBe(sp.row[6]);
   });
 
   it('converts seating and toilet fixtures into props that fill their cells', () => {

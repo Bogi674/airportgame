@@ -1,6 +1,7 @@
 import { BUSINESS, FIXTURE_CATALOG } from '@data/index';
 import type { FixtureAsset } from '@data/schemas';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TRANSITION_KEYS, WALL, ZONE, ZONES, fixtureKey, type JanitorRooms, type Prop, type TerminalGrid } from './business';
+import { TWO_PI, cosLut, sinLut } from './trig';
 import type { Problem } from './validate';
 
 /** Catalog categories whose assets are props on the sub grid (docs/TERMINAL_FIXTURES.md section 8). */
@@ -445,6 +446,102 @@ export function seatCells(g: TerminalGrid): number[] {
     if (i >= 0) out.add(i);
   }
   return [...out].sort((a, b) => a - b);
+}
+
+/** Single seats of a floor, struct of arrays: centres in logical cell units, facing, and the row each belongs to. */
+export interface SeatSpots {
+  count: number;
+  x: Float32Array;
+  y: Float32Array;
+  fx: Float32Array;
+  fy: Float32Array;
+  row: Int32Array;
+}
+
+/** Facing of a prop's front side for each quarter turn, as in frontCell: rot 0 faces plus y. */
+const FRONT = [
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+  [1, 0],
+] as const;
+/** Seat count above which a seat prop is a ring around its centre. */
+const RING_SEATS = 8;
+/** Depth in meters from which a seat prop with an even seat count is two rows back to back. */
+const BACK_TO_BACK_M = 1.2;
+/** Distance in meters from a ring's rim to its seat centres. */
+const RING_INSET_M = 0.35;
+
+/**
+ * Every single seat of a floor's seat props (PX2), for the people sample. Positions are seat centres in logical cell
+ * units, facing (fx, fy) is the way a seated figure looks, and row groups the seats of one row so neighbours are
+ * consecutive. A prop with one seat seats at its centre, a ring of more than eight seats faces outward around its
+ * centre, a deep prop with an even seat count holds two back to back rows, and any other prop one row along its
+ * length facing its front.
+ */
+export function seatSpots(g: TerminalGrid): SeatSpots {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const fxs: number[] = [];
+  const fys: number[] = [];
+  const rows: number[] = [];
+  let row = 0;
+  const add = (xm: number, ym: number, fx: number, fy: number): void => {
+    xs.push(xm / TERMINAL_CELL_M);
+    ys.push(ym / TERMINAL_CELL_M);
+    fxs.push(fx);
+    fys.push(fy);
+    rows.push(row);
+  };
+  for (const p of g.props) {
+    const spec = SPECS.get(p.asset);
+    const seats = spec ? seatsOf(spec) : 0;
+    const r = propRect(p);
+    if (!spec || seats === 0 || !r) continue;
+    const cx = ((r.sx0 + r.sx1) / 2) * PROP_STEP_M;
+    const cy = ((r.sy0 + r.sy1) / 2) * PROP_STEP_M;
+    const [fx, fy] = FRONT[p.rot]!;
+    // Along the row, the prop's long axis: plus x unturned.
+    const ux = -fy;
+    const uy = fx;
+    const len = spec.size[0];
+    const depth = spec.size[1];
+    if (seats === 1) {
+      add(cx, cy, fx, fy);
+    } else if (seats > RING_SEATS) {
+      const rad = len / 2 - RING_INSET_M;
+      for (let i = 0; i < seats; i++) {
+        const a = (i / seats) * TWO_PI;
+        const ox = cosLut(a);
+        const oy = sinLut(a);
+        add(cx + ox * rad, cy + oy * rad, ox, oy);
+      }
+    } else {
+      const twoRows = depth >= BACK_TO_BACK_M && seats % 2 === 0;
+      const perRow = twoRows ? seats / 2 : seats;
+      const pitch = len / perRow;
+      for (let side = 0; side < (twoRows ? 2 : 1); side++) {
+        const s = side === 0 ? 1 : -1;
+        const off = twoRows ? (depth / 4) * s : 0;
+        for (let i = 0; i < perRow; i++) {
+          const along = -len / 2 + pitch * (i + 0.5);
+          // Plus zero turns a negative zero facing into zero.
+          add(cx + ux * along + fx * off, cy + uy * along + fy * off, fx * s + 0, fy * s + 0);
+        }
+        row++;
+      }
+      continue;
+    }
+    row++;
+  }
+  return {
+    count: xs.length,
+    x: Float32Array.from(xs),
+    y: Float32Array.from(ys),
+    fx: Float32Array.from(fxs),
+    fy: Float32Array.from(fys),
+    row: Int32Array.from(rows),
+  };
 }
 
 /**

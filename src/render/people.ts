@@ -3,7 +3,7 @@ import { HEADING_STEPS, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, type 
 import { TICK_SECONDS } from '@shared/time';
 import { PeopleAtlasCache, peopleTierForZoom, SHADOW_ROW } from './sprites/peopleAtlas';
 import { PeopleSelection } from './peopleSelect';
-import { packFile, packGroup } from './peoplePack';
+import { packFile, packGroup, packSeated } from './peoplePack';
 import { PeopleMotion } from './peopleMotion';
 
 /** Figures outside the visible bounds by more than this margin in meters are skipped. */
@@ -89,7 +89,7 @@ export class People {
       const profile = curr.peopleProfile[i];
       const seed = curr.peopleSeed[i];
       const mode = curr.peopleMode[i];
-      const pack = mode === PEOPLE_MODE.Queued ? packFile : packGroup;
+      const pack = mode === PEOPLE_MODE.Queued ? packFile : mode === PEOPLE_MODE.Seated ? packSeated : packGroup;
       const placed = pack(profile, seed, curr.peopleSize[i], this.groupX, this.groupY, this.groupRecipe);
       const heading = curr.peopleHeading[i];
       const cos = this.headingCos[heading];

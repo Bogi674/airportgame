@@ -14,7 +14,7 @@ export const STAFF_ID_BASE = 1 << 30;
 /** Heading steps in a full turn, for people groups and anything else that snaps to a heading byte. */
 export const HEADING_STEPS = 256;
 /** People sample modes, a value of peopleMode. */
-export const PEOPLE_MODE = { Queued: 0, Walking: 1, Dwelling: 2 } as const;
+export const PEOPLE_MODE = { Queued: 0, Walking: 1, Dwelling: 2, Seated: 3 } as const;
 
 /** Header slots, Int32. */
 export const enum SnapHeader {

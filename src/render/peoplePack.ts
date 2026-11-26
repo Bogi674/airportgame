@@ -119,3 +119,17 @@ export function packFile(profile: number, seed: number, size: number, outX: Floa
   }
   return placed > 0 ? placed : packGroup(profile, seed, size, outX, outY, outRecipe);
 }
+
+/**
+ * Lays out a seated group side by side along its row of seats, one seat pitch apart and centred on the run (PX2).
+ * Same frame and outputs as packGroup; every member is placed.
+ */
+export function packSeated(profile: number, seed: number, size: number, outX: Float32Array, outY: Float32Array, outRecipe: Uint8Array): number {
+  for (let m = 0; m < size; m++) {
+    const recipe = profile >= STAFF_PROFILE_BASE ? staffRecipe(profile - STAFF_PROFILE_BASE, seed) : pickRecipe(profile, seed, m);
+    outX[m] = (m - (size - 1) / 2) * PEOPLE.motion.seatPitchM;
+    outY[m] = 0;
+    outRecipe[m] = recipe;
+  }
+  return size;
+}

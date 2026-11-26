@@ -2,6 +2,7 @@ import { PEOPLE, PROFILES } from '@data/index';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { PEOPLE_MODE, SnapHeader, STAFF_PROFILE_BASE, type SnapshotViews } from '@shared/snapshot';
 import { FIGURE_FRAME } from './peoplePack';
+import { SEATED_FRAME } from './sprites/peopleShapes';
 
 const MAX_GEN = 0x7fffffff;
 const STRIDE_M = PEOPLE.motion.strideM;
@@ -79,10 +80,11 @@ export class PeopleMotion {
   }
 
   /**
-   * Gait frame for a group. Standing groups and non walking modes use FIGURE_FRAME.
+   * Gait frame for a group. Seated groups use SEATED_FRAME, standing groups and other non walking modes FIGURE_FRAME.
    * Walking groups step with the profile speed so the cycle matches the distance covered.
    */
   walkFrame(mode: number, gameSeconds: number, profile: number, seed: number, member: number): number {
+    if (mode === PEOPLE_MODE.Seated) return SEATED_FRAME;
     if (mode !== PEOPLE_MODE.Walking) return FIGURE_FRAME;
     const speed = profile >= STAFF_PROFILE_BASE ? CREW_SPEED : profile >= 0 && profile < WALK_SPEED.length ? (WALK_SPEED[profile] ?? 0) : 0;
     return (Math.floor((gameSeconds * speed) / STRIDE_M) + member + (seed & 3)) & 3;

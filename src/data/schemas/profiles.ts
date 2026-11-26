@@ -28,6 +28,7 @@ export const profilesSchema = z
       queueRunCells: z.number().int().positive(),
       trailSteps: z.number().int().nonnegative(),
       trailStepM: z.number().positive(),
+      seatReachCells: z.number().int().positive().max(12),
     }),
     arrivalSpread: z.number().min(0).max(1),
     boardingHoldS: z.number().nonnegative(),

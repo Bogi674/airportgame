@@ -8,8 +8,9 @@ import type { ServiceNodes } from '@sim/terminal/serviceNodes';
 import { FlState } from '@sim/ops/traffic';
 import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
 import { gameSecondsToTicks } from '@shared/time';
-import { SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
+import { PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import { cornerWorld } from '@shared/terminalOps';
+import { seatSpots } from '@shared/props';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { nearestNode, walkDistance } from '@sim/terminal/walkDistance';
 import { cellAt } from '@sim/cohorts/walkSample';
@@ -797,6 +798,50 @@ describe('snapshot sample of cohort positions', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('airside groups sit on free seats near where they wait, one group per seat (PX2)', () => {
+    const sim = terminalSim();
+    scheduleLong(sim);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    const g = sim.business.grids[0]!;
+    const sp = seatSpots(g);
+    expect(sp.count).toBeGreaterThan(0);
+    let seated = 0;
+    for (let t = 0; t < RUN_TICKS && seated === 0; t++) {
+      sim.step();
+      if (sim.tick % 10 !== 0) continue;
+      sim.writeSnapshot(views);
+      const used = new Set<number>();
+      for (let i = 0; i < cohortEntries(views); i++) {
+        if (views.peopleMode[i] !== PEOPLE_MODE.Seated) continue;
+        const c = views.peopleId[i]!;
+        expect([Stage.Airside, Stage.Visit]).toContain(sim.cohorts.stage[c]);
+        // The entry stands at the middle of a run of size seats of one row, and no seat holds two groups.
+        const size = sim.cohorts.size[c]!;
+        let found = false;
+        for (let s0 = 0; s0 + size <= sp.count && !found; s0++) {
+          let mx = 0;
+          let my = 0;
+          let row = true;
+          for (let k = s0; k < s0 + size; k++) {
+            row &&= sp.row[k] === sp.row[s0];
+            mx += sp.x[k]!;
+            my += sp.y[k]!;
+          }
+          const at = cornerWorld(g, mx / size, my / size);
+          if (!row || Math.hypot(views.peopleX[i]! - at.x, views.peopleY[i]! - at.y) > 1e-3) continue;
+          for (let k = s0; k < s0 + size; k++) {
+            expect(used.has(k)).toBe(false);
+            used.add(k);
+          }
+          found = true;
+        }
+        expect(found).toBe(true);
+        seated++;
+      }
+    }
+    expect(seated).toBeGreaterThan(0);
   });
 
   it('a sample from resumed trails equals one from fresh caches', () => {

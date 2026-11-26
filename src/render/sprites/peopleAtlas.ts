@@ -1,9 +1,9 @@
 import { PEOPLE } from '@data/index';
-import { personOps, shadowOps, type ShapeOp } from './peopleShapes';
+import { SEATED_FRAME, personOps, shadowOps, type ShapeOp } from './peopleShapes';
 import { STAFF_LOOKS } from './peopleRecipes';
 
-/** Frame columns per recipe row: four gait frames. */
-const FRAMES = 4;
+/** Frame columns per recipe row: four gait frames and the seated pose (PX2). */
+const FRAMES = SEATED_FRAME + 1;
 /** First row of the staff recipes, after the passenger recipes. */
 export const STAFF_ROW0 = PEOPLE.recipes.length;
 /** Passenger recipe rows, then staff recipe rows, then one shadow row. */
