@@ -6,12 +6,12 @@ import { RECIPE_COUNT, memberHash, pickRecipe, staffRecipe } from '../src/render
 import { personOps, opsBounds, type ShapeOp } from '../src/render/sprites/peopleShapes';
 import { peopleTierForZoom } from '../src/render/sprites/peopleAtlas';
 import { PeopleSelection } from '../src/render/peopleSelect';
-import { PACK_MARGIN_M, packGroup, recipeFootprint } from '../src/render/peoplePack';
+import { PACK_MARGIN_M, packFile, packGroup, recipeFootprint } from '../src/render/peoplePack';
 import { PeopleMotion } from '../src/render/peopleMotion';
 import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, STAFF_PROFILE_BASE, type SnapshotViews } from '../src/shared/snapshot';
 import { FIGURE_FRAME } from '../src/render/peoplePack';
 import { AIRCRAFT } from '@data/aircraft';
-import { Stage } from '@sim/cohorts/cohorts';
+import { Stage, arrivalStage } from '@sim/cohorts/cohorts';
 import type { Sim } from '@sim/sim';
 import { ZONE } from '@shared/business';
 import { cellIndex, cornerWorld } from '@shared/terminalOps';
@@ -145,11 +145,14 @@ describe('packGroup', () => {
     return [outX[i]! + fp[0]! - PACK_MARGIN_M, outY[i]! + fp[1]! - PACK_MARGIN_M, outX[i]! + fp[2]! + PACK_MARGIN_M, outY[i]! + fp[3]! + PACK_MARGIN_M];
   }
 
-  it('places at least one member and keeps the grown boxes disjoint and inside the cell', () => {
+  it.each([
+    ['packGroup', packGroup],
+    ['packFile', packFile],
+  ])('%s places at least one member and keeps the grown boxes disjoint and inside the cell', (_name, pack) => {
     for (let profile = 0; profile < PROFILE_TOTAL; profile++) {
       for (let seed = 0; seed < PACK_SEEDS; seed++) {
         for (let size = 1; size <= MAX_SIZE; size++) {
-          const placed = packGroup(profile, seed, size, outX, outY, outRecipe);
+          const placed = pack(profile, seed, size, outX, outY, outRecipe);
           const label = `profile ${profile} seed ${seed} size ${size}`;
           expect(placed, label).toBeGreaterThanOrEqual(1);
           const boxes = Array.from({ length: placed }, (_, i) => boxOf(i));
@@ -400,11 +403,14 @@ describe('arrival people sample (T20)', () => {
       for (let i = 0; i < n; i++) {
         const { lx, ly } = logicalCell(sim, views.peopleX[i]!, views.peopleY[i]!);
         const cell = cellIndex(g, lx, ly);
-        expect(cells.has(cell), `two entries on cell ${lx},${ly}`).toBe(false);
-        cells.add(cell);
+        // A walker whose lane is taken passes over the centre line (PX1), so only standing figures own their cell.
+        if (views.peopleMode[i] !== PEOPLE_MODE.Walking) {
+          expect(cells.has(cell), `two entries on cell ${lx},${ly}`).toBe(false);
+          cells.add(cell);
+        }
         const c = views.peopleId[i]!;
         const st = co.stage[c]!;
-        if (st < Stage.Deboard) continue;
+        if (!arrivalStage(st)) continue;
         const zone = wg.effective[cell]!;
         if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.International) walkIntl = true;
         if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.Public) walkPublic = true;

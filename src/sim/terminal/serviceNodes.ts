@@ -1,5 +1,5 @@
 import { frontStep, useDepth } from '@shared/useArea';
-import { ARRIVALS, BUSINESS, DEPARTURES, STAFF } from '@data/index';
+import { ARRIVALS, BUSINESS, DEPARTURES, PROFILES, STAFF } from '@data/index';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, fixtureKey, type FixtureKey, type TerminalGrid } from '@shared/business';
 import { isLeveled, levelServiceSeconds } from '@shared/fixtureLevels';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
@@ -63,6 +63,22 @@ export interface ServiceNodes {
   qCellY: Int32Array;
   /** Local index of the cell each queue cell was reached from, -1 for the node cell. Rank order is BFS order. */
   qCellParent: Int32Array;
+  /**
+   * Single file line of each node for the people sample (PX1): `slots` logical cells per node at k * slots, rank 0 at
+   * the desk front, running straight back and folding where blocked. qLineLen holds how many are set. Derived, not saved.
+   */
+  qLineX: Int32Array;
+  qLineY: Int32Array;
+  qLineLen: Int32Array;
+  /**
+   * Where the group being served is drawn, in logical cell units (cell centres): it moves from (passX0, passY0) to
+   * (passX1, passY1) as its service runs. A transition fixture spans its entry to its exit cells, any other fixture
+   * holds still at the first cell of its line. Derived, not saved.
+   */
+  passX0: Float32Array;
+  passY0: Float32Array;
+  passX1: Float32Array;
+  passY1: Float32Array;
   /** Walk graph node of the anchor cell. */
   walkNode: Int32Array;
   /** People waiting in the queue. */
@@ -196,6 +212,145 @@ function queueCells(g: TerminalGrid, acc: ZoneAccess, effective: Uint8Array, sta
   return { counted, seeds };
 }
 
+/**
+ * Fills the single file line of node k (PX1): the cells a queue of `slots` steps may use, walked from the cell in front
+ * of the fixture straight away from it for queueRunCells cells, then one cell to the side and back again, as a
+ * serpentine. Cells a prop blocks, cells of the lines of earlier nodes (allow 3) and the front cells of other nodes
+ * (`owner`, node + 1) are left out, so the lines of desks side by side never share a cell or block a desk. The line ends where it gets stuck. Runs only when the table is built.
+ */
+function queueLine(
+  g: TerminalGrid,
+  wg: WalkGraph,
+  anchor: number,
+  slots: number,
+  seen: Uint8Array,
+  dist: Int32Array,
+  queue: Int32Array,
+  parent: Int32Array,
+  allow: Uint8Array,
+  owner: Int32Array,
+  nodes: ServiceNodes,
+  k: number,
+): void {
+  const W = g.w;
+  const { counted, seeds } = queueCells(g, wg.access, wg.effective, anchor, slots, seen, dist, queue, parent);
+  const base = k * slots;
+  let len = 0;
+  if (counted === 0) return;
+  const first = queue[seeds]!;
+  // Another node's line already holds the cell in front of this one: no line of its own.
+  if (allow[first] === 3) return;
+  for (let i = seeds; i < seeds + counted; i++) {
+    const c = queue[i]!;
+    if (wg.blocked[c] !== 1 && allow[c] === 0 && (owner[c] === 0 || owner[c] === k + 1)) allow[c] = 1;
+  }
+  const from = queue[parent[seeds]!]!;
+  let bx = (first % W) - (from % W);
+  let by = Math.floor(first / W) - Math.floor(from / W);
+  let sx = 0;
+  let sy = 0;
+  let cur = allow[first] === 1 ? first : -1;
+  const run = PROFILES.walkSample.queueRunCells;
+  let steps = 0;
+  const take = (c: number): void => {
+    allow[c] = 2;
+    const x = c % W;
+    nodes.qLineX[base + len] = g.x0 + x;
+    nodes.qLineY[base + len] = g.y0 + (c - x) / W;
+    len++;
+  };
+  if (cur >= 0) take(cur);
+  while (cur >= 0 && len < slots) {
+    const x = cur % W;
+    const y = (cur - x) / W;
+    const ahead = steps + 1 < run ? cellIndexArray(g, x + bx, y + by) : -1;
+    if (ahead >= 0 && allow[ahead] === 1) {
+      cur = ahead;
+      steps++;
+      take(cur);
+      continue;
+    }
+    // Fold: one cell to the side, the same way as the first fold, then run back the other way.
+    let next = -1;
+    if (sx === 0 && sy === 0) {
+      for (const s of [1, -1]) {
+        const c = cellIndexArray(g, x - by * s, y + bx * s);
+        if (c >= 0 && allow[c] === 1) {
+          next = c;
+          sx = -by * s;
+          sy = bx * s;
+          break;
+        }
+      }
+    } else {
+      const c = cellIndexArray(g, x + sx, y + sy);
+      if (c >= 0 && allow[c] === 1) next = c;
+    }
+    if (next < 0) break;
+    cur = next;
+    bx = -bx;
+    by = -by;
+    steps = 0;
+    take(cur);
+  }
+  // Cells of this line stay claimed (3) so the lines of later nodes go around them; the rest are freed.
+  for (let i = seeds; i < seeds + counted; i++) {
+    const c = queue[i]!;
+    if (allow[c] === 1) allow[c] = 0;
+    else if (allow[c] === 2) allow[c] = 3;
+  }
+  nodes.qLineLen[k] = len;
+}
+
+/**
+ * Sets where node k draws the group it serves (PX1): through a transition fixture from the centre of its entry cells
+ * to the centre of its exit cells, otherwise at the first cell of its line, or on the anchor without a line.
+ */
+function passPoints(g: TerminalGrid, nodes: ServiceNodes, k: number, slots: number): void {
+  const c = nodes.cell[k]!;
+  const transition = transitionOf(fixtureKey(g.fixture[c]!), g.fixtureMode[c]!);
+  if (transition) {
+    const [fx, fy] = flowStep(g.fixtureRot[c]!);
+    const cells = fixtureCells(g, c);
+    let ax = 0;
+    let ay = 0;
+    let an = 0;
+    let bx = 0;
+    let by = 0;
+    let bn = 0;
+    for (const f of cells) {
+      const x = f % g.w;
+      const y = (f - x) / g.w;
+      const up = cellIndexArray(g, x - fx, y - fy);
+      const down = cellIndexArray(g, x + fx, y + fy);
+      if (up < 0 || !cells.includes(up)) {
+        ax += x;
+        ay += y;
+        an++;
+      }
+      if (down < 0 || !cells.includes(down)) {
+        bx += x;
+        by += y;
+        bn++;
+      }
+    }
+    if (an > 0 && bn > 0) {
+      nodes.passX0[k] = g.x0 + ax / an + 0.5;
+      nodes.passY0[k] = g.y0 + ay / an + 0.5;
+      nodes.passX1[k] = g.x0 + bx / bn + 0.5;
+      nodes.passY1[k] = g.y0 + by / bn + 0.5;
+      return;
+    }
+  }
+  const line = nodes.qLineLen[k]! > 0;
+  const x = line ? nodes.qLineX[k * slots]! + 0.5 : nodes.lx[k]! + 0.5;
+  const y = line ? nodes.qLineY[k * slots]! + 0.5 : nodes.ly[k]! + 0.5;
+  nodes.passX0[k] = x;
+  nodes.passY0[k] = y;
+  nodes.passX1[k] = x;
+  nodes.passY1[k] = y;
+}
+
 /** Array index of array cell (x, y), -1 outside the grid. */
 function cellIndexArray(g: TerminalGrid, x: number, y: number): number {
   return x < 0 || y < 0 || x >= g.w || y >= g.h ? -1 : y * g.w + x;
@@ -225,6 +380,27 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readon
   const cellX: number[] = [];
   const cellY: number[] = [];
   const cellParent: number[] = [];
+  const allow = new Uint8Array(n);
+  // The straight run in front of each node belongs to that node's line, so no other line folds over it.
+  const owner = new Int32Array(n);
+  const run = PROFILES.walkSample.queueRunCells;
+  anchors.forEach((c, k) => {
+    if (wash.has(c)) return;
+    const { counted, seeds } = queueCells(g, wg.access, wg.effective, c, run, seen, dist, queue, parent);
+    if (counted === 0) return;
+    for (let i = seeds; i < seeds + counted; i++) allow[queue[i]!] = 1;
+    const first = queue[seeds]!;
+    const from = queue[parent[seeds]!]!;
+    const bx = (first % g.w) - (from % g.w);
+    const by = Math.floor(first / g.w) - Math.floor(from / g.w);
+    let cur = first;
+    for (let i = 0; i < run && cur >= 0 && allow[cur] === 1 && owner[cur] === 0 && wg.blocked[cur] !== 1; i++) {
+      owner[cur] = k + 1;
+      const x = cur % g.w;
+      cur = cellIndexArray(g, x + bx, (cur - x) / g.w + by);
+    }
+    for (let i = seeds; i < seeds + counted; i++) allow[queue[i]!] = 0;
+  });
 
   const nodes: ServiceNodes = {
     count,
@@ -240,6 +416,13 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readon
     qCellX: new Int32Array(0),
     qCellY: new Int32Array(0),
     qCellParent: new Int32Array(0),
+    qLineX: new Int32Array(count * slots),
+    qLineY: new Int32Array(count * slots),
+    qLineLen: new Int32Array(count),
+    passX0: new Float32Array(count),
+    passY0: new Float32Array(count),
+    passX1: new Float32Array(count),
+    passY1: new Float32Array(count),
     walkNode: new Int32Array(count),
     queueLen: new Int32Array(count),
     busyUntil: new Int32Array(count),
@@ -289,6 +472,8 @@ export function buildServiceNodes(g: TerminalGrid, wg: WalkGraph, closed: readon
       // A queue cell reached from position p stores p - seeds, and one reached from a start cell stores -1.
       cellParent.push(parent[i]! < seeds ? -1 : parent[i]! - seeds);
     }
+    if (!w) queueLine(g, wg, c, slots, seen, dist, queue, parent, allow, owner, nodes, k);
+    passPoints(g, nodes, k, slots);
     // A washroom node stands on plain floor, which is a walk node only when it holds its lattice node.
     nodes.walkNode[k] = w ? nearestNode(wg, c) : wg.cellNode[c]!;
     if (closed.includes(c)) {

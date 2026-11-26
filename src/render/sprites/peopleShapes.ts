@@ -243,6 +243,8 @@ function hairShape(out: ShapeOp[], style: PersonRecipe['hair'], col: string, acc
 
 const SWING_EVEN = 1.0;
 const SWING_ODD = 0.25;
+/** Atlas frame of the seated pose (PX2): legs forward over the seat edge, hands on the lap, luggage at the side. */
+export const SEATED_FRAME = 4;
 
 /** Port of people2.py person(). Ops are in local meters; the scale group is applied by personOps. */
 function personLayers(out: ShapeOp[], r: PersonLook, frame: number, detail: number, withShadow: boolean): void {
@@ -253,8 +255,10 @@ function personLayers(out: ShapeOp[], r: PersonLook, frame: number, detail: numb
   const hairHex = hairColor(r.hairCol);
   const items = r.items;
   const seated = items.includes('wheelchair');
+  // On a seat: still, like the wheelchair pose, with the legs drawn forward. A wheelchair user keeps the chair.
+  const sitting = frame === SEATED_FRAME && !seated;
   const flip = frame === 2 ? -1 : 1;
-  const swing = frame % 2 === 0 ? SWING_EVEN : SWING_ODD;
+  const swing = sitting ? 0 : frame % 2 === 0 ? SWING_EVEN : SWING_ODD;
 
   // Tiers 0 and 1 return before the shadow is drawn, so the shadow only exists at detail 2.
   if (detail === 0) {
@@ -278,13 +282,20 @@ function personLayers(out: ShapeOp[], r: PersonLook, frame: number, detail: numb
     line(out, 0.17, 0.28, 0.17, 0.38, '#20252c', 0.04, { cap: 'round' });
     ellipse(out, -0.1, -0.26, 0.05, 0.04, shoes);
     ellipse(out, 0.1, -0.26, 0.05, 0.04, shoes);
+  } else if (sitting) {
+    const legs = darker(shirt, 0.55);
+    for (const sg of [-1, 1]) {
+      capsule(out, sg * 0.09, -0.04, sg * 0.09, -0.3, 0.11, legs);
+      ellipse(out, sg * 0.09, -0.35, 0.05, 0.07, shoes);
+    }
   } else {
     ellipse(out, flip * 0.085, -0.135 * swing - 0.02, 0.05, 0.08, shoes);
     ellipse(out, -flip * 0.085, 0.135 * swing + 0.02, 0.05, 0.08, shoes);
   }
 
-  // Trailing items.
-  for (const it of items) {
+  // Trailing items. Seated, a suitcase stands upright at the side and push items are left out of the pose.
+  if (sitting && items.includes('suitcase')) rect(out, 0.3, -0.16, 0.2, 0.3, r.case ?? '#2f5aa8', { rx: 0.04 });
+  for (const it of sitting ? [] : items) {
     if (it === 'suitcase') {
       line(out, flip * 0.25, 0.15 * swing, flip * 0.34, 0.24, '#555b63', 0.02);
       rect(out, flip * 0.34 - 0.11, 0.24, 0.22, 0.34, r.case ?? '#2f5aa8', { rx: 0.04 });
@@ -389,7 +400,13 @@ function personLayers(out: ShapeOp[], r: PersonLook, frame: number, detail: numb
   // Arms and hands.
   const hand = r.gloves ? r.gloves : skin;
   const ax = 0.215;
-  if (seated) {
+  if (sitting) {
+    capsule(out, -ax, 0.0, -0.11, -0.2, 0.085, sleeve);
+    capsule(out, ax, 0.0, 0.11, -0.2, 0.085, sleeve);
+    circle(out, -0.1, -0.21, 0.045, hand);
+    circle(out, 0.1, -0.21, 0.045, hand);
+    if (items.includes('phone')) rect(out, -0.03, -0.27, 0.06, 0.09, '#1b1b1b', { rx: 0.01 });
+  } else if (seated) {
     capsule(out, -ax, 0.0, -0.3, 0.02, 0.085, sleeve);
     capsule(out, ax, 0.0, 0.3, 0.02, 0.085, sleeve);
     circle(out, -0.31, 0.03, 0.045, hand);
@@ -440,10 +457,10 @@ function personLayers(out: ShapeOp[], r: PersonLook, frame: number, detail: numb
 
 /**
  * Appends the person's shapes to out in person() draw order. The scale group is copied onto each op.
- * detail 0, 1, 2 match people2.py tiers 0, 1, 2. frame 0 to 3 gives the flip and swing of the gait.
+ * detail 0, 1, 2 match people2.py tiers 0, 1, 2. frame 0 to 3 gives the flip and swing of the gait, frame 4 the seated pose.
  */
 export function personOps(recipe: PersonLook, frame: number, detail: number, withShadow: boolean, out: ShapeOp[]): void {
-  if (!Number.isInteger(frame) || frame < 0 || frame > 3) throw new RangeError(`person frame ${frame} must be 0 to 3`);
+  if (!Number.isInteger(frame) || frame < 0 || frame > SEATED_FRAME) throw new RangeError(`person frame ${frame} must be 0 to ${SEATED_FRAME}`);
   if (!Number.isInteger(detail) || detail < 0 || detail > 2) throw new RangeError(`person detail ${detail} must be 0 to 2`);
   const sc = recipe.scale ?? 1;
   const local: ShapeOp[] = [];

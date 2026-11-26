@@ -1,7 +1,7 @@
 import { FIXTURE_KEYS, type TerminalGrid } from '@shared/business';
 import { OVERLAY_MAX, type OverlayData } from '@shared/overlay';
 import { cellIndex } from '@shared/terminalOps';
-import { Stage } from '../cohorts/cohorts';
+import { Stage, arrivalStage } from '../cohorts/cohorts';
 import { serviceWait, type ServiceNodes } from './serviceNodes';
 
 export { OVERLAY_MAX, type OverlayData };
@@ -142,11 +142,11 @@ export function buildOverlayData(
       else if (st === Stage.ToCheckIn && firstCheckIn >= 0) cell = out.nodeCell[firstCheckIn]!;
       else if (st === Stage.ToSecurity && firstSecurity >= 0) cell = out.nodeCell[firstSecurity]!;
       else if (st === Stage.ToGate && firstGate >= 0) cell = out.nodeCell[firstGate]!;
-    } else if (st === Stage.ToVisit || st === Stage.Visit || st === Stage.Rejoin) {
+    } else if (st === Stage.ToVisit || st === Stage.Visit || st === Stage.Rejoin || st === Stage.ToLounge) {
       // No service node: the walkers and the visitors count at the cell of the node they walk to.
       if (people.walkStart[c]! >= 0) cell = (people.walkToY[c]! - grid.y0) * grid.w + (people.walkToX[c]! - grid.x0);
       else if (firstGate >= 0) cell = out.nodeCell[firstGate]!;
-    } else if (st >= Stage.Deboard) {
+    } else if (arrivalStage(st)) {
       // Arrivals count at the cell they walk to, the entry desk while they deboard, so the density sums to the people inside.
       cell = (people.walkToY[c]! - grid.y0) * grid.w + (people.walkToX[c]! - grid.x0);
     } else if (st === Stage.Airside) {

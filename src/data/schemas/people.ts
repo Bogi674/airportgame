@@ -121,6 +121,7 @@ export const peopleSchema = z
       strideM: z.number().positive(),
       interpMaxJumpM: z.number().positive(),
       memberMarginM: z.number().nonnegative(),
+      seatPitchM: z.number().positive(),
       cellHalfM: z.number().positive(),
     }),
     tiers: z.array(tierSchema).min(1),

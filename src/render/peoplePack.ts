@@ -77,3 +77,59 @@ export function packGroup(profile: number, seed: number, size: number, outX: Flo
   }
   return placed;
 }
+
+/**
+ * Lays out a queued group single file along its forward axis, centred in its 2 m cell, so a line of groups reads as
+ * one line of people (PX1). A group too long for one file stands in two files side by side, and a member that would
+ * leave the cell is dropped with the rest. Same frame and outputs as packGroup.
+ */
+export function packFile(profile: number, seed: number, size: number, outX: Float32Array, outY: Float32Array, outRecipe: Uint8Array): number {
+  if (size === 1 || profile >= STAFF_PROFILE_BASE) return packGroup(profile, seed, size, outX, outY, outRecipe);
+  let total = 0;
+  for (let m = 0; m < size; m++) {
+    const r = pickRecipe(profile, seed, m) * 4;
+    total += FOOTPRINTS[r + 3]! - FOOTPRINTS[r + 1]! + 2 * PACK_MARGIN_M;
+  }
+  const files = total > 2 * CELL_HALF_M ? 2 : 1;
+  const perFile = Math.ceil(size / files);
+  let placed = 0;
+  for (let f = 0; f < files; f++) {
+    const first = f * perFile;
+    const last = Math.min(size, first + perFile);
+    let len = 0;
+    let width = 0;
+    for (let m = first; m < last; m++) {
+      const r = pickRecipe(profile, seed, m) * 4;
+      len += FOOTPRINTS[r + 3]! - FOOTPRINTS[r + 1]! + 2 * PACK_MARGIN_M;
+      width = Math.max(width, FOOTPRINTS[r + 2]! - FOOTPRINTS[r]! + 2 * PACK_MARGIN_M);
+    }
+    if (len > 2 * CELL_HALF_M) break;
+    // File centres sit half a figure width either side of the cell centre line.
+    const cx = files === 1 ? 0 : (f === 0 ? -0.5 : 0.5) * width;
+    let y = -len / 2;
+    for (let m = first; m < last; m++) {
+      const recipe = pickRecipe(profile, seed, m);
+      const r = recipe * 4;
+      outX[placed] = cx - (FOOTPRINTS[r]! + FOOTPRINTS[r + 2]!) / 2;
+      outY[placed] = y + PACK_MARGIN_M - FOOTPRINTS[r + 1]!;
+      outRecipe[placed] = recipe;
+      placed++;
+      y += FOOTPRINTS[r + 3]! - FOOTPRINTS[r + 1]! + 2 * PACK_MARGIN_M;
+    }
+  }
+  return placed > 0 ? placed : packGroup(profile, seed, size, outX, outY, outRecipe);
+}
+
+/**
+ * Lays out a seated group side by side along its row of seats, one seat pitch apart and centred on the run (PX2).
+ * Same frame and outputs as packGroup; every member is placed.
+ */
+export function packSeated(profile: number, seed: number, size: number, outX: Float32Array, outY: Float32Array, outRecipe: Uint8Array): number {
+  for (let m = 0; m < size; m++) {
+    const recipe = profile >= STAFF_PROFILE_BASE ? staffRecipe(profile - STAFF_PROFILE_BASE, seed) : pickRecipe(profile, seed, m);
+    outX[m] = (m - (size - 1) / 2) * PEOPLE.motion.seatPitchM;
+    outY[m] = 0;
+    outRecipe[m] = recipe;
+  }
+  return size;
+}

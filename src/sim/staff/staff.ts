@@ -1245,8 +1245,8 @@ export class Staff {
       }
       const resume = this.trailNode[m]! >= 0 && this.trailAt[m]! <= walked;
       const r = resume
-        ? routePoint(wg, cache, this.trailNode[m]!, this.trailAt[m]!, to, walked, this.route, AUD.Staff)
-        : routePoint(wg, cache, from, 0, to, walked, this.route, AUD.Staff);
+        ? routePoint(wg, cache, this.trailNode[m]!, this.trailAt[m]!, to, walked, this.route, AUD.Staff, grid)
+        : routePoint(wg, cache, from, 0, to, walked, this.route, AUD.Staff, grid);
       if (r !== 1) continue;
       this.trailNode[m] = this.route[4]!;
       this.trailAt[m] = this.route[5]!;
