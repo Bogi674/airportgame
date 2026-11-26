@@ -127,6 +127,10 @@ Goal: passengers and staff are individuals with needs, carried on the cohort sub
 | T80 | Security exit throughput as a queue: security exits become service nodes with a rate, so arrivals and exiting passengers wait at a busy exit |  | T20 | done 6553d28 |
 | T68 | Staff as individuals with role, shift, home building and breaks, staff sprites, automatic staffing with a coverage overlay (section 6.4) | T28, T33 | T67, T65 | done (4915887, caa76a0, 0e440f2, c4ff0cc, 3561b13, f07ecbe, 3da6df3, 4a5bb20, 5a93613, 02f16e1, 6c47c6b, d4cd9f4, 9a13ebf, e57015f, cd1cd44, d0d4df8, fcbef61) |
 | T81 | Staff follow up, core three (owner, 2026-11-23): apron crews on turnarounds, cleaners based in janitor rooms with dirt per room (cleaning response grows with distance to the nearest one, T77), staffed security exits |  | T68 | done 79ea178 59f82b6 b960142 25e1037 0b0b37b. The rest moved to T83 |
+| PX1 | Visible passenger flow (owner, 2026-11-26): walkers follow the floor cells around walls instead of cutting straight between walk nodes, keep a stable lane and never vanish, the group being served stands at the desk or walks through the security lane as its check runs, and queues draw single file back from the desk front, folding where blocked |  | T54 | doing |
+| PX2 | Seats in use: a seated pose in the people atlas, passengers visiting a seat sit on it, and airside waiting groups take free seats near where they wait |  | PX1 | todo |
+| PX3 | Gate lounge flow (sim): after security, passengers with a known gate walk to its lounge and sit; they line up at the gate desk only once boarding opens |  | PX2 | todo |
+| PX4 | Queue belts: the placed Queue belts prop carries the queue of the desk it stands in front of along its serpentine, and the auto line is the fallback |  | PX1 | todo |
 
 Exit: a passenger who gets hungry leaves the group, visits a shop and rejoins at the gate, arriving passengers collect bags and leave, staff change shifts at the staff center, and the rating reacts to all of it.
 

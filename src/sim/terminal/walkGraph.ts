@@ -32,6 +32,8 @@ const blockDone = new Uint8Array(L * L);
 /** Scratch for cellPath, grown on demand. Distances are -1 for unvisited cells and reset after each search. */
 let pathQueue = new Int32Array(0);
 let pathDist = new Int32Array(0);
+/** Scratch for pathPoint: the cell each visited cell was reached from. */
+let pathFrom = new Int32Array(0);
 
 /** Inclusive range of blocks in logical block coordinates. */
 export interface BlockRect {
@@ -318,6 +320,70 @@ function cellPath(g: TerminalGrid, wg: WalkGraph, from: number, to: number): num
   }
   for (let i = 0; i < tail; i++) pathDist[pathQueue[i]!] = -1;
   return steps < 0 ? Infinity : steps * TERMINAL_CELL_M;
+}
+
+/**
+ * Point d metres along the walk from array cell a to array cell b over the floor cells of their two lattice groups,
+ * for an edge between them that has no straight line of sight, so a figure walks around the wall instead of through
+ * it. Writes the point in logical cell units (cell centre) to out[0] and out[1] and the cell step in use to out[2] and
+ * out[3]. Returns false when the two cells see each other or no such path exists, and the caller walks straight.
+ * Searches at most the cells of two groups, so it stays small. Allocates only when the grid grew.
+ */
+export function pathPoint(g: TerminalGrid, wg: WalkGraph, a: number, b: number, d: number, out: Float64Array): boolean {
+  if (lineOfSight(g, a, b, wg.access)) return false;
+  const W = g.w;
+  const n = W * g.h;
+  if (pathDist.length < n) {
+    pathQueue = new Int32Array(n);
+    pathDist = new Int32Array(n).fill(-1);
+  }
+  if (pathFrom.length < n) pathFrom = new Int32Array(n);
+  const m1 = wg.cellMain[a]!;
+  const m2 = wg.cellMain[b]!;
+  let head = 0;
+  let tail = 0;
+  pathQueue[tail++] = a;
+  pathDist[a] = 0;
+  pathFrom[a] = -1;
+  let found = false;
+  while (head < tail) {
+    const c = pathQueue[head++]!;
+    if (c === b) {
+      found = true;
+      break;
+    }
+    const x = c % W;
+    const y = (c - x) / W;
+    for (let k = 0; k < 4; k++) {
+      if (!full(wg.access, g, x, y, k)) continue;
+      const nc = (y + DY[k]!) * W + x + DX[k]!;
+      const mc = wg.cellMain[nc]!;
+      if (pathDist[nc] !== -1 || (mc !== m1 && mc !== m2)) continue;
+      pathDist[nc] = pathDist[c]! + 1;
+      pathFrom[nc] = c;
+      pathQueue[tail++] = nc;
+    }
+  }
+  if (found) {
+    // Walk back from b to the cell at step floor(d / cell), then blend toward the next cell on the way to b.
+    const steps = pathDist[b]!;
+    const at = Math.min(Math.max(d / TERMINAL_CELL_M, 0), steps);
+    const i = Math.min(Math.floor(at), steps - 1);
+    let next = b;
+    for (let k = steps; k > i + 1; k--) next = pathFrom[next]!;
+    const here = pathFrom[next]!;
+    const hx = here % W;
+    const hy = (here - hx) / W;
+    const ex = (next % W) - hx;
+    const ey = Math.floor(next / W) - hy;
+    const f = at - i;
+    out[0] = hx + ex * f + g.x0 + 0.5;
+    out[1] = hy + ey * f + g.y0 + 0.5;
+    out[2] = ex;
+    out[3] = ey;
+  }
+  for (let k = 0; k < tail; k++) pathDist[pathQueue[k]!] = -1;
+  return found;
 }
 
 /** Array index of local cell k of block (bx, by), or -1 when that cell lies outside the grid. */

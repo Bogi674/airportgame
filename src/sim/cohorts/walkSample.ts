@@ -1,5 +1,6 @@
+import type { TerminalGrid } from '@shared/business';
 import { AUD } from '@shared/terminalZones';
-import type { WalkGraph } from '../terminal/walkGraph';
+import { pathPoint, type WalkGraph } from '../terminal/walkGraph';
 import { distanceRowIn, nextEdge, type SampleCache } from '../terminal/walkDistance';
 
 /** Length of the out array of routePoint. */
@@ -18,8 +19,19 @@ export function cellAt(wg: WalkGraph, lx: number, ly: number): number {
  * from a node of an earlier call. Writes [x, y, ex, ey, node, walked] to out: the point in logical cell units
  * (cell centre), the cell step of the edge in use, and the last node passed with the length walked up to it.
  * Returns 1 while on the way, 0 at the target, -1 when there is no route. `aud` picks the audience whose edges may be used.
+ * With the grid `g`, an edge whose ends do not see each other is walked over its floor cells, around the wall between.
  */
-export function routePoint(wg: WalkGraph, cache: SampleCache, from: number, walked: number, to: number, s: number, out: Float64Array, aud: number = AUD.Pax): number {
+export function routePoint(
+  wg: WalkGraph,
+  cache: SampleCache,
+  from: number,
+  walked: number,
+  to: number,
+  s: number,
+  out: Float64Array,
+  aud: number = AUD.Pax,
+  g?: TerminalGrid,
+): number {
   const n = wg.nodeCount;
   if (!Number.isInteger(from) || from < 0 || from >= n) return -1;
   const base = distanceRowIn(wg, cache, to, aud);
@@ -39,11 +51,13 @@ export function routePoint(wg: WalkGraph, cache: SampleCache, from: number, walk
     ex = dx;
     ey = dy;
     if (s - acc < len) {
-      const f = (s - acc) / len;
-      out[0] = wg.nodeX[u]! + dx * f + 0.5;
-      out[1] = wg.nodeY[u]! + dy * f + 0.5;
-      out[2] = ex;
-      out[3] = ey;
+      if (!g || !pathPoint(g, wg, wg.nodeCell[u]!, wg.nodeCell[v]!, s - acc, out)) {
+        const f = (s - acc) / len;
+        out[0] = wg.nodeX[u]! + dx * f + 0.5;
+        out[1] = wg.nodeY[u]! + dy * f + 0.5;
+        out[2] = ex;
+        out[3] = ey;
+      }
       out[4] = u;
       out[5] = acc;
       return 1;

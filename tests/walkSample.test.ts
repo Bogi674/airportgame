@@ -89,6 +89,31 @@ describe('routePoint', () => {
     expect(near).toBeLessThanOrEqual(1);
   });
 
+  it('with the grid, walks around a wall instead of through it (PX1)', () => {
+    // A wall from y 0 to 14 at x 20 with an opening below it: the walk graph joins the two sides by an edge
+    // whose ends do not see each other, so a straight blend would cut through the wall.
+    const g = handGrid(0, 0, 40, 20);
+    setFloor(g, 0, 0, 40, 20);
+    for (let y = 0; y < 14; y++) setVWall(g, 20, y, WALL.Wall);
+    const wg = buildWalkGraph(g);
+    const cache = newSampleCache(wg);
+    const from = nearestNode(wg, cellIndex(g, 17, 3));
+    const to = nearestNode(wg, cellIndex(g, 23, 3));
+    const total = walkDistance(wg, from, to);
+    const out = new Float64Array(ROUTE_OUT);
+    let prevX = -1;
+    let prevY = -1;
+    for (let s = 0; s < total; s += 0.1) {
+      expect(routePoint(wg, cache, from, 0, to, s, out, undefined, g)).toBe(1);
+      const x = Math.floor(out[0]!);
+      const y = Math.floor(out[1]!);
+      // Crossing from column 19 to column 20 is only allowed below the wall.
+      if (prevX >= 0 && Math.min(prevX, x) < 20 && Math.max(prevX, x) >= 20) expect(Math.max(prevY, y)).toBeGreaterThanOrEqual(14);
+      prevX = x;
+      prevY = y;
+    }
+  });
+
   it('has no route without a door', () => {
     const { g, wg } = splitFloor(false);
     const cache = newSampleCache(wg);

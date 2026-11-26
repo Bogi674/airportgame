@@ -2,6 +2,7 @@ import { ARRIVALS, BUSINESS, DEPARTURES, NEEDS, PROFILES, STAND_ACCESS } from '@
 import { NEED_COUNT, NEED_KEYS } from '@data/schemas/needs';
 import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TERMINAL_CELL_M, TICKS_PER_MINUTE, ZONE } from '@shared/business';
+import { AUD } from '@shared/terminalZones';
 import { CLOCK_SCALE, gameSecondsToTicks } from '@shared/time';
 import type { Business } from '../business/business';
 import { foldU32 } from '../hash';
@@ -13,7 +14,7 @@ import type { ServiceNodes } from '../terminal/serviceNodes';
 import { SIDE, buildVisitPoints, findPoint, pointAtCell, type VisitPoints } from '../terminal/visitPoints';
 import type { TerminalGrid } from '@shared/business';
 import { distanceRowIn, nearestNode, newSampleCache, type SampleCache } from '../terminal/walkDistance';
-import type { WalkGraph } from '../terminal/walkGraph';
+import { lineOfSight, type WalkGraph } from '../terminal/walkGraph';
 import { ROUTE_OUT, cellAt, routePoint } from './walkSample';
 import { COHORT_DRAW, TRAIT, TRAIT_COUNT, memberSeedOf, needRatePerTick, traitU, writeTraits } from './traits';
 import { HEADING_STEPS, PEOPLE_MODE, SNAPSHOT_PEOPLE_CAPACITY, SnapHeader, type SnapshotViews } from '@shared/snapshot';
@@ -104,6 +105,9 @@ const SEC_EXIT = FIXTURE_KEYS.indexOf('securityExit') + 1;
 const LANE = PROFILES.walkSample.laneOffsetCells;
 const MIN_GAP2 = PROFILES.walkSample.minGapM ** 2;
 const LANES = Int8Array.of(0, 1, -1);
+/** A walker whose lanes are all taken trails up to TRAIL_STEPS steps of TRAIL_STEP_M metres behind on its route (PX1). */
+const TRAIL_STEPS = PROFILES.walkSample.trailSteps;
+const TRAIL_STEP_M = PROFILES.walkSample.trailStepM;
 
 /** Offsets (dx, dy) of the cells around a dwell anchor, nearest first, as flat pairs. Built once. */
 const SPIRAL = (() => {
@@ -220,6 +224,15 @@ export function unmetPoints(level: number, need: number, factor: number): number
   if (level <= HOURS_PER_LEVEL) return 0;
   const hours = ((level - HOURS_PER_LEVEL) * NEED_THRESHOLD_H[need]!) / (HOURS_PER_LEVEL * factor);
   return hours * SAT.unmetPerHour;
+}
+
+/**
+ * Line cells a desk keeps free for the group it serves: 1 while a desk serves, since that group stands on the first
+ * cell, 0 at a transition fixture, whose served group walks through the fixture itself.
+ */
+function lineSkip(t: ServiceNodes, k: number): number {
+  const through = t.passX0[k] !== t.passX1[k] || t.passY0[k] !== t.passY1[k];
+  return !through && t.serving[k]! >= 0 ? 1 : 0;
 }
 
 /** Room id of the walk node nearest to an array cell, -1 when there is none. */
@@ -350,6 +363,15 @@ export class Cohorts {
   /** Per slot: last route node a walker was resumed from and the length walked up to it. Derived, never saved or hashed. */
   private trailNode = new Int32Array(this.cap).fill(-1);
   private trailAt = new Float64Array(this.cap);
+  /** Walk node the trail above leads to, so a trail is resumed only toward the same target. Derived, never saved. */
+  private trailTo = new Int32Array(this.cap).fill(-1);
+  /** Per service node: walkers already waiting at the end of its line in this sample. Scratch, grown with the table. */
+  private tailExtra = new Int32Array(0);
+  /** Scratch for lineFront and spareCell. */
+  private readonly front = new Int32Array(2);
+  private readonly spare = new Int32Array(2);
+  /** Scratch route for a walker trailing behind its own position. */
+  private readonly behind = new Float64Array(ROUTE_OUT);
   /** World position written by toWorld. */
   private readonly world = new Float64Array(2);
   /** Axes and heading of the grid being sampled. */
@@ -701,7 +723,7 @@ export class Cohorts {
     return true;
   }
 
-  /** Writes entry n for cohort c at this.world, facing the grid step (ex, ey), and marks its cell. */
+  /** Writes entry n for cohort c at this.world, facing the grid step (ex, ey), and marks its cell when it is on the grid (not -1). */
   private put(views: SnapshotViews, n: number, c: number, ex: number, ey: number, mode: number, cell: number): void {
     views.peopleX[n] = this.world[0]!;
     views.peopleY[n] = this.world[1]!;
@@ -711,17 +733,17 @@ export class Cohorts {
     views.peopleHeading[n] = Math.round(((this.axA + atan2Det(ey, ex)) * HEADING_STEPS) / TWO_PI) & (HEADING_STEPS - 1);
     views.peopleId[n] = c;
     views.peopleMode[n] = mode;
-    this.occupied[cell] = n + 1;
+    if (cell >= 0) this.occupied[cell] = n + 1;
   }
 
   /**
-   * Writes the people for the renderer in three passes per grid: queued, walking and dwelling. Queued cohorts stand
-   * in the queue cell of their rank at their node and face the cell they were reached from, the node cell for the
-   * first ring. Walking cohorts are placed on their route, by the time walked, on the first of three lanes that is
-   * clear. Dwelling cohorts (airside, or arrived and waiting for their wake) stand on the nearest clear cell of a
-   * spiral around the node they walked to. A cell already held by a figure in this sample is skipped, so no two
-   * figures share a spot, and walkers and dwellers keep a least gap to other groups. Reads only, the sim state does
-   * not change, and only the derived caches are written.
+   * Writes the people for the renderer in four passes per grid: served, queued, dwelling and walking (PX1). The group
+   * a node serves is drawn on its pass points, moving through a transition fixture as its service runs. Queued cohorts
+   * stand single file on the node's line by rank, behind the served group at a desk, and face the cell ahead. Dwelling
+   * cohorts (airside, or arrived and waiting for their wake) take the nearest clear cell of a spiral around the node
+   * they walked to, before any walker, so passing walkers never push them around. Walking cohorts are placed on their route,
+   * by the time walked, on their own lane when it is clear and on the centre line otherwise, so no walker drops out.
+   * Reads only, the sim state does not change, and only the derived caches are written.
    */
   writeSample(views: SnapshotViews, tick: number): void {
     this.ensureSampleCaches();
@@ -739,103 +761,298 @@ export class Cohorts {
       this.axUy = -cosLut(this.axA);
       this.axVx = -this.axUy;
       this.axVy = this.axUx;
-      for (let k = 0; k < t.count && n < cap; k++) {
-        const ranks = Math.min(t.qCount[k]!, t.qCellLen[k]!);
-        const off = t.qCellOffset[k]!;
-        for (let i = 0; i < ranks && n < cap; i++) {
+      if (this.tailExtra.length < t.count) this.tailExtra = new Int32Array(t.count);
+      this.tailExtra.fill(0, 0, t.count);
+      n = this.sampleServed(views, n, cap, grid, t, tick);
+      n = this.sampleQueued(views, n, cap, grid, wg, t);
+      n = this.sampleDwellers(views, n, cap, g, grid, wg, tick);
+      n = this.sampleWalkers(views, n, cap, g, grid, wg, tick);
+    }
+    views.header[SnapHeader.PeopleCount] = n;
+  }
+
+  /**
+   * Places walker c at (px, py) in logical cell units on its own lane, else the centre, else the other lane, and
+   * returns true, or returns false when every lane is taken. A side lane must be in sight of the centre cell.
+   */
+  private placeWalker(
+    views: SnapshotViews,
+    n: number,
+    c: number,
+    grid: TerminalGrid,
+    wg: WalkGraph,
+    px: number,
+    py: number,
+    sx: number,
+    sy: number,
+    rule: number,
+    room: number,
+  ): boolean {
+    const centreCell = cellAt(wg, Math.floor(px), Math.floor(py));
+    for (let l = 0; l < LANES.length; l++) {
+      const off = LANES[(c + l) % LANES.length]! * LANE;
+      const qx = px - sy * off;
+      const qy = py + sx * off;
+      const laneCell = cellAt(wg, Math.floor(qx), Math.floor(qy));
+      if (off !== 0 && (centreCell < 0 || laneCell < 0 || !lineOfSight(grid, centreCell, laneCell, wg.access))) continue;
+      this.toWorld(grid, qx, qy);
+      if (!this.clear(views, grid, wg, laneCell, rule, room, true)) continue;
+      this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, laneCell);
+      return true;
+    }
+    return false;
+  }
+
+  /** True when cohort c walks to a service node of grid g that has a drawn line, so it joins that line's tail. */
+  private joinsLine(g: number, c: number): boolean {
+    const t = this.table(g);
+    const k = this.node[c]!;
+    return t !== null && t !== undefined && k >= 0 && k < t.count && t.qLineLen[k]! > 0;
+  }
+
+  /** Draws the group each node serves on the node's pass points, by the share of its expected service time gone. */
+  private sampleServed(views: SnapshotViews, n: number, cap: number, grid: TerminalGrid, t: ServiceNodes, tick: number): number {
+    for (let k = 0; k < t.count && n < cap; k++) {
+      const c = t.serving[k]!;
+      if (c < 0 || t.kind[k] === TOILET) continue;
+      const rate = t.servers[k]! * t.staffFactor[k]!;
+      const expected = rate > 0 ? gameSecondsToTicks((t.servingSize[k]! * t.meanS[k]!) / rate) : 0;
+      const left = t.busyUntil[k]! - tick;
+      const f = expected > 0 ? Math.min(1, Math.max(0, 1 - left / expected)) : 0.5;
+      const x0 = t.passX0[k]!;
+      const y0 = t.passY0[k]!;
+      const dx = t.passX1[k]! - x0;
+      const dy = t.passY1[k]! - y0;
+      const moving = dx !== 0 || dy !== 0;
+      const px = x0 + dx * f;
+      const py = y0 + dy * f;
+      // A moving group faces its way through the fixture, a still one faces the desk.
+      const fx = moving ? dx : t.lx[k]! + 0.5 - px;
+      const fy = moving ? dy : t.ly[k]! + 0.5 - py;
+      const sx = Math.abs(fx) >= Math.abs(fy) ? Math.sign(fx) : 0;
+      const sy = sx === 0 ? Math.sign(fy) : 0;
+      this.toWorld(grid, px, py);
+      const ax = Math.floor(px) - grid.x0;
+      const ay = Math.floor(py) - grid.y0;
+      const mark = ax >= 0 && ay >= 0 && ax < grid.w && ay < grid.h ? ay * grid.w + ax : -1;
+      this.put(views, n, c, sx, sy, moving ? PEOPLE_MODE.Walking : PEOPLE_MODE.Queued, mark);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * Draws the queued cohorts single file on each node's line. At a desk the served group holds the first cell, so the
+   * queue starts one cell back. A node without a line (a washroom) uses its queue cells.
+   */
+  private sampleQueued(views: SnapshotViews, n: number, cap: number, grid: TerminalGrid, wg: WalkGraph, t: ServiceNodes): number {
+    for (let k = 0; k < t.count && n < cap; k++) {
+      const lineLen = t.qLineLen[k]!;
+      const line = lineLen > 0;
+      const skip = lineSkip(t, k);
+      const ranks = line ? t.qCount[k]! : Math.min(t.qCount[k]!, t.qCellLen[k]!);
+      const off = t.qCellOffset[k]!;
+      const lb = k * t.slots;
+      for (let i = 0; i < ranks && n < cap; i++) {
+        let lx: number;
+        let ly: number;
+        let frontX: number;
+        let frontY: number;
+        if (line && i + skip < lineLen) {
+          const j = i + skip;
+          lx = t.qLineX[lb + j]!;
+          ly = t.qLineY[lb + j]!;
+          this.lineFront(t, k, j, this.front);
+          frontX = this.front[0]!;
+          frontY = this.front[1]!;
+        } else if (line) {
+          // A queue longer than its line waits on the free queue cells nearest the desk, else on the line's last cell.
+          const free = this.spareCell(grid, wg, t, k);
+          const last = lb + lineLen - 1;
+          lx = free ? this.spare[0]! : t.qLineX[last]!;
+          ly = free ? this.spare[1]! : t.qLineY[last]!;
+          frontX = t.qLineX[last]!;
+          frontY = t.qLineY[last]!;
+        } else {
           const cell = off + i;
-          const lx = t.qCellX[cell]!;
-          const ly = t.qCellY[cell]!;
-          const mark = (ly - grid.y0) * grid.w + (lx - grid.x0);
-          if (this.occupied[mark] !== 0) continue;
+          lx = t.qCellX[cell]!;
+          ly = t.qCellY[cell]!;
           const parent = t.qCellParent[cell]!;
-          const frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
-          const frontY = parent < 0 ? t.ly[k]! : t.qCellY[off + parent]!;
-          const c = t.qCohort[k * t.slots + ((t.qHead[k]! + i) % t.slots)]!;
-          // The step from this cell toward the cell it was reached from, snapped to its dominant grid axis.
-          const dx = frontX - lx;
-          const dy = frontY - ly;
-          const sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
-          const sy = sx === 0 ? Math.sign(dy) : 0;
-          // Figure forward is local minus y, which maps to (sin, -cos) at heading zero, so the grid frame angle
-          // of the step is atan2(sy, sx) turned by the grid heading. Half a cell past the corner is the centre.
-          this.toWorld(grid, lx + 0.5, ly + 0.5);
-          this.put(views, n, c, sx, sy, PEOPLE_MODE.Queued, mark);
-          n++;
+          frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
+          frontY = parent < 0 ? t.ly[k]! : t.qCellY[off + parent]!;
         }
+        const mark = (ly - grid.y0) * grid.w + (lx - grid.x0);
+        if (!line && this.occupied[mark] !== 0) continue;
+        const c = t.qCohort[k * t.slots + ((t.qHead[k]! + i) % t.slots)]!;
+        // The step from this cell toward the cell ahead, snapped to its dominant grid axis.
+        const dx = frontX - lx;
+        const dy = frontY - ly;
+        const sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
+        const sy = sx === 0 ? Math.sign(dy) : 0;
+        // Figure forward is local minus y, which maps to (sin, -cos) at heading zero, so the grid frame angle
+        // of the step is atan2(sy, sx) turned by the grid heading. Half a cell past the corner is the centre.
+        this.toWorld(grid, lx + 0.5, ly + 0.5);
+        this.put(views, n, c, sx, sy, PEOPLE_MODE.Queued, mark);
+        n++;
       }
-      const cache = this.sampleCaches[g]!;
-      for (let c = 0; c < this.hi && n < cap; c++) {
-        const st = this.stage[c]!;
-        if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
-        if (!this.walking(st)) continue;
+    }
+    return n;
+  }
+
+  /**
+   * Logical cell for a group past the end of node k's full line, left in this.spare: the first queue cell no figure of
+   * this sample holds, else the nearest free walkable cell of the spiral around the line's last cell. False when none is free.
+   */
+  private spareCell(grid: TerminalGrid, wg: WalkGraph, t: ServiceNodes, k: number): boolean {
+    const off = t.qCellOffset[k]!;
+    for (let i = 0; i < t.qCellLen[k]!; i++) {
+      if (this.occupied[(t.qCellY[off + i]! - grid.y0) * grid.w + (t.qCellX[off + i]! - grid.x0)] !== 0) continue;
+      this.spare[0] = t.qCellX[off + i]!;
+      this.spare[1] = t.qCellY[off + i]!;
+      return true;
+    }
+    const last = k * t.slots + t.qLineLen[k]! - 1;
+    for (let i = 0; i < DWELL_TRIES; i++) {
+      const x = t.qLineX[last]! + SPIRAL[2 * i]!;
+      const y = t.qLineY[last]! + SPIRAL[2 * i + 1]!;
+      const cell = cellAt(wg, x, y);
+      if (cell < 0 || this.occupied[cell] !== 0 || wg.cellMain[cell]! < 0 || grid.fixture[cell] !== 0) continue;
+      this.spare[0] = x;
+      this.spare[1] = y;
+      return true;
+    }
+    return false;
+  }
+
+  /** Logical cell ahead of line cell j of node k, left in out: the cell before it, or the desk or fixture entry for the first. */
+  private lineFront(t: ServiceNodes, k: number, j: number, out: Int32Array): void {
+    const lb = k * t.slots;
+    if (j > 0) {
+      out[0] = t.qLineX[lb + j - 1]!;
+      out[1] = t.qLineY[lb + j - 1]!;
+    } else if (lineSkip(t, k) === 0 && (t.passX0[k] !== t.passX1[k] || t.passY0[k] !== t.passY1[k])) {
+      out[0] = Math.floor(t.passX0[k]!);
+      out[1] = Math.floor(t.passY0[k]!);
+    } else {
+      out[0] = t.lx[k]!;
+      out[1] = t.ly[k]!;
+    }
+  }
+
+  /** Draws the dwelling cohorts on the nearest clear cell of the spiral around the node each walked to. */
+  private sampleDwellers(views: SnapshotViews, n: number, cap: number, g: number, grid: TerminalGrid, wg: WalkGraph, tick: number): number {
+    const cache = this.sampleCaches[g]!;
+    for (let c = 0; c < this.hi && n < cap; c++) {
+      const st = this.stage[c]!;
+      if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
+      const rule = this.zoneRule(st);
+      const dwelling = st === Stage.Airside || st === Stage.Visit || st === Stage.Claim || st === Stage.CustomsRed;
+      if (!dwelling) {
+        if (!this.walking(st) || this.joinsLine(g, c)) continue;
         const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
         const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
         if (from < 0 || to < 0) continue;
+        const base = distanceRowIn(wg, cache, to);
+        if (base < 0) continue;
+        const total = cache.rows[base + from]!;
         const s = Math.max(0, ((tick - this.walkStart[c]!) * this.speed(c)) / TICKS_PER_SECOND);
-        const resume = this.trailNode[c]! >= 0 && this.trailAt[c]! <= s;
-        const r = resume
-          ? routePoint(wg, cache, this.trailNode[c]!, this.trailAt[c]!, to, s, this.route)
-          : routePoint(wg, cache, from, 0, to, s, this.route);
-        if (r !== 1) continue;
-        this.trailNode[c] = this.route[4]!;
-        this.trailAt[c] = this.route[5]!;
-        const ex = this.route[2]!;
-        const ey = this.route[3]!;
-        const sx = Math.abs(ex) >= Math.abs(ey) ? Math.sign(ex) : 0;
-        const sy = sx === 0 ? Math.sign(ey) : 0;
-        const px = this.route[0]!;
-        const py = this.route[1]!;
-        const room = nearestNodeRoom(wg, cellAt(wg, Math.floor(px), Math.floor(py)));
-        const rule = this.zoneRule(st);
-        for (let l = 0; l < LANES.length; l++) {
-          const off = LANES[l]! * LANE;
-          const qx = px - sy * off;
-          const qy = py + sx * off;
-          this.toWorld(grid, qx, qy);
-          const cellIdx = cellAt(wg, Math.floor(qx), Math.floor(qy));
-          if (!this.clear(views, grid, wg, cellIdx, rule, room, true)) continue;
-          this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, cellIdx);
-          n++;
-          break;
-        }
+        if (!Number.isFinite(total) || s < total) continue;
       }
-      for (let c = 0; c < this.hi && n < cap; c++) {
-        const st = this.stage[c]!;
-        if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
-        const rule = this.zoneRule(st);
-        const dwelling = st === Stage.Airside || st === Stage.Visit || st === Stage.Claim || st === Stage.CustomsRed;
-        if (!dwelling) {
-          if (!this.walking(st)) continue;
-          const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
-          const to = nearestNode(wg, cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
-          if (from < 0 || to < 0) continue;
-          const base = distanceRowIn(wg, cache, to);
-          if (base < 0) continue;
-          const total = cache.rows[base + from]!;
-          const s = Math.max(0, ((tick - this.walkStart[c]!) * this.speed(c)) / TICKS_PER_SECOND);
-          if (!Number.isFinite(total) || s < total) continue;
-        }
-        const ax = this.walkToX[c]!;
-        const ay = this.walkToY[c]!;
-        const anchor = nearestNode(wg, cellAt(wg, ax, ay));
-        if (anchor < 0) continue;
-        const room = wg.nodeRoom[anchor]!;
-        for (let i = 0; i < DWELL_TRIES; i++) {
-          const dx = SPIRAL[2 * i]!;
-          const dy = SPIRAL[2 * i + 1]!;
-          this.toWorld(grid, ax + dx + 0.5, ay + dy + 0.5);
-          const cellIdx = cellAt(wg, ax + dx, ay + dy);
-          if (!this.clear(views, grid, wg, cellIdx, rule, room)) continue;
-          const fx = i === 0 ? 0 : dwelling ? dx : -dx;
-          const fy = i === 0 ? -1 : dwelling ? dy : -dy;
-          this.put(views, n, c, fx, fy, PEOPLE_MODE.Dwelling, cellIdx);
-          n++;
-          break;
-        }
+      const ax = this.walkToX[c]!;
+      const ay = this.walkToY[c]!;
+      const anchor = nearestNode(wg, cellAt(wg, ax, ay));
+      if (anchor < 0) continue;
+      const room = wg.nodeRoom[anchor]!;
+      for (let i = 0; i < DWELL_TRIES; i++) {
+        const dx = SPIRAL[2 * i]!;
+        const dy = SPIRAL[2 * i + 1]!;
+        this.toWorld(grid, ax + dx + 0.5, ay + dy + 0.5);
+        const cellIdx = cellAt(wg, ax + dx, ay + dy);
+        if (!this.clear(views, grid, wg, cellIdx, rule, room)) continue;
+        const fx = i === 0 ? 0 : dwelling ? dx : -dx;
+        const fy = i === 0 ? -1 : dwelling ? dy : -dy;
+        this.put(views, n, c, fx, fy, PEOPLE_MODE.Dwelling, cellIdx);
+        n++;
+        break;
       }
     }
-    views.header[SnapHeader.PeopleCount] = n;
+    return n;
+  }
+
+  /** Draws the walking cohorts on their routes, on their own lane when it is clear and on the centre line otherwise. */
+  private sampleWalkers(views: SnapshotViews, n: number, cap: number, g: number, grid: TerminalGrid, wg: WalkGraph, tick: number): number {
+    const cache = this.sampleCaches[g]!;
+    const t = this.table(g)!;
+    for (let c = 0; c < this.hi && n < cap; c++) {
+      const st = this.stage[c]!;
+      if (this.building[c] !== g || this.walkStart[c]! < 0) continue;
+      if (!this.walking(st)) continue;
+      const from = nearestNode(wg, cellAt(wg, this.walkFromX[c]!, this.walkFromY[c]!));
+      // A walker on its way to a queue walks to the end of the line, not to the desk.
+      const k = this.joinsLine(g, c) ? this.node[c]! : -1;
+      const rank = k >= 0 ? lineSkip(t, k) + t.qCount[k]! + this.tailExtra[k]! : -1;
+      const tail = k >= 0 ? Math.min(rank, t.qLineLen[k]! - 1) : -1;
+      // Past a full line, the free queue cell nearest the desk, like the queued groups that did not fit.
+      const free = k >= 0 && rank > tail && this.spareCell(grid, wg, t, k);
+      const tailX = free ? this.spare[0]! : tail >= 0 ? t.qLineX[k * t.slots + tail]! : 0;
+      const tailY = free ? this.spare[1]! : tail >= 0 ? t.qLineY[k * t.slots + tail]! : 0;
+      const to = nearestNode(wg, k >= 0 ? cellAt(wg, tailX, tailY) : cellAt(wg, this.walkToX[c]!, this.walkToY[c]!));
+      if (from < 0 || to < 0) continue;
+      const s = Math.max(0, ((tick - this.walkStart[c]!) * this.speed(c)) / TICKS_PER_SECOND);
+      const resume = this.trailNode[c]! >= 0 && this.trailAt[c]! <= s && this.trailTo[c] === to;
+      const r = resume
+        ? routePoint(wg, cache, this.trailNode[c]!, this.trailAt[c]!, to, s, this.route, AUD.Pax, grid)
+        : routePoint(wg, cache, from, 0, to, s, this.route, AUD.Pax, grid);
+      if (r === 0 && k >= 0) {
+        // At the end of the line before the sim lets it join: it waits there, behind the queue.
+        this.tailExtra[k]!++;
+        this.lineFront(t, k, free ? t.qLineLen[k]! : tail, this.front);
+        const dx = this.front[0]! - tailX;
+        const dy = this.front[1]! - tailY;
+        const sx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
+        const sy = sx === 0 ? Math.sign(dy) : 0;
+        this.toWorld(grid, tailX + 0.5, tailY + 0.5);
+        this.put(views, n, c, sx, sy, PEOPLE_MODE.Queued, cellAt(wg, tailX, tailY));
+        n++;
+        continue;
+      }
+      if (r !== 1) continue;
+      this.trailNode[c] = this.route[4]!;
+      this.trailAt[c] = this.route[5]!;
+      this.trailTo[c] = to;
+      const ex = this.route[2]!;
+      const ey = this.route[3]!;
+      const sx = Math.abs(ex) >= Math.abs(ey) ? Math.sign(ex) : 0;
+      const sy = sx === 0 ? Math.sign(ey) : 0;
+      const px = this.route[0]!;
+      const py = this.route[1]!;
+      const centreCell = cellAt(wg, Math.floor(px), Math.floor(py));
+      const room = nearestNodeRoom(wg, centreCell);
+      const rule = this.zoneRule(st);
+      if (this.placeWalker(views, n, c, grid, wg, px, py, sx, sy, rule, room)) {
+        n++;
+        continue;
+      }
+      // Every lane is taken: the walker trails a little behind on its own route, so groups that set off together
+      // walk one after another instead of on top of each other.
+      let trailed = false;
+      for (let back = 1; back <= TRAIL_STEPS && !trailed; back++) {
+        const sb = s - back * TRAIL_STEP_M;
+        if (sb <= 0 || routePoint(wg, cache, from, 0, to, sb, this.behind, AUD.Pax, grid) !== 1) break;
+        const bx = this.behind[0]!;
+        const by = this.behind[1]!;
+        trailed = this.placeWalker(views, n, c, grid, wg, bx, by, sx, sy, rule, nearestNodeRoom(wg, cellAt(wg, Math.floor(bx), Math.floor(by))));
+      }
+      if (trailed) {
+        n++;
+        continue;
+      }
+      // Still no room: it passes over the centre line rather than vanish for a frame.
+      this.toWorld(grid, px, py);
+      this.put(views, n, c, sx, sy, PEOPLE_MODE.Walking, centreCell);
+      n++;
+    }
+    return n;
   }
 
   /** Passengers of the flight that have boarded so far. */

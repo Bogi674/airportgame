@@ -157,6 +157,30 @@ describe('service nodes', () => {
     for (let i = 0; i < nodes.qCellLen[0]!; i++) expect(nodes.qCellX[first + i]).toBeLessThan(11);
   });
 
+  it('draws a single file line that runs back from the entrance and folds (PX1)', () => {
+    const g = grid(20, 20);
+    paint(g, 11, 0, 20, 20, ZONE.Secure);
+    put(g, 'security', 10, 10, 1);
+    const { nodes } = nodesOf(g);
+    const slots = nodes.qLineX.length / nodes.count;
+    const len = nodes.qLineLen[0]!;
+    expect(len).toBe(slots);
+    const first = nodes.qCellOffset[0]!;
+    expect([nodes.qLineX[0], nodes.qLineY[0]]).toEqual([nodes.qCellX[first], nodes.qCellY[first]]);
+    // Straight back to the west edge of the grid, then the line folds and keeps going.
+    expect(nodes.qLineX[1]).toBe(1);
+    expect(nodes.qLineX[2]).toBe(0);
+    expect(nodes.qLineY[1]).toBe(nodes.qLineY[0]);
+    const seen = new Set<string>();
+    for (let i = 0; i < len; i++) {
+      expect(nodes.qLineX[i]).toBeLessThan(11);
+      const key = `${nodes.qLineX[i]},${nodes.qLineY[i]}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+      if (i > 0) expect(Math.abs(nodes.qLineX[i]! - nodes.qLineX[i - 1]!) + Math.abs(nodes.qLineY[i]! - nodes.qLineY[i - 1]!)).toBe(1);
+    }
+  });
+
   it('a fixture boxed in by walls has no queue', () => {
     const g = handGrid(0, 0, 20, 20);
     setFloor(g, 0, 0, 20, 20);

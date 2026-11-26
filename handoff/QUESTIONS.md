@@ -670,3 +670,13 @@ Context: the owner reported a stand ghost whose red box stretched to the taxiway
 | Lead in joining a taxiway on a bend | Allowed. Fix the drawing so the fork arcs and centerline follow the curved taxiway (PL1) |
 | What a stand snaps to on an apron | Apron edge, construction grid and the next built stand, all three (PL2) |
 | Edge grids | Taxiways, runways, aprons and terminals each show a grid strip along their sides when the cursor is within 60 m; the apron rectangle tool snaps to them (PL3) |
+
+## 2026-11-26 Passenger behaviour like Airport CEO
+
+Context: the owner sent two clips where passengers jump around, show no queue, no visible check at security, pass through walls, gather in a crowd at the gate and never use the chairs.
+
+| Question | Answer (owner, 2026-11-26) |
+| --- | --- |
+| Scope | Render sample fixes plus a sim change: after security, passengers walk to their gate lounge and sit, then line up at the desk once boarding opens (PX1 to PX3) |
+| Queue shape | Player placed queue belts carry the queue, as in Airport CEO. Without belts the queue falls back to an automatic single file line (PX4, PX1) |
+| Seated look | A new seated pose in the people atlas (PX2) |

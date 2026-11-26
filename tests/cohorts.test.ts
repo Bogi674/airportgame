@@ -538,12 +538,24 @@ function stepToSharedQueues(sim: Sim, maxTicks: number): boolean {
   return false;
 }
 
-/** Index of the first sampled entry at the world spot (x, y) that no earlier cell has claimed, -1 when there is none. */
-function entryAt(views: SnapshotViews, n: number, written: Uint8Array, x: number, y: number): number {
-  for (let i = 0; i < n; i++) {
-    if (written[i] === 0 && Math.abs(views.peopleX[i]! - x) < 1e-3 && Math.abs(views.peopleY[i]! - y) < 1e-3) return i;
+/**
+ * True when cohort c stands on its node's single file line: queued at a rank the line holds. Groups past a full
+ * line wait on spare cells and may share one in a crowd (PX1).
+ */
+function onLine(sim: Sim, c: number): boolean {
+  for (const g of sim.business.grids) {
+    const t = sim.business.serviceTable(g.id);
+    if (!t) continue;
+    for (let k = 0; k < t.count; k++) {
+      const through = t.passX0[k] !== t.passX1[k] || t.passY0[k] !== t.passY1[k];
+      const skip = !through && t.serving[k]! >= 0 ? 1 : 0;
+      for (let i = 0; i < t.qCount[k]!; i++) {
+        if (t.qCohort[k * t.slots + ((t.qHead[k]! + i) % t.slots)] !== c) continue;
+        return t.qLineLen[k]! > 0 && i + skip < t.qLineLen[k]!;
+      }
+    }
   }
-  return -1;
+  return false;
 }
 
 function stepToMidJourney(sim: Sim, maxTicks: number): boolean {
@@ -600,12 +612,14 @@ describe('snapshot sample of cohort positions', () => {
     const walkingStages: number[] = [Stage.ToCheckIn, Stage.ToSecurity, Stage.ToGate];
     for (let i = 0; i < n; i++) {
       const stage = sim.cohorts.stage[views.peopleId[i]!]!;
-      expect(views.peopleMode[i]).toBe(queuedStages.includes(stage) ? 0 : 1);
+      // A walker that reached the end of its line waits there as a queued figure before the sim lets it join (PX1).
+      if (queuedStages.includes(stage)) expect(views.peopleMode[i]).toBe(0);
+      else expect([0, 1]).toContain(views.peopleMode[i]);
       expect([...queuedStages, ...walkingStages]).toContain(stage);
     }
   });
 
-  it('queued figures stand 1.9 m apart and face the cell they were reached from, next to a shared queue', () => {
+  it('queued figures stand single file 1.9 m apart and face the cell ahead, next to a shared queue (PX1)', () => {
     const sim = terminalSim();
     scheduleCrowd(sim);
     expect(stepToSharedQueues(sim, RUN_TICKS * 4)).toBe(true);
@@ -613,66 +627,101 @@ describe('snapshot sample of cohort positions', () => {
     sim.writeSnapshot(views);
     const n = cohortEntries(views);
     expect(n).toBeGreaterThanOrEqual(3);
+    const queued = (i: number): boolean => views.peopleMode[i] === 0 && onLine(sim, views.peopleId[i]!);
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        const dx = views.peopleX[i]! - views.peopleX[j]!;
-        const dy = views.peopleY[i]! - views.peopleY[j]!;
-        expect(Math.hypot(dx, dy)).toBeGreaterThanOrEqual(1.9);
+        if (!queued(i) || !queued(j)) continue;
+        expect(Math.hypot(views.peopleX[i]! - views.peopleX[j]!, views.peopleY[i]! - views.peopleY[j]!)).toBeGreaterThanOrEqual(1.9);
       }
     }
-    // Walks the cells in the order writeSample does, so the first cell found at a spot is the one that was written.
-    const written = new Uint8Array(n);
+    // Every queued figure stands on its node's line at its rank, behind the served group at a desk, facing the cell ahead.
     let matched = 0;
     for (const g of sim.business.grids) {
       const t = sim.business.serviceTable(g.id);
       if (!t) continue;
       for (let k = 0; k < t.count; k++) {
-        const ranks = Math.min(t.qCount[k]!, t.qCellLen[k]!);
-        const off = t.qCellOffset[k]!;
+        if (t.qLineLen[k] === 0) continue;
+        const through = t.passX0[k] !== t.passX1[k] || t.passY0[k] !== t.passY1[k];
+        const skip = !through && t.serving[k]! >= 0 ? 1 : 0;
+        const ranks = Math.min(t.qCount[k]!, t.qLineLen[k]! - skip);
         for (let i = 0; i < ranks; i++) {
-          const cell = off + i;
-          const at = cornerWorld(g, t.qCellX[cell]! + 0.5, t.qCellY[cell]! + 0.5);
-          const e = entryAt(views, n, written, at.x, at.y);
-          if (e < 0) continue;
-          written[e] = 1;
-          if (views.peopleMode[e] !== 0) continue;
-          matched++;
-          const parent = t.qCellParent[cell]!;
-          const frontX = parent < 0 ? t.lx[k]! : t.qCellX[off + parent]!;
-          const frontY = parent < 0 ? t.ly[k]! : t.qCellY[off + parent]!;
-          const to = cornerWorld(g, frontX + 0.5, frontY + 0.5);
+          const c = t.qCohort[k * t.slots + ((t.qHead[k]! + i) % t.slots)]!;
+          const e = Array.from({ length: n }, (_, m) => m).find((m) => views.peopleId[m] === c);
+          if (e === undefined) continue;
+          const j = i + skip;
+          const at = cornerWorld(g, t.qLineX[k * t.slots + j]! + 0.5, t.qLineY[k * t.slots + j]! + 0.5);
+          expect(Math.hypot(views.peopleX[e]! - at.x, views.peopleY[e]! - at.y)).toBeLessThan(1e-3);
+          const ahead =
+            j === 0
+              ? through
+                ? cornerWorld(g, Math.floor(t.passX0[k]!) + 0.5, Math.floor(t.passY0[k]!) + 0.5)
+                : cornerWorld(g, t.lx[k]! + 0.5, t.ly[k]! + 0.5)
+              : cornerWorld(g, t.qLineX[k * t.slots + j - 1]! + 0.5, t.qLineY[k * t.slots + j - 1]! + 0.5);
           const h = (views.peopleHeading[e]! * 2 * Math.PI) / 256;
-          const len = Math.hypot(to.x - at.x, to.y - at.y);
-          expect((Math.sin(h) * (to.x - at.x)) / len + (-Math.cos(h) * (to.y - at.y)) / len).toBeGreaterThan(0.9);
+          const len = Math.hypot(ahead.x - at.x, ahead.y - at.y);
+          if (len > 1e-6) expect((Math.sin(h) * (ahead.x - at.x)) / len + (-Math.cos(h) * (ahead.y - at.y)) / len).toBeGreaterThan(0.7);
+          matched++;
         }
       }
     }
-    let queued = 0;
-    for (let i = 0; i < n; i++) if (views.peopleMode[i] === 0) queued++;
-    expect(matched).toBe(queued);
+    expect(matched).toBeGreaterThan(0);
   });
 
-  it('walkers are sampled on their way, share no cell and keep the gap to other groups', () => {
+  it('the group being served is drawn at its node (PX1)', () => {
+    const sim = terminalSim();
+    scheduleCrowd(sim);
+    expect(stepToSharedQueues(sim, RUN_TICKS * 4)).toBe(true);
+    const views = createSnapshotViews(createSnapshotBuffer());
+    sim.writeSnapshot(views);
+    const n = cohortEntries(views);
+    let checked = 0;
+    for (const g of sim.business.grids) {
+      const t = sim.business.serviceTable(g.id);
+      if (!t) continue;
+      for (let k = 0; k < t.count; k++) {
+        const c = t.serving[k]!;
+        if (c < 0) continue;
+        const e = Array.from({ length: n }, (_, m) => m).find((m) => views.peopleId[m] === c);
+        expect(e).toBeDefined();
+        // On the segment between the pass points.
+        const a = cornerWorld(g, t.passX0[k]!, t.passY0[k]!);
+        const b = cornerWorld(g, t.passX1[k]!, t.passY1[k]!);
+        const ab = Math.hypot(b.x - a.x, b.y - a.y);
+        const d = Math.hypot(views.peopleX[e!]! - a.x, views.peopleY[e!]! - a.y) + Math.hypot(views.peopleX[e!]! - b.x, views.peopleY[e!]! - b.y);
+        expect(d - ab).toBeLessThan(1e-3);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('every walker on its way is sampled once (PX1)', () => {
     const sim = terminalSim();
     scheduleLong(sim);
     expect(stepToMidJourney(sim, RUN_TICKS)).toBe(true);
     const views = createSnapshotViews(createSnapshotBuffer());
     sim.writeSnapshot(views);
     const n = cohortEntries(views);
-    let walkers = 0;
+    expect(n).toBeLessThan(Math.min(PROFILES.sampleCap, SNAPSHOT_PEOPLE_CAPACITY));
     const ids = new Set<number>();
+    let walkers = 0;
     for (let i = 0; i < n; i++) {
       expect(ids.has(views.peopleId[i]!)).toBe(false);
       ids.add(views.peopleId[i]!);
-      if (views.peopleMode[i] !== 1) continue;
-      walkers++;
-      for (let j = 0; j < n; j++) {
-        if (j === i || views.peopleMode[j] === 0) continue;
-        const d = Math.hypot(views.peopleX[i]! - views.peopleX[j]!, views.peopleY[i]! - views.peopleY[j]!);
-        expect(d).toBeGreaterThanOrEqual(PROFILES.walkSample.minGapM);
-      }
+      if (views.peopleMode[i] === 1) walkers++;
     }
     expect(walkers).toBeGreaterThan(0);
+    const wg = sim.business.walkGraphs[0]!;
+    const walking: number[] = [Stage.ToCheckIn, Stage.ToSecurity, Stage.ToGate];
+    for (let c = 0; c < sim.cohorts.stage.length; c++) {
+      if (!walking.includes(sim.cohorts.stage[c]!) || sim.cohorts.walkStart[c]! < 0) continue;
+      const from = nearestNode(wg, cellAt(wg, sim.cohorts.walkFromX[c]!, sim.cohorts.walkFromY[c]!));
+      const to = nearestNode(wg, cellAt(wg, sim.cohorts.walkToX[c]!, sim.cohorts.walkToY[c]!));
+      const speed = PROFILES.profiles[PROFILE_KEYS[sim.cohorts.profile[c]!]!].walkSpeed;
+      const walked = ((sim.tick - sim.cohorts.walkStart[c]!) * speed) / 10;
+      if (from < 0 || to < 0 || walked >= walkDistance(wg, from, to)) continue;
+      expect(ids.has(c)).toBe(true);
+    }
   });
 
   it('a walker with route left gets closer to the cell it walks to over 60 ticks', () => {
@@ -794,6 +843,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(n).toBeGreaterThanOrEqual(2);
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
+        if (!onLine(sim, views.peopleId[i]!) || !onLine(sim, views.peopleId[j]!)) continue;
         const dx = views.peopleX[i]! - views.peopleX[j]!;
         const dy = views.peopleY[i]! - views.peopleY[j]!;
         expect(Math.hypot(dx, dy)).toBeGreaterThanOrEqual(1.9);

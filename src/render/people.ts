@@ -1,9 +1,9 @@
 import { PEOPLE } from '@data/index';
-import { HEADING_STEPS, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, type SnapshotViews } from '@shared/snapshot';
+import { HEADING_STEPS, PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, type SnapshotViews } from '@shared/snapshot';
 import { TICK_SECONDS } from '@shared/time';
 import { PeopleAtlasCache, peopleTierForZoom, SHADOW_ROW } from './sprites/peopleAtlas';
 import { PeopleSelection } from './peopleSelect';
-import { packGroup } from './peoplePack';
+import { packFile, packGroup } from './peoplePack';
 import { PeopleMotion } from './peopleMotion';
 
 /** Figures outside the visible bounds by more than this margin in meters are skipped. */
@@ -89,7 +89,8 @@ export class People {
       const profile = curr.peopleProfile[i];
       const seed = curr.peopleSeed[i];
       const mode = curr.peopleMode[i];
-      const placed = packGroup(profile, seed, curr.peopleSize[i], this.groupX, this.groupY, this.groupRecipe);
+      const pack = mode === PEOPLE_MODE.Queued ? packFile : packGroup;
+      const placed = pack(profile, seed, curr.peopleSize[i], this.groupX, this.groupY, this.groupRecipe);
       const heading = curr.peopleHeading[i];
       const cos = this.headingCos[heading];
       const sin = this.headingSin[heading];
