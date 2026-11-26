@@ -4,10 +4,10 @@ import { Icon, type IconName } from '../icons';
 import { clockAngles } from './clock';
 import './kit.css';
 
-/** Category group of revision 6 section 3.1: it colors title bars, rail icons and flyouts. */
+/** Category group of UI revision 6 section 3.1: it colors title bars, rail icons and flyouts. */
 export type Group = 'air' | 'trm' | 'ops' | 'tool' | 'bad';
 
-/** White window with the solid lip of revision 6 section 3.3. `win` gives the modal radius. */
+/** White window with the solid lip of UI revision 6 section 3.3. `win` gives the modal radius. */
 export function Panel(props: { children: ComponentChildren; win?: boolean; class?: string; style?: CSSProperties | string; testid?: string; role?: 'dialog' | 'region' | 'complementary'; label?: string }) {
   return (
     <div class={`pn${props.win ? ' win' : ''}${props.class ? ` ${props.class}` : ''}`} style={props.style} data-testid={props.testid} role={props.role} aria-label={props.label}>
@@ -120,7 +120,7 @@ export function Stat(props: { label: ComponentChildren; value: ComponentChildren
   );
 }
 
-/** Thumbnail placeholder of revision 6 section 3.5: a picture glyph on a pale slot. */
+/** Thumbnail placeholder of UI revision 6 section 3.5: a picture glyph on a pale slot. */
 export function Thumb({ w, h }: { w: number | string; h: number }) {
   return (
     <div class="thumb-ph" style={{ width: typeof w === 'number' ? `${w}px` : w, height: `${h}px` }} aria-hidden="true">
@@ -170,7 +170,7 @@ export function Clock({ seconds, size, still, minuteStep }: { seconds: number; s
 }
 
 /**
- * Popover panel under its trigger (revision 6 section 5.8). It closes on Escape and on a click outside both
+ * Popover panel under its trigger (UI revision 6 section 5.8). It closes on Escape and on a click outside both
  * itself and the element marked with `data-pop-anchor` equal to its id.
  */
 export function Popover(props: { id: string; onClose: () => void; children: ComponentChildren; style?: CSSProperties; testid?: string; label?: string }) {

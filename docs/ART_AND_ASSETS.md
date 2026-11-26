@@ -356,6 +356,7 @@ Every apron scene, in game and in reference art, must pass:
 | `docs/art/terminal_amenities_kit.png` | Decoration, vending, screens and signs, airport service items |
 | `docs/art/terminal_office_infra_kit.png` | Airline offices, escalators, stairs, elevators, travelators, janitor room |
 | `docs/art/terminal_zones_kit.png` | Zone types, transition fixtures, zoned terminal (`docs/TERMINAL_ZONING.md`) |
+| `docs/art/rev6/sheet_rev6.png` | Revision 6: check in desk in three sizes, security checkpoint level 1, doors and windows (`docs/DESIGN_REVISION_6.md`). Source `docs/art/rev6/sheet_rev6.svg`. Doors and windows are not in the game yet |
 | `docs/art/baggage_kit.png` | Ramp stubs, baggage nodes, link overlay, automatic chain (`docs/BAGGAGE.md`) |
 | `docs/art/terminal_scene_kit.png` | Terminal slice at 14 px per meter with stand 22, the revision 3 jet bridge and an A320neo |
 | `docs/art/fixture_catalog.png` | Every terminal asset by category, drawn from `src/data/fixtures/` |

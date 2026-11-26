@@ -9,6 +9,7 @@ This is the behaviour the TypeScript baker in src/render/sprites/fixtureSprite.t
     offset (0.13 h, 0.18 h), h capped at 2.6 m, rotated into the sprite frame for the placement rotation, all parts
     unioned, blurred 0.07 m, 28 percent black
   * overhead ops (ov) are drawn last, only from tier 2
+  * floor layer ops (fl, Revision 6) are drawn first, under the shadows and the bodies, and cast no shadow
 """
 import json
 import math
@@ -116,7 +117,7 @@ def _outline(o):
 def bake(ops, ppm, tier=3, rot=0, shadow=True, air_render=None):
     """SVG in sprite meters for one asset at bake scale ppm (px per m) and placement rotation rot."""
     sx, sy = SUN
-    body, sh, over = [], [], []
+    body, sh, over, floor = [], [], [], []
     for o in ops:
         k = o["k"]
         ov = o.get("ov")
@@ -166,7 +167,8 @@ def bake(ops, ppm, tier=3, rot=0, shadow=True, air_render=None):
             continue
         if tier == 1:
             st = None
-        target = over if ov else body
+        fl = o.get("fl")
+        target = over if ov else (floor if fl else body)
         if k == "r":
             target.append(rect(o["x"], o["y"], o["w"], o["h"], fill, st, swm, o.get("rx", 0), op, extra))
         elif k == "c":
@@ -180,7 +182,7 @@ def bake(ops, ppm, tier=3, rot=0, shadow=True, air_render=None):
             target.append(poly(o["p"], fill, st, swm, op, 'stroke-linejoin="round"'))
         elif k == "a":
             target.append(path(o["d"], fill, st, swm, op, extra + ' stroke-linecap="round" stroke-linejoin="round"'))
-        if shadow and h and not ov:
+        if shadow and h and not ov and not fl:
             hh = min(h, SH_CAP)
             dx, dy = sx * hh, sy * hh
             dx, dy = {0: (dx, dy), 90: (dy, -dx), 180: (-dx, -dy), 270: (-dy, dx)}[rot % 360]
@@ -190,7 +192,7 @@ def bake(ops, ppm, tier=3, rot=0, shadow=True, air_render=None):
     out = []
     if sh:
         out.append(g(sh, None, 'opacity="0.28" filter="url(#fxs)"'))
-    return "".join(out + body + over)
+    return "".join(floor + out + body + over)
 
 
 def load(path_):

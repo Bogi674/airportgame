@@ -10,6 +10,8 @@ import { PROFILE_KEYS } from '@data/schemas/profiles';
 import { FIXTURE_KEYS, TICKS_PER_DAY, type TerminalGrid } from '@shared/business';
 import { LEVELED_KEYS, levelCost, upgradeCost } from '@shared/fixtureLevels';
 import { cellIndex } from '@shared/terminalOps';
+import { growBlocked, growCells } from '@shared/fixtureGrow';
+import { checkInSpan } from '@shared/business';
 import { buildTestAirport, buildTestTerminal, OPTIONS, ownedSim, run } from './helpers';
 
 const CHECK_IN = FIXTURE_KEYS.indexOf('checkIn') + 1;
@@ -23,6 +25,13 @@ function terminal(seed?: string): Sim {
   sim.cash = 50_000_000;
   buildTestAirport(sim);
   expect(buildTestTerminal(sim, { checkIn: 4, security: 2, gateDesk: 2 })).toEqual([]);
+  // A level 2 desk takes the cell to its right (Revision 6), so the desk at 42 gets the empty cell 43 beside it.
+  const g = sim.business.grids[0]!;
+  expect(run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'erase', x0: 43, y0: 42, x1: 44, y1: 43, variant: 0 } })).toEqual([]);
+  // Erasing takes the floor too, so the cell gets its foundation and floor back.
+  const e = { building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg } as const;
+  expect(run(sim, { type: 'terminalBuild', ...e, edit: { op: 'foundation', x0: 43, y0: 42, x1: 44, y1: 43, variant: 0 } })).toEqual([]);
+  expect(run(sim, { type: 'terminalBuild', ...e, edit: { op: 'floor', x0: 43, y0: 42, x1: 44, y1: 43, variant: 2 } })).toEqual([]);
   return sim;
 }
 
@@ -272,5 +281,148 @@ describe('levels in saves and replays (T74)', () => {
     const ev: string[] = [];
     c.drainEvents(ev);
     expect(ev).toContain('lanesRemoved|n=2');
+  });
+});
+
+describe('check in desk growth (Revision 6)', () => {
+  const build = (sim: Sim, x: number, y: number, level: number, rot: 0 | 1 | 2 | 3 = 0): string[] => {
+    const g = grid(sim);
+    return run(sim, { type: 'terminalBuild', building: g.id, ox: g.ox, oy: g.oy, headingDeg: g.headingDeg, edit: { op: 'fixture', x0: x, y0: y, x1: x + 1, y1: y + 1, variant: CHECK_IN, level, rot } });
+  };
+
+  it('covers 1, 2 and 2 cells by level and counts one desk', () => {
+    expect([1, 2, 3].map((l) => checkInSpan(l))).toEqual([[1, 1], [2, 1], [2, 1]]);
+    const sim = terminal();
+    const g = grid(sim);
+    expect(build(sim, 50, 42, 3)).toEqual([]);
+    const a = cellIndex(g, 50, 42);
+    expect(g.fixtureRot[a]).toBe(1);
+    expect(g.fixtureRot[cellIndex(g, 51, 42)]).toBe(5);
+    expect(sim.business.terminals.find((t) => t.id === g.id)!.counts.checkIn).toBe(4);
+  });
+
+  it('grows to the right when the works end, keeps one service node and the ramp behind the anchor', () => {
+    const sim = terminal();
+    const g = grid(sim);
+    const nodes = table(sim).count;
+    const drops = (): string[] => sim.baggage.inspect([]).nodes.filter((n) => n.kind === 'drop' && n.building === g.id).map((n) => n.cells.join(';'));
+    const before = drops();
+    expect(before).toContain('42,42');
+    expect(upgrade(sim, DESK.x, DESK.y)).toEqual([]);
+    // The cell is taken only when the works finish.
+    expect(g.fixture[cellIndex(g, 43, 42)]).toBe(0);
+    dueNow(sim);
+    expect(g.fixtureLevel[cellIndex(g, 42, 42)]).toBe(2);
+    expect(g.fixtureLevel[cellIndex(g, 43, 42)]).toBe(2);
+    expect(g.fixtureRot[cellIndex(g, 43, 42)]).toBe(5);
+    expect(g.fixtureOff[cellIndex(g, 43, 42)]).toBe(1);
+    expect(table(sim).count).toBe(nodes);
+    // The drop stays on the anchor: the tail cell adds no second chute.
+    expect(drops()).toEqual(before);
+  });
+
+  it('refuses an upgrade with no room to the right and names the blocked cell, without charging', () => {
+    const sim = terminal();
+    const g = grid(sim);
+    const cash = sim.cash;
+    expect(upgrade(sim, 44, 42)).toEqual(['needsRoomRight']);
+    expect(sim.cash).toBe(cash);
+    expect(sim.business.fixtureWorks).toEqual([]);
+    expect(growBlocked(g, cellIndex(g, 44, 42), 2)).toEqual([[45, 42]]);
+    expect(growBlocked(g, cellIndex(g, 42, 42), 2)).toEqual([]);
+  });
+
+  it('needs no room to go from level 2 to level 3', () => {
+    const sim = terminal();
+    const g = grid(sim);
+    expect(build(sim, 50, 42, 2)).toEqual([]);
+    // A fixture right behind the tail does not matter: both levels cover the same two cells.
+    expect(growCells(g, cellIndex(g, 50, 42), 3)).toEqual([]);
+    expect(growBlocked(g, cellIndex(g, 50, 42), 3)).toEqual([]);
+    expect(upgrade(sim, 50, 42)).toEqual([]);
+    dueNow(sim);
+    expect(g.fixtureLevel[cellIndex(g, 50, 42)]).toBe(3);
+    expect(g.fixtureLevel[cellIndex(g, 51, 42)]).toBe(3);
+  });
+
+  it('grows along the direction of a turned desk', () => {
+    const sim = terminal();
+    const g = grid(sim);
+    // Direction 2 runs toward smaller x, so the new cell lies to the left on the map.
+    expect(build(sim, 56, 46, 1, 2)).toEqual([]);
+    expect(growCells(g, cellIndex(g, 56, 46), 2).map((c) => [c.x, c.y])).toEqual([[55, 46]]);
+    expect(upgrade(sim, 56, 46)).toEqual([]);
+    dueNow(sim);
+    expect(g.fixtureRot[cellIndex(g, 55, 46)]).toBe(7);
+    expect(g.fixtureLevel[cellIndex(g, 55, 46)]).toBe(2);
+  });
+
+  it('cancelling keeps the old level and footprint, and a taken cell refunds the works', () => {
+    const sim = terminal();
+    const g = grid(sim);
+    const cash = sim.cash;
+    expect(upgrade(sim, DESK.x, DESK.y)).toEqual([]);
+    expect(cancel(sim, DESK.x, DESK.y)).toEqual([]);
+    expect(sim.cash).toBe(cash);
+    expect(g.fixtureLevel[cellIndex(g, DESK.x, DESK.y)]).toBe(1);
+    expect(g.fixture[cellIndex(g, 43, 42)]).toBe(0);
+    // A desk built on the free cell during the works leaves no room when they end.
+    expect(upgrade(sim, DESK.x, DESK.y)).toEqual([]);
+    expect(build(sim, 43, 42, 1)).toEqual([]);
+    dueNow(sim);
+    expect(g.fixtureLevel[cellIndex(g, DESK.x, DESK.y)]).toBe(1);
+    const ev: string[] = [];
+    sim.drainEvents(ev);
+    expect(ev).toContain('fixtureUpgradeBlocked');
+    expect(sim.cash).toBe(cash - levelCost('checkIn', 1));
+  });
+
+  it('two runs with a grown desk agree and a save after the growth restores the same hash', () => {
+    const go = (): Sim => {
+      const sim = terminal();
+      expect(upgrade(sim, DESK.x, DESK.y)).toEqual([]);
+      dueNow(sim);
+      run(sim, { type: 'signAirline', airlineId: 0, sign: true });
+      run(sim, { type: 'setTestTraffic', perHour: 20, turnScale: 0.1 });
+      for (let t = 0; t < 2000; t++) sim.step();
+      return sim;
+    };
+    const a = go();
+    const b = go();
+    expect(a.stateHash()).toBe(b.stateHash());
+    const c = new Sim(a.seed, OPTIONS);
+    c.restore(JSON.parse(JSON.stringify(a.serialize())));
+    expect(c.stateHash()).toBe(a.stateHash());
+    for (let t = 0; t < 300; t++) {
+      a.step();
+      c.step();
+    }
+    expect(c.stateHash()).toBe(a.stateHash());
+  }, 120000);
+
+  it('a version 44 save grows its level 2 desk and drops the one without room to level 1', () => {
+    const sim = terminal();
+    const data = JSON.parse(JSON.stringify(sim.serialize())) as { version: number; business: { grids: { w: number; x0: number; y0: number; fixtureLevel: string }[] } };
+    const sg = data.business.grids[0]!;
+    const level = unpackTyped(sg.fixtureLevel, Uint8Array);
+    // Old saves hold level 2 and 3 desks as one cell: the desk at 42 has a free cell, the one at 44 meets the desk at 45.
+    level[(42 - sg.y0) * sg.w + (42 - sg.x0)] = 2;
+    level[(42 - sg.y0) * sg.w + (44 - sg.x0)] = 3;
+    sg.fixtureLevel = packTyped(level);
+    data.version = 44;
+    const c = new Sim(sim.seed, OPTIONS);
+    c.restore(migrate(data));
+    const g = c.business.grids[0]!;
+    expect(g.fixtureLevel[cellIndex(g, 42, 42)]).toBe(2);
+    expect(g.fixtureLevel[cellIndex(g, 43, 42)]).toBe(2);
+    expect(g.fixtureRot[cellIndex(g, 43, 42)]).toBe(5);
+    expect(g.fixtureLevel[cellIndex(g, 44, 42)]).toBe(1);
+    expect(g.fixture[cellIndex(g, 44, 42)]).toBe(CHECK_IN);
+    const ev: string[] = [];
+    c.drainEvents(ev);
+    expect(ev).toContain('desksDowngraded|n=1');
+    const d = new Sim(sim.seed, OPTIONS);
+    d.restore(JSON.parse(JSON.stringify(c.serialize())));
+    expect(d.stateHash()).toBe(c.stateHash());
   });
 });

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { startNewGame, watchErrors } from './helpers';
 
-/** HUD zones of design revision 6 section 4.1. Popovers are the only layer allowed over them, so they are not listed. */
+/** HUD zones of UI revision 6 section 4.1. Popovers are the only layer allowed over them, so they are not listed. */
 const ZONES = ['top-bar', 'tool-rail', 'build-menu', 'guide', 'minimap', 'minimap-show', 'task-bar', 'context-bar', 'item-panel', 'parcel'];
 
 interface Box {

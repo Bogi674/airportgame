@@ -3,7 +3,7 @@ import { Button, Clock, LedBoard, Panel, Pill, Popover, Segmented, Stat, Switch,
 
 const GROUPS: readonly Group[] = ['air', 'trm', 'ops', 'tool', 'bad'];
 
-/** Test page of the revision 6 primitives in every state, opened with `?kit` (task R6-02). Developer only, never linked from the game. */
+/** Test page of the UI revision 6 primitives in every state, opened with `?kit` (task R6-02). Developer only, never linked from the game. */
 export function KitPage() {
   const [seg, setSeg] = useState(1);
   const [sw, setSw] = useState(true);

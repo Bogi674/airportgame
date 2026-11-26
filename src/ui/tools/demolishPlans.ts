@@ -72,7 +72,7 @@ const RUNWAY_END_SNAP_M = 30;
 const TAXI_MIN_PART_M = 8;
 
 /**
- * Line demolish of design revision 6 (DEM2): the stroke from `a` to `b` cuts the laid object under `a`. Taxiways and
+ * Line demolish of UI revision 6 (DEM2): the stroke from `a` to `b` cuts the laid object under `a`. Taxiways and
  * service roads lose the stretch between the stroke ends and split in two; a runway can only be trimmed from an end,
  * because two short runway pieces are of no use (owner, 2026-11-25). A stroke over the whole object removes it.
  */
@@ -218,7 +218,7 @@ function runs(n: number, ok: (i: number) => boolean): [number, number][] {
 }
 
 /**
- * The area bulldoze of revision 6 section 5.6 (DEM3): everything inside the box, counted per checklist row. Airfield
+ * The area bulldoze of UI revision 6 section 5.6 (DEM3): everything inside the box, counted per checklist row. Airfield
  * objects go whole when they lie fully inside, aprons are cut to the box, and terminal parts go per cell, wall edge,
  * station and prop. A floor cell goes only when nothing that stays stands on it, since lifting a floor takes its contents.
  */

@@ -1,5 +1,6 @@
 import { PAINT, SURFACE_SPEC } from '@data/index';
 import { padPolygon } from '@shared/turnPad';
+import { artShiftCells } from '@shared/fixtureGrow';
 import type { Sign } from '@shared/pavement/pavement';
 import type { AirfieldPayload, Runway, Surface } from '@shared/airfield';
 
@@ -729,7 +730,9 @@ function paintKitFixtures(ctx: Ctx, g: TerminalGrid, x0: number, y0: number, x1:
       const sprite = kitSpriteAt(g.fixture[i], g.fixtureLevel[i], code, tier, scale);
       if (sprite === null) continue;
       const body = fixtureBody(g.fixture[i], code, g.fixtureLevel[i], cx, cy);
-      drawFixture(ctx, sprite, body.x + body.w / 2, body.y + body.h / 2, body.rot);
+      const shift = artShiftCells(fixtureKey(g.fixture[i]), g.fixtureLevel[i]) * TERMINAL_CELL_M;
+      const [sx, sy] = ROT_STEP[code === 0 ? 0 : code - 1];
+      drawFixture(ctx, sprite, body.x + body.w / 2 + sx * shift, body.y + body.h / 2 + sy * shift, body.rot);
     }
   }
 }

@@ -36,10 +36,10 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
 /** What a line demolish stroke cuts (DEM2): every laid object has one. Later laid objects, such as conveyor belts, join this list. */
 export type LineKind = 'runway' | 'taxiway' | 'road';
 
-/** Bulldoze modes of design revision 6: click one item, or drag a box and filter by type. */
+/** Bulldoze modes of UI revision 6: click one item, or drag a box and filter by type. */
 export type BulldozeMode = 'single' | 'area';
 
-/** Type rows of the area bulldoze checklist (revision 6 section 5.6 plus the airfield rows, owner 2026-11-25). */
+/** Type rows of the area bulldoze checklist (UI revision 6 section 5.6 plus the airfield rows, owner 2026-11-25). */
 export const AREA_KINDS = ['walls', 'floors', 'doors', 'furniture', 'stations', 'amenities', 'decoration', 'info', 'zones', 'pavement', 'stands', 'runways', 'roads', 'buildings'] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 

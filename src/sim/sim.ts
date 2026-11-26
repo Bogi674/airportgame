@@ -1030,6 +1030,10 @@ export class Sim {
       const n = this.business.convertLegacyShops();
       if (n > 0) this.eventQueue.push(`shopsConverted|n=${n}`);
     }
+    if (save.convertDesks) {
+      const n = this.business.growLegacyDesks();
+      if (n > 0) this.eventQueue.push(`desksDowngraded|n=${n}`);
+    }
     if (save.legacyLanes) {
       const n = this.business.removeLegacyLanes(save.legacyLanes);
       if (n > 0) this.eventQueue.push(`lanesRemoved|n=${n}`);

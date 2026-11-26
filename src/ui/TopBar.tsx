@@ -59,7 +59,7 @@ function useViewportWidth(): number {
 }
 
 /**
- * Top bar of design revision 6 section 5.3: brand tag, weather, day phase, clock, then cash, rating, aircraft and stand pills,
+ * Top bar of UI revision 6 section 5.3: brand tag, weather, day phase, clock, then cash, rating, aircraft and stand pills,
  * the speed control, the alert bell and the game menu. Numbers the sim does not produce yet are left out, never invented.
  */
 export function TopBar({ onSpeed, onSkip, onMenu, onJump }: Props) {

@@ -43,7 +43,7 @@ export function setReducedMotion(on: boolean): void {
   }
 }
 
-/** Saved choice first, else light: design revision 6 makes light the default theme. */
+/** Saved choice first, else light: UI revision 6 makes light the default theme. */
 export function initTheme(): void {
   document.documentElement.dataset.theme = stored() ?? 'light';
 }

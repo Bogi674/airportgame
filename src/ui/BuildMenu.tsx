@@ -38,7 +38,7 @@ interface Item {
   asset?: string;
   /** Card name from data, used instead of a string key. */
   name?: string;
-  /** Variants of the item (design revision 6 section 5.5): the tile opens a tray of them instead of arming the tool. */
+  /** Variants of the item (UI revision 6 section 5.5): the tile opens a tray of them instead of arming the tool. */
   variants?: Variant[];
   /** A demolish tile, drawn in the danger color. */
   danger?: boolean;
@@ -61,14 +61,14 @@ export interface Variant {
 interface Tab {
   id: string;
   items: Item[];
-  /** String key prefix of the tab and its cards when it differs from `<category>.<tab>`, for tabs moved between categories by revision 6. */
+  /** String key prefix of the tab and its cards when it differs from `<category>.<tab>`, for tabs moved between categories by UI revision 6. */
   key?: string;
 }
 
 export interface Category {
   id: string;
   icon: IconName;
-  /** Rail group of design revision 6 section 5.4: it colors the rail icon and the flyout title bar. */
+  /** Rail group of UI revision 6 section 5.4: it colors the rail icon and the flyout title bar. */
   group: Group;
   /** No system yet: dimmed on the rail with a "Coming later" tooltip, and it opens nothing. */
   locked?: boolean;
@@ -340,7 +340,7 @@ export const CATEGORIES: Category[] = [
     tabs: [
       { id: 'scheduling', items: [sheet('airlines', 'airlines', 'airlines'), sheet('slots', 'slots', 'flightops'), sheet('standManagement', 'stands', 'flights'), sheet('board', 'flights', 'flights')] },
       { id: 'atc', items: [{ id: 'tower', thumb: 'tower', icon: 'tower', run: (s) => s.set({ tool: 'tower' }), active: (s) => s.tool === 'tower' }] },
-      // Ground handling joins flight operations in revision 6 section 5.4; its tabs keep their string keys.
+      // Ground handling joins flight operations in UI revision 6 section 5.4; its tabs keep their string keys.
       {
         id: 'depot',
         key: 'handling.depot',
@@ -405,7 +405,7 @@ export const CATEGORIES: Category[] = [
     ],
   },
   {
-    // Bulldoze of design revision 6 (DEM3): one item by click, or a box with a type checklist.
+    // Bulldoze of UI revision 6 (DEM3): one item by click, or a box with a type checklist.
     id: 'bulldoze',
     icon: 'bulldoze',
     group: 'tool',
@@ -473,7 +473,7 @@ export function Coin({ size = 12 }: { size?: number }) {
   );
 }
 
-/** How many cards a player picks before the footer legend hides (revision 6 section 5.5). */
+/** How many cards a player picks before the footer legend hides (UI revision 6 section 5.5). */
 const LEGEND_PICKS = 5;
 const LEGEND_KEY = 'airfield.flyoutPicks';
 function readPicks(): number {
@@ -494,7 +494,7 @@ function countPick(): number {
 }
 
 /**
- * Flyout of the open category beside the left rail (design revision 6 section 5.5): a title bar in the group color, tabs as a
+ * Flyout of the open category beside the left rail (UI revision 6 section 5.5): a title bar in the group color, tabs as a
  * segmented control and a two column tile grid. A tile with variants opens a tray under its row; it steps aside while a side sheet is open.
  */
 export function BuildMenu({ send }: { send(cmd: Command): void }) {

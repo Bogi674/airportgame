@@ -32,6 +32,10 @@ const paint = {
   dashPx: z.literal(1).optional(),
   /** 1 for overhead parts, drawn last and only from tier 2. */
   ov: z.literal(1).optional(),
+  /** 1 for floor layer parts (mats, tape, wait lines): drawn under shadows and bodies, never casting a shadow (Revision 6). */
+  fl: z.literal(1).optional(),
+  /** 1 for door swing clearance paint, which may leave the footprint and is a no build zone (Revision 6). */
+  swing: z.literal(1).optional(),
   /** Livery parts: the fill or stroke takes the airline color shaded by this factor (negative darker, positive lighter). */
   fLiv: z.number().min(-1).max(1).optional(),
   sLiv: z.number().min(-1).max(1).optional(),
@@ -55,6 +59,7 @@ export const fixtureOpSchema = z.discriminatedUnion('k', [
     cap: z.enum(['butt', 'round']).optional(),
     dash: z.array(z.number().positive()).optional(),
     o: z.number().min(0).max(1).optional(),
+    swing: z.literal(1).optional(),
   }),
   z.strictObject({ k: z.literal('t'), x: z.number(), y: z.number(), s: z.string(), size: z.number().positive(), f: color, anchor: z.enum(['start', 'middle', 'end']).optional(), rot: z.number().optional() }),
   /** Screen light on the floor in front of a display: glow gradient, no outline, no shadow. */
@@ -97,6 +102,13 @@ const assetSchema = z.strictObject({
   stats: z.record(z.string(), statValue),
   /** Stat names that are proposals waiting for the owner, see handoff/QUESTIONS.md. */
   confirm: z.array(z.string()),
+  /**
+   * Game footprint in whole 2 m cells as [along, across] in the sprite frame, present where it differs from the art
+   * size divided by 2 (Revision 6: the check in desk art is 2, 3 and 4 m wide on 1, 2 and 2 cells).
+   */
+  cells: z.tuple([z.number().int().positive(), z.number().int().positive()]).optional(),
+  /** Points where an agent and a passenger stand at a service desk, in meters of the sprite frame (Revision 6). */
+  service: z.strictObject({ agent: pt, passenger: pt }).optional(),
   /** Baggage ramp cells in 2 m cells relative to the footprint, see docs/BAGGAGE.md section 3.5. */
   ramps: z.array(z.strictObject({ cell: z.tuple([z.number().int(), z.number().int()]), dir: z.enum(['in', 'out']) })),
   sheet: z.string().nullable(),

@@ -5,11 +5,11 @@ import { Icon, type IconName } from './icons';
 import { OverlayMenu } from './OverlayMenu';
 import { t, type StringKey } from './strings';
 
-/** Width under which the task bar shows icons only, labels moving into tooltips (design revision 6 section 4.3). */
+/** Width under which the task bar shows icons only, labels moving into tooltips (UI revision 6 section 4.3). */
 export const NARROW_PX = 1360;
 
 /**
- * Task bar of design revision 6 section 5.7: the modes Select, Build and Land, the management sheets, and Overlays.
+ * Task bar of UI revision 6 section 5.7: the modes Select, Build and Land, the management sheets, and Overlays.
  * The active item is a mini primary button. A sheet opens from the left and hides the build flyout.
  */
 export function TaskBar() {

@@ -10,7 +10,7 @@ import { t, tDynamic, tFormat } from './strings';
 import { planArea } from './tools/demolishPlans';
 
 /**
- * Right panel of the area bulldoze (design revision 6 section 5.6, DEM3): the box size, a checklist of types with what the box
+ * Right panel of the area bulldoze (UI revision 6 section 5.6, DEM3): the box size, a checklist of types with what the box
  * holds of each, the refund, and the button that asks for confirmation before anything goes.
  */
 export function AreaBulldoze() {

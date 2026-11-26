@@ -1,4 +1,4 @@
-/* Design revision 6 primitives (section 3.5). Sizes read the tokens in theme.css. */
+/* UI revision 6 primitives (section 3.5). Sizes read the tokens in theme.css. */
 .pn { background: var(--surface); color: var(--ink); border-radius: var(--r-hud); box-shadow: var(--lip-panel); box-sizing: border-box; position: relative; }
 .pn.win { border-radius: var(--r-win); }
 .pn-body { padding: 12px; min-height: 0; overflow-y: auto; }

@@ -26,7 +26,9 @@ import { padTarget, padsBackwards, transitionOf, transitionPads } from '@shared/
 import { footprintSteps, propAt, propCost, propRect, propSpec, PROP_STEP_M } from '@shared/props';
 import { unitProblem } from '@shared/tenants';
 import { TENANT_CATEGORY_KEYS } from '@data/schemas/tenants';
-import { cellAtWorld, cellIndex, fixtureAnchor, fixtureCells, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
+import { artShiftCells, growBlocked } from '@shared/fixtureGrow';
+import { isLeveled, MAX_FIXTURE_LEVEL } from '@shared/fixtureLevels';
+import { ROT_STEP, cellAtWorld, cellIndex, fixtureAnchor, fixtureCells, floorBounds, newGrid, originFor, planEdit, rectWorld, worldToCell, cornerWorld, type TerminalEdit } from '@shared/terminalOps';
 import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
@@ -338,7 +340,8 @@ export class ToolController {
       const item = this.pickedItemShape(sel.id, st.fixturePick, st.propPick);
       if (item && st.fixturePick && !st.propPick) {
         const tag = this.fixtureTag(st.fixturePick);
-        return tag ? [item, tag, ...this.fixtureLinks(st.fixturePick)] : [item, ...this.fixtureLinks(st.fixturePick)];
+        const extra = [...this.fixtureLinks(st.fixturePick), ...this.growShapes(st.fixturePick)];
+        return tag ? [item, tag, ...extra] : [item, ...extra];
       }
       if (item) return [item];
     }
@@ -398,6 +401,16 @@ export class ToolController {
     const label = fixtureLabelAt(g, cellIndex(g, pick.x, pick.y), st.business?.fixtureNames);
     const at = this.fixtureCenter(g, pick.x, pick.y);
     return label && at ? { k: 'nameTag', x: at.x, y: at.y, text: label } : null;
+  }
+
+  /** Red hatch over the cells that stop a selected desk from taking its next level footprint (Revision 6). */
+  private growShapes(pick: CellPick): GhostShape[] {
+    const g = useGameStore.getState().terminalGrids.find((q) => q.id === pick.building);
+    if (!g) return [];
+    const anchor = fixtureAnchor(g, cellIndex(g, pick.x, pick.y));
+    if (anchor < 0 || !isLeveled(fixtureKey(g.fixture[anchor]!)) || g.fixtureLevel[anchor]! >= MAX_FIXTURE_LEVEL) return [];
+    if (g.works?.some((w) => w.x === g.x0 + (anchor % g.w) && w.y === g.y0 + Math.floor(anchor / g.w))) return [];
+    return growBlocked(g, anchor, g.fixtureLevel[anchor]! + 1).map(([x, y]): GhostShape => ({ k: 'hatch', pts: rectWorld(g, x, y, x + 1, y + 1), blocked: true }));
   }
 
   /** A dashed link between two world points. */
@@ -2695,7 +2708,9 @@ export class ToolController {
         x1 = Math.max(x1, cx + 1);
         y1 = Math.max(y1, cy + 1);
       }
-      const c = cornerWorld(g, (x0 + x1) / 2, (y0 + y1) / 2);
+      // The sprite of a desk shorter than its footprint sits at the anchor end (Revision 6).
+      const shift = artShiftCells(key, level);
+      const c = cornerWorld(g, (x0 + x1) / 2 + ROT_STEP[rot]![0] * shift, (y0 + y1) / 2 + ROT_STEP[rot]![1] * shift);
       shapes.push({ k: 'fixture', f: edit.variant, level, code: 1 + rot, x: c.x, y: c.y, headingDeg: g.headingDeg });
       shapes.push(...this.padGhost(g, key, level, edit.mode ?? 0, a.x, a.y, rot));
       // A desk or bag drop places its bag chute on the cell behind it, so the ghost shows that chute too (T86).

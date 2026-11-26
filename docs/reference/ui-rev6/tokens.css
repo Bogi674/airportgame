@@ -1,4 +1,4 @@
-/* DESIGN_REVISION_6 tokens. Paste into src/ui/theme.css. Light is the default theme. */
+/* DESIGN_REVISION_6_UI tokens. Paste into src/ui/theme.css. Light is the default theme. */
 :root, :root[data-theme='light'] {
   --ui: 1;
   --font-ui: 'Rubik', system-ui, sans-serif;

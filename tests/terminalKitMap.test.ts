@@ -24,6 +24,8 @@ const FITS_KEYS: readonly [FixtureKey, number][] = [
   ['seating', 1],
   ['toilet', 1],
   ['securityExit', 3],
+  // The level 2 check in desk is 3 m of art on two cells (Revision 6, whole cells).
+  ['checkIn', 2],
   // The 3.6 m wide travelator pairs sit in a 4 m wide footprint (T77).
   ['travelator', 1],
   ['travelator', 2],

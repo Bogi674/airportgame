@@ -1,4 +1,4 @@
-/** Right edge of the left rail zone in CSS pixels: 10 px margin plus the 48 px rail and an 8 px gap (design revision 6 section 4.1). */
+/** Right edge of the left rail zone in CSS pixels: 10 px margin plus the 48 px rail and an 8 px gap (UI revision 6 section 4.1). */
 export const RAIL_RIGHT_PX = 66;
 /** Right edge of the build flyout beside the left rail: its left of 66 plus its width of 264. */
 export const FLYOUT_RIGHT_PX = 330;

@@ -10,11 +10,11 @@ interface Props {
   onRedo(): void;
 }
 
-/** Rail groups in order (design revision 6 section 5.4). The tools group holds zoning and bulldoze, then undo and redo follow. */
+/** Rail groups in order (UI revision 6 section 5.4). The tools group holds zoning and bulldoze, then undo and redo follow. */
 const GROUPS: readonly Group[] = ['air', 'trm', 'ops', 'tool'];
 
 /**
- * Left rail of design revision 6 section 5.4: one 36 by 32 button per build category, grouped by color, then bulldoze,
+ * Left rail of UI revision 6 section 5.4: one 36 by 32 button per build category, grouped by color, then bulldoze,
  * undo and redo. The active category is filled in its group color; a locked one is dimmed and says it comes later.
  */
 export function ToolRail({ onUndo, onRedo }: Props) {

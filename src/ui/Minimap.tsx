@@ -72,7 +72,7 @@ interface Props {
 }
 
 /** 200 by 200 minimap with the camera frame, a compass, align view and zoom to fit. */
-/** Minimap states of design revision 6 section 5.7, kept in settings. */
+/** Minimap states of UI revision 6 section 5.7, kept in settings. */
 export type MinimapMode = 'opaque' | 'semi' | 'hide';
 const MODE_KEY = 'airfield.minimap';
 function storedMode(): MinimapMode {

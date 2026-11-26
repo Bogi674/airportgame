@@ -1,4 +1,4 @@
-/* Design revision 6 (Blue Hangar) tokens, docs/DESIGN_REVISION_6.md section 3. Light is the default theme. */
+/* UI revision 6 (Blue Hangar) tokens, docs/DESIGN_REVISION_6_UI.md section 3. Light is the default theme. */
 :root, :root[data-theme='light'] {
   --ui: 1;
   --font-ui: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -130,7 +130,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .tl-grid[data-drop='bad'] { box-shadow: inset 0 0 0 2px var(--bad); background-color: color-mix(in srgb, var(--bad) 12%, transparent); }
 
 .round.small { width: 34px; height: 34px; }
-/* Build flyout beside the left rail (design revision 6 section 5.5). */
+/* Build flyout beside the left rail (UI revision 6 section 5.5). */
 .buildmenu { display: flex; flex-direction: column; z-index: 6; overflow: hidden; }
 .bm-tabs { margin: 10px 10px 0; flex-wrap: wrap; flex: none; }
 .bm-tabs button.sg { flex: 1 1 auto; }
@@ -162,7 +162,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .classhelp summary { cursor: pointer; font-size: 11px; letter-spacing: 0.06em; color: var(--accent); }
 .classhelp[open] { max-height: 220px; overflow: auto; }
 
-/* HUD zones of design revision 6 section 4.1. Every HUD part owns one; only popovers sit above them. */
+/* HUD zones of UI revision 6 section 4.1. Every HUD part owns one; only popovers sit above them. */
 .z-top { position: absolute; left: 10px; right: 10px; top: 10px; height: 44px; }
 .z-rail { position: absolute; left: 10px; top: 64px; width: 48px; max-height: calc(100vh - 128px); }
 .z-flyout { position: absolute; left: 66px; top: 64px; width: 264px; max-height: calc(100vh - 128px); box-sizing: border-box; }
@@ -172,7 +172,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .z-task { position: absolute; bottom: 10px; height: 44px; left: calc((66px + 100vw - 230px) / 2); transform: translateX(-50%); max-width: calc(100vw - 66px - 230px - 20px); box-sizing: border-box; }
 .z-mapbtn { position: absolute; right: 10px; bottom: 10px; width: 100px; height: 44px; }
 
-/* Task bar (design revision 6 section 5.7). */
+/* Task bar (UI revision 6 section 5.7). */
 .taskbar { display: flex; align-items: center; gap: 2px; padding: 0 5px; z-index: 6; white-space: nowrap; }
 .taskbar button.tb { height: 34px; padding: 0 10px; border: 0; border-radius: var(--r-ctl); display: inline-flex; align-items: center; gap: 6px; font: 600 var(--fs-sm) var(--font-ui); color: var(--ink); background: transparent; letter-spacing: 0; flex: none; }
 .taskbar button.tb:hover:not(:disabled) { background: var(--surface-3); border: 0; }
@@ -180,7 +180,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .tb-sep { width: 1.5px; height: 24px; background: var(--line-soft); margin: 0 4px; flex: none; }
 @media (max-width: 1359px) { .taskbar .tb-l { display: none; } .taskbar button.tb { padding: 0 9px; } }
 
-/* Top bar (design revision 6 section 5.3). */
+/* Top bar (UI revision 6 section 5.3). */
 .topbar { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 7px; z-index: 7; white-space: nowrap; }
 .tb-brand { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 220px; }
 .tb-tag { width: 30px; height: 30px; flex: none; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font: 800 9px var(--font-ui); letter-spacing: .02em; background: linear-gradient(160deg, var(--brand), color-mix(in srgb, var(--brand) 70%, #000)); box-shadow: 0 2px 0 color-mix(in srgb, var(--brand) 60%, #000); }
@@ -217,7 +217,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .z-sheet { position: absolute; left: 66px; top: 64px; width: max(50vw, min(860px, calc(100vw - 66px - 320px))); max-width: calc(100vw - 76px); max-height: calc(100vh - 128px); box-sizing: border-box; z-index: 20; }
 .rp { font-size: var(--fs-sm); }
 
-/* Area bulldoze checklist (design revision 6 section 5.6). */
+/* Area bulldoze checklist (UI revision 6 section 5.6). */
 .area-panel .lbl { font-size: var(--fs-xs); color: var(--ink-2); }
 .ck-head { display: flex; justify-content: space-between; }
 .ck-list { display: flex; flex-direction: column; }
