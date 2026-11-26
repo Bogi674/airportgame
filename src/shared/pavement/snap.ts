@@ -1,5 +1,5 @@
 import { AIRFIELD } from '@data/index';
-import type { Taxiway } from '../airfield';
+import { compassVector, type Taxiway } from '../airfield';
 import type { Pt } from '../geom';
 import { taxiGraph } from './fromAirfield';
 
@@ -99,6 +99,52 @@ export function findSnap(taxiways: readonly Taxiway[], nodes: readonly TaxiNode[
     }
   }
   return seg;
+}
+
+/** A segment hit slid along its segment so the new piece meets it square or on a heading step. */
+export interface AlignedSegmentHit {
+  hit: SnapHit;
+  /** True when the piece meets the segment at a right angle, false for a heading step. */
+  square: boolean;
+  /** The compass heading of the piece from the previous point, 0 to 359. */
+  headingDeg: number;
+}
+
+/**
+ * Slides a segment hit along its segment so the piece from `prev` meets the taxiway square to it, or
+ * else on the nearest heading step of `frames`, when the drawn heading is within the tolerance. Square
+ * wins over a step. Null when no candidate is close enough or the slid point leaves the segment or
+ * comes within the node gap.
+ */
+export function alignSegmentHit(hit: SnapHit, taxiways: readonly Taxiway[], nodes: readonly TaxiNode[], prev: Pt, frames: readonly number[]): AlignedSegmentHit | null {
+  if (hit.kind !== 'segment') return null;
+  const t = taxiways.find((w) => w.id === hit.taxiwayId);
+  if (!t) return null;
+  const a = t.points[hit.index];
+  const b = t.points[hit.index + 1];
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const drawn = (Math.atan2(hit.p.x - prev.x, -(hit.p.y - prev.y)) * 180) / Math.PI;
+  const diff = (h: number): number => Math.abs(((drawn - h + 540) % 360) - 180);
+  const segHdg = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  const tries: { h: number; square: boolean; tol: number }[] = [segHdg + 90, segHdg - 90].map((h) => ({ h, square: true, tol: TAXI_TOOL.squareTolDeg }));
+  const steps: { h: number; square: boolean; tol: number }[] = [];
+  for (const f of frames) for (let k = 0; k < 360 / TAXI_TOOL.angleStepDeg; k++) steps.push({ h: f + k * TAXI_TOOL.angleStepDeg, square: false, tol: TAXI_TOOL.angleTolDeg });
+  steps.sort((x, y) => diff(x.h) - diff(y.h));
+  for (const c of [...tries, ...steps.slice(0, 1)]) {
+    if (diff(c.h) > c.tol) continue;
+    const u = compassVector(((c.h % 360) + 360) % 360);
+    // Ray prev + s u against the segment line a + k (b - a).
+    const den = u.x * dy - u.y * dx;
+    if (Math.abs(den) < 1e-9) continue;
+    const k = ((a.x - prev.x) * u.y - (a.y - prev.y) * u.x) / den;
+    const s = ((a.x - prev.x) * dy - (a.y - prev.y) * dx) / den;
+    if (s <= 0 || k <= 0 || k >= 1) continue;
+    const p = { x: a.x + dx * k, y: a.y + dy * k };
+    if (nodes.some((n) => Math.hypot(n.p.x - p.x, n.p.y - p.y) < TAXI_TOOL.minNodeGapM)) continue;
+    return { hit: { ...hit, p, along: k }, square: c.square, headingDeg: Math.round((((c.h % 360) + 360) % 360)) % 360 };
+  }
+  return null;
 }
 
 export interface SnappedPolyline {

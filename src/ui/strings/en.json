@@ -1186,6 +1186,8 @@
   "ghost.snapNode": "Snap to {label}",
   "ghost.snapEnd": "Continue taxiway",
   "ghost.snapSegment": "Split segment",
+  "ghost.snapSegmentSquare": "Split segment, square to taxiway",
+  "ghost.snapSegmentAngle": "Split segment, heading {hdg}\u00b0",
   "ghost.snapVertex": "Snap to corner",
   "ghost.snapRunwayEdge": "Snap to runway edge",
   "ghost.snapCenterline": "Snap to centerline",

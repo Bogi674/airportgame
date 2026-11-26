@@ -50,7 +50,7 @@ export const airfieldCodesSchema = z
     /** Runway works durations (docs/GAME_DESIGN.md section 6, runway tool). */
     runwayWorks: z.strictObject({ note: z.string(), areaFactor: z.number().positive(), approachDays: perApproach }),
     /** Taxiway tool snapping (docs/DESIGN_REVISION_2.md section 2.2). */
-    taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive() }),
+    taxiwayTool: z.strictObject({ snapRadiusM: z.number().positive(), minNodeGapM: z.number().positive(), angleStepDeg: z.number().positive(), angleTolDeg: z.number().positive(), squareTolDeg: z.number().positive() }),
     /** Snapping of the other drawing tools and the drag threshold (task T70). */
     snapTool: z.strictObject({ note: z.string(), radiusPx: z.number().positive(), minRadiusM: z.number().positive(), dragStartPx: z.number().positive() }),
     /** Construction grid along a runway or taxiway (task T42). */

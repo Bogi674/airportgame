@@ -44,7 +44,7 @@ export function markTip(m: SnapMark): string | null {
     case 'end':
       return tFormat('ghost.snapEnd', {});
     case 'segment':
-      return tFormat('ghost.snapSegment', {});
+      return m.label ?? tFormat('ghost.snapSegment', {});
     case 'vertex':
       return tFormat('ghost.snapVertex', {});
     case 'runwayEdge':
