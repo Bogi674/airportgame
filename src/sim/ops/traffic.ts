@@ -1606,7 +1606,7 @@ export class Traffic {
     if (st === AcState.LineUp) vmax = 6;
     let goal: number;
     if (last) {
-      goal = st === AcState.TaxiOut ? len - this.holdDistFor(i) : len;
+      goal = st === AcState.TaxiOut ? Math.max(0, len - this.holdDistFor(i)) : len;
       if (st === AcState.TaxiIn) goal = this.dockGoal(i, e, len);
       if (st === AcState.LineUp) goal = len;
       if (st === AcState.Holding) goal = this.dist[i];
@@ -1706,10 +1706,15 @@ export class Traffic {
     return s >= 0 && s < this.standRoadFactor.length ? this.standRoadFactor[s] : 1;
   }
 
+  /**
+   * Center distance from the runway entry node at which a departure stops: the holding position line plus half
+   * the aircraft length, so the nose and not the center stops at the line.
+   */
   private holdDistFor(i: number): number {
     const idx = this.entryIdx[i];
-    for (const h of this.net.holds) if (h.entryIdx === idx) return h.holdDist;
-    return 60;
+    const half = AIRCRAFT[this.type[i]].dimensions.lengthM * 0.5;
+    for (const h of this.net.holds) if (h.entryIdx === idx) return h.holdDist + half;
+    return 60 + half;
   }
 
   private checkArrivedAtEnd(i: number, len: number, goal: number): void {

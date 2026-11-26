@@ -24,6 +24,28 @@ describe('single flight', () => {
     }
   });
 
+  it('holds a departure with its nose, not its center, at the runway holding position', () => {
+    const sim = ownedSim();
+    buildTestAirport(sim, { standsPerRow: 4 });
+    run(sim, { type: 'testArrival', typeIdx: idx('a320neo'), inTicks: 0, turnTicks: 1200 });
+    const t = sim.traffic;
+    let checked = false;
+    for (let ticks = 0; ticks < 30000 && !checked; ticks++) {
+      sim.step();
+      for (let i = 0; i < 256; i++) {
+        if (t.active[i] !== 1 || t.state[i] !== AcState.Holding) continue;
+        const hold = t.net.holds.find((h) => h.entryIdx === t.entryIdx[i]);
+        expect(hold).toBeDefined();
+        if (!hold) continue;
+        const centerM = Math.hypot(t.x[i] - t.net.nodeX[hold.node], t.y[i] - t.net.nodeY[hold.node]);
+        const noseM = centerM - AIRCRAFT[t.type[i]].dimensions.lengthM * 0.5;
+        expect(noseM).toBeGreaterThanOrEqual(hold.holdDist - 0.5);
+        checked = true;
+      }
+    }
+    expect(checked).toBe(true);
+  });
+
   it('refuses a flight the runway cannot take and names the limit', () => {
     const sim = ownedSim();
     buildTestAirport(sim, { runwayLengthM: 1100, standsPerRow: 2, standCode: 'E' });
