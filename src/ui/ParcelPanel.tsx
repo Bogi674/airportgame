@@ -16,7 +16,7 @@ export function ParcelPanel({ onBuy }: Props) {
   const forSale = type !== ParcelType.Protected;
   const price = site.parcelPrice[p];
   return (
-    <div data-testid="parcel" style="position:absolute;right:12px;top:52px;width:240px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;line-height:1.5">
+    <div data-testid="parcel" class="pn z-right rp" style="overflow-y:auto;padding:12px;line-height:1.5">
       <div style="font-weight:600">
         {t('parcel.title')} {p}: {tDynamic(`parcel.type.${Math.min(type, PARCEL_TYPE_COUNT - 1)}`)}
       </div>
@@ -39,9 +39,9 @@ export function ParcelPanel({ onBuy }: Props) {
         </div>
       )}
       {owned ? (
-        <div style="color:#ffd24a">{t('parcel.owned')}</div>
+        <div style="color: var(--owned)">{t('parcel.owned')}</div>
       ) : !forSale ? (
-        <div style="color:var(--bad)">{t('parcel.notForSale')}</div>
+        <div style="color: var(--bad-text)">{t('parcel.notForSale')}</div>
       ) : (
         <button data-testid="buy" style="margin-top:4px" disabled={price > cash} onClick={() => onBuy(p)}>
           {t('parcel.buy')}

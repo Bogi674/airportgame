@@ -32,7 +32,7 @@ export function SitePreview({ site }: { site: SitePayload | null }) {
     const cx = SIZE / 2;
     const cy = SIZE / 2;
     const r = SIZE * 0.32;
-    ctx.fillStyle = token('--panel');
+    ctx.fillStyle = token('--surface');
     ctx.globalAlpha = 0.75;
     ctx.beginPath();
     ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
@@ -51,7 +51,7 @@ export function SitePreview({ site }: { site: SitePayload | null }) {
       ctx.fill();
     }
     const h = ((site.idealHeadingDeg - 90) * Math.PI) / 180;
-    ctx.strokeStyle = token('--text');
+    ctx.strokeStyle = token('--ink');
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(cx - Math.cos(h) * (r + 4), cy - Math.sin(h) * (r + 4));

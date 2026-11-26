@@ -7,7 +7,8 @@ interface E2ECamera {
 }
 
 interface E2EGame {
-  airfield: { runways: { lengthM: number; code: string }[]; taxiways: unknown[]; aprons: unknown[]; stands: unknown[]; holding: unknown[] };
+  airfield: { runways: { lengthM: number; code: string }[]; taxiways: { points: { x: number; y: number }[] }[]; aprons: unknown[]; stands: unknown[]; holding: unknown[] };
+  alertLog: { text: string }[];
   cash: number;
   tick: number;
   screen: string;

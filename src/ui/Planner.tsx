@@ -32,7 +32,7 @@ export function AirlinesSheet({ send }: Props) {
   if (!b) return null;
   return (
     <Sheet title={t('airlines.title')} testId="sheet-airlines">
-      <div style="color:var(--muted);font-size:12px;margin-bottom:8px" data-testid="airline-stars">
+      <div style="color:var(--ink-2);font-size:12px;margin-bottom:8px" data-testid="airline-stars">
         {tFormat('airlines.stars', { n: b.stars, pax: b.paxScore, air: b.airlineScore })}
       </div>
       <div style="display:grid;gap:8px">
@@ -53,16 +53,16 @@ function AirlineRow({ a, b, send }: { a: Airline; b: BusinessPayload; send(cmd: 
     <div data-testid={`airline-${a.id}`} style="display:grid;grid-template-columns:1.4fr 1.6fr 1fr 1.6fr;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:10px">
       <div style="min-width:0">
         <div style="font-weight:600">{a.name}</div>
-        <div style="font-size:12px;color:var(--muted)">
+        <div style="font-size:12px;color:var(--ink-2)">
           {tDynamic(`airlines.scope.${a.scope}`)}
           {hub ? `, ${tFormat('airlines.hub', { hub })}` : ''}
         </div>
       </div>
       <div style="font-size:12px;min-width:0">
         {t('airlines.fleet')}: {a.fleet.map((f) => AIRCRAFT[f].name).join(', ')}
-        <div style="color:var(--muted)">{tFormat('airlines.stats', { flights: a.flights, pax: formatInt(a.pax) })}</div>
+        <div style="color:var(--ink-2)">{tFormat('airlines.stats', { flights: a.flights, pax: formatInt(a.pax) })}</div>
         {a.signed && (
-          <div style="color:var(--muted)" data-testid={`airline-happy-${a.id}`}>
+          <div style="color:var(--ink-2)" data-testid={`airline-happy-${a.id}`}>
             {t('airlines.happiness')}: {Math.round(a.happiness)}, {tFormat('airlines.series', { n: count })}
           </div>
         )}
@@ -79,12 +79,12 @@ function AirlineRow({ a, b, send }: { a: Airline; b: BusinessPayload; send(cmd: 
       </label>
       <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap">
         {locked ? (
-          <span style="color:var(--warn);font-size:12px">{tFormat('airlines.need', { n: a.minRating })}</span>
+          <span style="color: var(--warn-text);font-size:12px">{tFormat('airlines.need', { n: a.minRating })}</span>
         ) : a.signed ? (
           <button onClick={() => send({ type: 'signAirline', airlineId: a.id, sign: false })}>{t('airlines.end')}</button>
         ) : (
           <>
-            <span style="font-size:12px;color:var(--muted)">{tFormat('airlines.offer', { n: offer })}</span>
+            <span style="font-size:12px;color:var(--ink-2)">{tFormat('airlines.offer', { n: offer })}</span>
             <button data-testid={`sign-${a.id}`} onClick={() => send({ type: 'signAirline', airlineId: a.id, sign: true })}>
               {t('airlines.sign')}
             </button>
@@ -254,7 +254,7 @@ export function PlannerSheet({ send }: Props) {
           <input data-testid="auto-plan" type="checkbox" checked={b.autoStands} onChange={(e) => send({ type: 'setAutoStands', on: (e.target as HTMLInputElement).checked })} />
           <span>{t('stands.auto')}</span>
         </label>
-        <span style="color:var(--muted);font-size:12px">{t('slots.help')}</span>
+        <span style="color:var(--ink-2);font-size:12px">{t('slots.help')}</span>
       </div>
       {signed.size === 0 && <div>{t('slots.noAirline')}</div>}
       {signed.size > 0 && af.stands.length === 0 && <div>{t('slots.noStand')}</div>}

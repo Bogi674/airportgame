@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HUD Popovers (DESIGN_REVISION_6_UI reference)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&amp;family=Doto:wght@900&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1C58C7}a:hover{color:#0F2240}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit}
+.n{font-variant-numeric:tabular-nums}
+.dot{font-family:Doto,monospace;font-weight:900;line-height:1}
+.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.pn{background:#FFFFFF;border-radius:16px;box-shadow:0 0 0 1.5px #D3E2F7,0 4px 0 #C2D5EF,0 14px 28px rgba(15,34,64,.16);box-sizing:border-box;position:relative}
+.tbar{height:40px;display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;color:#FFFFFF;font-size:10.5px;font-weight:600;border-radius:16px 16px 0 0;box-sizing:border-box;flex:none}
+.xb{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:#FFFFFF;flex:none}
+.btn{height:34px;padding:0 14px;border-radius:10px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;text-decoration:none;white-space:nowrap}
+.bb{background:#2F7BFF;color:#FFFFFF;box-shadow:0 3px 0 #1C58C7}
+a.bb:hover{color:#FFFFFF;background:#3C86FF}
+.bw{background:#FFFFFF;color:#0F2240;box-shadow:inset 0 0 0 1.5px #D3E2F7,0 3px 0 #D3E2F7}
+a.bw:hover{color:#0F2240;background:#F5F9FF}
+.br{background:#E5484D;color:#FFFFFF;box-shadow:0 3px 0 #B4232A}
+.lbl{font-size:9px;color:#4B5E7E}
+.cap{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#4B5E7E}
+.well{background:#F2F7FF;border-radius:12px;box-shadow:inset 0 0 0 1.5px #DCE8FA;box-sizing:border-box}
+.seg{display:flex;gap:2px;padding:3px;border-radius:10px;background:#EAF2FF;box-sizing:border-box}
+.sg{flex:1;min-width:0;height:26px;padding:0 6px;border-radius:8px;font-size:9.5px;font-weight:600;color:#4B5E7E;white-space:nowrap}
+.sg[aria-pressed=true]{background:#2F7BFF;color:#FFFFFF;box-shadow:0 2px 0 #1C58C7}
+.sw{position:relative;width:36px;height:20px;border-radius:999px;background:#C9D6E8;flex:none}
+.sw span{position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw[aria-checked=true]{background:#2F7BFF}
+.sw[aria-checked=true] span{left:18px}
+.new{background:#EDE9FE;color:#5B21B6;font-size:9px;font-weight:700;letter-spacing:.06em;border-radius:999px;padding:2px 6px;white-space:nowrap;flex:none}
+.tbd{background:#EEF2F7;color:#4B5E7E;font-size:9px;font-weight:700;letter-spacing:.06em;border-radius:999px;padding:2px 6px;white-space:nowrap;flex:none}
+.led{background-color:#0F2240;background-image:radial-gradient(circle,#1B3766 1.3px,transparent 1.6px);background-size:7px 7px;border-radius:14px;box-shadow:inset 0 0 0 2px #1B3766,0 4px 0 #091733;box-sizing:border-box}
+.perf{height:12px;background-image:radial-gradient(circle,#DCE8FA 2.5px,transparent 3px);background-size:12px 12px;background-position:center}
+.bar{background:repeating-linear-gradient(90deg,#0F2240 0 2px,transparent 2px 4px,#0F2240 4px 7px,transparent 7px 9px,#0F2240 9px 10px,transparent 10px 13px,#0F2240 13px 16px,transparent 16px 18px)}
+.screw{position:absolute;width:7px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#FFFFFF 0,#B7C6DB 70%);box-shadow:0 0 0 1px rgba(15,34,64,.15)}
+.clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pill{height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:10px;background:#F1F6FF;box-shadow:inset 0 0 0 1.5px #DCE8FA;box-sizing:border-box;flex:none;font-size:10.5px;font-weight:700;white-space:nowrap}
+.hb{height:32px;min-width:32px;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;border-radius:10px;box-sizing:border-box;flex:none;font-size:10px;font-weight:700}
+.hb:hover,.pill:hover{background:#E6F0FF}
+.vd{width:1.5px;height:24px;background:#E3EDFB;flex:none}
+.rb{width:36px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;position:relative;flex:none}
+.rb:hover{background:#EAF2FF}
+.rdot{position:absolute;right:3px;top:3px;width:7px;height:7px;border-radius:50%;background:#7C3AED;box-shadow:0 0 0 1.5px #FFFFFF}
+.rdiv{width:28px;height:1.5px;background:#E3EDFB;margin:2px 0;flex:none}
+.sp{width:26px;height:26px;border-radius:8px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;color:#4B5E7E;flex:none}
+.sp[aria-pressed=true]{background:#2F7BFF;color:#FFFFFF;box-shadow:0 2px 0 #1C58C7}
+.tk{height:34px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:10px;font-size:10px;font-weight:600;color:#0F2240;text-decoration:none;white-space:nowrap;flex:none}
+.tk:hover{background:#EAF2FF;color:#0F2240}
+.tk[aria-current=true]{background:#2F7BFF;color:#FFFFFF;box-shadow:0 3px 0 #1C58C7}
+.pop{position:absolute;top:42px;background:#FFFFFF;border-radius:14px;box-shadow:0 0 0 1.5px #D3E2F7,0 4px 0 #C2D5EF,0 16px 30px rgba(15,34,64,.2);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;z-index:3}
+.pv{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pv b{font-size:12px;font-weight:700;line-height:1.15;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pv b small{font-size:9px;font-weight:600;margin-left:1px}
+.tile{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:12px;background:#FFFFFF;box-shadow:inset 0 0 0 1.5px #DCE8FA,0 3px 0 #DCE8FA;text-align:left;box-sizing:border-box;height:112px;width:100%}
+.tile:hover{box-shadow:inset 0 0 0 1.5px #9FC2F7,0 3px 0 #9FC2F7}
+.thumb{height:40px;border-radius:9px;background:#EAF8FA;display:flex;align-items:center;justify-content:center;color:#0B7F8D;flex:none}
+.tname{font-size:9.5px;font-weight:700;line-height:1.2;height:28px;overflow:hidden}
+.vchip{font-size:9px;font-weight:700;color:#0B7F8D;background:#E0F5F8;border-radius:999px;padding:2px 7px;display:inline-flex;align-items:center;gap:2px;white-space:nowrap;align-self:flex-start}
+.lane{width:6px;height:22px;border-radius:2px;background:#8FA3BF}
+.chk{height:26px;display:flex;align-items:center;gap:8px;font-size:10px;cursor:pointer}
+.chk input{width:15px;height:15px;margin:0;accent-color:#2F7BFF}
+.desk{width:36px;height:16px;background:#5A6B85;border-radius:3px}
+
+</style>
+<style>html,body{margin:0;background:#1d2633} body>div{margin:0 auto}</style>
+</head>
+<body>
+<!-- Static reference for docs/DESIGN_REVISION_6_UI.md. Viewport 1240 x 400. Copy values, not markup. -->
+<div style="width:1240px;height:400px;position:relative;overflow:hidden;background:#EEF4FB;font-family:Rubik,system-ui,sans-serif;color:#0F2240">
+<div style="position:absolute;left:40px;top:56px;width:240px">
+<span class="cap" style="position:absolute;left:0;top:-28px">Weather, on hover</span>
+<div style="position:relative"><button class="hb" style="background:#FFFFFF;box-shadow:0 0 0 1.5px #DCE8FA;color:#2F7BFF"><svg class="i" style="width:17px;height:17px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 19h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 19z"/><path d="M16 3v1.5M20.5 5.5l-1 1M22 10h-1.5"/></svg><span class="n" style="color:#0F2240">24°</span></button><div class="pop" style="left:0;width:240px">
+<div style="display:flex;align-items:center;gap:10px"><span style="width:44px;height:44px;border-radius:12px;background:#EAF2FF;color:#2F7BFF;display:flex;align-items:center;justify-content:center"><svg class="i" style="width:24px;height:24px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 19h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 19z"/><path d="M16 3v1.5M20.5 5.5l-1 1M22 10h-1.5"/></svg></span><span style="display:flex;flex-direction:column"><span class="n" style="font-size:18px;font-weight:800;line-height:1">24°C</span><span class="lbl">Partly cloudy</span></span></div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+<div class="well" style="padding:6px 8px"><span class="pv"><span class="lbl">Wind</span><b>090<small> 12 kt</small></b></span></div>
+<div class="well" style="padding:6px 8px"><span class="pv"><span class="lbl">Runway in use</span><b>09</b></span></div>
+<div class="well" style="padding:6px 8px"><span class="pv"><span class="lbl">Visibility</span><b>10<small> km</small></b></span></div>
+<div class="well" style="padding:6px 8px"><span class="pv"><span class="lbl">Crosswind</span><b style="color:#16834F">2<small> kt</small></b></span></div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;font-size:9px;font-weight:600;color:#1C58C7;background:#EAF2FF;border-radius:10px;padding:7px 9px"><svg class="i" style="width:15px;height:15px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 16h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 16z"/><path d="M8 19l-1 2M12 19l-1 2M16 19l-1 2"/></svg>Rain expected at 18:00</div>
+</div></div>
+</div><div style="position:absolute;left:330px;top:56px;width:220px">
+<span class="cap" style="position:absolute;left:0;top:-28px">Aircraft, on click</span>
+<div style="position:relative"><button class="pill" style="background:#E6F0FF;box-shadow:inset 0 0 0 1.5px #2F7BFF"><span style="color:#2F7BFF;display:flex"><svg style="width:15px;height:15px;flex:none;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg></span><span class="n">18</span><svg class="i" style="width:12px;height:12px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="pop" style="left:0;width:220px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:10px;font-weight:700">Aircraft at airport</span><span class="n" style="font-size:15px;font-weight:800">18</span></div>
+<div style="display:grid;grid-template-columns:26px minmax(0,1fr) 22px;gap:8px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">S</span><span style="display:flex;flex-direction:column;gap:3px;min-width:0"><span class="lbl clip">Light and turboprop</span><span style="height:6px;border-radius:3px;background:#EAF2FF;position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:44%;background:#2F7BFF;border-radius:3px"></span></span></span><span class="n" style="text-align:right;font-size:11.5px;font-weight:700">4</span></div><div style="display:grid;grid-template-columns:26px minmax(0,1fr) 22px;gap:8px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">M</span><span style="display:flex;flex-direction:column;gap:3px;min-width:0"><span class="lbl clip">Narrowbody</span><span style="height:6px;border-radius:3px;background:#EAF2FF;position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:100%;background:#2F7BFF;border-radius:3px"></span></span></span><span class="n" style="text-align:right;font-size:11.5px;font-weight:700">9</span></div><div style="display:grid;grid-template-columns:26px minmax(0,1fr) 22px;gap:8px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">L</span><span style="display:flex;flex-direction:column;gap:3px;min-width:0"><span class="lbl clip">Widebody</span><span style="height:6px;border-radius:3px;background:#EAF2FF;position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:44%;background:#2F7BFF;border-radius:3px"></span></span></span><span class="n" style="text-align:right;font-size:11.5px;font-weight:700">4</span></div><div style="display:grid;grid-template-columns:26px minmax(0,1fr) 22px;gap:8px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">XL</span><span style="display:flex;flex-direction:column;gap:3px;min-width:0"><span class="lbl clip">Jumbo</span><span style="height:6px;border-radius:3px;background:#EAF2FF;position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:11%;background:#2F7BFF;border-radius:3px"></span></span></span><span class="n" style="text-align:right;font-size:11.5px;font-weight:700">1</span></div>
+<div class="lbl" style="display:flex;justify-content:space-between;border-top:1.5px solid #EAF2FF;padding-top:8px"><span>12 parked, 6 moving</span><a href="#" style="font-size:9px;font-weight:600">Flights</a></div>
+</div></div>
+</div><div style="position:absolute;left:600px;top:56px;width:240px">
+<span class="cap" style="position:absolute;left:0;top:-28px">Stands, on click</span>
+<div style="position:relative"><button class="pill" style="background:#E6F0FF;box-shadow:inset 0 0 0 1.5px #2F7BFF"><span style="color:#2F7BFF;display:flex"><svg class="i" style="width:15px;height:15px;" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M12 7v8M9 11h6"/></svg></span><span class="n">24<span style="color:#4B5E7E;font-weight:600">/32</span></span><svg class="i" style="width:12px;height:12px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="pop" style="left:0;width:240px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:10px;font-weight:700">Stand occupancy</span><span class="n" style="font-size:15px;font-weight:800">24<span style="font-size:10px;color:#4B5E7E">/32</span></span></div>
+<div class="lbl" style="display:grid;grid-template-columns:30px repeat(3,minmax(0,1fr));gap:6px"><span>Size</span><span style="text-align:right">Free</span><span style="text-align:right">Used</span><span style="text-align:right">Total</span></div>
+<div style="display:grid;grid-template-columns:30px repeat(3,minmax(0,1fr));gap:6px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">S</span><span class="n" style="text-align:right;font-size:11px;font-weight:700;color:#16834F">3</span><span class="n" style="text-align:right;font-size:11px;font-weight:700">5</span><span class="n" style="text-align:right;font-size:11px;font-weight:600;color:#4B5E7E">8</span></div><div style="display:grid;grid-template-columns:30px repeat(3,minmax(0,1fr));gap:6px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">M</span><span class="n" style="text-align:right;font-size:11px;font-weight:700;color:#16834F">2</span><span class="n" style="text-align:right;font-size:11px;font-weight:700">12</span><span class="n" style="text-align:right;font-size:11px;font-weight:600;color:#4B5E7E">14</span></div><div style="display:grid;grid-template-columns:30px repeat(3,minmax(0,1fr));gap:6px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">L</span><span class="n" style="text-align:right;font-size:11px;font-weight:700;color:#16834F">2</span><span class="n" style="text-align:right;font-size:11px;font-weight:700">6</span><span class="n" style="text-align:right;font-size:11px;font-weight:600;color:#4B5E7E">8</span></div><div style="display:grid;grid-template-columns:30px repeat(3,minmax(0,1fr));gap:6px;align-items:center"><span style="font-size:9px;font-weight:700;background:#EAF2FF;color:#1C58C7;border-radius:6px;text-align:center;padding:2px 0">XL</span><span class="n" style="text-align:right;font-size:11px;font-weight:700;color:#16834F">1</span><span class="n" style="text-align:right;font-size:11px;font-weight:700">1</span><span class="n" style="text-align:right;font-size:11px;font-weight:600;color:#4B5E7E">2</span></div>
+<div class="lbl" style="border-top:1.5px solid #EAF2FF;padding-top:8px">Contact 10, remote 18, tie down 4</div>
+</div></div>
+</div><div style="position:absolute;left:890px;top:56px;width:300px">
+<span class="cap" style="position:absolute;left:0;top:-28px">Alerts bell, on click</span>
+<div style="position:relative"><button class="hb" style="background:#FFFFFF;box-shadow:0 0 0 1.5px #DCE8FA;position:relative"><svg class="i" style="width:17px;height:17px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg><span style="position:absolute;right:1px;top:1px;min-width:15px;height:15px;border-radius:8px;background:#E5484D;color:#FFFFFF;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span></button><div class="pop" style="left:0;width:300px">
+<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;font-weight:700">Alerts</span><button style="font-size:9px;font-weight:600;color:#1C58C7">Mark all read</button></div>
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="width:30px;height:30px;border-radius:9px;background:#FDF1DC;color:#9A5B00;display:flex;align-items:center;justify-content:center;flex:none"><svg class="i" style="width:15px;height:15px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg></span><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:10px;font-weight:600">Runway 09/27 wear at 72%</span><span class="lbl">Plan resurfacing within 14 days</span></span></div>
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="width:30px;height:30px;border-radius:9px;background:#FDE8E8;color:#C0262D;display:flex;align-items:center;justify-content:center;flex:none"><svg class="i" style="width:15px;height:15px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/></svg></span><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:10px;font-weight:600">Security queue over 15 min</span><span class="lbl">Add a lane or more officers</span></span></div>
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="width:30px;height:30px;border-radius:9px;background:#EAF2FF;color:#2F7BFF;display:flex;align-items:center;justify-content:center;flex:none"><svg style="width:15px;height:15px;flex:none;" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg></span><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:10px;font-weight:600">An airline wants 2 more slots</span><span class="lbl">Open Airlines to answer</span></span></div>
+</div></div>
+</div>
+</div>
+</body>
+</html>

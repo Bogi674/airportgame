@@ -7,9 +7,9 @@ import type { BagKind } from '@shared/baggageNodes';
 import type { BagRot } from '../tools/baggageTool';
 import type { FixtureRot } from '../tools/fixtureRot';
 
-export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish';
+export type Tool = 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'turnPad' | 'apron' | 'apronRemove' | 'apronExtend' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'road' | 'depot' | 'building' | 'demolish' | 'lineDemolish';
 
-export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone' | 'bagNode' | 'prop' | 'propRemove' | 'unit' | 'move';
+export type TerminalSub = 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'zone' | 'bagNode' | 'prop' | 'unit' | 'move';
 
 /**
  * A placed item being moved (T85): its building, the logical cell (fixture) or a point in grid meters (prop) that
@@ -33,6 +33,24 @@ export function snapModeOf(modes: Partial<Record<Tool, SnapMode>>, tool: Tool): 
   return modes[tool] ?? 'grid';
 }
 
+/** What a line demolish stroke cuts (DEM2): every laid object has one. Later laid objects, such as conveyor belts, join this list. */
+export type LineKind = 'runway' | 'taxiway' | 'road';
+
+/** Bulldoze modes of UI revision 6: click one item, or drag a box and filter by type. */
+export type BulldozeMode = 'single' | 'area';
+
+/** Type rows of the area bulldoze checklist (UI revision 6 section 5.6 plus the airfield rows, owner 2026-11-25). */
+export const AREA_KINDS = ['walls', 'floors', 'doors', 'furniture', 'stations', 'amenities', 'decoration', 'info', 'zones', 'pavement', 'stands', 'runways', 'roads', 'buildings'] as const;
+export type AreaKind = (typeof AREA_KINDS)[number];
+
+/** A world box of the area bulldoze, corners in meters. */
+export interface AreaBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export interface Selection {
   kind: 'runway' | 'taxiway' | 'apron' | 'stand' | 'terminal' | 'bagNode' | 'tower' | 'road' | 'depot' | 'building';
   id: number;
@@ -45,9 +63,9 @@ interface ToolState {
   menuTab: string;
   menuOpen: boolean;
   /** Runway tool mode: build a new one, or extend or shorten an existing one at an end. */
-  runwayMode: 'new' | 'extend' | 'shorten';
+  runwayMode: 'new' | 'extend';
   /** Taxiway tool mode: build, extend from an end, trim an end back, or cut a section out. */
-  taxiMode: 'new' | 'extend' | 'trim' | 'cut';
+  taxiMode: 'new' | 'extend';
   /** Whether the bottom options panel is shown. The left rail toggles it. */
   barOpen: boolean;
   code: CodeLetter;
@@ -117,6 +135,15 @@ interface ToolState {
   propPick: { building: number; x: number; y: number } | null;
   /** A placed fixture or prop picked up by Move, following the cursor as a ghost until it is dropped (T85). */
   moving: MovingItem | null;
+  /** Line demolish (DEM2): the kind of laid object the stroke cuts. */
+  lineKind: LineKind;
+  /** The wall tool removes walls along the stroke instead of building them (DEM2). */
+  wallRemove: boolean;
+  bulldozeMode: BulldozeMode;
+  /** The box of the area bulldoze once dragged, or null while none is drawn. */
+  areaBox: AreaBox | null;
+  /** Checked type rows of the area bulldoze. Floors start unchecked so a sweep never lifts a terminal floor by accident. */
+  areaFilter: Record<AreaKind, boolean>;
   /** What the active tool wants the player to do next. */
   hint: string | null;
   /** Why the preview is invalid, with the parcels to buy when land is the problem. */
@@ -176,6 +203,11 @@ export const useToolStore = create<ToolState>((set) => ({
   pickAt: null,
   propPick: null,
   moving: null,
+  lineKind: 'runway',
+  wallRemove: false,
+  bulldozeMode: 'single',
+  areaBox: null,
+  areaFilter: { walls: true, floors: false, doors: true, furniture: true, stations: true, amenities: true, decoration: true, info: true, zones: false, pavement: false, stands: true, runways: false, roads: true, buildings: true },
   hint: null,
   problem: null,
   buy: null,

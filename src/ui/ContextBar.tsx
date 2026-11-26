@@ -17,7 +17,7 @@ import { pickedStandSurface } from './tools/controller';
 import { ClassHelp } from './ClassHelp';
 import { Icon } from './icons';
 import { noticeText, t, tDynamic, tFormat } from './strings';
-import { bottomCenter } from './layout';
+import { ABOVE_TASKBAR_PX, bottomCenter } from './layout';
 
 interface Props {
   send(cmd: Command): void;
@@ -55,7 +55,7 @@ function GridStatus({ tool }: { tool: Tool }) {
   const offered = s.gridId === null ? null : gridsFor(af).find((g) => g.id === s.gridId) ?? null;
   const live: SnapMode = s.altHeld ? 'free' : snapModeOf(s.snapMode, tool);
   return (
-    <span data-testid="snap-mode-label" style="color:var(--muted);font-size:11px">
+    <span data-testid="snap-mode-label" style="color:var(--ink-2);font-size:11px">
       {t('opt.snap')}: {tDynamic(`snap.${live}`)}, {offered === null ? t('grid.none').toLowerCase() : gridText(offered, af)}
     </span>
   );
@@ -108,18 +108,18 @@ function Num({ label, value, min, max, onChange, testId }: { label: string; valu
 export function ContextBar({ send }: Props) {
   const s = useToolStore();
   // The build menu is a flyout beside the rail (T36): the bar keeps the bottom edge and moves right of the flyout.
-  const bottom = 12;
+  const bottom = ABOVE_TASKBAR_PX;
   const flyout = useGameStore((g) => g.sheet === null) && s.menuOpen && s.category !== null;
   if (s.tool === 'select' && !s.hint) return null;
   const paved = (surface: Surface): boolean => surface === 'asphalt' || surface === 'concrete';
   const tiers = SURFACE_SPEC[s.surface].pcrTiers;
   const apronTool = s.tool === 'apron' || s.tool === 'apronRemove' || s.tool === 'apronExtend';
-  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower' && s.tool !== 'apronRemove' && s.tool !== 'apronExtend';
+  const showPavement = s.tool !== 'select' && s.tool !== 'demolish' && s.tool !== 'lineDemolish' && s.tool !== 'stands' && s.tool !== 'gaBlock' && s.tool !== 'terminal' && s.tool !== 'turnPad' && s.tool !== 'tower' && s.tool !== 'apronRemove' && s.tool !== 'apronExtend';
   const showCode = showPavement && s.tool !== 'apron';
   const taxiTool = s.tool === 'taxiway' || s.tool === 'taxilane';
   const problemText = s.problem ? noticeText(s.problem.code, Object.fromEntries(Object.entries(s.problem.args ?? {}).map(([k, v]) => [k, String(v)]))) : null;
   const problemBlock = problemText ? (
-    <div data-testid="problem" role="status" style="color:var(--bad);font-size:12px;display:flex;gap:8px;align-items:center">
+    <div data-testid="problem" role="status" style="color: var(--bad-text);font-size:12px;display:flex;gap:8px;align-items:center">
       <span>{problemText}</span>
       {s.problem?.code === 'notOwned' && s.buy && s.buy.ids.length > 0 && (
         <button data-testid="buy-land" onClick={() => send({ type: 'buyParcels', ids: s.buy?.ids ?? [] })}>
@@ -138,16 +138,16 @@ export function ContextBar({ send }: Props) {
   return (
     <div
       data-testid="context-bar"
-      style={`position:absolute;${bottomCenter(flyout, 900)};bottom:${bottom}px;box-sizing:border-box;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
+      style={`position:absolute;${bottomCenter(flyout, 900)};bottom:${bottom}px;box-sizing:border-box;padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:6px`}
     >
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <strong style="align-self:center">{tDynamic(`tool.${s.tool}`)}</strong>
         {GRID_TOOLS.includes(s.tool) && <GridControls tool={s.tool} />}
         {s.tool === 'runway' && (
-          <Select label={t('opt.mode')} value={s.runwayMode} testId="opt-runway-mode" options={(['new', 'extend', 'shorten'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ runwayMode: v, hint: null, problem: null })} />
+          <Select label={t('opt.mode')} value={s.runwayMode} testId="opt-runway-mode" options={(['new', 'extend'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ runwayMode: v, hint: null, problem: null })} />
         )}
         {(s.tool === 'taxiway' || s.tool === 'taxilane') && (
-          <Select label={t('opt.mode')} value={s.taxiMode} testId="opt-taxi-mode" options={(['new', 'extend', 'trim', 'cut'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ taxiMode: v, hint: null, problem: null })} />
+          <Select label={t('opt.mode')} value={s.taxiMode} testId="opt-taxi-mode" options={(['new', 'extend'] as const).map((m) => ({ v: m, text: tDynamic(`mode.${m}`) }))} onChange={(v) => s.set({ taxiMode: v, hint: null, problem: null })} />
         )}
         {showCode && (
           <Select
@@ -215,8 +215,8 @@ export function ContextBar({ send }: Props) {
         )}
         {s.tool === 'terminal' && (
           <>
-            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture', 'erase'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'propRemove' | 'unit' | 'move'>[]).map((sub) => (
-              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
+            {(['foundation', 'floor', 'wall', 'door', 'zone', 'fixture'] as Exclude<TerminalSub, 'bagNode' | 'prop' | 'unit' | 'move'>[]).map((sub) => (
+              <button key={sub} data-testid={`tsub-${sub}`} aria-pressed={s.tSub === sub} title={tDynamic(`terminal.sub.${sub}`)} onClick={() => s.set({ tSub: sub, wallRemove: false, hint: `hint.terminal.${sub}`, problem: null, buy: null })} style="display:inline-flex;align-items:center;gap:6px">
                 <Icon name={sub} size={15} />
                 {tDynamic(`terminal.sub.${sub}`)}
               </button>
@@ -329,7 +329,7 @@ export function ContextBar({ send }: Props) {
       {(s.hint || GRID_TOOLS.includes(s.tool)) && (
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           {GRID_TOOLS.includes(s.tool) && <GridStatus tool={s.tool} />}
-          {s.hint && <div style="color:var(--muted);font-size:12px">{tDynamic(s.hint)}</div>}
+          {s.hint && <div style="color:var(--ink-2);font-size:12px">{tDynamic(s.hint)}</div>}
         </div>
       )}
       {problemBlock}

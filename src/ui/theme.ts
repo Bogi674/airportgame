@@ -12,7 +12,7 @@ function stored(): Theme | null {
 }
 
 export function currentTheme(): Theme {
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
 export function setTheme(theme: Theme): void {
@@ -43,9 +43,7 @@ export function setReducedMotion(on: boolean): void {
   }
 }
 
-/** Saved choice first, then the system preference. */
+/** Saved choice first, else light: UI revision 6 makes light the default theme. */
 export function initTheme(): void {
-  const saved = stored();
-  const prefersLight = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches;
-  document.documentElement.dataset.theme = saved ?? (prefersLight ? 'light' : 'dark');
+  document.documentElement.dataset.theme = stored() ?? 'light';
 }

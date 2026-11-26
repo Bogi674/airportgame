@@ -69,10 +69,10 @@ export async function playSmallAirport(page: Page): Promise<void> {
   await expect.poll(landing, { timeout: 90_000, intervals: [1000] }).toBeGreaterThan(0);
 
   // The finance sheet and the flights board show it.
-  await page.getByTestId('open-finance').click();
+  await page.getByTestId('task-finance').click();
   await expect(page.getByTestId('sheet-finance')).toContainText('Landing fees');
   await page.getByTestId('sheet-close').click();
-  await page.getByTestId('open-flights').click();
+  await page.getByTestId('task-flights').click();
   await expect(page.getByTestId('sheet-flights')).toBeVisible();
   await page.getByTestId('sheet-close').click();
 

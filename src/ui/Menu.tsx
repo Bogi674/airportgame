@@ -100,7 +100,7 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
   };
   const start = (): void => onStart(seed.trim() || 'GOLDEN-0001', preset, mode, { name: name.trim() || defaultName(seed), iata: codes.iata, icao: codes.icao, color });
 
-  const panel = 'padding:22px 26px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box';
+  const panel = 'padding:22px 26px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box';
   const latest = saves[0];
   return (
     <div data-testid="menu" style="position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 55%,transparent);z-index:50;overflow:auto">
@@ -108,20 +108,20 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
         <div style={`${panel};position:absolute;left:48px;top:50%;transform:translateY(-50%);width:280px;max-width:calc(100vw - 32px)`}>
           <div>
             <div style="font-size:28px;font-weight:700">{t('menu.title')}</div>
-            <div style="color:var(--muted)">{t('menu.tagline')}</div>
+            <div style="color:var(--ink-2)">{t('menu.tagline')}</div>
           </div>
           {error && (
-            <div role="alert" style="color:var(--bad)">
+            <div role="alert" style="color: var(--bad-text)">
               {error}
             </div>
           )}
-          {!storage && <div style="color:var(--warn);font-size:12px">{t('menu.storageBlocked')}</div>}
+          {!storage && <div style="color: var(--warn-text);font-size:12px">{t('menu.storageBlocked')}</div>}
           {latest && (
             <button data-testid="menu-continue" onClick={() => onLoad(latest)} style="padding:8px;display:flex;gap:10px;align-items:center;text-align:left">
               {latest.thumb ? <img src={latest.thumb} alt="" width={64} height={40} style="border-radius:6px;flex:none;object-fit:cover" /> : null}
               <span style="display:flex;flex-direction:column;min-width:0">
                 <b>{t('menu.continue')}</b>
-                <span style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{tFormat('menu.continueFrom', { name: latest.name, date: formatClock(latest.tick) })}</span>
+                <span style="font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{tFormat('menu.continueFrom', { name: latest.name, date: formatClock(latest.tick) })}</span>
               </span>
             </button>
           )}
@@ -140,8 +140,8 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
           <button data-testid="menu-credits" onClick={() => setView('credits')} style="padding:10px">
             {t('menu.credits')}
           </button>
-          <div style="color:var(--muted);font-size:12px">{t('menu.offline')}</div>
-          <div data-testid="menu-version" style="color:var(--muted);font-size:11px">{tFormat('menu.version', { v: pkg.version })}</div>
+          <div style="color:var(--ink-2);font-size:12px">{t('menu.offline')}</div>
+          <div data-testid="menu-version" style="color:var(--ink-2);font-size:11px">{tFormat('menu.version', { v: pkg.version })}</div>
         </div>
       )}
       {view !== 'main' && (
@@ -151,11 +151,11 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
               <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
                 <strong style="font-size:18px">{t(mode === 'sandbox' ? 'menu.newSandboxTitle' : 'menu.newCareerTitle')}</strong>
                 <span style="display:flex;gap:12px;font-size:12px">
-                  <span style={step === 1 ? 'color:var(--accent);font-weight:600' : 'color:var(--muted)'}>{t('menu.step.site')}</span>
-                  <span style={step === 2 ? 'color:var(--accent);font-weight:600' : 'color:var(--muted)'}>{t('menu.step.airport')}</span>
+                  <span style={step === 1 ? 'color:var(--accent);font-weight:600' : 'color:var(--ink-2)'}>{t('menu.step.site')}</span>
+                  <span style={step === 2 ? 'color:var(--accent);font-weight:600' : 'color:var(--ink-2)'}>{t('menu.step.airport')}</span>
                 </span>
               </div>
-              {mode === 'sandbox' && <div style="color:var(--muted);font-size:12px">{t('menu.sandboxHint')}</div>}
+              {mode === 'sandbox' && <div style="color:var(--ink-2);font-size:12px">{t('menu.sandboxHint')}</div>}
               {step === 1 && (
                 <div style="display:flex;gap:16px;flex-wrap:wrap">
                   <div style="flex:1 1 280px;display:flex;flex-direction:column;gap:10px;min-width:0">
@@ -167,18 +167,18 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
                           {t('site.shuffle')}
                         </button>
                       </div>
-                      <span style="color:var(--muted);font-size:12px">{t('menu.seedHint')}</span>
+                      <span style="color:var(--ink-2);font-size:12px">{t('menu.seedHint')}</span>
                     </label>
                     {PRESETS.map((p) => (
                       <button key={p} data-testid={`preset-${p}`} aria-pressed={preset === p} onClick={() => setPreset(p)} style={`text-align:left;padding:10px;${preset === p ? 'outline:2px solid var(--accent)' : ''}`}>
                         <div style="font-weight:600">{tDynamic(`site.preset.${p}`)}</div>
-                        <div style={`font-size:12px;${preset === p ? 'opacity:0.85' : 'color:var(--muted)'}`}>{PRESET_BLURB[p]}</div>
+                        <div style={`font-size:12px;${preset === p ? 'opacity:0.85' : 'color:var(--ink-2)'}`}>{PRESET_BLURB[p]}</div>
                       </button>
                     ))}
                   </div>
                   <div style="display:flex;flex-direction:column;gap:6px;align-items:center">
                     <SitePreview site={preview && preview.seed === (seed.trim() || 'GOLDEN-0001') && preview.preset === preset ? preview : null} />
-                    <span style="font-size:12px;color:var(--muted)">{t('menu.windRose')}</span>
+                    <span style="font-size:12px;color:var(--ink-2)">{t('menu.windRose')}</span>
                   </div>
                 </div>
               )}
@@ -230,7 +230,7 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
                       {BRAND_COLORS.map((c) => (
                         <button key={c} data-testid={`brand-${c.slice(1)}`} aria-label={c} aria-pressed={color === c} onClick={() => setColor(c)} style={`width:32px;height:32px;padding:0;border-radius:50%;background:${c};${color === c ? 'outline:3px solid var(--accent);outline-offset:2px' : ''}`} />
                       ))}
-                      <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)">
+                      <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink-2)">
                         <input type="color" aria-label={t('menu.brandPick')} value={color} onInput={(e) => setColor((e.target as HTMLInputElement).value)} style="width:36px;height:32px;padding:0" />
                         {t('menu.brandPick')}
                       </label>
@@ -257,7 +257,7 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
             <div data-testid="load-screen" style={`${panel};width:min(1000px,100%);max-height:calc(100vh - 48px)`}>
               <strong style="font-size:18px">{t('menu.load')}</strong>
               {error && (
-                <div role="alert" style="color:var(--bad)">
+                <div role="alert" style="color: var(--bad-text)">
                   {error}
                 </div>
               )}
@@ -296,9 +296,9 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
                                 {s.name}
                               </b>
                             )}
-                            <span style="font-size:12px;color:var(--muted)">{formatClock(s.tick)}</span>
-                            <span style="font-size:12px;color:var(--muted)">{tFormat('save.paxYear', { n: formatInt(s.paxYear ?? 0) })}</span>
-                            <span style="font-size:12px;color:var(--muted)">{tFormat('save.saved', { when: new Date(s.savedAt).toLocaleString() })}</span>
+                            <span style="font-size:12px;color:var(--ink-2)">{formatClock(s.tick)}</span>
+                            <span style="font-size:12px;color:var(--ink-2)">{tFormat('save.paxYear', { n: formatInt(s.paxYear ?? 0) })}</span>
+                            <span style="font-size:12px;color:var(--ink-2)">{tFormat('save.saved', { when: new Date(s.savedAt).toLocaleString() })}</span>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
                               <button data-testid="save-load" onClick={() => onLoad(s)}>
                                 {t('save.load')}
@@ -319,7 +319,7 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
                     )}
                     {g.auto.length > 0 && (
                       <div style="display:flex;flex-direction:column;gap:4px">
-                        <span style="font-size:12px;color:var(--muted)">{t('menu.autosaves')}</span>
+                        <span style="font-size:12px;color:var(--ink-2)">{t('menu.autosaves')}</span>
                         {g.auto.map((s) => (
                           <div key={s.id} data-testid="save-row" style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 8px;border:1px solid var(--line);border-radius:10px">
                             <span style="font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
@@ -365,7 +365,7 @@ export function Menu({ initialView, onStart, onLoad, onImport, onPreview, previe
             <div data-testid="credits" style={`${panel};width:min(460px,100%)`}>
               <strong style="font-size:18px">{t('menu.credits')}</strong>
               <p style="margin:0;line-height:1.5">{t('menu.creditsText')}</p>
-              <span style="color:var(--muted);font-size:12px">{tFormat('menu.version', { v: pkg.version })}</span>
+              <span style="color:var(--ink-2);font-size:12px">{tFormat('menu.version', { v: pkg.version })}</span>
               <div style="display:flex;justify-content:flex-end">
                 <button onClick={() => setView('main')}>{t('menu.back')}</button>
               </div>

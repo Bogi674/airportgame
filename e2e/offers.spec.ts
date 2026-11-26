@@ -50,7 +50,7 @@ function standOfSeries(page: Page, id: number): Promise<number> {
   }, id);
 }
 
-/** Drags a series with the mouse onto a planner row at about 08:00, and checks the drop mark while the pointer is over it. */
+/** Drags a series with the mouse onto a planner row at about 06:00, inside the sheet at 1280 px, and checks the drop mark while the pointer is over it. */
 async function dragOnto(page: Page, id: number, rowTestId: string, mark: 'drop-ok' | 'drop-bad'): Promise<void> {
   const row = page.getByTestId(rowTestId);
   await row.scrollIntoViewIfNeeded();
@@ -63,7 +63,7 @@ async function dragOnto(page: Page, id: number, rowTestId: string, mark: 'drop-o
   await page.mouse.move(sx, sy);
   await page.mouse.down();
   await page.mouse.move(sx + 8, sy + 8, { steps: 2 });
-  await page.mouse.move(grid.x + 8 * 72 + 6, grid.y + grid.height / 2, { steps: 12 });
+  await page.mouse.move(grid.x + 6 * 72 + 6, grid.y + grid.height / 2, { steps: 12 });
   await expect(page.getByTestId(mark)).toBeVisible();
   await page.mouse.up();
 }

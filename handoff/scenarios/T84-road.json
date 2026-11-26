@@ -9,7 +9,7 @@
   ],
   "camera": { "x": 3650, "y": 5430, "zoom": 3 },
   "actions": [
-    { "tool": "tool-handling" },
+    { "tool": "tool-flightops" }, { "tool": "menutab-depot" },
     { "tool": "card-road" },
     { "move": [3640, 5480] },
     { "wait": 300 },

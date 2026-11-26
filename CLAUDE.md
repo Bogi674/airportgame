@@ -13,6 +13,7 @@ Scope: **2D top down only**, desktop browsers. The simulation never depends on t
 | Doc | Read when |
 | --- | --- |
 | `ROADMAP.md` (repo root) | Always. What is built, the MVP 1 phases, task status and exit criteria. Work on one task at a time |
+| `docs/DESIGN_REVISION_6_UI.md` | First, for any menu, HUD, panel, build menu, popover, token, font or UI layout work. It overrides `docs/UI_DESIGN.md` sections 3, 4 and 5 where they disagree. Its renders are `docs/art/ui_rev6/*.png` and its reference markup is `docs/reference/ui-rev6/` |
 | `docs/DESIGN_REVISION_6.md` | First, for the check in desk sizes and footprint, the security lane level 1 look, and (slice 2, not built yet) doors and windows. It overrides revision 5 decision 2 for the check in desk |
 | `docs/DESIGN_REVISION_5.md` | First, for any terminal fixture, prop, furniture, zone, security exit, baggage node or circulation work. It points to `docs/TERMINAL_FIXTURES.md`, `docs/TERMINAL_ZONING.md` and `docs/BAGGAGE.md` and overrides older docs on those subjects |
 | `docs/DESIGN_REVISION_4.md` | First, for any stand, flight planning, airline, ground handling, supporting building, passenger, staff, tenant or event work. It overrides the revisions and docs below where they disagree |
@@ -55,7 +56,7 @@ Terse mode is always on for code work: no narration between tool calls, no recap
 
 ## Precedence
 
-When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_6.md` for the check in desk footprint, security level 1 art, doors and windows, then `docs/DESIGN_REVISION_5.md` for its subjects (terminal assets, zoning, baggage), then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
+When sources disagree: the user's latest message wins, then `docs/DESIGN_REVISION_6_UI.md` for its subjects (UI look, layout and tokens), then `docs/DESIGN_REVISION_6.md` for the check in desk footprint, security level 1 art, doors and windows, then `docs/DESIGN_REVISION_5.md` for its subjects (terminal assets, zoning, baggage), then `docs/DESIGN_REVISION_4.md`, then `docs/DESIGN_REVISION_3.md`, then `docs/DESIGN_REVISION_2.md`, then the older docs. Hard rules below still need the user's explicit approval to relax.
 
 ## Hard rules
 
@@ -137,7 +138,8 @@ npm run e2e        playwright smoke and visual tests
 
 One task per session, then a fresh session.
 
-0. For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user in one batch before editing any file, and log the answers in `handoff/QUESTIONS.md`. Never guess a gameplay rule.
+0. Every coding session loads the `antislop` skill (`.claude/skills/antislop/SKILL.md`, owner 2026-11-25) before any code, UI or copy is written, and checks each change against it before commit. Load `antislop-ui` for UI work, `antislop-code` for code comments and `antislop-copywriting` for UI strings and docs. Never skip it. Its release is in `.claude/skills/antislop/VERSION`; it comes from github.com/miqdadbadjuber/anti-slop under the MIT license. The vendored copy spells its em dashes as U+2014 or [em dash] so it passes hard rule 15.
+   For every code request, run the `grill-me` skill (`.claude/skills/grill-me/SKILL.md`) first. Settle the open decisions with the user in one batch before editing any file, and log the answers in `handoff/QUESTIONS.md`. Never guess a gameplay rule.
 1. Take the task from `ROADMAP.md`: the first `todo` row of the current phase whose dependencies are `done`, unless the user names one. Set it to `doing`.
 2. Read the design docs for the area, `handoff/PITFALLS.md`, and the spec in `handoff/tasks/<id>.md`. If the spec does not exist, write it from the design revision and the grill-me answers: goal, read first, decisions, numbered requirements, acceptance criteria.
 3. Write a short plan in `handoff/work/<id>.md` before changing more than three files. Cut the work into slices of at most about 150 changed lines: sim first, then render, then UI. Never leave a half wired feature visible to the player.

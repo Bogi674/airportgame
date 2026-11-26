@@ -50,7 +50,7 @@
    "tool": "tool-terminal"
   },
   {
-   "tool": "menutab-processing"
+   "tool": "tool-stations"
   },
   {
    "tool": "card-security"
@@ -97,7 +97,7 @@
    }
   },
   {
-   "tool": "tool-select"
+   "tool": "task-select"
   },
   {
    "wait": 300

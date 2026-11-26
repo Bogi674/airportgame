@@ -220,7 +220,7 @@ export function Thumb({ kind, icon }: { kind: string; icon: IconName }) {
     }
     default:
       return (
-        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)">
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-2)">
           <Icon name={icon} size={30} />
         </div>
       );

@@ -79,7 +79,7 @@ test('builds a runway, taxiway, apron and stands, and undoes them', async ({ pag
   await expect.poll(async () => (await counts()).t).toBe(1);
 
   // Inspect the runway.
-  await page.getByTestId('tool-select').click();
+  await page.getByTestId('task-select').click();
   const mid = await screenOf(page, 4800, 5400);
   await page.mouse.click(box.x + mid.x, box.y + mid.y);
   await expect(page.getByTestId('object-panel')).toContainText('Runway');
@@ -93,7 +93,7 @@ test('builds a runway, taxiway, apron and stands, and undoes them', async ({ pag
   await expect(page.getByTestId('snap-mode-label')).toContainText('none');
   await page.getByTestId('snap-mode-free').click();
   await expect(page.getByTestId('snap-mode-label')).toContainText('Free');
-  await page.getByTestId('tool-select').click();
+  await page.getByTestId('task-select').click();
 
   await page.waitForTimeout(1200);
   await page.screenshot({ path: 'test-results/airfield.png' });

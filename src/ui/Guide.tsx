@@ -26,7 +26,7 @@ export function Guide() {
   ];
   const all = steps.every((s) => s.done);
   return (
-    <div data-testid="guide" style="position:absolute;left:80px;top:72px;width:260px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.6">
+    <div data-testid="guide" class="pn z-flyout" style="padding:10px 12px;font-size:var(--fs-sm);line-height:1.6;overflow-y:auto;z-index:5">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <strong>{t('guide.title')}</strong>
         <button style="padding:0 6px" onClick={() => hide(true)}>
@@ -34,13 +34,13 @@ export function Guide() {
         </button>
       </div>
       {steps.map((s) => (
-        <div key={s.key} style={s.done ? 'color:var(--ok)' : ''}>
+        <div key={s.key} style={s.done ? 'color: var(--good-text)' : ''}>
           {s.done ? '✓' : '○'} {t(s.key)}
-          {!s.done && s.key === 'guide.terminal' && miss.filter((k) => k !== 'noAtc').map((k) => <div key={k} style="color:var(--muted);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
-          {!s.done && s.key === 'guide.atc' && miss.filter((k) => k === 'noAtc').map((k) => <div key={k} style="color:var(--muted);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
+          {!s.done && s.key === 'guide.terminal' && miss.filter((k) => k !== 'noAtc').map((k) => <div key={k} style="color:var(--ink-2);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
+          {!s.done && s.key === 'guide.atc' && miss.filter((k) => k === 'noAtc').map((k) => <div key={k} style="color:var(--ink-2);padding-left:16px">{tDynamic(`ready.${k}`)}</div>)}
         </div>
       ))}
-      {all && <div style="color:var(--ok)">{t('guide.done')}</div>}
+      {all && <div style="color: var(--good-text)">{t('guide.done')}</div>}
     </div>
   );
 }

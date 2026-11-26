@@ -32,6 +32,7 @@ import { padArea, padPolygon, padValue } from '@shared/turnPad';
 import { levelForRunways, runwayCapOf, towerBuildCost, towerLevelOf } from '@shared/towerBudget';
 import { towerBlocked, towersOverlap } from '@shared/towerGeom';
 import { closestOnSegment, segmentIntersection, type Pt } from '@shared/geom';
+import { arcLengthAt, cutPolyline } from '@shared/polylineCut';
 import { checkPolygon, checkStrip, endpoint, polygonArea, stripGradingCost, type BuildContext, type Problem } from '@shared/validate';
 import { excludedType, isPaved, polylineLength, runwayUnitCost, runwayWorksDays, surfaceAllowsCode, surfaceChange, surfaceRank, tierOf, worksTicks, type RunwayEdit } from '@shared/surfaceRules';
 import { snapPolyline, TAXI_TOOL, type SnapHit } from '@shared/pavement/snap';
@@ -376,6 +377,8 @@ export class Airfield {
         return this.turnPad(cmd, ctx, cash, env);
       case 'editTaxiway':
         return this.editTaxiway(cmd, ctx, cash);
+      case 'cutRoad':
+        return this.cutRoad(cmd);
       case 'undo':
         return this.undo(cash);
       case 'redo':
@@ -1474,6 +1477,35 @@ export class Airfield {
       t.cost = Math.round(perM * kept);
     }
     this.refresh();
+    return { cashDelta: refund };
+  }
+
+  /**
+   * Line demolish of a service road (DEM2): removes the stretch between the points of the road nearest the two
+   * ends of the stroke. What is left on each side stays as its own road if it is at least the minimum segment long.
+   * The refund is the usual share of the removed length's part of the road's cost, and undo puts the road back whole.
+   */
+  private cutRoad(cmd: Extract<Command, { type: 'cutRoad' }>): BuildResult {
+    const road = this.roadList.find((x) => x.id === cmd.id);
+    if (!road) return { code: 'nothingThere' };
+    const reach = GROUND.road.widthM * 2;
+    const s1 = arcLengthAt(road.points, cmd.at, reach);
+    const s2 = arcLengthAt(road.points, cmd.at2, reach);
+    if (s1 === null || s2 === null) return { code: 'nothingThere' };
+    if (Math.abs(s2 - s1) < 1) return { code: 'segmentTooShort', args: { min: 1 } };
+    const total = polylineLength(road.points);
+    const cut = cutPolyline(road.points, s1, s2, GROUND.road.minSegmentM);
+    const perM = total > 0 ? road.cost / total : 0;
+    const pieces: Item[] = [];
+    for (const part of [cut.first, cut.last]) {
+      if (part) pieces.push({ type: 'road', obj: { id: this.nextId++, cost: Math.round(perM * polylineLength(part)), points: part } });
+    }
+    const refund = Math.round(perM * cut.removedM * REFUND_SHARE);
+    const replaced: Item[] = [{ type: 'road', obj: road }];
+    this.removeItems(replaced);
+    this.addItems(pieces);
+    this.undoStack.push({ items: pieces, added: true, cashDelta: refund, replaced });
+    this.redoStack.length = 0;
     return { cashDelta: refund };
   }
 

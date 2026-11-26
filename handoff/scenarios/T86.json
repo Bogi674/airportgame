@@ -82,7 +82,7 @@
       "tool": "tool-terminal"
     },
     {
-      "tool": "menutab-processing"
+      "tool": "tool-stations"
     },
     {
       "tool": "card-checkIn"
@@ -136,7 +136,7 @@
       }
     },
     {
-      "tool": "tool-select"
+      "tool": "task-select"
     },
     {
       "click": [
@@ -168,7 +168,7 @@
       }
     },
     {
-      "tool": "menu-item-demolish-yes"
+      "tool": "demolish-yes"
     },
     {
       "wait": 800

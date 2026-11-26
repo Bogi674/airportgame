@@ -25,7 +25,7 @@ export function PauseMenu({ onResume, onSave, onSaveAs, onLoad, onExport, onExit
   if (!open) return null;
   return (
     <div data-testid="pause-menu" role="dialog" aria-label={t('pause.title')} style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 60%,transparent);z-index:40;padding:16px;box-sizing:border-box">
-      <div style={`width:${view === 'settings' ? 'min(460px,100%)' : 'min(300px,100%)'};max-height:100%;overflow:auto;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box`}>
+      <div style={`width:${view === 'settings' ? 'min(460px,100%)' : 'min(300px,100%)'};max-height:100%;overflow:auto;padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box`}>
         <strong style="font-size:16px">{view === 'settings' ? t('pause.settings') : t('pause.title')}</strong>
         {view === 'main' && (
           <>
@@ -84,7 +84,7 @@ export function PauseMenu({ onResume, onSave, onSaveAs, onLoad, onExport, onExit
           </form>
         )}
         {view === 'settings' && <Settings autosave={autosave} onAutosave={onAutosave} onBack={() => setView('main')} />}
-        {saved && <div style="color:var(--ok);font-size:12px">{t('pause.saved')}</div>}
+        {saved && <div style="color: var(--good-text);font-size:12px">{t('pause.saved')}</div>}
       </div>
     </div>
   );

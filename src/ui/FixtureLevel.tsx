@@ -48,7 +48,7 @@ export function FixtureLevel({ grid, cell, name, send }: Props) {
           {tFormat('inspector.fixtureUpgrade', { name: tDynamic(`opt.level.${name}.${level + 1}`), cost: formatMoney(upgradeCost(name, level)), days: upgradeDays(name) })}
         </button>
       ) : (
-        <div style="color:var(--muted);font-size:12px">{t('inspector.fixtureTop')}</div>
+        <div style="color:var(--ink-2);font-size:12px">{t('inspector.fixtureTop')}</div>
       )}
     </div>
   );

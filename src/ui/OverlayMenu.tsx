@@ -17,7 +17,7 @@ const ROWS: { kind: OverlayKind; key: StringKey }[] = [
  * their own (traffic reservations, the walking graph of the selected terminal, land parcels). Anchored under the top bar
  * overlay button by its parent.
  */
-export function OverlayMenu() {
+export function OverlayMenu({ up = false }: { up?: boolean } = {}) {
   const overlay = useGameStore((s) => s.overlay);
   const setOverlay = useGameStore((s) => s.setOverlay);
   const closeOverlayMenu = useGameStore((s) => s.closeOverlayMenu);
@@ -36,8 +36,9 @@ export function OverlayMenu() {
     <div
       role="menu"
       aria-label={t('hud.overlay.title')}
-      class="panel"
-      style="position:absolute;right:0;top:44px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:200px;z-index:30"
+      class="pn pop"
+      data-testid="overlay-pop"
+      style={`${up ? 'bottom:54px' : 'top:42px'};right:0;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:200px`}
     >
       {ROWS.map((r) => (
         <button

@@ -3,7 +3,8 @@ import type { ComponentChildren } from 'preact';
 export type IconName =
   | 'select' | 'runway' | 'taxiway' | 'taxilane' | 'rapidExit' | 'parallel' | 'apron' | 'stands' | 'gaBlock' | 'terminal' | 'tower' | 'demolish'
   | 'undo' | 'redo' | 'airlines' | 'finance' | 'flights' | 'site' | 'parcels' | 'menu' | 'pause' | 'play' | 'sun' | 'moon' | 'close' | 'handling' | 'flightops' | 'infra' | 'staff' | 'zoning' | 'lock' | 'overlay' | 'settings' | 'options' | 'bell' | 'skip'
-  | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone';
+  | 'foundation' | 'floor' | 'wall' | 'door' | 'fixture' | 'erase' | 'zone'
+  | 'navaids' | 'stations' | 'commercial' | 'bulldoze' | 'area' | 'build' | 'land' | 'tenants' | 'reports' | 'map' | 'plane' | 'stand' | 'star' | 'cloud' | 'rain' | 'check' | 'warning';
 
 const P: Record<IconName, ComponentChildren> = {
   select: <path d="M6 4l12 7-5.5 1.5L10 18z" />,
@@ -49,12 +50,29 @@ const P: Record<IconName, ComponentChildren> = {
   fixture: (<><rect x="4" y="9" width="16" height="7" rx="1" /><path d="M7 9V6h10v3M7 16v2M17 16v2" /></>),
   zone: (<><rect x="4" y="4" width="7" height="7" /><rect x="13" y="4" width="7" height="7" strokeDasharray="2 2" /><rect x="4" y="13" width="7" height="7" strokeDasharray="2 2" /><rect x="13" y="13" width="7" height="7" /></>),
   erase: <path d="M4 16l8-9 8 7-5 5H8zM9 21h11" />,
+  navaids: (<><path d="M12 11v10M9 21h6" /><circle cx="12" cy="9" r="2" /><path d="M7.800 4.800a6 6 0 000 8.400M16.200 4.800a6 6 0 010 8.400" /></>),
+  stations: (<><path d="M3 10h18M5 10v9M19 10v9M3 19h18" /><path d="M9 14h6" /><path d="M6 10l2-5h8l2 5" /></>),
+  commercial: (<><path d="M6 8h12l-1 12H7z" /><path d="M9 8V6a3 3 0 016 0v2" /></>),
+  bulldoze: (<><path d="M3 15V9h7l2 3h3v3" /><path d="M15 9l3-3M18 6l3 6v5h-3" /><circle cx="6" cy="17" r="2" /><circle cx="12" cy="17" r="2" /></>),
+  area: <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 2.500" />,
+  build: <path d="M4 20l1-5L16 4l4 4L9 19zM14 6l4 4" />,
+  land: (<><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" /><path d="M9 4v14M15 6v14" /></>),
+  tenants: (<><path d="M6 8h12l-1 12H7z" /><path d="M9 8V6a3 3 0 016 0v2" /></>),
+  reports: (<><path d="M4 20V4M4 20h16" /><path d="M7 15l4-4 3 3 5-6" /></>),
+  map: (<><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" /><path d="M9 4v14M15 6v14" /></>),
+  plane: <path d="M21 15.500l-8-4.500V5a1.500 1.500 0 00-3 0v6l-8 4.500V17l8-2v4l-2 1.500V22l3.500-1 3.500 1v-1.500L13 19v-4l8 2z" />,
+  stand: (<><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M12 8v8M8 12h8" /></>),
+  star: <path d="M12 3l2.700 5.600 6.100.9-4.400 4.300 1 6.100L12 17l-5.400 2.900 1-6.100L3.200 9.500l6.100-.9z" />,
+  cloud: <path d="M7 18h10a4 4 0 00.5-8 6 6 0 00-11.500 1.500A3.300 3.300 0 007 18z" />,
+  rain: (<><path d="M7 15h10a4 4 0 00.5-8 6 6 0 00-11.500 1.500A3.300 3.300 0 007 15z" /><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3" /></>),
+  check: <path d="M5 12.500l4.500 4.500L19 7" />,
+  warning: (<><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18v.5" /></>),
 };
 
 /** Outline icon on a 24 unit grid, stroked with currentColor. */
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       {P[name]}
     </svg>
   );

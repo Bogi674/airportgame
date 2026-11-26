@@ -1,0 +1,62 @@
+/* DESIGN_REVISION_6_UI tokens. Paste into src/ui/theme.css. Light is the default theme. */
+:root, :root[data-theme='light'] {
+  --ui: 1;
+  --font-ui: 'Rubik', system-ui, sans-serif;
+  --font-led: 'Doto', ui-monospace, monospace;
+
+  --ink: #0F2240; --ink-2: #4B5E7E; --ink-3: #7B8CA6;
+  --surface: #FFFFFF; --surface-2: #F2F7FF; --surface-3: #EAF2FF;
+  --line: #D3E2F7; --line-soft: #DCE8FA; --depth: #C2D5EF;
+  --accent: #2F7BFF; --accent-deep: #1C58C7; --accent-soft: #E6F0FF;
+  --led-bg: #0F2240; --led-dot: #1B3766; --led-lit: #6FB1FF; --led-lip: #091733;
+  --good: #22A06B; --good-text: #16834F;
+  --warn: #F59E0B; --warn-text: #9A5B00; --warn-soft: #FDF1DC;
+  --bad: #E5484D; --bad-deep: #B4232A; --bad-text: #C0262D;
+  --gold: #FFC531; --gold-deep: #E0A100;
+
+  --grp-air: #2F7BFF;   --grp-air-deep: #1C58C7;
+  --grp-trm: #0EA5B7;   --grp-trm-deep: #0B7F8D;
+  --grp-ops: #5B5FE0;   --grp-ops-deep: #3F42B5;
+  --grp-tool: #5A6B85;  --grp-tool-deep: #43526A;
+
+  --fs-2xs: calc(9px * var(--ui));
+  --fs-xs: calc(9px * var(--ui));
+  --fs-sm: calc(10px * var(--ui));
+  --fs-md: calc(10.5px * var(--ui));
+  --fs-lg: calc(12px * var(--ui));
+  --fs-xl: calc(14px * var(--ui));
+  --fs-2xl: calc(28px * var(--ui));
+
+  --r-sm: 7px; --r-ctl: 10px; --r-card: 12px; --r-hud: 14px; --r-win: 16px; --r-pill: 999px;
+  --lip-panel: 0 0 0 1.5px var(--line), 0 4px 0 var(--depth), 0 14px 28px rgba(15, 34, 64, .16);
+  --lip-btn: 0 3px 0 var(--accent-deep);
+
+  --zone-margin: 10px;
+  --zone-top-h: 44px;
+  --zone-rail-w: 48px;
+  --zone-flyout-w: 264px;
+  --zone-panel-w: 300px;
+  --zone-map-w: 220px; --zone-map-h: 140px;
+  --zone-task-h: 44px;
+
+  --map-grass: #B6DB9A; --map-tree: #7FBF6A; --map-tree-shade: #6AAE55;
+  --map-sea: #7EC8F0; --map-beach: #F3E3B5;
+  --map-runway: #4A5568; --map-taxiway: #7A8699; --map-taxi-line: #FFD23F; --map-taxi-light: #4FA3FF;
+  --map-apron: #C5CFDB; --map-apron-joint: #BCC7D4; --map-stand-line: #F2C230;
+  --map-roof: #F4F8FF; --map-road: #8C96A5;
+  --map-floor: #FBFCFE; --map-zone-public: #E9F6E4; --map-zone-secure: #E6EEFB; --map-wall: #22314D;
+}
+:root[data-theme='dark'] {
+  --ink: #E6EEF9; --ink-2: #9FB3CF; --ink-3: #7B8CA6;
+  --surface: #13233A; --surface-2: #0F1D31; --surface-3: #1B3150;
+  --line: #26405F; --line-soft: #22395A; --depth: #091526;
+  --accent-soft: #1B3150;
+}
+.pn { background: var(--surface); border-radius: var(--r-hud); box-shadow: var(--lip-panel); }
+.tbar { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 14px; color: #fff; font: 600 var(--fs-md) var(--font-ui); border-radius: var(--r-win) var(--r-win) 0 0; }
+.bb { background: var(--accent); color: #fff; box-shadow: var(--lip-btn); border-radius: var(--r-ctl); }
+.bw { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line), 0 3px 0 var(--line); border-radius: var(--r-ctl); }
+.br { background: var(--bad); color: #fff; box-shadow: 0 3px 0 var(--bad-deep); border-radius: var(--r-ctl); }
+.bb:active, .bw:active, .br:active { transform: translateY(2px); box-shadow: none; }
+.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.thumb-ph { background: #E6ECF4; box-shadow: inset 0 0 0 1px #D3DDEB; color: #9AABC2; display: flex; align-items: center; justify-content: center; border-radius: 9px; }

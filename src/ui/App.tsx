@@ -9,6 +9,8 @@ import { SimClient } from '../worker/client';
 import { alertText, ALERT_CODES, parseEvent, severityOf } from './alerts';
 import { BuildMenu } from './BuildMenu';
 import { ConfirmPopup } from './ConfirmPopup';
+import { AreaBulldoze } from './AreaBulldoze';
+import { DemolishConfirm } from './DemolishConfirm';
 import { ItemMenu } from './ItemMenu';
 import { ContextBar } from './ContextBar';
 import { CrashPanel } from './CrashPanel';
@@ -30,6 +32,7 @@ import { useToolStore } from './stores/toolStore';
 import { Toasts } from './Toasts';
 import { ToolRail } from './ToolRail';
 import { TopBar } from './TopBar';
+import { TaskBar } from './TaskBar';
 import { noticeText, t, tFormat } from './strings';
 
 const ALERT_MS = 9000;
@@ -327,7 +330,7 @@ export function App() {
     const readTheme = (): void => {
       const cs = getComputedStyle(document.documentElement);
       const token = (name: string): string => cs.getPropertyValue(name).trim();
-      renderer.setOverlayTheme(token('--ok'), token('--warn'), token('--bad'), token('--muted'));
+      renderer.setOverlayTheme(token('--good'), token('--warn'), token('--bad'), token('--ink-2'));
       renderer.setZoneColors({
         public: token('--zone-public'),
         commercial: token('--zone-commercial'),
@@ -414,11 +417,16 @@ export function App() {
         e.preventDefault();
         client.send({ type: 'redo' });
       } else if (e.key === 'p' || e.key === 'P') s.toggleParcelOverlay();
+      else if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey) useToolStore.getState().set({ tool: 'select', category: null, menuOpen: false, hint: null, problem: null, buy: null, barOpen: true });
+      else if ((e.key === 'x' || e.key === 'X') && !e.ctrlKey && !e.metaKey && !e.altKey) useToolStore.getState().set({ tool: 'demolish', category: null, menuOpen: false, selection: null, hint: null, problem: null, buy: null, barOpen: true });
       else if ((e.key === 'o' || e.key === 'O') && !e.ctrlKey && !e.metaKey && !e.altKey) s.toggleOverlayMenu();
       else if (e.key === 'Escape') {
         const tool = useToolStore.getState();
         if (s.skip >= 0) client.skipDay(false);
         else if (s.overlayMenuOpen) s.closeOverlayMenu();
+        else if (s.alertsOpen) s.toggleAlerts();
+        // An open popover closes itself on Escape; the key must not also open the pause menu.
+        else if (document.querySelector('.pop')) return;
         else if (s.sheet) s.setSheet(null);
         else if (s.pauseOpen) resume();
         else if (tool.tool === 'select' && tool.selection === null) pause();
@@ -454,7 +462,7 @@ export function App() {
 
   const inGame = store.screen === 'game';
   return (
-    <div style="position:relative;width:100%;height:100%;font:13px system-ui,sans-serif;color:var(--text)">
+    <div style="position:relative;width:100%;height:100%;font:var(--fs-sm) var(--font-ui);color:var(--ink)">
       <MapView client={client} onRenderer={onRenderer} onPick={onPick} />
       {inGame && (
         <>
@@ -474,9 +482,9 @@ export function App() {
           {!store.parcelOverlay && <Guide />}
           {!store.parcelOverlay && <ObjectPanel send={(c) => client.send(c)} />}
           {store.parcelOverlay && (
-            <div data-testid="land-banner" class="panel" style="position:absolute;left:50%;top:76px;transform:translateX(-50%);padding:8px 14px;z-index:6;display:flex;gap:12px;align-items:center">
+            <div data-testid="land-banner" class="pn" style="position:absolute;left:50%;top:64px;transform:translateX(-50%);padding:8px 14px;z-index:6;display:flex;gap:12px;align-items:center">
               <b style="letter-spacing:0.14em;text-transform:uppercase;font-size:11px;color:var(--accent)">{t('land.title')}</b>
-              <span style="font-size:12px;color:var(--muted)">{t('land.help')}</span>
+              <span style="font-size:12px;color:var(--ink-2)">{t('land.help')}</span>
               <button data-testid="land-exit" onClick={() => useGameStore.getState().toggleParcelOverlay()}>
                 {t('land.exit')}
               </button>
@@ -487,10 +495,13 @@ export function App() {
           {!store.parcelOverlay && <ContextBar send={(c) => client.send(c)} />}
           <Toasts send={(c) => client.send(c)} />
           <ConfirmPopup />
+          {!store.parcelOverlay && <AreaBulldoze />}
+          <DemolishConfirm send={(c) => client.send(c)} />
           {!store.parcelOverlay && <ItemMenu send={(c) => client.send(c)} />}
           <Sheets send={(c) => client.send(c)} />
           {store.site && <Minimap renderer={renderer} site={store.site} owner={store.owner} />}
           <OverlayLegend />
+          <TaskBar />
           <CrashPanel onMenu={() => {
             useGameStore.getState().setCrash(null);
             useGameStore.getState().setError(null);
@@ -499,7 +510,7 @@ export function App() {
             client.setSpeed(0);
           }} />
           {store.error && !store.crash && (
-            <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#4a1515;border:1px solid #a33;border-radius:10px;z-index:60">
+            <div role="alert" style="position:absolute;top:46px;left:50%;transform:translateX(-50%);padding:6px 12px;background:var(--bad);color:#fff;box-shadow:0 3px 0 var(--bad-deep);border-radius:var(--r-ctl);z-index:60">
               {t('error.title')}: {store.error}
             </div>
           )}

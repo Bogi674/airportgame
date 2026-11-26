@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { Icon } from './icons';
+import { Segmented } from './kit';
 import type { Renderer } from '@render/renderer';
 import { GRID_N, LandClass, SITE_M, type SitePayload } from '@shared/site';
 import { t } from './strings';
@@ -70,7 +72,33 @@ interface Props {
 }
 
 /** 200 by 200 minimap with the camera frame, a compass, align view and zoom to fit. */
+/** Minimap states of UI revision 6 section 5.7, kept in settings. */
+export type MinimapMode = 'opaque' | 'semi' | 'hide';
+const MODE_KEY = 'airfield.minimap';
+function storedMode(): MinimapMode {
+  try {
+    const v = localStorage.getItem(MODE_KEY);
+    return v === 'semi' || v === 'hide' ? v : 'opaque';
+  } catch {
+    return 'opaque';
+  }
+}
+/** Bottom space the right panel keeps free: above the minimap while it shows, above the task bar row when hidden (rule 4.2.3). */
+const RIGHT_RESERVE: Record<MinimapMode, string> = { opaque: '220px', semi: '220px', hide: '64px' };
+
 export function Minimap({ renderer, site, owner }: Props) {
+  const [mode, setModeState] = useState<MinimapMode>(storedMode);
+  const setMode = (m: MinimapMode): void => {
+    setModeState(m);
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {
+      /* private mode: the choice lasts for this session */
+    }
+  };
+  useEffect(() => {
+    document.documentElement.style.setProperty('--right-reserve', RIGHT_RESERVE[mode]);
+  }, [mode]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const needleRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -153,30 +181,43 @@ export function Minimap({ renderer, site, owner }: Props) {
   }, [renderer, site]);
 
   const cam = renderer?.camera;
+  if (mode === 'hide') {
+    return (
+      <button class="btn bw z-mapbtn" data-testid="minimap-show" onClick={() => setMode('opaque')}>
+        <Icon name="map" size={16} />
+        {t('map.show')}
+      </button>
+    );
+  }
   return (
-    <div
-      data-testid="minimap"
-      class="minimap"
-      onPointerDown={(e) => (e.currentTarget as HTMLElement).classList.add('active')}
-      onPointerUp={(e) => (e.currentTarget as HTMLElement).classList.remove('active')}
-      style={`position:absolute;right:12px;bottom:12px;width:${SIZE}px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px`}
-    >
-      <canvas ref={canvasRef} width={SIZE} height={SIZE} aria-label={t('map.minimap')} style={`display:block;width:${SIZE}px;height:${SIZE}px;cursor:crosshair`} />
-      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
-        <button data-testid="compass" title={t('map.compass')} aria-label={t('map.compass')} onClick={() => cam?.faceNorth()} style="width:34px;height:34px;padding:0;position:relative">
-          <div ref={needleRef} style="position:absolute;inset:0;display:flex;justify-content:center;transition:none">
-            <div style="width:0;height:0;margin-top:4px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:12px solid #ff6b5e" />
-          </div>
-          <span style="position:absolute;bottom:2px;left:0;right:0;font-size:9px">N</span>
-        </button>
-        <button data-testid="align" title={t('map.align')} aria-label={t('map.align')} onClick={() => cam?.alignToAxis(site.idealHeadingDeg)} style="height:34px">
-          {String(site.idealHeadingDeg).padStart(3, '0')}°
-        </button>
-        <button data-testid="fit" title={t('map.fit')} aria-label={t('map.fit')} onClick={() => cam?.zoomToFit(SITE_M, SITE_M / 2, SITE_M / 2)} style="height:34px">
-          ⤢
-        </button>
+    <div data-testid="minimap" class={`pn minimap z-map${mode === 'semi' ? ' semi' : ''}`}>
+      <div class="mm-head">
+        <span class="cap clip">{t('map.minimap')}</span>
+        <Segmented
+          label={t('map.minimap')}
+          testid="minimap-mode"
+          value={mode}
+          onChange={setMode}
+          options={(['opaque', 'semi', 'hide'] as const).map((m) => ({ value: m, label: t(`map.mode.${m}`) }))}
+        />
+      </div>
+      <div class="mm-body">
+        <canvas ref={canvasRef} width={SIZE} height={SIZE} aria-label={t('map.minimap')} />
+        <div class="mm-tools">
+          <button class="btn bw sm" data-testid="compass" title={t('map.compass')} aria-label={t('map.compass')} onClick={() => cam?.faceNorth()} style="position:relative;padding:0">
+            <div ref={needleRef} style="position:absolute;inset:0;display:flex;justify-content:center;transition:none">
+              <div style="width:0;height:0;margin-top:3px;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:10px solid var(--bad)" />
+            </div>
+            <span style="position:absolute;bottom:1px;left:0;right:0;font-size:8px;text-align:center">N</span>
+          </button>
+          <button class="btn bw sm" data-testid="align" title={t('map.align')} aria-label={t('map.align')} onClick={() => cam?.alignToAxis(site.idealHeadingDeg)}>
+            {String(site.idealHeadingDeg).padStart(3, '0')}°
+          </button>
+          <button class="btn bw sm" data-testid="fit" title={t('map.fit')} aria-label={t('map.fit')} onClick={() => cam?.zoomToFit(SITE_M, SITE_M / 2, SITE_M / 2)}>
+            {t('map.fitShort')}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
