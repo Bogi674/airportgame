@@ -1986,7 +1986,7 @@ export class ToolController {
       valid: problem === null,
       shapes,
       tip: tip && m ? { x: m.p.x, y: m.p.y, text: tip } : undefined,
-      preview: { stands: cands },
+      preview: { stands: cands, looseStands: !plan.leadIn },
       label: {
         x: plan.x,
         y: plan.y,

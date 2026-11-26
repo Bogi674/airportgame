@@ -45,6 +45,8 @@ export interface GhostPreview {
   runway?: Runway;
   /** New stands, drawn with their forks and markings on the existing taxiways. */
   stands?: Stand[];
+  /** The stands are not snapped to a lead in, so only their boxes are drawn, not markings stretched to a taxiway. */
+  looseStands?: boolean;
   /** New ATC towers, drawn with the same painting as built ones. */
   towers?: Tower[];
   /** A service road being drawn and a depot being placed (T60). */
