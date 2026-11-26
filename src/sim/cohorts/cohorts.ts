@@ -72,7 +72,15 @@ export const Stage = {
   ToSecExit: 26,
   /** Waiting in a security exit queue or being served (a queued stage). */
   SecExit: 27,
+  // Gate lounge stage (PX3), appended: an airside group walks to the lounge of its assigned gate before boarding opens.
+  /** Walking from where it waited airside to the gate desk of its flight's stand. Back to Airside on arrival. */
+  ToLounge: 28,
 } as const;
+
+/** True for the stages of an arriving cohort, from the aircraft door to the curb. Later departure stages (PX3) are not. */
+export function arrivalStage(st: number): boolean {
+  return (st >= Stage.Deboard && st <= Stage.ToExit) || st === Stage.ToSecExit || st === Stage.SecExit;
+}
 
 /** Timer wheel buckets and the tick step between bucket visits. */
 const WHEEL = 4096;
@@ -361,8 +369,9 @@ export class Cohorts {
   private seats: SeatSpots[] = [];
   private seatHead: Int32Array[] = [];
   private seatNext: Int32Array[] = [];
-  /** Seats taken in the sample of the grid being written. Scratch. */
+  /** Seats taken in the sample of the grid being written, and how many are still free there. Scratch. */
   private seatTaken = new Uint8Array(0);
+  private seatsFree = 0;
   /** Visit points per grid. Derived from the grids, never saved or hashed. */
   private visitTables: VisitPoints[] = [];
   private readonly route = new Float64Array(ROUTE_OUT);
@@ -535,7 +544,9 @@ export class Cohorts {
 
   /** True for the stages a passenger can be in before boarding or missing the flight. */
   private live(st: number): boolean {
-    return (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin) || st === Stage.ToEmigration || st === Stage.Emigration;
+    return (
+      (st >= Stage.Curb && st <= Stage.Gate) || (st >= Stage.ToVisit && st <= Stage.Rejoin) || st === Stage.ToEmigration || st === Stage.Emigration || st === Stage.ToLounge
+    );
   }
 
   /** True for the stages in which a cohort waits in a service queue, off the timer wheel. */
@@ -551,7 +562,8 @@ export class Cohorts {
     return (
       st === Stage.ToCheckIn || st === Stage.ToSecurity || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin ||
       st === Stage.ToImmigration || st === Stage.ToClaim || st === Stage.ToCustoms || st === Stage.ToExit || st === Stage.ToEmigration ||
-      st === Stage.ToSecExit
+      st === Stage.ToSecExit ||
+      st === Stage.ToLounge
     );
   }
 
@@ -561,12 +573,14 @@ export class Cohorts {
    */
   private zoneRule(st: number): number {
     if (this.arriving(st)) return 0;
-    return st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit || st === Stage.ToEmigration ? 1 : 2;
+    return st === Stage.Airside || st === Stage.ToGate || st === Stage.ToVisit || st === Stage.Rejoin || st === Stage.Visit || st === Stage.ToEmigration || st === Stage.ToLounge
+      ? 1
+      : 2;
   }
 
   /** True for the stages of an arriving passenger. */
   private arriving(st: number): boolean {
-    return (st >= Stage.Deboard && st <= Stage.ToExit) || st === Stage.ToSecExit || st === Stage.SecExit;
+    return arrivalStage(st);
   }
 
   /** Group size for a uniform float: the first size whose cumulative weight exceeds it. */
@@ -797,6 +811,7 @@ export class Cohorts {
       if (this.tailExtra.length < t.count) this.tailExtra = new Int32Array(t.count);
       this.tailExtra.fill(0, 0, t.count);
       this.seatTaken.fill(0);
+      this.seatsFree = this.seats[g]?.count ?? 0;
       n = this.sampleServed(views, n, cap, grid, t, tick);
       n = this.sampleQueued(views, n, cap, grid, wg, t);
       n = this.sampleDwellers(views, n, cap, g, grid, wg, tick);
@@ -843,7 +858,7 @@ export class Cohorts {
    */
   private sit(views: SnapshotViews, n: number, c: number, g: number, grid: TerminalGrid, ax: number, ay: number, rule: number): boolean {
     const sp = this.seats[g];
-    if (!sp || sp.count === 0) return false;
+    if (!sp || this.seatsFree < this.size[c]!) return false;
     const head = this.seatHead[g]!;
     const next = this.seatNext[g]!;
     const size = this.size[c]!;
@@ -861,6 +876,7 @@ export class Cohorts {
           if (!ok) continue;
           let mx = 0;
           let my = 0;
+          this.seatsFree -= size;
           for (let k = start; k < start + size; k++) {
             this.seatTaken[k] = 1;
             mx += sp.x[k]!;
@@ -1362,6 +1378,11 @@ export class Cohorts {
       case Stage.Airside:
         if (!this.decide(g, c)) this.toGate(g, c);
         break;
+      case Stage.ToLounge:
+        // At the gate: it waits here, seated where it can, until boarding opens.
+        this.stage[c] = Stage.Airside;
+        this.schedule(c, this.tick + STEP);
+        break;
       case Stage.ToVisit:
         if (this.visitNeed[c] === NEED_TOILET) this.toToilet(g, c);
         else this.arriveVisit(g, c);
@@ -1759,7 +1780,11 @@ export class Cohorts {
     } else this.schedule(c, this.tick + JOIN_RETRY_TICKS);
   }
 
-  /** Airside passengers walk to a gate desk once the flight is on the ground. The flight's gate count rises only on the first walk. */
+  /**
+   * Airside passengers walk to a gate desk once the flight is on the ground. Before that, a group whose flight has a
+   * stand with an assigned gate desk walks to that desk's lounge and waits there (PX3). The flight's gate count rises
+   * only on the walk to the desk.
+   */
   private toGate(g: number, c: number): void {
     const f = this.flight[c];
     const from = this.hereNode(g, c);
@@ -1767,6 +1792,13 @@ export class Cohorts {
     if (this.traffic.fState[f] === FlState.OnGround) {
       n = this.assignedDeskNode(g, this.traffic.fStand[f]);
       if (n < 0) n = this.pickNode(g, GATE_DESK, GATE_DESK, from, c);
+    } else {
+      const desk = this.loungeDeskNode(g, this.traffic.fStand[f]);
+      const lounge = desk >= 0 ? this.table(g)!.walkNode[desk]! : -1;
+      if (lounge >= 0 && lounge !== from && Number.isFinite(this.business.walkDistance(this.gridId(g), from, lounge))) {
+        this.walkTo(g, c, from, lounge, Stage.ToLounge);
+        return;
+      }
     }
     if (n < 0) {
       this.schedule(c, this.tick + RETRY_TICKS);
@@ -1787,6 +1819,18 @@ export class Cohorts {
     for (let n = 0; n < t.count; n++) {
       if (t.kind[n] === GATE_DESK && t.lx[n] === desk.x && t.ly[n] === desk.y) return t.queueCap[n] > 0 ? n : -1;
     }
+    return -1;
+  }
+
+  /**
+   * Service node of the gate desk whose lounge a stand's passengers wait in (PX3): the desk that boards the stand, its
+   * assigned desk or else the nearest one. -1 when the stand is unknown or that desk is in another grid.
+   */
+  private loungeDeskNode(g: number, standId: number): number {
+    const desk = this.business.gateForStand(standId);
+    const t = this.table(g);
+    if (!desk || !t || desk.building !== this.gridId(g)) return -1;
+    for (let n = 0; n < t.count; n++) if (t.kind[n] === GATE_DESK && t.lx[n] === desk.x && t.ly[n] === desk.y) return n;
     return -1;
   }
 

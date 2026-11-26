@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT } from '@data/aircraft';
 import { ARRIVALS } from '@data/index';
 import { Sim } from '@sim/sim';
-import { Stage } from '@sim/cohorts/cohorts';
+import { Stage, arrivalStage } from '@sim/cohorts/cohorts';
 import { buildServiceNodes } from '@sim/terminal/serviceNodes';
 import { FIXTURE_KEYS } from '@shared/business';
 import { buildArrivalTerminal, buildTestAirport, OPTIONS, ownedSim, run } from './helpers';
@@ -39,7 +39,7 @@ function stageSequences(sim: Sim, ticks: number, each?: () => void): number[][] 
     for (let c = 0; c < co.hi; c++) {
       const st = co.stage[c]!;
       const list = seq[c]!;
-      if (st >= Stage.Deboard && list[list.length - 1] !== st) list.push(st);
+      if (arrivalStage(st) && list[list.length - 1] !== st) list.push(st);
     }
     each?.();
   }

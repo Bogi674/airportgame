@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AIRCRAFT, standGeometry } from '@data/aircraft';
 import { ARRIVALS, NEEDS, PROFILES } from '@data/index';
 import { Sim } from '@sim/sim';
-import { DAY, Stage } from '@sim/cohorts/cohorts';
+import { DAY, Stage, arrivalStage } from '@sim/cohorts/cohorts';
 import { FIXTURE_KEYS, TICKS_PER_MINUTE } from '@shared/business';
 import { gameSecondsToTicks } from '@shared/time';
 import { COHORT_DRAW, traitU } from '@sim/cohorts/traits';
@@ -31,7 +31,7 @@ function dockFlight(sim: Sim): number {
 /** Arrival cohort slots in slot order. */
 function arrivalSlots(sim: Sim): number[] {
   const out: number[] = [];
-  for (let c = 0; c < sim.cohorts.hi; c++) if (sim.cohorts.stage[c]! >= Stage.Deboard) out.push(c);
+  for (let c = 0; c < sim.cohorts.hi; c++) if (arrivalStage(sim.cohorts.stage[c]!)) out.push(c);
   return out;
 }
 
@@ -196,7 +196,7 @@ function runJourney(sim: Sim, maxTicks = 30000, each?: () => void): { stages: Ui
     const nodes = sim.business.serviceNodes[0]!;
     for (let c = 0; c < co.hi; c++) {
       const st = co.stage[c]!;
-      if (st < Stage.Deboard) continue;
+      if (!arrivalStage(st)) continue;
       stages[c] = stages[c]! | (1 << st);
       if (st === Stage.Immigration && co.node[c]! >= 0) {
         const kind = nodes.kind[co.node[c]!]!;

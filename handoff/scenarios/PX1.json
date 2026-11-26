@@ -552,6 +552,22 @@
     },
     {
       "camera": {
+        "x": 4040,
+        "y": 5450,
+        "zoom": 22
+      }
+    },
+    {
+      "shot": "gate-a"
+    },
+    {
+      "wait": 20000
+    },
+    {
+      "shot": "gate-b"
+    },
+    {
+      "camera": {
         "x": 3990,
         "y": 5452,
         "zoom": 32
@@ -559,26 +575,6 @@
     },
     {
       "shot": "checkin"
-    },
-    {
-      "camera": {
-        "x": 4030,
-        "y": 5452,
-        "zoom": 32
-      }
-    },
-    {
-      "shot": "security"
-    },
-    {
-      "camera": {
-        "x": 4060,
-        "y": 5452,
-        "zoom": 40
-      }
-    },
-    {
-      "shot": "lounge"
     },
     {
       "camera": {

@@ -11,7 +11,7 @@ import { PeopleMotion } from '../src/render/peopleMotion';
 import { createSnapshotBuffer, createSnapshotViews, PEOPLE_MODE, SnapHeader, STAFF_PROFILE_BASE, type SnapshotViews } from '../src/shared/snapshot';
 import { FIGURE_FRAME } from '../src/render/peoplePack';
 import { AIRCRAFT } from '@data/aircraft';
-import { Stage } from '@sim/cohorts/cohorts';
+import { Stage, arrivalStage } from '@sim/cohorts/cohorts';
 import type { Sim } from '@sim/sim';
 import { ZONE } from '@shared/business';
 import { cellIndex, cornerWorld } from '@shared/terminalOps';
@@ -410,7 +410,7 @@ describe('arrival people sample (T20)', () => {
         }
         const c = views.peopleId[i]!;
         const st = co.stage[c]!;
-        if (st < Stage.Deboard) continue;
+        if (!arrivalStage(st)) continue;
         const zone = wg.effective[cell]!;
         if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.International) walkIntl = true;
         if (views.peopleMode[i] === PEOPLE_MODE.Walking && zone === ZONE.Public) walkPublic = true;

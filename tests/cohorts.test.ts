@@ -6,7 +6,7 @@ import { Stage, type Cohorts } from '@sim/cohorts/cohorts';
 import { memberSeedOf } from '@sim/cohorts/traits';
 import type { ServiceNodes } from '@sim/terminal/serviceNodes';
 import { FlState } from '@sim/ops/traffic';
-import { FIXTURE_KEYS, LEDGER_CATEGORIES } from '@shared/business';
+import { FIXTURE_KEYS, LEDGER_CATEGORIES, TICKS_PER_MINUTE } from '@shared/business';
 import { gameSecondsToTicks } from '@shared/time';
 import { PEOPLE_MODE, SnapHeader, SNAPSHOT_PEOPLE_CAPACITY, STAFF_ID_BASE, createSnapshotBuffer, createSnapshotViews, type SnapshotViews } from '@shared/snapshot';
 import { cornerWorld } from '@shared/terminalOps';
@@ -385,6 +385,46 @@ function twoTerminalSim(): Sim {
   expect(buildTestTerminal(sim, { ...BUSY, atc: false, at: { x: 3960, y: 5600 } })).toEqual([]);
   return sim;
 }
+
+describe('gate lounge (PX3)', () => {
+  it('groups wait in the lounge of their gate before the aircraft lands and queue only once it is on the ground', () => {
+    const sim = terminalSim();
+    const f = sim.traffic.scheduleArrival(WIDE, sim.traffic.nowTick + 60 * TICKS_PER_MINUTE, 0, LONG_TURN_TICKS, -1);
+    expect(f).toBeGreaterThanOrEqual(0);
+    // Planned ahead, as the stand planner does for scheduled flights.
+    sim.traffic.fStand[f] = sim.airfield.data.stands[0]!.id;
+    const co = sim.cohorts;
+    let lounged = 0;
+    let gated = 0;
+    for (let t = 0; t < 300 * TICKS_PER_MINUTE && gated === 0; t++) {
+      sim.step();
+      const onGround = sim.traffic.fState[f] === FlState.OnGround;
+      for (let c = 0; c < co.hi; c++) {
+        if (co.flight[c] !== f) continue;
+        const st = co.stage[c]!;
+        if (st === Stage.Gate) {
+          // Boarding opens with the aircraft on the ground: nobody lines up at the desk before.
+          expect(onGround).toBe(true);
+          gated++;
+        }
+        // A group that set off before the landing may still be on its way to the lounge after it.
+        if (st === Stage.ToLounge && !onGround) lounged++;
+      }
+    }
+    expect(lounged).toBeGreaterThan(0);
+    expect(gated).toBeGreaterThan(0);
+  });
+
+  it('keeps two runs from one seed identical', () => {
+    const hashes = [0, 1].map(() => {
+      const sim = terminalSim();
+      sim.traffic.scheduleArrival(WIDE, sim.traffic.nowTick + 30 * TICKS_PER_MINUTE, 0, LONG_TURN_TICKS, -1);
+      for (let t = 0; t < 2000; t++) sim.step();
+      return sim.stateHash();
+    });
+    expect(hashes[1]).toBe(hashes[0]);
+  });
+});
 
 describe('boarding and departure revenue', () => {
   it('an adequate terminal boards every passenger, and the departure pays for each of them', () => {

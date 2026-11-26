@@ -1162,6 +1162,13 @@ export class Business {
     return this.deskList().find((d) => d.building === want.building && d.x === want.x && d.y === want.y) ?? null;
   }
 
+  /** The gate desk that boards the stand with this id, as gateFor gives it. Null when the stand is unknown or no desk exists. */
+  gateForStand(standId: number): GateDesk | null {
+    const stands = this.airfield.data.stands;
+    for (let i = 0; i < stands.length; i++) if (stands[i]!.id === standId) return this.gateFor(stands[i]!);
+    return null;
+  }
+
   /**
    * The gate desk that boards a stand: its assigned desk while that still exists, else the desk nearest the stand
    * center by straight line (ties to the lowest grid, then the lowest cell). Null when the airport has no gate desk.
