@@ -815,7 +815,7 @@ describe('snapshot sample of cohort positions', () => {
     expect(d1).toBeLessThan(d0);
   });
 
-  it('an airside cohort is sampled standing near the node it walked to, ids unique', () => {
+  it('an airside cohort is sampled standing or seated near the node it walked to, ids unique', () => {
     const sim = terminalSim();
     scheduleLong(sim);
     const views = createSnapshotViews(createSnapshotBuffer());
@@ -830,10 +830,13 @@ describe('snapshot sample of cohort positions', () => {
         const c = views.peopleId[i]!;
         expect(ids.has(c)).toBe(false);
         ids.add(c);
-        if (sim.cohorts.stage[c] !== Stage.Airside || views.peopleMode[i] !== 2) continue;
+        const mode = views.peopleMode[i];
+        if (sim.cohorts.stage[c] !== Stage.Airside || (mode !== PEOPLE_MODE.Dwelling && mode !== PEOPLE_MODE.Seated)) continue;
         const g = sim.business.grids[sim.cohorts.building[c]!]!;
         const to = cornerWorld(g, sim.cohorts.walkToX[c]! + 0.5, sim.cohorts.walkToY[c]! + 0.5);
-        expect(Math.hypot(views.peopleX[i]! - to.x, views.peopleY[i]! - to.y)).toBeLessThanOrEqual(reach);
+        // Standing near the node, or seated within the seat reach of it (PX2).
+        const limit = mode === PEOPLE_MODE.Seated ? (PROFILES.walkSample.seatReachCells + 2) * 2 * Math.SQRT2 : reach;
+        expect(Math.hypot(views.peopleX[i]! - to.x, views.peopleY[i]! - to.y)).toBeLessThanOrEqual(limit);
         checked++;
       }
     }
