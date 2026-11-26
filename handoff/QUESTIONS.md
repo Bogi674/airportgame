@@ -660,3 +660,13 @@ Context: the owner asked to build the Blue Hangar UI of `docs/DESIGN_REVISION_6_
 | Area sweep scope | The render's terminal rows plus Stands, Runways and taxiways, Roads, Buildings. Objects fully inside the box go whole; aprons (Airside pavement) are cut to the box |
 | Cost and time | Refund only, no demolition cost or time. Items in use are skipped (sim rule kept), the switch shows on and locked |
 | Confirmation | Every demolish act opens a centered danger modal: what goes, the refund, Demolish (Enter) and Cancel (Esc) |
+
+## 2026-11-26 Placement snapping and the stand fork on a bend
+
+Context: the owner reported a stand ghost whose red box stretched to the taxiway (fixed in 18b89c0), a lead in that joins a taxiway on its bend, and asked for apron snapping like road placement grids in city builders.
+
+| Question | Answer (owner, 2026-11-26) |
+| --- | --- |
+| Lead in joining a taxiway on a bend | Allowed. Fix the drawing so the fork arcs and centerline follow the curved taxiway (PL1) |
+| What a stand snaps to on an apron | Apron edge, construction grid and the next built stand, all three (PL2) |
+| Edge grids | Taxiways, runways, aprons and terminals each show a grid strip along their sides when the cursor is within 60 m; the apron rectangle tool snaps to them (PL3) |

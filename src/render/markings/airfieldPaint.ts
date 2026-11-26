@@ -649,7 +649,7 @@ export function paintGhostObjects(ctx: Ctx, af: AirfieldPayload, preview: GhostP
     paintRunwayPavement(ctx, preview.runway, win);
     paintRunwayMarks(ctx, preview.runway, win);
   }
-  if (preview.stands) paintStands(ctx, af, preview.stands, win);
+  if (preview.stands) paintStands(ctx, af, preview.stands, win, preview.looseStands);
   if (preview.towers) paintTowers(ctx, preview.towers, win);
   if (preview.roads) {
     paintRoadSurface(ctx, preview.roads, win);

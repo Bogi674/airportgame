@@ -129,7 +129,8 @@ describe('drawing tools show their snap target (T70)', () => {
     c.down({ x: 100, y: 200 }, NO_MODS);
     c.move({ x: 104, y: 9 }, NO_MODS);
     const g = ghosts[ghosts.length - 1];
-    expect(markers(g)).toEqual([{ k: 'marker', x: 104, y: 0, shape: 'diamond', label: undefined }]);
+    // The drag is about one degree off square to the taxiway, so the end slides to meet it square.
+    expect(markers(g)).toEqual([{ k: 'marker', x: 100, y: 0, shape: 'diamond', label: undefined }]);
     expect(g?.shapes.some((s) => s.k === 'strip')).toBe(true);
   });
 });

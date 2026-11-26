@@ -182,8 +182,15 @@ function overlapsStand(w: StandWindow, s: Stand): boolean {
   return s.x + r >= w.minX && s.x - r <= w.maxX && s.y + r >= w.minY && s.y - r <= w.maxY;
 }
 
-/** Paints the markings of the given stands. Shared fork ends are drawn once, since each arc ends there. */
-export function paintStands(ctx: Ctx, af: AirfieldPayload, stands: readonly Stand[], w: StandWindow): void {
+/**
+ * Paints the markings of the given stands. Shared fork ends are drawn once, since each arc ends there.
+ * Loose stands draw only their box: a ghost off its lead in would otherwise stretch its restraint lines to the taxiway.
+ */
+export function paintStands(ctx: Ctx, af: AirfieldPayload, stands: readonly Stand[], w: StandWindow, loose = false): void {
+  if (loose) {
+    for (const s of stands) if (overlapsStand(w, s)) paintLoose(ctx, s, w);
+    return;
+  }
   const { forks, outs } = forksFor(af, stands);
   stands.forEach((s, i) => {
     if (overlapsStand(w, s)) paintStand(ctx, s, forks[i], outs[i], w);

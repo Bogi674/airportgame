@@ -33,7 +33,7 @@ import { bagNodeAt } from '../standInspector';
 import { checkPolygon, checkStrip, estimateStripCost, polygonArea, unownedParcelsUnder, type BuildContext, type Problem } from '@shared/validate';
 import type { Command } from '@sim/commands';
 import { planFor, smoothCorners } from '@render/markings/taxiPlan';
-import { findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
+import { alignSegmentHit, findSnap, TAXI_TOOL, taxiNodes, type SnapHit, type TaxiNode } from '@shared/pavement/snap';
 import { envelopeType, standBox, standTaxiwayClash, taxiClashes } from '@shared/clearance';
 import { standSlot } from '@shared/standGeom';
 import { standLeadTaxiways } from '@shared/standFork';
@@ -571,6 +571,16 @@ export class ToolController {
     }
     const hit = findSnap(this.af.taxiways, this.taxiNodes(), p);
     if (hit) {
+      // A piece ending on a segment slides along it to meet the taxiway square or on a heading step, with its guide shown.
+      const site = this.site();
+      const aligned = prev ? alignSegmentHit(hit, this.af.taxiways, this.taxiNodes(), prev, frameHeadings(this.af, site ? site.corridor.headingDeg : 0)) : null;
+      if (aligned && prev) {
+        this.snapHit = aligned.hit;
+        const tip = aligned.square ? tFormat('ghost.snapSegmentSquare', {}) : tFormat('ghost.snapSegmentAngle', { hdg: String(aligned.headingDeg).padStart(3, '0') });
+        this.mark = { kind: 'segment', p: aligned.hit.p, label: tip };
+        this.deps.setGuide(prev, aligned.hit.p);
+        return aligned.hit.p;
+      }
       this.snapHit = hit;
       this.mark = { kind: hit.kind, p: hit.p, label: hit.label || undefined };
       this.deps.setGuide(null, null);
@@ -1986,7 +1996,7 @@ export class ToolController {
       valid: problem === null,
       shapes,
       tip: tip && m ? { x: m.p.x, y: m.p.y, text: tip } : undefined,
-      preview: { stands: cands },
+      preview: { stands: cands, looseStands: !plan.leadIn },
       label: {
         x: plan.x,
         y: plan.y,
